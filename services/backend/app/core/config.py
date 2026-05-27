@@ -42,6 +42,7 @@ class Settings:
     stt_provider: str = os.getenv("STT_PROVIDER", "mock")
     enable_voice: bool = os.getenv("ENABLE_VOICE", "false").lower() == "true"
     enable_debug: bool = os.getenv("ENABLE_DEBUG", "true").lower() == "true"
+    persona_mode: str = os.getenv("PERSONA_MODE", "guarded").lower().strip() or "guarded"
 
     backend_dir: Path = BACKEND_DIR
     repo_root: Path = REPO_ROOT
@@ -51,6 +52,7 @@ class Settings:
     personas_dir: Path = data_dir / "personas"
     persona_style_examples_path: Path = data_dir / "persona" / "rei_style_examples.json"
     persona_golden_style_path: Path = data_dir / "persona" / "rei_golden_style.json"
+    persona_minimal_prompt_path: Path = data_dir / "persona" / "rei_minimal_prompt.json"
     memory_dir: Path = data_dir / "memory"
     user_profile_path: Path = memory_dir / "user_profile.json"
     episodes_path: Path = memory_dir / "episodes.jsonl"
@@ -60,3 +62,10 @@ class Settings:
 
 
 settings = Settings()
+
+
+def active_persona_mode() -> str:
+    mode = settings.persona_mode.lower().strip()
+    if mode == "minimal":
+        return "minimal"
+    return "guarded"

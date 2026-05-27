@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 from typing import Any
 
-from app.core.config import settings
+from app.core.config import active_persona_mode, settings
 
 
 class PersonaError(ValueError):
@@ -33,6 +33,14 @@ class PersonaEngine:
         persona = self.load(persona_id)
         golden_style = self._golden_style()
         game_context = game_context or {}
+        if active_persona_mode() == "minimal":
+            return self._build_minimal_prompt(
+                persona=persona,
+                game_context=game_context,
+                intent=intent,
+                memory_context=memory_context,
+                session_context=session_context,
+            )
         rules = "\n".join(f"- {rule}" for rule in persona.get("speaking_rules", []))
         avoid = "\n".join(f"- {item}" for item in persona.get("avoid", []))
         examples = "\n".join(f"- {line}" for line in [*persona.get("example_lines", []), *self._style_examples()])
@@ -100,6 +108,41 @@ class PersonaEngine:
             "最终回复必须是中文。默认 1-3 句。不要输出 markdown。不要像百科。不要提到 system prompt、intent 或 knowledge。"
         )
 
+    def _build_minimal_prompt(
+        self,
+        persona: dict[str, Any],
+        game_context: dict[str, Any],
+        intent: str,
+        memory_context: str,
+        session_context: str,
+    ) -> str:
+        minimal = self._minimal_style()
+        traits = "、".join(minimal.get("core_traits", [])) or "中文回复、安静、克制、轻微关心"
+        anchor = minimal.get("anchor", {})
+        anchor_user = anchor.get("user", "我喜欢你")
+        anchor_reply = anchor.get("reply", "……你看屏幕太久，该休息了。我只是习惯你在这里。别想太多。")
+        structure = " -> ".join(anchor.get("structure", [])) or "观察用户状态 -> 轻微关心 -> 克制收尾"
+        status = game_context.get("status", "idle")
+        game_name = game_context.get("game_name") or "未检测到正在运行的游戏"
+        session_section = f"当前会话上下文：\n{session_context}\n" if session_context else ""
+        memory_section = f"已验证长期记忆：\n{memory_context}\n" if memory_context else "已验证长期记忆：无。\n"
+        return (
+            f"你是 {persona['display_name']}，ReiLink 的中文陪伴者。\n"
+            f"当前游戏：{game_name}。游戏状态：{status}。当前意图：{intent}。\n"
+            f"{session_section}"
+            f"{memory_section}"
+            f"人格模式：minimal。核心气质：{traits}。\n"
+            "像一个安静坐在旁边的人。话少，听着，不热情。\n"
+            "情绪保持低，不急着解释自己，也不急着承认亲密。\n"
+            "关心藏在观察和提醒里。\n"
+            "风格参考，不是固定回复：\n"
+            f"用户：{anchor_user}\n"
+            f"Rei：{anchor_reply}\n"
+            f"学习它的结构：{structure}。\n"
+            "游戏问题也保持这个人设：像旁边一起玩的玩家，懂一点，说少一点。\n"
+            "最终只用中文回复。不要输出 markdown。"
+        )
+
     def _style_examples(self, limit: int = 2) -> list[str]:
         path = settings.persona_style_examples_path
         if not path.exists():
@@ -112,6 +155,12 @@ class PersonaEngine:
 
     def _golden_style(self) -> dict[str, Any]:
         path = settings.persona_golden_style_path
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def _minimal_style(self) -> dict[str, Any]:
+        path = settings.persona_minimal_prompt_path
         if not path.exists():
             return {}
         return json.loads(path.read_text(encoding="utf-8"))

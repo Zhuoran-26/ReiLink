@@ -51,10 +51,12 @@ def test_debug_provider_returns_current_provider():
         "fallback_to_mock",
         "env_file_loaded",
         "env_file_path",
+        "persona_mode",
     } <= data.keys()
     assert isinstance(data["api_key_loaded"], bool)
     assert isinstance(data["fallback_to_mock"], bool)
     assert isinstance(data["env_file_loaded"], bool)
+    assert data["persona_mode"] in {"guarded", "minimal"}
 
 
 def test_debug_chat_returns_last_latency_fields():
