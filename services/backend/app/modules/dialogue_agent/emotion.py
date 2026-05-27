@@ -38,7 +38,7 @@ def detect_user_emotion(message: str) -> UserEmotion:
 
 
 def wants_detailed_strategy(message: str) -> bool:
-    return any(word in message for word in ("详细说", "完整攻略", "具体讲", "怎么配装"))
+    return any(word in message for word in ("详细说", "完整攻略", "具体讲", "怎么配装", "详细攻略", "完整打法"))
 
 
 def build_companion_policy(message: str, intent: str) -> str:
@@ -59,11 +59,12 @@ def build_companion_policy(message: str, intent: str) -> str:
     if intent.startswith("elden_ring"):
         lines.extend(
             [
-                "- 艾尔登法环相关回答默认只给 1 个关键点，不写完整攻略段落。",
-                "- 除非用户明确要求详细说、完整攻略、具体讲、怎么配装，否则总长度不要超过 2 句。",
+                "- 艾尔登法环相关回答默认像游戏好友在旁边提醒，不像攻略站或高手教学。",
+                "- 默认只给 1 个关键点，不写完整攻略段落；不确定细节时可以说不确定。",
+                "- 除非用户明确要求详细说、完整攻略、具体讲、怎么配装、完整打法，否则总长度不要超过 2 句。",
                 "- 玩家说死了、烦了、还是不行、打不过时，先回应状态，再指出一个问题，最后只给一个短建议。",
-                "- 少用攻略站语气：先保证、输出、连段、方向、节奏、机制、建议、如果……那么……。",
-                "- 更自然地说：别急、少打一刀、先活下来、等他真的落下来再滚、你太早动了、这次只练躲。",
+                "- 少用攻略站语气：先保证、输出、连段、方向、节奏、机制、建议、如果……那么……、窗口期、仇恨管理、最优配置。",
+                "- 更自然地说：少打一刀、先活下来、等他真的落下来再滚、你太早动了、这次只练躲。",
             ]
         )
         if detailed:

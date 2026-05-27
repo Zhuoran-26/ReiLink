@@ -7,10 +7,15 @@ import re
 OVERUSED_CORE_PHRASES = (
     "我在这里",
     "我还在这里",
+    "我还在",
     "我听见了",
     "别想太多",
     "习惯你在",
     "看着你",
+    "你问得太认真",
+    "你问得太直接",
+    "不知道怎么接",
+    "不知该怎么接",
 )
 
 RELATIONSHIP_FOLLOWUP_MARKERS = (
@@ -58,6 +63,8 @@ def build_followup_progression_policy(current_message: str, recent_user_messages
     return (
         "Follow-up progression policy: 用户正在连续追问关系或情感。不要把每一轮都回避到同一个点。"
         "可以从回避、推进、设边界、反问或收住之间自然推进；不要复述刚才回答。"
+        "避免继续使用“你问得太认真/太直接”“不知道怎么接”“我还在”这类安全但原地打转的句式。"
+        "每次至少推进一点：回应用户为什么追问、给出关系边界、或把问题交还给用户。"
         "这些只是方向，不是固定台词。"
     )
 
