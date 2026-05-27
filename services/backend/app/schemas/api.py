@@ -1,0 +1,125 @@
+from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+
+class GameStatus(BaseModel):
+    game_id: str | None
+    game_name: str | None
+    process_name: str | None
+    status: Literal["running", "idle"]
+    confidence: float
+    tags: list[str] = Field(default_factory=list)
+
+
+class PersonaPromptRequest(BaseModel):
+    persona_id: str = "rei_like"
+    game_context: dict[str, Any] = Field(default_factory=dict)
+
+
+class PersonaPromptResponse(BaseModel):
+    system_prompt: str
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    session_id: str = Field(default="default", min_length=1, max_length=80)
+    mode: Literal["chat"] = "chat"
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    reply_segments: list[str] = Field(default_factory=list)
+    segmenter_mode: str = "compact"
+    persona_id: str
+    game_status: str
+    sources: list[str]
+    timestamp: datetime
+
+
+class MemoryEntry(BaseModel):
+    timestamp: str
+    session_id: str
+    game_id: str | None
+    persona_id: str
+    user_message: str
+    assistant_reply: str
+    assistant_reply_segments: list[str] = Field(default_factory=list)
+
+
+class UserProfileMemory(BaseModel):
+    user_name: str | None = None
+    favorite_game: str | None = None
+    preferred_tone: str | None = None
+    likes_teasing: bool | None = None
+    skill_level: str | None = None
+    current_boss: str | None = None
+    repeated_struggles: list[str] = Field(default_factory=list)
+    emotional_notes: list[str] = Field(default_factory=list)
+    last_seen_at: str | None = None
+    memory_updated_at: dict[str, str] = Field(default_factory=dict)
+
+
+class EpisodeMemory(BaseModel):
+    timestamp: str
+    intent: str
+    boss: str | None = None
+    struggle: str | None = None
+    preferred_tone: str | None = None
+    skill_level: str | None = None
+    emotional_state: str | None = None
+    topic: str | None = None
+    attitude_to_rei: str | None = None
+    user_name: str | None = None
+    user_message_sample: str | None = None
+    assistant_reply_sample: str
+    summary: str | None = None
+
+
+class MemoryResetResponse(BaseModel):
+    status: Literal["reset"]
+
+
+class MemoryProvenanceItem(BaseModel):
+    source: Literal["profile", "episode", "current_session"]
+    field: str
+    text: str
+    timestamp: str | None = None
+
+
+class MemoryDebugResponse(BaseModel):
+    prompt_order: list[str]
+    memory_written: bool
+    current_boss: str | None = None
+    emotional_note: str | None = None
+    recent_episode_count: int
+    items: list[MemoryProvenanceItem]
+
+
+class ChatDebugResponse(BaseModel):
+    intent: str | None = None
+    selected_model: str | None = None
+    thinking_enabled: bool = False
+    reasoning_effort: str | None = None
+    prompt_tokens_estimate: int = 0
+    llm_latency_ms: int = 0
+    memory_latency_ms: int = 0
+    total_latency_ms: int = 0
+    reply_segments_count: int = 0
+    segmenter_mode: str | None = None
+
+
+class VoiceTranscribeResponse(BaseModel):
+    text: str
+    provider: str
+
+
+class VoiceSpeakRequest(BaseModel):
+    text: str = Field(min_length=1)
+
+
+class VoiceSpeakResponse(BaseModel):
+    audio_url: str | None
+    provider: str
+    message: str

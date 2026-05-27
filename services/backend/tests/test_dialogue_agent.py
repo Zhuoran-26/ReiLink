@@ -1,0 +1,262 @@
+import json
+from datetime import datetime
+from io import BytesIO
+from pathlib import Path
+import urllib.error
+
+import pytest
+
+from app.modules.dialogue_agent.intent import detect_intent
+from app.modules.dialogue_agent.providers import DeepSeekProvider, LLMResult, MockLLMProvider
+from app.modules.memory.store import ConversationStore
+from app.schemas.api import ChatRequest
+
+
+def assert_chinese_reply(reply: str):
+    assert "##" not in reply
+    assert any("\u4e00" <= char <= "\u9fff" for char in reply)
+
+
+class _PromptCapturingProvider:
+    def __init__(self, replies: list[str] | None = None) -> None:
+        self.replies = replies or ["嗯。"]
+        self.prompts: list[str] = []
+        self.calls = 0
+
+    def generate_with_metrics(self, system_prompt, user_message, snippets, intent):
+        self.prompts.append(system_prompt)
+        reply = self.replies[min(self.calls, len(self.replies) - 1)]
+        self.calls += 1
+        return LLMResult(
+            reply=reply,
+            selected_model="mock",
+            thinking_enabled=False,
+            reasoning_effort=None,
+            prompt_tokens_estimate=len(system_prompt) // 2,
+            llm_latency_ms=1,
+        )
+
+
+def test_mock_provider_returns_chinese_reply():
+    reply = MockLLMProvider().generate("中文短句", "你好", [], "casual_chat")
+    assert_chinese_reply(reply)
+
+
+def test_deepseek_provider_without_key_returns_clear_error(monkeypatch):
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.settings.deepseek_api_key", "")
+    with pytest.raises(RuntimeError, match="DEEPSEEK_API_KEY"):
+        DeepSeekProvider().generate("中文短句", "你好", [], "casual_chat")
+
+
+def test_deepseek_provider_sends_thinking_payload(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "好的"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.settings.deepseek_api_key", "test-key")
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.urllib.request.urlopen", fake_urlopen)
+
+    reply = DeepSeekProvider().generate("中文短句", "Margit 怎么打", [], "elden_ring_boss_strategy")
+
+    assert reply == "好的"
+    assert captured["payload"]["thinking"] == {"type": "enabled"}
+    assert captured["payload"]["reasoning_effort"] == "medium"
+    assert captured["payload"]["stream"] is False
+
+
+def test_deepseek_provider_fast_route_disables_thinking(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "我听见了。"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.settings.deepseek_api_key", "test-key")
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.urllib.request.urlopen", fake_urlopen)
+
+    result = DeepSeekProvider().generate_with_metrics("中文短句", "我在意你", [], "casual_chat")
+
+    assert result.selected_model == "deepseek-v4-flash"
+    assert result.thinking_enabled is False
+    assert "thinking" not in captured["payload"]
+    assert "reasoning_effort" not in captured["payload"]
+
+
+def test_deepseek_provider_logs_non_2xx_response_body(monkeypatch, caplog):
+    response_body = b'{"error":{"message":"unsupported parameter"}}'
+
+    def fake_urlopen(request, timeout):
+        raise urllib.error.HTTPError(
+            url=request.full_url,
+            code=400,
+            msg="Bad Request",
+            hdrs={},
+            fp=BytesIO(response_body),
+        )
+
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.settings.deepseek_api_key", "test-key")
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.urllib.request.urlopen", fake_urlopen)
+
+    with caplog.at_level("ERROR"), pytest.raises(RuntimeError, match="unsupported parameter"):
+        DeepSeekProvider().generate("中文短句", "你好", [], "casual_chat")
+
+    assert "DeepSeek provider returned non-2xx status=400" in caplog.text
+    assert "unsupported parameter" in caplog.text
+
+
+def test_identity_questions_do_not_retrieve_knowledge(monkeypatch, tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path)
+
+    def fail_search(*args, **kwargs):
+        raise AssertionError("identity question should not search knowledge")
+
+    agent.knowledge.search = fail_search
+    for message in ("你是谁", "who are you"):
+        response = agent.chat(ChatRequest(message=message, session_id=f"identity-{message}"))
+        assert response.sources == []
+        assert_chinese_reply(response.reply)
+
+
+def test_margit_strategy_returns_chinese_strategy(monkeypatch, tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path)
+    response = agent.chat(ChatRequest(message="Margit 怎么打", session_id="strategy"))
+    assert response.sources
+    assert "延迟" in response.reply or "翻滚" in response.reply
+    assert_chinese_reply(response.reply)
+
+
+def test_margit_location_returns_location_content(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path)
+    response = agent.chat(ChatRequest(message="Margit 在哪", session_id="location"))
+    assert response.sources
+    assert "史东薇尔" in response.reply or "城门" in response.reply
+    assert_chinese_reply(response.reply)
+
+
+def test_unclear_how_asks_for_more_detail(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path)
+    response = agent.chat(ChatRequest(message="how", session_id="unclear"))
+    assert response.sources == []
+    assert "说清楚" in response.reply or "哪一部分" in response.reply or "装备" in response.reply
+    assert_chinese_reply(response.reply)
+
+
+def test_chat_api_logic_saves_jsonl(monkeypatch, tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    monkeypatch.setattr("app.modules.memory.store.settings.conversations_dir", tmp_path)
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path)
+    response = agent.chat(ChatRequest(message="Margit 怎么打", session_id="test"))
+    assert_chinese_reply(response.reply)
+    path = tmp_path / "test.jsonl"
+    assert path.exists()
+    saved = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert saved["user_message"] == "Margit 怎么打"
+    assert saved["assistant_reply_segments"]
+    assert "".join(saved["assistant_reply_segments"]) == saved["assistant_reply"]
+
+
+def test_dialogue_agent_retries_when_reply_repeats_recent_assistant(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    repeated = "你问得这么认真，我有点不知道该怎么接。但我没有走开过。"
+    agent.store.append("repeat", None, "rei_like", "那你不喜欢我吗？", repeated, datetime.now())
+    provider = _PromptCapturingProvider([repeated, "你还在追问。那我说清楚一点。"])
+    agent.provider = provider
+
+    response = agent.chat(ChatRequest(message="那您对我是什么情感？", session_id="repeat"))
+
+    assert provider.calls == 2
+    assert response.reply != repeated
+    assert "不要重复刚才的回答" in provider.prompts[-1]
+
+
+def test_followup_progression_policy_is_injected_for_relationship_chain(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.store.append("followup", None, "rei_like", "你喜欢我吗？", "不知道。", datetime.now())
+    provider = _PromptCapturingProvider(["嗯。"])
+    agent.provider = provider
+
+    agent.chat(ChatRequest(message="那你不喜欢我吗？", session_id="followup"))
+
+    assert "Follow-up progression policy" in provider.prompts[0]
+    assert "不要把每一轮都回避到同一个点" in provider.prompts[0]
+
+
+def test_session_focus_boss_is_injected_for_elliptical_reference(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    now = datetime.now()
+    agent.store.append("focus", None, "rei_like", "女武神", "卡在女武神。", now)
+    agent.store.append("focus", None, "rei_like", "现在我重新尝试一下", "嗯。", now)
+    provider = _PromptCapturingProvider(["先缓一下。只看她起手。"])
+    agent.provider = provider
+
+    response = agent.chat(ChatRequest(message="一直打不过啊", session_id="focus"))
+
+    assert "当前会话焦点 boss：女武神" in provider.prompts[0]
+    assert "不要再问“哪个 boss”" in provider.prompts[0]
+    assert "哪个 boss" not in response.reply
+
+
+def test_intent_router_core_cases():
+    assert detect_intent("你叫什么").intent == "identity_question"
+    assert detect_intent("who are you").intent == "identity_question"
+    assert detect_intent("where is Margit").intent == "elden_ring_location"
+    assert detect_intent("Margit 怎么打").intent == "elden_ring_boss_strategy"
+    assert detect_intent("build 推荐").intent == "elden_ring_build"
+    assert detect_intent("how").intent == "unclear"
+
+
+def test_unknown_provider_reports_mock_fallback(monkeypatch, caplog):
+    from app.modules.dialogue_agent.providers import get_provider_info, log_provider_state
+
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.settings.llm_provider", "mystery")
+    info = get_provider_info()
+    assert info.provider == "mock"
+    assert info.fallback_to_mock is True
+    with caplog.at_level("WARNING"):
+        log_provider_state("test")
+    assert "FALLBACK TO MOCK PROVIDER" in caplog.text

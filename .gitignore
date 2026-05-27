@@ -1,0 +1,35 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+services/backend/.venv/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Desktop build and test output
+apps/desktop/dist/
+apps/desktop/dist-electron/
+apps/desktop/test-results/
+apps/desktop/playwright-report/
+
+# Local conversation logs
+data/conversations/*.jsonl
+!data/conversations/.gitkeep
+
+# Local env
+.env
+
+# Local memory data
+data/memory/user_profile.json
+data/memory/episodes.jsonl
+data/memory/*.backup.json
+data/memory/*.backup.jsonl
+
+# Env files
+*.env
+services/backend/*.env
