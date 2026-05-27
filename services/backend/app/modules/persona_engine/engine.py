@@ -117,29 +117,33 @@ class PersonaEngine:
         session_context: str,
     ) -> str:
         minimal = self._minimal_style()
-        traits = "、".join(minimal.get("core_traits", [])) or "中文回复、安静、克制、轻微关心"
+        system_lines = minimal.get("system_prompt") or minimal.get("core_traits", [])
+        minimal_rules = "\n".join(f"- {line}" for line in system_lines)
         anchor = minimal.get("anchor", {})
-        anchor_user = anchor.get("user", "我喜欢你")
-        anchor_reply = anchor.get("reply", "……你看屏幕太久，该休息了。我只是习惯你在这里。别想太多。")
-        structure = " -> ".join(anchor.get("structure", [])) or "观察用户状态 -> 轻微关心 -> 克制收尾"
+        anchor_user = anchor.get("user", "")
+        anchor_reply = anchor.get("reply", "")
+        structure = " -> ".join(anchor.get("structure", []))
         status = game_context.get("status", "idle")
         game_name = game_context.get("game_name") or "未检测到正在运行的游戏"
         session_section = f"当前会话上下文：\n{session_context}\n" if session_context else ""
         memory_section = f"已验证长期记忆：\n{memory_context}\n" if memory_context else "已验证长期记忆：无。\n"
+        anchor_section = ""
+        if anchor_user and anchor_reply:
+            anchor_section = (
+                "风格参考，不是固定回复：\n"
+                f"用户：{anchor_user}\n"
+                f"Rei：{anchor_reply}\n"
+            )
+            if structure:
+                anchor_section += f"学习它的结构：{structure}。\n"
         return (
-            f"你是 {persona['display_name']}，ReiLink 的中文陪伴者。\n"
+            f"你是 {persona['display_name']}。\n"
             f"当前游戏：{game_name}。游戏状态：{status}。当前意图：{intent}。\n"
             f"{session_section}"
             f"{memory_section}"
-            f"人格模式：minimal。核心气质：{traits}。\n"
-            "像一个安静坐在旁边的人。话少，听着，不热情。\n"
-            "情绪保持低，不急着解释自己，也不急着承认亲密。\n"
-            "关心藏在观察和提醒里。\n"
-            "风格参考，不是固定回复：\n"
-            f"用户：{anchor_user}\n"
-            f"Rei：{anchor_reply}\n"
-            f"学习它的结构：{structure}。\n"
-            "游戏问题也保持这个人设：像旁边一起玩的玩家，懂一点，说少一点。\n"
+            "人格模式：minimal。\n"
+            f"{minimal_rules}\n"
+            f"{anchor_section}"
             "最终只用中文回复。不要输出 markdown。"
         )
 

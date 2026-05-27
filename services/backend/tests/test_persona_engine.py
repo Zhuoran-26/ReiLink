@@ -109,7 +109,13 @@ def test_guarded_and_minimal_modes_can_generate_prompts(monkeypatch):
 
     assert "Golden style anchor" in guarded_prompt
     assert "人格模式：minimal" in minimal_prompt
-    assert "核心气质" in minimal_prompt
+    assert "安静、克制、低情绪波动" in minimal_prompt
+    assert "括号里的动作或神态少用" in minimal_prompt
+    assert "不要把自己介绍成 ReiLink" in minimal_prompt
+    assert "没有明确证据时，说记不清、忘了，或者追问" in minimal_prompt
+    assert "吧" in minimal_prompt
     assert "已验证长期记忆" in minimal_prompt
     assert "当前会话上下文" in minimal_prompt
+    assert "ReiLink 的中文陪伴者" not in minimal_prompt
+    assert "风格参考，不是固定回复" not in minimal_prompt
     assert "Companion-first Response Policy" not in minimal_prompt
