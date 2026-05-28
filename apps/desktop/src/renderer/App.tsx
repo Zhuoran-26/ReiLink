@@ -1,7 +1,15 @@
 import { ChevronDown, ChevronUp, Mic, RefreshCw, Send } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { api, ChatDebugResponse, GameSessionDebugResponse, GameStatus, MemoryDebugResponse, UserProfileMemory } from "../shared/api";
+import {
+  api,
+  ChatDebugResponse,
+  GameSessionDebugResponse,
+  GameStatus,
+  MemoryDebugResponse,
+  PromptPreviewResponse,
+  UserProfileMemory
+} from "../shared/api";
 
 type Message = {
   id: string;
@@ -75,6 +83,17 @@ const emptyGameSessionDebug: GameSessionDebugResponse = {
   last_updated_at: null
 };
 
+const emptyPromptPreview: PromptPreviewResponse = {
+  persona_mode: "unknown",
+  current_user_message: null,
+  prompt_order: [],
+  session_focus_summary: {},
+  game_state_summary: {},
+  memory_summary: {},
+  final_context_summary: {},
+  warnings: []
+};
+
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 
@@ -91,6 +110,7 @@ export function App() {
   const [memoryDebug, setMemoryDebug] = useState<MemoryDebugResponse>(emptyMemoryDebug);
   const [chatDebug, setChatDebug] = useState<ChatDebugResponse>(emptyChatDebug);
   const [gameSessionDebug, setGameSessionDebug] = useState<GameSessionDebugResponse>(emptyGameSessionDebug);
+  const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。" }
   ]);
@@ -111,6 +131,7 @@ export function App() {
       setMemoryDebug(await api.memoryDebug());
       setChatDebug(await api.chatDebug());
       setGameSessionDebug(await api.gameSessionDebug());
+      setPromptPreview(await api.promptPreview());
     } catch (error) {
       setBackendStatus("disconnected");
       setLastError(error instanceof Error ? error.message : "后端暂时连不上");
@@ -269,6 +290,7 @@ export function App() {
                       last_interim_placeholder_shown: lastInterimPlaceholderShown,
                       last_response_latency_ms: lastResponseLatencyMs
                     },
+                    prompt_preview: promptPreview,
                     lastError: lastError || null
                   },
                   null,

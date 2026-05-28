@@ -110,6 +110,17 @@ export type GameSessionDebugResponse = {
   last_updated_at: string | null;
 };
 
+export type PromptPreviewResponse = {
+  persona_mode: string;
+  current_user_message: string | null;
+  prompt_order: string[];
+  session_focus_summary: Record<string, unknown>;
+  game_state_summary: Record<string, unknown>;
+  memory_summary: Record<string, unknown>;
+  final_context_summary: Record<string, unknown>;
+  warnings: string[];
+};
+
 const API_BASE = import.meta.env.VITE_REILINK_API_BASE ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -132,6 +143,7 @@ export const api = {
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),
   chatDebug: () => request<ChatDebugResponse>("/api/debug/chat"),
   gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
+  promptPreview: (sessionId = "default") => request<PromptPreviewResponse>(`/api/debug/prompt-preview?session_id=${encodeURIComponent(sessionId)}`),
   resetMemory: () => request<{ status: "reset" }>("/api/memory/reset", { method: "POST" }),
   chat: (message: string, sessionId = "default") =>
     request<ChatResponse>("/api/chat", {

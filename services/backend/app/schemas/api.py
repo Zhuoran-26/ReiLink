@@ -110,6 +110,17 @@ class ChatDebugResponse(BaseModel):
     segmenter_mode: str | None = None
 
 
+class PromptPreviewResponse(BaseModel):
+    persona_mode: str
+    current_user_message: str | None = None
+    prompt_order: list[str]
+    session_focus_summary: dict[str, Any] = Field(default_factory=dict)
+    game_state_summary: dict[str, Any] = Field(default_factory=dict)
+    memory_summary: dict[str, Any] = Field(default_factory=dict)
+    final_context_summary: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class VoiceTranscribeResponse(BaseModel):
     text: str
     provider: str

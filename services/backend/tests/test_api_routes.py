@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -134,6 +136,56 @@ def test_debug_game_session_routes():
     assert reset.status_code == 200
     assert reset.json() == {"status": "reset"}
     assert client.get("/api/debug/game-session").json()["current_boss"] is None
+
+
+def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
+    session_id = "api-prompt-preview"
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "我现在卡在女武神", "session_id": session_id})
+
+    response = client.get(f"/api/debug/prompt-preview?session_id={session_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "persona_mode",
+        "current_user_message",
+        "prompt_order",
+        "session_focus_summary",
+        "game_state_summary",
+        "memory_summary",
+        "final_context_summary",
+        "warnings",
+    } <= data.keys()
+    assert data["persona_mode"] in {"guarded", "minimal"}
+    assert data["current_user_message"] == "我现在卡在女武神"
+    assert data["game_state_summary"]["current_game"] == "Elden Ring"
+    assert data["game_state_summary"]["current_boss"]["name"] == "女武神"
+    assert data["game_state_summary"]["freshness"] == "fresh"
+    assert isinstance(data["memory_summary"]["injected"], list)
+    assert isinstance(data["memory_summary"]["skipped"], list)
+    assert data["final_context_summary"]["raw_prompt_omitted"] is True
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "api_key" not in serialized
+    assert "deepseek_api_key" not in serialized
+    assert "authorization" not in serialized
+
+
+def test_prompt_preview_warns_on_negated_clear_phrase():
+    session_id = "api-prompt-preview-negated-clear"
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "我现在卡在恶兆妖鬼", "session_id": session_id})
+    client.post("/api/chat", json={"message": "还是没打过", "session_id": session_id})
+
+    response = client.get(f"/api/debug/prompt-preview?session_id={session_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["current_user_message"] == "还是没打过"
+    assert data["game_state_summary"]["current_activity"] == "boss_failed"
+    assert data["game_state_summary"]["current_boss"]["name"] == "恶兆妖鬼 Margit"
+    assert data["game_state_summary"]["last_cleared_boss"] != "恶兆妖鬼 Margit"
+    assert "current user message contains negated clear phrase" in data["warnings"]
 
 
 def test_memory_reset_route():

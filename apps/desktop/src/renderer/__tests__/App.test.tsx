@@ -89,6 +89,17 @@ const gameSessionDebug = {
   last_updated_at: new Date().toISOString()
 };
 
+const promptPreview = {
+  persona_mode: "minimal",
+  current_user_message: "Margit 怎么打？",
+  prompt_order: ["current_user_message", "current_session_context", "session_focus", "game_state", "memory", "persona"],
+  session_focus_summary: { boss: "恶兆妖鬼 Margit", source: "current_message" },
+  game_state_summary: { current_game: "Elden Ring", current_boss: gameSessionDebug.current_boss, freshness: "fresh" },
+  memory_summary: { injected: memoryDebug.items, skipped: [] },
+  final_context_summary: { raw_prompt_omitted: true, memory_injected_count: 2 },
+  warnings: []
+};
+
 const chatResponse = {
   reply: "别急着翻滚。先看动作。再试一次。",
   reply_segments: ["别急着翻滚。先看动作。再试一次。"],
@@ -112,6 +123,7 @@ describe("App", () => {
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
         if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
+        if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return Response.json(chatResponse);
         }
@@ -161,6 +173,7 @@ describe("App", () => {
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
         if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
+        if (url.includes("/api/debug/prompt-preview")) return Promise.resolve(Response.json(promptPreview));
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return new Promise<Response>((resolve) => {
             resolveChat = resolve;
@@ -206,6 +219,7 @@ describe("App", () => {
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
         if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
+        if (url.includes("/api/debug/prompt-preview")) return Promise.resolve(Response.json(promptPreview));
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return new Promise<Response>((resolve) => {
             resolveChat = resolve;
@@ -258,6 +272,7 @@ describe("App", () => {
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json({ ...chatDebug, reply_segments_count: 3, segmenter_mode: "strategy" }));
         if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
+        if (url.includes("/api/debug/prompt-preview")) return Promise.resolve(Response.json(promptPreview));
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return Promise.resolve(
             Response.json({
@@ -305,6 +320,7 @@ describe("App", () => {
     expect(screen.getByText(/current_boss/)).toBeInTheDocument();
     expect(screen.getByText(/memory_provenance/)).toBeInTheDocument();
     expect(screen.getByText(/game_session/)).toBeInTheDocument();
+    expect(screen.getByText(/prompt_preview/)).toBeInTheDocument();
     expect(screen.getByText(/selected_model/)).toBeInTheDocument();
     expect(screen.getByText(/reply_segments_count/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /调试/i }));

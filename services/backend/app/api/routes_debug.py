@@ -1,11 +1,12 @@
 from fastapi import APIRouter
 
-from app.modules.dialogue_agent.providers import get_provider_info
 from app.modules.dialogue_agent.metrics import get_last_chat_metrics
+from app.modules.dialogue_agent.prompt_preview import build_prompt_preview
+from app.modules.dialogue_agent.providers import get_provider_info
 from app.modules.game_session.state import GameSessionStore
 from app.modules.memory.profile import PlayerMemory
 from app.modules.memory.store import ConversationStore
-from app.schemas.api import ChatDebugResponse, MemoryDebugResponse
+from app.schemas.api import ChatDebugResponse, MemoryDebugResponse, PromptPreviewResponse
 
 router = APIRouter(tags=["debug"])
 
@@ -34,6 +35,11 @@ def debug_memory(session_id: str = "default") -> dict:
 @router.get("/debug/chat", response_model=ChatDebugResponse)
 def debug_chat() -> dict:
     return get_last_chat_metrics().as_dict()
+
+
+@router.get("/debug/prompt-preview", response_model=PromptPreviewResponse)
+def debug_prompt_preview(session_id: str = "default") -> dict:
+    return build_prompt_preview(session_id=session_id)
 
 
 @router.get("/debug/game-session")
