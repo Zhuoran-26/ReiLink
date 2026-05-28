@@ -153,6 +153,7 @@ class GameSessionStore:
         explicit_boss = _detect_boss(user_message)
         focused_boss = normalize_terminology(session_focus_boss or "") or None
         has_elliptical_reference = is_elliptical_boss_reference(user_message)
+        fails_boss = _fails_current_boss(user_message)
         clears_boss = _clears_current_boss(user_message)
         abandons_boss = _abandons_current_boss(user_message)
         game_name = _detect_current_game(game_status, user_message, intent, explicit_boss or focused_boss)
@@ -167,10 +168,19 @@ class GameSessionStore:
         if _has_frustration_signal(user_message):
             state.frustration_count += 1
 
-        if explicit_boss and clears_boss:
+        if explicit_boss and fails_boss:
+            _mark_boss_failed(state, explicit_boss, now, "current_message")
+        elif explicit_boss and clears_boss:
             _clear_boss(state, explicit_boss, now, "current_message")
         elif explicit_boss:
             _set_current_boss(state, explicit_boss, now, "current_message", 0.95)
+        elif fails_boss:
+            failed_boss = _context_boss_for_failure(state, focused_boss, now)
+            if failed_boss:
+                source = "session_focus" if focused_boss and failed_boss == focused_boss else "current_context"
+                _mark_boss_failed(state, failed_boss, now, source)
+            else:
+                state.current_activity = "boss_failed"
         elif clears_boss and state.current_boss:
             _clear_boss(state, state.current_boss.name, now, "current_context")
         elif abandons_boss and state.current_boss:
@@ -193,6 +203,7 @@ class GameSessionStore:
             intent,
             explicit_boss or focused_boss or (state.current_boss.name if state.current_boss else None),
             state.current_activity,
+            fails_boss,
             clears_boss,
             abandons_boss,
         )
@@ -407,6 +418,34 @@ def _clear_boss(state: GameSessionState, boss_name: str, timestamp: datetime, so
     _touch_history(state, boss_name, "cleared", timestamp, source, 1.0, "boss_cleared")
 
 
+def _mark_boss_failed(
+    state: GameSessionState,
+    boss_name: str,
+    timestamp: datetime,
+    source: str,
+    confidence: float = 0.85,
+) -> None:
+    boss_name = normalize_terminology(boss_name)
+    if state.current_boss and state.current_boss.name != boss_name:
+        _touch_history(
+            state,
+            state.current_boss.name,
+            "attempted",
+            timestamp,
+            "previous_current",
+            state.current_boss.confidence,
+            "boss_attempt",
+        )
+    state.current_boss = _updated_boss(state.current_boss, boss_name, timestamp, source, confidence)
+    state.current_activity = "boss_failed"
+    state.last_boss = boss_name
+    state.last_attempted_boss = boss_name
+    if state.last_cleared_boss == boss_name:
+        state.last_cleared_boss = None
+    _append_topic(state, boss_name)
+    _touch_history(state, boss_name, "failed", timestamp, source, confidence, "boss_failed")
+
+
 def _abandon_current_boss(state: GameSessionState, timestamp: datetime) -> None:
     if not state.current_boss:
         return
@@ -447,13 +486,46 @@ def _touch_history(
     state.boss_history = state.boss_history[-12:]
 
 
+def _context_boss_for_failure(
+    state: GameSessionState,
+    focused_boss: str | None,
+    timestamp: datetime,
+) -> str | None:
+    if state.current_boss:
+        return state.current_boss.name
+    if focused_boss:
+        return focused_boss
+    for boss_name in (state.last_boss, state.last_attempted_boss, state.last_cleared_boss):
+        if boss_name and _history_is_recent(state, boss_name, timestamp):
+            return boss_name
+    return None
+
+
+def _history_is_recent(state: GameSessionState, boss_name: str, timestamp: datetime) -> bool:
+    entry = next((item for item in reversed(state.boss_history) if item.name == boss_name), None)
+    if not entry:
+        return False
+    updated_at = _parse_timestamp(entry.updated_at)
+    if not updated_at:
+        return False
+    return timestamp - updated_at <= FRESH_WINDOW
+
+
 def _clears_current_boss(message: str) -> bool:
     compact = re.sub(r"\s+", "", message.lower())
+    if _fails_current_boss(message):
+        return False
+    if _has_negated_failure_correction(compact):
+        return True
     return any(
         marker in compact
         for marker in (
             "过了",
             "過了",
+            "终于过了",
+            "終於過了",
+            "通关了",
+            "通關了",
             "过掉了",
             "過掉了",
             "打过了",
@@ -464,6 +536,146 @@ def _clears_current_boss(message: str) -> bool:
             "打完了",
             "打掉了",
             "打掉",
+            "赢了",
+            "贏了",
+            "打赢了",
+            "打贏了",
+            "击败了",
+            "擊敗了",
+            "干掉了",
+            "幹掉了",
+            "杀了",
+            "殺了",
+        )
+    )
+
+
+def _fails_current_boss(message: str) -> bool:
+    compact = re.sub(r"\s+", "", message.lower())
+    if _has_negated_failure_correction(compact) and not _has_later_failure_after_correction(compact):
+        return False
+    return any(
+        marker in compact
+        for marker in (
+            "没打过",
+            "沒打過",
+            "没有打过",
+            "沒有打過",
+            "还没打过",
+            "還沒打過",
+            "还是没打过",
+            "還是沒打過",
+            "又没打过",
+            "又沒打過",
+            "没过",
+            "沒過",
+            "没有过",
+            "沒有過",
+            "还没过",
+            "還沒過",
+            "还是没过",
+            "還是沒過",
+            "又没过",
+            "又沒過",
+            "打不过",
+            "打不過",
+            "一直打不过",
+            "一直打不過",
+            "过不了",
+            "過不了",
+            "过不去",
+            "過不去",
+            "没赢",
+            "沒贏",
+            "没有赢",
+            "沒有贏",
+            "又死",
+            "还是死",
+            "還是死",
+            "死了",
+            "失败",
+            "失敗",
+            "输了",
+            "輸了",
+        )
+    )
+
+
+def _has_negated_failure_correction(compact: str) -> bool:
+    return any(
+        marker in compact
+        for marker in (
+            "不是没打过",
+            "不是沒打過",
+            "不是没有打过",
+            "不是沒有打過",
+            "不是没过",
+            "不是沒過",
+            "不是没有过",
+            "不是沒有過",
+            "不是打不过",
+            "不是打不過",
+            "不是没赢",
+            "不是沒贏",
+        )
+    )
+
+
+def _has_later_failure_after_correction(compact: str) -> bool:
+    correction_ends = [
+        compact.find(marker) + len(marker)
+        for marker in (
+            "不是没打过",
+            "不是沒打過",
+            "不是没有打过",
+            "不是沒有打過",
+            "不是没过",
+            "不是沒過",
+            "不是没有过",
+            "不是沒有過",
+            "不是打不过",
+            "不是打不過",
+            "不是没赢",
+            "不是沒贏",
+        )
+        if marker in compact
+    ]
+    if not correction_ends:
+        return False
+    last_correction_end = max(correction_ends)
+    return any(
+        compact.find(marker, last_correction_end) >= 0
+        for marker in (
+            "没打过",
+            "沒打過",
+            "没有打过",
+            "沒有打過",
+            "还没打过",
+            "還沒打過",
+            "还是没打过",
+            "還是沒打過",
+            "又没打过",
+            "又沒打過",
+            "没过",
+            "沒過",
+            "没有过",
+            "沒有過",
+            "还没过",
+            "還沒過",
+            "还是没过",
+            "還是沒過",
+            "又没过",
+            "又沒過",
+            "打不过",
+            "打不過",
+            "过不了",
+            "過不了",
+            "过不去",
+            "過不去",
+            "没赢",
+            "沒贏",
+            "没有赢",
+            "沒有贏",
         )
     )
 
@@ -500,8 +712,9 @@ def _has_death_signal(message: str) -> bool:
 
 def _has_frustration_signal(message: str) -> bool:
     emotion = detect_user_emotion(message).label
-    return emotion in {"frustrated", "death_loop"} or any(
-        word in message for word in ("烦", "紅溫", "红温", "破防", "打不过", "打不過", "还是不行", "還是不行", "过不去", "卡住", "卡在")
+    return emotion in {"frustrated", "death_loop"} or _fails_current_boss(message) or any(
+        word in message
+        for word in ("烦", "紅溫", "红温", "破防", "打不过", "打不過", "还是不行", "還是不行", "过不去", "卡住", "卡在")
     )
 
 
@@ -519,9 +732,12 @@ def _derive_game_intent(
     intent: str,
     boss: str | None,
     activity: str | None,
+    fails_boss: bool,
     clears_boss: bool,
     abandons_boss: bool,
 ) -> str | None:
+    if fails_boss:
+        return "boss_failed"
     if clears_boss:
         return "boss_cleared"
     if abandons_boss:
@@ -544,6 +760,8 @@ def _derive_game_intent(
 def _detect_activity(message: str, intent: str) -> str | None:
     if _has_boss_history_query(message):
         return "boss_history_query"
+    if _fails_current_boss(message):
+        return "boss_failed"
     if intent == "elden_ring_location":
         return "route_or_location"
     if intent == "elden_ring_build":
