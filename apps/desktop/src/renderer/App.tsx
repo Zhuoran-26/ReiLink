@@ -62,8 +62,12 @@ const emptyChatDebug: ChatDebugResponse = {
 const emptyGameSessionDebug: GameSessionDebugResponse = {
   current_game: null,
   current_boss: null,
+  last_boss: null,
+  last_attempted_boss: null,
+  last_cleared_boss: null,
   current_activity: null,
   recent_game_topics: [],
+  boss_history: [],
   frustration_count: 0,
   death_count: 0,
   last_user_intent: null,
@@ -244,6 +248,10 @@ export function App() {
                       current_boss_confidence: gameSessionDebug.current_boss?.confidence ?? null,
                       current_boss_age_hours: gameSessionDebug.current_boss?.age_hours ?? null,
                       current_boss_is_fresh: gameSessionDebug.current_boss?.is_fresh ?? false,
+                      last_boss: gameSessionDebug.last_boss,
+                      last_attempted_boss: gameSessionDebug.last_attempted_boss,
+                      last_cleared_boss: gameSessionDebug.last_cleared_boss,
+                      boss_history: gameSessionDebug.boss_history,
                       death_count: gameSessionDebug.death_count,
                       frustration_count: gameSessionDebug.frustration_count,
                       last_game_intent: gameSessionDebug.last_game_intent

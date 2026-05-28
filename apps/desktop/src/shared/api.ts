@@ -87,8 +87,22 @@ export type GameSessionDebugResponse = {
     is_fresh: boolean;
     freshness: string;
   } | null;
+  last_boss: string | null;
+  last_attempted_boss: string | null;
+  last_cleared_boss: string | null;
   current_activity: string | null;
   recent_game_topics: string[];
+  boss_history: Array<{
+    name: string;
+    status: string;
+    updated_at: string;
+    confidence: number;
+    source: string;
+    mention_count: number;
+    last_activity: string | null;
+    age_hours: number | null;
+    freshness: string;
+  }>;
   frustration_count: number;
   death_count: number;
   last_user_intent: string | null;

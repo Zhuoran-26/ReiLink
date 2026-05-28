@@ -57,6 +57,65 @@ def test_explicit_new_boss_overwrites_previous_boss(tmp_path):
     assert state.current_boss.mention_count == 1
 
 
+def test_switch_to_old_general_oneil_and_keep_elliptical_focus(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在女武神", "casual_chat", _idle_status(), now)
+    switching = store.update_from_user_message("算了，我先去打别的 boss", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+
+    assert switching.current_boss is None
+    assert switching.last_attempted_boss == "女武神"
+    assert any(entry.name == "女武神" and entry.status == "abandoned" for entry in switching.boss_history)
+
+    old_general = store.update_from_user_message("那我就去打老将欧尼尔", "casual_chat", _idle_status(), now + timedelta(minutes=2))
+
+    assert old_general.current_boss is not None
+    assert old_general.current_boss.name == "老将欧尼尔"
+    assert old_general.last_attempted_boss == "老将欧尼尔"
+    assert old_general.last_game_intent == "boss_attempt"
+
+    state = store.update_from_user_message("也打不过又死了", "casual_chat", _idle_status(), now + timedelta(minutes=3))
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "老将欧尼尔"
+    assert state.current_boss.source == "elliptical_reference"
+    assert state.death_count == 1
+    assert state.last_game_intent == "boss_attempt"
+
+
+def test_clear_old_general_records_recent_history(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在女武神", "casual_chat", _idle_status(), now)
+    store.update_from_user_message("那我就去打老将欧尼尔", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+
+    state = store.update_from_user_message("打过老将了", "casual_chat", _idle_status(), now + timedelta(minutes=2))
+
+    assert state.current_boss is None
+    assert state.current_activity == "boss_cleared"
+    assert state.last_boss == "老将欧尼尔"
+    assert state.last_attempted_boss == "老将欧尼尔"
+    assert state.last_cleared_boss == "老将欧尼尔"
+    assert state.last_game_intent == "boss_cleared"
+    assert "老将欧尼尔" in state.recent_game_topics
+    assert "老将欧尼尔已结束" in state.recent_game_topics
+    assert any(entry.name == "老将欧尼尔" and entry.status == "cleared" for entry in state.boss_history)
+
+
+def test_history_summary_after_boss_cleared_does_not_claim_current(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在女武神", "casual_chat", _idle_status(), now)
+    store.update_from_user_message("那我就去打老将欧尼尔", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+    store.update_from_user_message("老将打完了", "casual_chat", _idle_status(), now + timedelta(minutes=2))
+
+    summary = store.build_prompt_summary(now + timedelta(minutes=3))
+
+    assert "刚刚结束的 boss 是 老将欧尼尔" in summary
+    assert "当前没有正在打的 boss" in summary
+    assert "女武神已结束" not in summary
+
+
 def test_stale_current_boss_is_not_injected_as_current(tmp_path):
     store = GameSessionStore(tmp_path / "game_session_state.json")
     old = datetime.now(timezone.utc) - timedelta(hours=73)

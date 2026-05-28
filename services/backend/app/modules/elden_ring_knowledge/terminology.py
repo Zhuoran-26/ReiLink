@@ -7,6 +7,8 @@ from typing import Any
 TERMINOLOGY_MAP: dict[str, str] = {
     "Malenia, Blade of Miquella": "米凯拉的锋刃 玛莲妮亚",
     "Margit, the Fell Omen": "恶兆妖鬼 Margit",
+    "Commander O'Neil": "老将欧尼尔",
+    "Commander O’Neil": "老将欧尼尔",
     "Starscourge Radahn": "碎星拉塔恩",
     "Tree Sentinel": "大树守卫",
     "tree sentinel": "大树守卫",
@@ -18,6 +20,8 @@ TERMINOLOGY_MAP: dict[str, str] = {
     "Malenia": "玛莲妮亚",
     "Radahn": "拉塔恩",
     "Margit": "恶兆妖鬼 Margit",
+    "O'Neil": "老将欧尼尔",
+    "O’Neil": "老将欧尼尔",
     "Summon": "召唤",
 }
 

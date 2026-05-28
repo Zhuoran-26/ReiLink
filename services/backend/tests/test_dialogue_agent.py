@@ -284,6 +284,47 @@ def test_session_focus_has_priority_over_stale_game_state(tmp_path: Path):
     assert "当前游戏状态：曾经提到 大树守卫" not in provider.prompts[0]
 
 
+def test_game_session_switches_to_old_general_for_elliptical_followup(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now()
+    agent.store.append("old-general", None, "rei_like", "我现在卡在女武神", "嗯。", now)
+    agent.store.append("old-general", None, "rei_like", "那我就去打老将欧尼尔", "去吧。", now)
+    agent.game_session.update_from_user_message("我现在卡在女武神", "casual_chat", {}, now)
+    agent.game_session.update_from_user_message("那我就去打老将欧尼尔", "casual_chat", {}, now)
+    provider = _PromptCapturingProvider(["先别急。"])
+    agent.provider = provider
+
+    agent.chat(ChatRequest(message="再试试", session_id="old-general"))
+
+    assert "当前会话焦点 boss：老将欧尼尔" in provider.prompts[0]
+    assert "当前游戏状态：当前会话焦点是 老将欧尼尔" in provider.prompts[0]
+    assert "当前游戏状态：当前会话焦点是 女武神" not in provider.prompts[0]
+
+
+def test_game_session_injects_recent_cleared_boss_history(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now()
+    agent.game_session.update_from_user_message("我现在卡在女武神", "casual_chat", {}, now)
+    agent.game_session.update_from_user_message("那我就去打老将欧尼尔", "casual_chat", {}, now)
+    agent.game_session.update_from_user_message("打过老将了", "casual_chat", {}, now)
+    provider = _PromptCapturingProvider(["刚刚是老将欧尼尔。"])
+    agent.provider = provider
+
+    agent.chat(ChatRequest(message="我刚刚在打什么 boss 来着", session_id="cleared-history"))
+
+    assert "刚刚结束的 boss 是 老将欧尼尔" in provider.prompts[0]
+    assert "当前没有正在打的 boss" in provider.prompts[0]
+    assert "刚刚结束的 boss 是 女武神" not in provider.prompts[0]
+
+
 def test_intent_router_core_cases():
     assert detect_intent("你叫什么").intent == "identity_question"
     assert detect_intent("who are you").intent == "identity_question"

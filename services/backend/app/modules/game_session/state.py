@@ -35,11 +35,37 @@ class CurrentBoss:
 
 
 @dataclass
+class BossHistoryEntry:
+    name: str
+    status: str
+    updated_at: str
+    confidence: float
+    source: str
+    mention_count: int = 1
+    last_activity: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "status": self.status,
+            "updated_at": self.updated_at,
+            "confidence": round(self.confidence, 3),
+            "source": self.source,
+            "mention_count": self.mention_count,
+            "last_activity": self.last_activity,
+        }
+
+
+@dataclass
 class GameSessionState:
     current_game: str | None = None
     current_boss: CurrentBoss | None = None
+    last_boss: str | None = None
+    last_attempted_boss: str | None = None
+    last_cleared_boss: str | None = None
     current_activity: str | None = None
     recent_game_topics: list[str] = field(default_factory=list)
+    boss_history: list[BossHistoryEntry] = field(default_factory=list)
     frustration_count: int = 0
     death_count: int = 0
     last_user_intent: str | None = None
@@ -50,8 +76,12 @@ class GameSessionState:
         return {
             "current_game": self.current_game,
             "current_boss": self.current_boss.as_dict() if self.current_boss else None,
+            "last_boss": self.last_boss,
+            "last_attempted_boss": self.last_attempted_boss,
+            "last_cleared_boss": self.last_cleared_boss,
             "current_activity": self.current_activity,
             "recent_game_topics": self.recent_game_topics,
+            "boss_history": [entry.as_dict() for entry in self.boss_history],
             "frustration_count": self.frustration_count,
             "death_count": self.death_count,
             "last_user_intent": self.last_user_intent,
@@ -77,13 +107,21 @@ class GameSessionStore:
             return GameSessionState()
         data = json.loads(self.state_path.read_text(encoding="utf-8") or "{}")
         normalized = normalize_mapping_values(data)
-        boss_data = normalized.get("current_boss")
-        boss = CurrentBoss(**boss_data) if isinstance(boss_data, dict) and boss_data.get("name") else None
+        boss = _coerce_current_boss(normalized.get("current_boss"))
+        boss_history = [
+            entry
+            for item in normalized.get("boss_history") or []
+            if (entry := _coerce_history_entry(item)) is not None
+        ]
         return GameSessionState(
             current_game=normalized.get("current_game"),
             current_boss=boss,
+            last_boss=normalized.get("last_boss"),
+            last_attempted_boss=normalized.get("last_attempted_boss"),
+            last_cleared_boss=normalized.get("last_cleared_boss"),
             current_activity=normalized.get("current_activity"),
             recent_game_topics=list(normalized.get("recent_game_topics") or []),
+            boss_history=boss_history[-12:],
             frustration_count=int(normalized.get("frustration_count") or 0),
             death_count=int(normalized.get("death_count") or 0),
             last_user_intent=normalized.get("last_user_intent"),
@@ -116,6 +154,7 @@ class GameSessionStore:
         focused_boss = normalize_terminology(session_focus_boss or "") or None
         has_elliptical_reference = is_elliptical_boss_reference(user_message)
         clears_boss = _clears_current_boss(user_message)
+        abandons_boss = _abandons_current_boss(user_message)
         game_name = _detect_current_game(game_status, user_message, intent, explicit_boss or focused_boss)
 
         state.last_user_intent = intent
@@ -123,40 +162,42 @@ class GameSessionStore:
         if game_name:
             state.current_game = game_name
 
-        if _is_game_related(intent, user_message, explicit_boss or focused_boss):
-            state.last_game_intent = intent
-
         if _has_death_signal(user_message):
             state.death_count += 1
         if _has_frustration_signal(user_message):
             state.frustration_count += 1
 
         if explicit_boss and clears_boss:
-            state.current_boss = None
-            state.current_activity = "boss_cleared"
-            _append_topic(state, f"{explicit_boss}已过")
+            _clear_boss(state, explicit_boss, now, "current_message")
         elif explicit_boss:
-            state.current_boss = _updated_boss(state.current_boss, explicit_boss, now, "current_message", 0.95)
-            state.current_activity = "boss_attempt"
-            _append_topic(state, explicit_boss)
+            _set_current_boss(state, explicit_boss, now, "current_message", 0.95)
         elif clears_boss and state.current_boss:
-            _append_topic(state, f"{state.current_boss.name}已结束")
-            state.current_boss = None
-            state.current_activity = "boss_cleared"
+            _clear_boss(state, state.current_boss.name, now, "current_context")
+        elif abandons_boss and state.current_boss:
+            _abandon_current_boss(state, now)
+        elif abandons_boss:
+            state.current_activity = "boss_switching"
         elif focused_boss and has_elliptical_reference:
-            state.current_boss = _updated_boss(state.current_boss, focused_boss, now, "session_focus", 0.85)
-            state.current_activity = "boss_attempt"
-            _append_topic(state, focused_boss)
+            _set_current_boss(state, focused_boss, now, "session_focus", 0.85)
         elif has_elliptical_reference and state.current_boss:
             freshness = boss_freshness(state, now)
             if freshness.freshness in {"fresh", "weak"}:
-                state.current_boss = _updated_boss(state.current_boss, state.current_boss.name, now, "elliptical_reference", 0.75)
-                state.current_activity = "boss_attempt"
-                _append_topic(state, state.current_boss.name)
+                _set_current_boss(state, state.current_boss.name, now, "elliptical_reference", 0.75)
             else:
                 state.current_activity = "unclear_boss_reference"
         elif _is_game_related(intent, user_message, explicit_boss or focused_boss):
             state.current_activity = _detect_activity(user_message, intent)
+
+        game_intent = _derive_game_intent(
+            user_message,
+            intent,
+            explicit_boss or focused_boss or (state.current_boss.name if state.current_boss else None),
+            state.current_activity,
+            clears_boss,
+            abandons_boss,
+        )
+        if game_intent:
+            state.last_game_intent = game_intent
 
         self.save(state)
         return state
@@ -172,6 +213,11 @@ class GameSessionStore:
         pressure = _pressure_text(state)
 
         if session_focus_boss:
+            if not state.current_boss and state.last_cleared_boss == session_focus_boss:
+                return (
+                    f"当前游戏状态：刚刚结束的 boss 是 {session_focus_boss}；"
+                    "当前没有正在打的 boss。用户如果问刚刚在打什么，可以引用这个已结束状态。不要猜新的 boss。"
+                )
             suffix = f"，{pressure}" if pressure else ""
             return f"当前游戏状态：当前会话焦点是 {session_focus_boss}{suffix}。短期会话焦点优先于长期记忆。"
 
@@ -185,6 +231,16 @@ class GameSessionStore:
             return f"当前游戏状态：曾经提到 {state.current_boss.name}，但已超过 72 小时，不要主动当作当前 boss。"
 
         if state.current_game:
+            if state.last_cleared_boss:
+                return (
+                    f"当前游戏状态：刚刚结束的 boss 是 {state.last_cleared_boss}；"
+                    "当前没有正在打的 boss。用户如果问刚刚在打什么，可以引用这个已结束状态。不要猜新的 boss。"
+                )
+            if state.last_attempted_boss:
+                return (
+                    f"当前游戏状态：最近尝试过的 boss 是 {state.last_attempted_boss}；"
+                    "当前没有明确正在打的 boss。引用前注意是否已经切换或结束。"
+                )
             return f"当前游戏状态：最近在聊 {state.current_game}，暂无明确当前 boss。不要猜具体 boss。"
         return ""
 
@@ -200,6 +256,7 @@ class GameSessionStore:
                 "is_fresh": freshness.is_fresh,
                 "freshness": freshness.freshness,
             }
+        data["boss_history"] = [_history_entry_debug(entry, now) for entry in state.boss_history]
         return data
 
 
@@ -216,6 +273,47 @@ def boss_freshness(state: GameSessionState, now: datetime | None = None) -> Boss
     if age_hours <= WEAK_WINDOW.total_seconds() / 3600:
         return BossFreshness(round(age_hours, 3), "weak", False)
     return BossFreshness(round(age_hours, 3), "stale", False)
+
+
+def _history_entry_debug(entry: BossHistoryEntry, now: datetime) -> dict[str, Any]:
+    data = entry.as_dict()
+    updated_at = _parse_timestamp(entry.updated_at)
+    if not updated_at:
+        return {**data, "age_hours": None, "freshness": "stale"}
+    age_hours = max((now - updated_at).total_seconds() / 3600, 0)
+    if age_hours <= FRESH_WINDOW.total_seconds() / 3600:
+        freshness = "fresh"
+    elif age_hours <= WEAK_WINDOW.total_seconds() / 3600:
+        freshness = "weak"
+    else:
+        freshness = "stale"
+    return {**data, "age_hours": round(age_hours, 3), "freshness": freshness}
+
+
+def _coerce_current_boss(value: Any) -> CurrentBoss | None:
+    if not isinstance(value, dict) or not value.get("name"):
+        return None
+    return CurrentBoss(
+        name=normalize_terminology(str(value["name"])),
+        updated_at=str(value.get("updated_at") or ""),
+        confidence=float(value.get("confidence") or 0),
+        source=str(value.get("source") or "unknown"),
+        mention_count=int(value.get("mention_count") or 1),
+    )
+
+
+def _coerce_history_entry(value: Any) -> BossHistoryEntry | None:
+    if not isinstance(value, dict) or not value.get("name"):
+        return None
+    return BossHistoryEntry(
+        name=normalize_terminology(str(value["name"])),
+        status=str(value.get("status") or "mentioned"),
+        updated_at=str(value.get("updated_at") or ""),
+        confidence=float(value.get("confidence") or 0),
+        source=str(value.get("source") or "unknown"),
+        mention_count=int(value.get("mention_count") or 1),
+        last_activity=value.get("last_activity"),
+    )
 
 
 def _detect_boss(message: str) -> str | None:
@@ -271,6 +369,84 @@ def _updated_boss(
     )
 
 
+def _set_current_boss(
+    state: GameSessionState,
+    boss_name: str,
+    timestamp: datetime,
+    source: str,
+    confidence: float,
+) -> None:
+    boss_name = normalize_terminology(boss_name)
+    if state.current_boss and state.current_boss.name != boss_name:
+        _touch_history(
+            state,
+            state.current_boss.name,
+            "attempted",
+            timestamp,
+            "previous_current",
+            state.current_boss.confidence,
+            "boss_attempt",
+        )
+    state.current_boss = _updated_boss(state.current_boss, boss_name, timestamp, source, confidence)
+    state.current_activity = "boss_attempt"
+    state.last_boss = boss_name
+    state.last_attempted_boss = boss_name
+    _append_topic(state, boss_name)
+    _touch_history(state, boss_name, "current", timestamp, source, confidence, "boss_attempt")
+
+
+def _clear_boss(state: GameSessionState, boss_name: str, timestamp: datetime, source: str) -> None:
+    boss_name = normalize_terminology(boss_name)
+    state.last_boss = boss_name
+    state.last_attempted_boss = boss_name
+    state.last_cleared_boss = boss_name
+    state.current_boss = None
+    state.current_activity = "boss_cleared"
+    _append_topic(state, boss_name)
+    _append_topic(state, f"{boss_name}已结束")
+    _touch_history(state, boss_name, "cleared", timestamp, source, 1.0, "boss_cleared")
+
+
+def _abandon_current_boss(state: GameSessionState, timestamp: datetime) -> None:
+    if not state.current_boss:
+        return
+    boss_name = state.current_boss.name
+    state.last_boss = boss_name
+    state.last_attempted_boss = boss_name
+    state.current_boss = None
+    state.current_activity = "boss_switching"
+    _touch_history(state, boss_name, "abandoned", timestamp, "current_context", 0.6, "boss_switching")
+
+
+def _touch_history(
+    state: GameSessionState,
+    boss_name: str,
+    status: str,
+    timestamp: datetime,
+    source: str,
+    confidence: float,
+    activity: str | None,
+) -> None:
+    boss_name = normalize_terminology(boss_name)
+    if not boss_name:
+        return
+    existing = next((entry for entry in state.boss_history if entry.name == boss_name), None)
+    state.boss_history = [entry for entry in state.boss_history if entry.name != boss_name]
+    mention_count = (existing.mention_count + 1) if existing else 1
+    state.boss_history.append(
+        BossHistoryEntry(
+            name=boss_name,
+            status=status,
+            updated_at=timestamp.isoformat(),
+            confidence=min(1.0, max(confidence, existing.confidence if existing else 0)),
+            source=source,
+            mention_count=mention_count,
+            last_activity=activity,
+        )
+    )
+    state.boss_history = state.boss_history[-12:]
+
+
 def _clears_current_boss(message: str) -> bool:
     compact = re.sub(r"\s+", "", message.lower())
     return any(
@@ -278,15 +454,42 @@ def _clears_current_boss(message: str) -> bool:
         for marker in (
             "过了",
             "過了",
+            "过掉了",
+            "過掉了",
             "打过了",
             "打過了",
+            "打过",
+            "打過",
+            "打完",
+            "打完了",
+            "打掉了",
+            "打掉",
+        )
+    )
+
+
+def _abandons_current_boss(message: str) -> bool:
+    compact = re.sub(r"\s+", "", message.lower())
+    return any(
+        marker in compact
+        for marker in (
             "不打了",
             "不打这个",
             "不打這個",
+            "先不打",
             "换boss",
             "換boss",
+            "换个boss",
+            "換個boss",
+            "换一个boss",
+            "換一個boss",
             "换目标",
             "換目標",
+            "别的boss",
+            "別的boss",
+            "其他boss",
+            "别的目标",
+            "別的目標",
         )
     )
 
@@ -302,7 +505,45 @@ def _has_frustration_signal(message: str) -> bool:
     )
 
 
+def _has_attempt_signal(message: str) -> bool:
+    return any(word in message for word in ("卡在", "卡住", "打", "试", "試", "再来", "再來", "重试", "重試"))
+
+
+def _has_boss_history_query(message: str) -> bool:
+    compact = re.sub(r"\s+", "", message.lower())
+    return "boss" in compact and any(marker in compact for marker in ("刚刚", "剛剛", "刚才", "剛才", "刚", "之前", "前面"))
+
+
+def _derive_game_intent(
+    message: str,
+    intent: str,
+    boss: str | None,
+    activity: str | None,
+    clears_boss: bool,
+    abandons_boss: bool,
+) -> str | None:
+    if clears_boss:
+        return "boss_cleared"
+    if abandons_boss:
+        return "boss_switching"
+    if boss and (_has_death_signal(message) or _has_frustration_signal(message) or _has_attempt_signal(message)):
+        return "boss_attempt"
+    if _has_boss_history_query(message):
+        return "boss_history_query"
+    if activity in {"boss_attempt", "unclear_boss_reference"}:
+        return activity
+    if intent.startswith("elden_ring"):
+        return intent
+    if boss:
+        return "boss_discussion"
+    if _is_game_related(intent, message, boss):
+        return "game_discussion"
+    return None
+
+
 def _detect_activity(message: str, intent: str) -> str | None:
+    if _has_boss_history_query(message):
+        return "boss_history_query"
     if intent == "elden_ring_location":
         return "route_or_location"
     if intent == "elden_ring_build":

@@ -64,8 +64,24 @@ const gameSessionDebug = {
     is_fresh: true,
     freshness: "fresh"
   },
+  last_boss: "恶兆妖鬼 Margit",
+  last_attempted_boss: "恶兆妖鬼 Margit",
+  last_cleared_boss: null,
   current_activity: "boss_attempt",
   recent_game_topics: ["恶兆妖鬼 Margit"],
+  boss_history: [
+    {
+      name: "恶兆妖鬼 Margit",
+      status: "current",
+      updated_at: new Date().toISOString(),
+      confidence: 0.95,
+      source: "current_message",
+      mention_count: 2,
+      last_activity: "boss_attempt",
+      age_hours: 0.1,
+      freshness: "fresh"
+    }
+  ],
   frustration_count: 1,
   death_count: 1,
   last_user_intent: "casual_chat",

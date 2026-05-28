@@ -119,10 +119,16 @@ def test_debug_game_session_routes():
     assert data["current_boss"]["confidence"] >= 0.9
     assert data["current_boss"]["is_fresh"] is True
     assert {
+        "last_boss",
+        "last_attempted_boss",
+        "last_cleared_boss",
+        "boss_history",
         "death_count",
         "frustration_count",
         "last_game_intent",
     } <= data.keys()
+    assert data["last_attempted_boss"] == "女武神"
+    assert data["boss_history"][0]["name"] == "女武神"
 
     reset = client.post("/api/debug/game-session/reset")
     assert reset.status_code == 200

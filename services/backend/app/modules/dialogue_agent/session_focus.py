@@ -28,6 +28,7 @@ BOSS_FOCUS_ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("大树守卫", ("大树守卫", "大樹守衛", "tree sentinel")),
     ("恶兆妖鬼 Margit", ("margit", "恶兆妖鬼", "惡兆妖鬼", "玛尔基特", "瑪爾基特", "恶兆", "惡兆")),
     ("拉塔恩", ("拉塔恩", "radahn", "碎星", "拉塔恩将军", "拉塔恩將軍")),
+    ("老将欧尼尔", ("老将欧尼尔", "老將歐尼爾", "欧尼尔", "歐尼爾", "老将", "老將", "commander o'neil", "commander o’neil", "o'neil", "o’neil")),
 )
 
 ELLIPTICAL_BOSS_REFERENCES = (
