@@ -93,11 +93,24 @@ const promptPreview = {
   persona_mode: "minimal",
   current_user_message: "Margit 怎么打？",
   prompt_order: ["current_user_message", "current_session_context", "session_focus", "game_state", "memory", "persona"],
-  session_focus_summary: { boss: "恶兆妖鬼 Margit", source: "current_message" },
-  game_state_summary: { current_game: "Elden Ring", current_boss: gameSessionDebug.current_boss, freshness: "fresh" },
-  memory_summary: { injected: memoryDebug.items, skipped: [] },
+  session_focus_summary: { boss: "恶兆妖鬼 Margit", source: "current_message", prompt_line: "当前短期焦点：恶兆妖鬼 Margit" },
+  game_state_summary: {
+    current_game: "Elden Ring",
+    current_boss: gameSessionDebug.current_boss,
+    current_activity: "boss_attempt",
+    freshness: "fresh",
+    death_count: 1,
+    frustration_count: 1,
+    last_attempted_boss: "恶兆妖鬼 Margit",
+    last_cleared_boss: null,
+    boss_history: gameSessionDebug.boss_history
+  },
+  memory_summary: {
+    injected: memoryDebug.items,
+    skipped: [{ source: "profile", field: "current_boss", reason: "conflict_with_fresh_game_state", text: "玩家当前卡点：大树守卫" }]
+  },
   final_context_summary: { raw_prompt_omitted: true, memory_injected_count: 2 },
-  warnings: []
+  warnings: ["memory boss conflicts with fresh game state"]
 };
 
 const chatResponse = {
@@ -317,10 +330,19 @@ describe("App", () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: /调试/i }));
     await waitFor(() => expect(screen.getByText(/personaId/)).toBeInTheDocument());
-    expect(screen.getByText(/current_boss/)).toBeInTheDocument();
+    expect(screen.getAllByText(/current_boss/).length).toBeGreaterThan(0);
     expect(screen.getByText(/memory_provenance/)).toBeInTheDocument();
     expect(screen.getByText(/game_session/)).toBeInTheDocument();
-    expect(screen.getByText(/prompt_preview/)).toBeInTheDocument();
+    expect(screen.getByText("Prompt Preview")).toBeInTheDocument();
+    expect(screen.getByText("Persona mode")).toBeInTheDocument();
+    expect(screen.getByText("Prompt order")).toBeInTheDocument();
+    expect(screen.getByText("Current user message")).toBeInTheDocument();
+    expect(screen.getByText("Session Focus")).toBeInTheDocument();
+    expect(screen.getByText("Game State Summary")).toBeInTheDocument();
+    expect(screen.getByText("Memory Injected")).toBeInTheDocument();
+    expect(screen.getByText("Memory Skipped")).toBeInTheDocument();
+    expect(screen.getByText("Warnings")).toBeInTheDocument();
+    expect(screen.queryByText(/prompt_preview/)).not.toBeInTheDocument();
     expect(screen.getByText(/selected_model/)).toBeInTheDocument();
     expect(screen.getByText(/reply_segments_count/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /调试/i }));

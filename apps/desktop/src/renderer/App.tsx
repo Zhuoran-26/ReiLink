@@ -103,6 +103,32 @@ const nextSegmentDelay = () => 500 + Math.floor(Math.random() * 401);
 
 const pickPlaceholder = () => INTERIM_PLACEHOLDERS[Math.floor(Math.random() * INTERIM_PLACEHOLDERS.length)];
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+
+const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+
+const debugText = (value: unknown, fallback = "无") => {
+  if (value === null || value === undefined || value === "") return fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+};
+
+const bossName = (value: unknown) => {
+  const boss = asRecord(value);
+  return debugText(boss.name ?? value);
+};
+
+const debugListText = (item: unknown) => {
+  const record = asRecord(item);
+  const source = debugText(record.source, "");
+  const field = debugText(record.field, "");
+  const reason = debugText(record.reason, "");
+  const text = debugText(record.text ?? record.summary ?? record.name ?? item);
+  const meta = [source, field, reason].filter(Boolean).join(" / ");
+  return meta ? `${meta}: ${text}` : text;
+};
+
 export function App() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [gameStatus, setGameStatus] = useState<GameStatus>(idleStatus);
@@ -248,55 +274,165 @@ export function App() {
               {debugOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
             {debugOpen && (
-              <pre className="debugPanel">
-                {JSON.stringify(
-                  {
-                    gameStatus,
-                    personaId: "rei_like",
-                    provider: "由后端配置",
-                    memory: {
-                      written: memoryDebug.memory_written,
-                      current_boss: memoryProfile.current_boss,
-                      repeated_struggles: memoryProfile.repeated_struggles,
-                      preferred_tone: memoryProfile.preferred_tone,
-                      emotional_note: memoryDebug.emotional_note ?? memoryProfile.emotional_notes.at(-1) ?? null,
-                      recent_episode_count: memoryDebug.recent_episode_count
+              <div className="debugPanel">
+                <section className="debugSection">
+                  <h3>Prompt Preview</h3>
+                  <dl className="debugFacts">
+                    <div>
+                      <dt>Persona mode</dt>
+                      <dd>{promptPreview.persona_mode}</dd>
+                    </div>
+                    <div>
+                      <dt>Prompt order</dt>
+                      <dd>{promptPreview.prompt_order.join(" → ") || "无"}</dd>
+                    </div>
+                    <div>
+                      <dt>Current user message</dt>
+                      <dd>{debugText(promptPreview.current_user_message)}</dd>
+                    </div>
+                  </dl>
+                </section>
+
+                <section className="debugSection">
+                  <h3>Session Focus</h3>
+                  <dl className="debugFacts">
+                    <div>
+                      <dt>Boss</dt>
+                      <dd>{debugText(asRecord(promptPreview.session_focus_summary).boss)}</dd>
+                    </div>
+                    <div>
+                      <dt>Source</dt>
+                      <dd>{debugText(asRecord(promptPreview.session_focus_summary).source)}</dd>
+                    </div>
+                    <div>
+                      <dt>Prompt line</dt>
+                      <dd>{debugText(asRecord(promptPreview.session_focus_summary).prompt_line)}</dd>
+                    </div>
+                  </dl>
+                </section>
+
+                <section className="debugSection">
+                  <h3>Game State Summary</h3>
+                  <dl className="debugFacts">
+                    <div>
+                      <dt>Current game</dt>
+                      <dd>{debugText(asRecord(promptPreview.game_state_summary).current_game)}</dd>
+                    </div>
+                    <div>
+                      <dt>Current boss</dt>
+                      <dd>{bossName(asRecord(promptPreview.game_state_summary).current_boss)}</dd>
+                    </div>
+                    <div>
+                      <dt>Activity</dt>
+                      <dd>{debugText(asRecord(promptPreview.game_state_summary).current_activity)}</dd>
+                    </div>
+                    <div>
+                      <dt>Freshness</dt>
+                      <dd>{debugText(asRecord(promptPreview.game_state_summary).freshness)}</dd>
+                    </div>
+                    <div>
+                      <dt>Deaths / frustration</dt>
+                      <dd>
+                        {debugText(asRecord(promptPreview.game_state_summary).death_count, "0")} /{" "}
+                        {debugText(asRecord(promptPreview.game_state_summary).frustration_count, "0")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Last attempted</dt>
+                      <dd>{debugText(asRecord(promptPreview.game_state_summary).last_attempted_boss)}</dd>
+                    </div>
+                    <div>
+                      <dt>Last cleared</dt>
+                      <dd>{debugText(asRecord(promptPreview.game_state_summary).last_cleared_boss)}</dd>
+                    </div>
+                  </dl>
+                  <ul className="debugList" aria-label="Boss history">
+                    {asArray(asRecord(promptPreview.game_state_summary).boss_history).map((item, index) => (
+                      <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
+                    ))}
+                    {asArray(asRecord(promptPreview.game_state_summary).boss_history).length === 0 && <li>无 boss history</li>}
+                  </ul>
+                </section>
+
+                <section className="debugSection">
+                  <h3>Memory Injected</h3>
+                  <ul className="debugList">
+                    {asArray(asRecord(promptPreview.memory_summary).injected).map((item, index) => (
+                      <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
+                    ))}
+                    {asArray(asRecord(promptPreview.memory_summary).injected).length === 0 && <li>无 injected memory</li>}
+                  </ul>
+                </section>
+
+                <section className="debugSection">
+                  <h3>Memory Skipped</h3>
+                  <ul className="debugList">
+                    {asArray(asRecord(promptPreview.memory_summary).skipped).map((item, index) => (
+                      <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
+                    ))}
+                    {asArray(asRecord(promptPreview.memory_summary).skipped).length === 0 && <li>无 skipped memory</li>}
+                  </ul>
+                </section>
+
+                <section className="debugSection">
+                  <h3>Warnings</h3>
+                  <ul className="debugList">
+                    {promptPreview.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                    {promptPreview.warnings.length === 0 && <li>无 warnings</li>}
+                  </ul>
+                </section>
+
+                <pre className="debugJson">
+                  {JSON.stringify(
+                    {
+                      gameStatus,
+                      personaId: "rei_like",
+                      provider: "由后端配置",
+                      memory: {
+                        written: memoryDebug.memory_written,
+                        current_boss: memoryProfile.current_boss,
+                        repeated_struggles: memoryProfile.repeated_struggles,
+                        preferred_tone: memoryProfile.preferred_tone,
+                        emotional_note: memoryDebug.emotional_note ?? memoryProfile.emotional_notes.at(-1) ?? null,
+                        recent_episode_count: memoryDebug.recent_episode_count
+                      },
+                      memory_provenance: memoryDebug.items,
+                      game_session: {
+                        current_game: gameSessionDebug.current_game,
+                        current_boss: gameSessionDebug.current_boss?.name ?? null,
+                        current_boss_confidence: gameSessionDebug.current_boss?.confidence ?? null,
+                        current_boss_age_hours: gameSessionDebug.current_boss?.age_hours ?? null,
+                        current_boss_is_fresh: gameSessionDebug.current_boss?.is_fresh ?? false,
+                        last_boss: gameSessionDebug.last_boss,
+                        last_attempted_boss: gameSessionDebug.last_attempted_boss,
+                        last_cleared_boss: gameSessionDebug.last_cleared_boss,
+                        boss_history: gameSessionDebug.boss_history,
+                        death_count: gameSessionDebug.death_count,
+                        frustration_count: gameSessionDebug.frustration_count,
+                        last_game_intent: gameSessionDebug.last_game_intent
+                      },
+                      chat: {
+                        intent: chatDebug.intent,
+                        selected_model: chatDebug.selected_model,
+                        last_latency_ms: chatDebug.total_latency_ms,
+                        llm_latency_ms: chatDebug.llm_latency_ms,
+                        memory_latency_ms: chatDebug.memory_latency_ms,
+                        reasoning_enabled: chatDebug.thinking_enabled,
+                        reasoning_effort: chatDebug.reasoning_effort,
+                        reply_segments_count: chatDebug.reply_segments_count,
+                        segmenter_mode: chatDebug.segmenter_mode,
+                        last_interim_placeholder_shown: lastInterimPlaceholderShown,
+                        last_response_latency_ms: lastResponseLatencyMs
+                      },
+                      lastError: lastError || null
                     },
-                    memory_provenance: memoryDebug.items,
-                    game_session: {
-                      current_game: gameSessionDebug.current_game,
-                      current_boss: gameSessionDebug.current_boss?.name ?? null,
-                      current_boss_confidence: gameSessionDebug.current_boss?.confidence ?? null,
-                      current_boss_age_hours: gameSessionDebug.current_boss?.age_hours ?? null,
-                      current_boss_is_fresh: gameSessionDebug.current_boss?.is_fresh ?? false,
-                      last_boss: gameSessionDebug.last_boss,
-                      last_attempted_boss: gameSessionDebug.last_attempted_boss,
-                      last_cleared_boss: gameSessionDebug.last_cleared_boss,
-                      boss_history: gameSessionDebug.boss_history,
-                      death_count: gameSessionDebug.death_count,
-                      frustration_count: gameSessionDebug.frustration_count,
-                      last_game_intent: gameSessionDebug.last_game_intent
-                    },
-                    chat: {
-                      intent: chatDebug.intent,
-                      selected_model: chatDebug.selected_model,
-                      last_latency_ms: chatDebug.total_latency_ms,
-                      llm_latency_ms: chatDebug.llm_latency_ms,
-                      memory_latency_ms: chatDebug.memory_latency_ms,
-                      reasoning_enabled: chatDebug.thinking_enabled,
-                      reasoning_effort: chatDebug.reasoning_effort,
-                      reply_segments_count: chatDebug.reply_segments_count,
-                      segmenter_mode: chatDebug.segmenter_mode,
-                      last_interim_placeholder_shown: lastInterimPlaceholderShown,
-                      last_response_latency_ms: lastResponseLatencyMs
-                    },
-                    prompt_preview: promptPreview,
-                    lastError: lastError || null
-                  },
-                  null,
-                  2
-                )}
-              </pre>
+                    null,
+                    2
+                  )}
+                </pre>
+              </div>
             )}
           </section>
         </aside>
