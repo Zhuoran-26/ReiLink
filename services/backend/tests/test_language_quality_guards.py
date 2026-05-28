@@ -10,6 +10,7 @@ from app.modules.dialogue_agent.repetition import (
 )
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.dialogue_agent.validator import validate_or_repair
+from app.core.config import settings
 from app.modules.persona_engine.engine import PersonaEngine
 
 POETIC_PHRASES = (
@@ -31,7 +32,8 @@ COUNSELOR_PHRASES = (
 )
 
 
-def test_prompt_contains_anti_poetic_and_anti_counselor_boundaries():
+def test_prompt_contains_anti_poetic_and_anti_counselor_boundaries(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {})
 
     for phrase in POETIC_PHRASES + COUNSELOR_PHRASES:
@@ -113,7 +115,8 @@ def test_followup_progression_policy_is_not_a_fixed_reply_template():
     assert "这样已经够近了" not in policy
 
 
-def test_repetition_guard_is_injected_into_prompt():
+def test_repetition_guard_is_injected_into_prompt(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     guard = build_repetition_guard(["我在这里。", "别想太多。"])
 
     prompt = PersonaEngine().build_prompt("rei_like", {}, repetition_guard=guard)

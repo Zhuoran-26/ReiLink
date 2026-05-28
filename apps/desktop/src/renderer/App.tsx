@@ -129,6 +129,8 @@ const debugListText = (item: unknown) => {
   return meta ? `${meta}: ${text}` : text;
 };
 
+const firstDefined = (...values: unknown[]) => values.find((value) => value !== null && value !== undefined && value !== "");
+
 export function App() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [gameStatus, setGameStatus] = useState<GameStatus>(idleStatus);
@@ -228,6 +230,24 @@ export function App() {
     return backendStatus === "connected" ? "已连接" : "未连接";
   }, [backendStatus]);
 
+  const sessionFocusSummary = asRecord(promptPreview.session_focus_summary);
+  const promptGameState = asRecord(promptPreview.game_state_summary);
+  const promptBossHistory = asArray(promptGameState.boss_history);
+  const gameStateSummary = {
+    current_game: firstDefined(promptGameState.current_game, gameSessionDebug.current_game),
+    current_boss: firstDefined(promptGameState.current_boss, gameSessionDebug.current_boss),
+    current_activity: firstDefined(promptGameState.current_activity, gameSessionDebug.current_activity),
+    freshness: firstDefined(promptGameState.freshness, gameSessionDebug.current_boss?.freshness),
+    death_count: firstDefined(promptGameState.death_count, gameSessionDebug.death_count),
+    frustration_count: firstDefined(promptGameState.frustration_count, gameSessionDebug.frustration_count),
+    last_attempted_boss: firstDefined(promptGameState.last_attempted_boss, gameSessionDebug.last_attempted_boss),
+    last_cleared_boss: firstDefined(promptGameState.last_cleared_boss, gameSessionDebug.last_cleared_boss),
+    boss_history: promptBossHistory.length > 0 ? promptBossHistory : gameSessionDebug.boss_history
+  };
+  const memorySummary = asRecord(promptPreview.memory_summary);
+  const injectedMemory = asArray(memorySummary.injected);
+  const skippedMemory = asArray(memorySummary.skipped);
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -298,15 +318,15 @@ export function App() {
                   <dl className="debugFacts">
                     <div>
                       <dt>Boss</dt>
-                      <dd>{debugText(asRecord(promptPreview.session_focus_summary).boss)}</dd>
+                      <dd>{debugText(sessionFocusSummary.boss)}</dd>
                     </div>
                     <div>
                       <dt>Source</dt>
-                      <dd>{debugText(asRecord(promptPreview.session_focus_summary).source)}</dd>
+                      <dd>{debugText(sessionFocusSummary.source)}</dd>
                     </div>
                     <div>
                       <dt>Prompt line</dt>
-                      <dd>{debugText(asRecord(promptPreview.session_focus_summary).prompt_line)}</dd>
+                      <dd>{debugText(sessionFocusSummary.prompt_line)}</dd>
                     </div>
                   </dl>
                 </section>
@@ -316,61 +336,60 @@ export function App() {
                   <dl className="debugFacts">
                     <div>
                       <dt>Current game</dt>
-                      <dd>{debugText(asRecord(promptPreview.game_state_summary).current_game)}</dd>
+                      <dd>{debugText(gameStateSummary.current_game)}</dd>
                     </div>
                     <div>
                       <dt>Current boss</dt>
-                      <dd>{bossName(asRecord(promptPreview.game_state_summary).current_boss)}</dd>
+                      <dd>{bossName(gameStateSummary.current_boss)}</dd>
                     </div>
                     <div>
                       <dt>Activity</dt>
-                      <dd>{debugText(asRecord(promptPreview.game_state_summary).current_activity)}</dd>
+                      <dd>{debugText(gameStateSummary.current_activity)}</dd>
                     </div>
                     <div>
                       <dt>Freshness</dt>
-                      <dd>{debugText(asRecord(promptPreview.game_state_summary).freshness)}</dd>
+                      <dd>{debugText(gameStateSummary.freshness)}</dd>
                     </div>
                     <div>
                       <dt>Deaths / frustration</dt>
                       <dd>
-                        {debugText(asRecord(promptPreview.game_state_summary).death_count, "0")} /{" "}
-                        {debugText(asRecord(promptPreview.game_state_summary).frustration_count, "0")}
+                        {debugText(gameStateSummary.death_count, "0")} / {debugText(gameStateSummary.frustration_count, "0")}
                       </dd>
                     </div>
                     <div>
                       <dt>Last attempted</dt>
-                      <dd>{debugText(asRecord(promptPreview.game_state_summary).last_attempted_boss)}</dd>
+                      <dd>{debugText(gameStateSummary.last_attempted_boss)}</dd>
                     </div>
                     <div>
                       <dt>Last cleared</dt>
-                      <dd>{debugText(asRecord(promptPreview.game_state_summary).last_cleared_boss)}</dd>
+                      <dd>{debugText(gameStateSummary.last_cleared_boss)}</dd>
                     </div>
                   </dl>
                   <ul className="debugList" aria-label="Boss history">
-                    {asArray(asRecord(promptPreview.game_state_summary).boss_history).map((item, index) => (
+                    {gameStateSummary.boss_history.map((item, index) => (
                       <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
                     ))}
-                    {asArray(asRecord(promptPreview.game_state_summary).boss_history).length === 0 && <li>无 boss history</li>}
+                    {gameStateSummary.boss_history.length === 0 && <li>无</li>}
                   </ul>
                 </section>
 
                 <section className="debugSection">
                   <h3>Memory Injected</h3>
                   <ul className="debugList">
-                    {asArray(asRecord(promptPreview.memory_summary).injected).map((item, index) => (
+                    {injectedMemory.map((item, index) => (
                       <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
                     ))}
-                    {asArray(asRecord(promptPreview.memory_summary).injected).length === 0 && <li>无 injected memory</li>}
+                    {injectedMemory.length === 0 && <li>无</li>}
                   </ul>
                 </section>
 
                 <section className="debugSection">
                   <h3>Memory Skipped</h3>
                   <ul className="debugList">
-                    {asArray(asRecord(promptPreview.memory_summary).skipped).map((item, index) => (
+                    {skippedMemory.map((item, index) => (
                       <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
                     ))}
-                    {asArray(asRecord(promptPreview.memory_summary).skipped).length === 0 && <li>无 skipped memory</li>}
+                    {skippedMemory.length === 0 && <li>无</li>}
                   </ul>
                 </section>
 
@@ -380,7 +399,7 @@ export function App() {
                     {promptPreview.warnings.map((warning) => (
                       <li key={warning}>{warning}</li>
                     ))}
-                    {promptPreview.warnings.length === 0 && <li>无 warnings</li>}
+                    {promptPreview.warnings.length === 0 && <li>无</li>}
                   </ul>
                 </section>
 

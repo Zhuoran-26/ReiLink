@@ -1,5 +1,5 @@
 import { act } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -347,5 +347,40 @@ describe("App", () => {
     expect(screen.getByText(/reply_segments_count/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /调试/i }));
     await waitFor(() => expect(screen.queryByText(/personaId/)).not.toBeInTheDocument());
+  });
+
+  it("falls back to game session debug data and shows empty warnings as none", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
+        if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
+        if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
+        if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+        if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
+        if (url.includes("/api/debug/prompt-preview")) {
+          return Response.json({
+            ...promptPreview,
+            game_state_summary: {},
+            memory_summary: { injected: [], skipped: [] },
+            warnings: []
+          });
+        }
+        return new Response("missing", { status: 404 });
+      })
+    );
+
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
+
+    const gameStateSection = screen.getByText("Game State Summary").closest("section");
+    expect(gameStateSection).not.toBeNull();
+    expect(within(gameStateSection as HTMLElement).getAllByText("恶兆妖鬼 Margit").length).toBeGreaterThan(0);
+    expect(within(gameStateSection as HTMLElement).getByText("boss_attempt")).toBeInTheDocument();
+
+    const warningsSection = screen.getByText("Warnings").closest("section");
+    expect(warningsSection).not.toBeNull();
+    expect(within(warningsSection as HTMLElement).getByText("无")).toBeInTheDocument();
   });
 });

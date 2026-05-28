@@ -6,6 +6,7 @@ import urllib.error
 
 import pytest
 
+from app.core.config import settings
 from app.modules.dialogue_agent.intent import detect_intent
 from app.modules.dialogue_agent.providers import DeepSeekProvider, LLMResult, MockLLMProvider
 from app.modules.game_session.state import CurrentBoss, GameSessionState, GameSessionStore
@@ -209,9 +210,10 @@ def test_dialogue_agent_retries_when_reply_repeats_recent_assistant(tmp_path: Pa
     assert "不要重复刚才的回答" in provider.prompts[-1]
 
 
-def test_followup_progression_policy_is_injected_for_relationship_chain(tmp_path: Path):
+def test_followup_progression_policy_is_injected_for_relationship_chain(monkeypatch, tmp_path: Path):
     from app.modules.dialogue_agent.agent import DialogueAgent
 
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     agent = DialogueAgent()
     agent.store = ConversationStore(tmp_path / "conversations")
     agent.store.append("followup", None, "rei_like", "你喜欢我吗？", "不知道。", datetime.now())
