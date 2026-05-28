@@ -106,6 +106,30 @@ def test_debug_memory_returns_provenance_items():
     assert all(item["text"] for item in data["items"])
 
 
+def test_debug_game_session_routes():
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "我现在卡在女武神", "session_id": "api-game-session"})
+
+    response = client.get("/api/debug/game-session")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["current_game"] == "Elden Ring"
+    assert data["current_boss"]["name"] == "女武神"
+    assert data["current_boss"]["confidence"] >= 0.9
+    assert data["current_boss"]["is_fresh"] is True
+    assert {
+        "death_count",
+        "frustration_count",
+        "last_game_intent",
+    } <= data.keys()
+
+    reset = client.post("/api/debug/game-session/reset")
+    assert reset.status_code == 200
+    assert reset.json() == {"status": "reset"}
+    assert client.get("/api/debug/game-session").json()["current_boss"] is None
+
+
 def test_memory_reset_route():
     client.post("/api/chat", json={"message": "Margit 我又死了", "session_id": "api-memory-reset"})
     response = client.post("/api/memory/reset")

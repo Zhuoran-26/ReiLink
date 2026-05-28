@@ -56,6 +56,8 @@ class Settings:
     memory_dir: Path = data_dir / "memory"
     user_profile_path: Path = memory_dir / "user_profile.json"
     episodes_path: Path = memory_dir / "episodes.jsonl"
+    session_dir: Path = data_dir / "session"
+    game_session_state_path: Path = session_dir / "game_session_state.json"
     conversations_dir: Path = data_dir / "conversations"
     elden_ring_dir: Path = data_dir / "elden_ring"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "app://."]

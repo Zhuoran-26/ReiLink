@@ -52,6 +52,27 @@ const chatDebug = {
   segmenter_mode: "compact"
 };
 
+const gameSessionDebug = {
+  current_game: "Elden Ring",
+  current_boss: {
+    name: "恶兆妖鬼 Margit",
+    updated_at: new Date().toISOString(),
+    confidence: 0.95,
+    source: "current_message",
+    mention_count: 2,
+    age_hours: 0.1,
+    is_fresh: true,
+    freshness: "fresh"
+  },
+  current_activity: "boss_attempt",
+  recent_game_topics: ["恶兆妖鬼 Margit"],
+  frustration_count: 1,
+  death_count: 1,
+  last_user_intent: "casual_chat",
+  last_game_intent: "casual_chat",
+  last_updated_at: new Date().toISOString()
+};
+
 const chatResponse = {
   reply: "别急着翻滚。先看动作。再试一次。",
   reply_segments: ["别急着翻滚。先看动作。再试一次。"],
@@ -74,6 +95,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+        if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return Response.json(chatResponse);
         }
@@ -122,6 +144,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
+        if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return new Promise<Response>((resolve) => {
             resolveChat = resolve;
@@ -166,6 +189,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
+        if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return new Promise<Response>((resolve) => {
             resolveChat = resolve;
@@ -217,6 +241,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json({ ...chatDebug, reply_segments_count: 3, segmenter_mode: "strategy" }));
+        if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return Promise.resolve(
             Response.json({
@@ -263,6 +288,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText(/personaId/)).toBeInTheDocument());
     expect(screen.getByText(/current_boss/)).toBeInTheDocument();
     expect(screen.getByText(/memory_provenance/)).toBeInTheDocument();
+    expect(screen.getByText(/game_session/)).toBeInTheDocument();
     expect(screen.getByText(/selected_model/)).toBeInTheDocument();
     expect(screen.getByText(/reply_segments_count/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /调试/i }));

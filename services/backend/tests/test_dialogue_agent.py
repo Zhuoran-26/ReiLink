@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 import urllib.error
@@ -8,6 +8,7 @@ import pytest
 
 from app.modules.dialogue_agent.intent import detect_intent
 from app.modules.dialogue_agent.providers import DeepSeekProvider, LLMResult, MockLLMProvider
+from app.modules.game_session.state import CurrentBoss, GameSessionState, GameSessionStore
 from app.modules.memory.store import ConversationStore
 from app.schemas.api import ChatRequest
 
@@ -239,6 +240,48 @@ def test_session_focus_boss_is_injected_for_elliptical_reference(tmp_path: Path)
     assert "当前会话焦点 boss：女武神" in provider.prompts[0]
     assert "不要再问“哪个 boss”" in provider.prompts[0]
     assert "哪个 boss" not in response.reply
+
+
+def test_game_session_state_is_injected_for_fresh_elliptical_reference(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now()
+    agent.game_session.update_from_user_message("我现在卡在女武神", "casual_chat", {}, now)
+    provider = _PromptCapturingProvider(["先缓一下。只看她起手。"])
+    agent.provider = provider
+
+    response = agent.chat(ChatRequest(message="我又死了", session_id="game-state"))
+
+    assert "当前游戏状态：玩家最近在打 女武神" in provider.prompts[0]
+    assert "哪个 boss" not in response.reply
+
+
+def test_session_focus_has_priority_over_stale_game_state(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    old = datetime.now().astimezone() - timedelta(hours=80)
+    agent.game_session.save(
+        GameSessionState(
+            current_game="Elden Ring",
+            current_boss=CurrentBoss("大树守卫", old.isoformat(), 0.9, "current_message", 1),
+            last_updated_at=old.isoformat(),
+        )
+    )
+    agent.store.append("focus-priority", None, "rei_like", "女武神", "嗯。", datetime.now())
+    provider = _PromptCapturingProvider(["先别抢。"])
+    agent.provider = provider
+
+    agent.chat(ChatRequest(message="一直打不过啊", session_id="focus-priority"))
+
+    assert "当前会话焦点 boss：女武神" in provider.prompts[0]
+    assert "当前游戏状态：当前会话焦点是 女武神" in provider.prompts[0]
+    assert "当前游戏状态：曾经提到 大树守卫" not in provider.prompts[0]
 
 
 def test_intent_router_core_cases():

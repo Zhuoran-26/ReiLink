@@ -21,6 +21,7 @@ from app.modules.dialogue_agent.validator import validate_or_repair
 from app.modules.elden_ring_knowledge.knowledge import EldenRingKnowledge, KnowledgeError
 from app.modules.elden_ring_knowledge.terminology import normalize_terminology
 from app.modules.game_detector.detector import EldenRingDetector
+from app.modules.game_session.state import GameSessionStore
 from app.modules.memory.profile import PlayerMemory
 from app.modules.memory.store import ConversationStore
 from app.modules.persona_engine.engine import PersonaEngine
@@ -47,6 +48,7 @@ class DialogueAgent:
         self.knowledge = EldenRingKnowledge()
         self.store = ConversationStore()
         self.memory = PlayerMemory()
+        self.game_session = GameSessionStore()
         self.provider = get_provider()
 
     def chat(self, request: ChatRequest, background_tasks: Any | None = None) -> ChatResponse:
@@ -58,9 +60,21 @@ class DialogueAgent:
         recent_user_messages = self.store.recent_user_messages(request.session_id)
         recent_assistant_replies = self.store.recent_assistant_replies(request.session_id)
         session_focus = resolve_session_focus(request.message, recent_user_messages)
+        now = datetime.now(timezone.utc)
+        self.game_session.update_from_user_message(
+            request.message,
+            intent_result.intent,
+            game_status.model_dump(),
+            now,
+            session_focus_boss=session_focus.boss,
+        )
+        game_session_summary = self.game_session.build_prompt_summary(now=now, session_focus_boss=session_focus.boss)
         session_context_items = [item["text"] for item in self.store.recent_context(request.session_id)]
         if session_focus.has_boss:
             session_context_items.insert(0, session_focus.as_prompt_line())
+        if game_session_summary:
+            insert_at = 1 if session_focus.has_boss else 0
+            session_context_items.insert(insert_at, game_session_summary)
         session_context = "\n".join(f"- {text}" for text in session_context_items)
         repetition_guard = "\n".join(
             item
@@ -106,7 +120,6 @@ class DialogueAgent:
                     llm_latency_ms=llm_result.llm_latency_ms + retry_result.llm_latency_ms,
                 )
         reply_segments = segment_reply(reply, intent_result.intent, request.message)
-        now = datetime.now(timezone.utc)
         self.store.append(
             session_id=request.session_id,
             game_id=game_status.game_id,

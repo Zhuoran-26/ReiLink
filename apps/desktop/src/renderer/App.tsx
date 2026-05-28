@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp, Mic, RefreshCw, Send } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { api, ChatDebugResponse, GameStatus, MemoryDebugResponse, UserProfileMemory } from "../shared/api";
+import { api, ChatDebugResponse, GameSessionDebugResponse, GameStatus, MemoryDebugResponse, UserProfileMemory } from "../shared/api";
 
 type Message = {
   id: string;
@@ -59,6 +59,18 @@ const emptyChatDebug: ChatDebugResponse = {
   segmenter_mode: null
 };
 
+const emptyGameSessionDebug: GameSessionDebugResponse = {
+  current_game: null,
+  current_boss: null,
+  current_activity: null,
+  recent_game_topics: [],
+  frustration_count: 0,
+  death_count: 0,
+  last_user_intent: null,
+  last_game_intent: null,
+  last_updated_at: null
+};
+
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 
@@ -74,6 +86,7 @@ export function App() {
   const [memoryProfile, setMemoryProfile] = useState<UserProfileMemory>(emptyProfile);
   const [memoryDebug, setMemoryDebug] = useState<MemoryDebugResponse>(emptyMemoryDebug);
   const [chatDebug, setChatDebug] = useState<ChatDebugResponse>(emptyChatDebug);
+  const [gameSessionDebug, setGameSessionDebug] = useState<GameSessionDebugResponse>(emptyGameSessionDebug);
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。" }
   ]);
@@ -93,6 +106,7 @@ export function App() {
       setMemoryProfile(await api.memoryProfile());
       setMemoryDebug(await api.memoryDebug());
       setChatDebug(await api.chatDebug());
+      setGameSessionDebug(await api.gameSessionDebug());
     } catch (error) {
       setBackendStatus("disconnected");
       setLastError(error instanceof Error ? error.message : "后端暂时连不上");
@@ -224,6 +238,16 @@ export function App() {
                       recent_episode_count: memoryDebug.recent_episode_count
                     },
                     memory_provenance: memoryDebug.items,
+                    game_session: {
+                      current_game: gameSessionDebug.current_game,
+                      current_boss: gameSessionDebug.current_boss?.name ?? null,
+                      current_boss_confidence: gameSessionDebug.current_boss?.confidence ?? null,
+                      current_boss_age_hours: gameSessionDebug.current_boss?.age_hours ?? null,
+                      current_boss_is_fresh: gameSessionDebug.current_boss?.is_fresh ?? false,
+                      death_count: gameSessionDebug.death_count,
+                      frustration_count: gameSessionDebug.frustration_count,
+                      last_game_intent: gameSessionDebug.last_game_intent
+                    },
                     chat: {
                       intent: chatDebug.intent,
                       selected_model: chatDebug.selected_model,

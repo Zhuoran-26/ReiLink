@@ -75,6 +75,27 @@ export type ChatDebugResponse = {
   segmenter_mode: string | null;
 };
 
+export type GameSessionDebugResponse = {
+  current_game: string | null;
+  current_boss: {
+    name: string;
+    updated_at: string;
+    confidence: number;
+    source: string;
+    mention_count: number;
+    age_hours: number | null;
+    is_fresh: boolean;
+    freshness: string;
+  } | null;
+  current_activity: string | null;
+  recent_game_topics: string[];
+  frustration_count: number;
+  death_count: number;
+  last_user_intent: string | null;
+  last_game_intent: string | null;
+  last_updated_at: string | null;
+};
+
 const API_BASE = import.meta.env.VITE_REILINK_API_BASE ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -96,6 +117,7 @@ export const api = {
   memoryEpisodes: () => request<EpisodeMemory[]>("/api/memory/episodes"),
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),
   chatDebug: () => request<ChatDebugResponse>("/api/debug/chat"),
+  gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
   resetMemory: () => request<{ status: "reset" }>("/api/memory/reset", { method: "POST" }),
   chat: (message: string, sessionId = "default") =>
     request<ChatResponse>("/api/chat", {
