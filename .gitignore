@@ -30,6 +30,7 @@ services/backend/.env
 # Local memory data
 data/memory/user_profile.json
 data/memory/episodes.jsonl
+data/memory/pending_memories.jsonl
 data/memory/*.backup.json
 data/memory/*.backup.jsonl
 

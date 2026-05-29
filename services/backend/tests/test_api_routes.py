@@ -81,30 +81,49 @@ def test_debug_chat_returns_last_latency_fields():
 
 
 def test_memory_profile_and_episodes_routes():
-    client.post("/api/chat", json={"message": "Margit 我又死了", "session_id": "api-memory"})
+    client.post("/api/chat", json={"message": "我不喜欢长篇攻略", "session_id": "api-memory"})
+
+    pending = client.get("/api/memory/pending")
+    assert pending.status_code == 200
+    pending_items = pending.json()
+    assert pending_items
+    assert pending_items[0]["type"] == "user_preference"
+    assert "payload" not in pending_items[0]
 
     profile = client.get("/api/memory/profile")
     assert profile.status_code == 200
-    assert profile.json()["current_boss"] == "恶兆妖鬼 Margit"
+    assert profile.json()["preferred_tone"] is None
+
+    accepted = client.post(f"/api/memory/pending/{pending_items[0]['id']}/accept")
+    assert accepted.status_code == 200
+    assert accepted.json()["status"] == "accepted"
+
+    profile = client.get("/api/memory/profile")
+    assert profile.status_code == 200
+    assert profile.json()["preferred_tone"] == "不喜欢长篇攻略"
 
     episodes = client.get("/api/memory/episodes")
     assert episodes.status_code == 200
-    assert episodes.json()[0]["boss"] == "恶兆妖鬼 Margit"
+    assert episodes.json()[0]["summary"] == "玩家不喜欢长篇攻略"
 
 
 def test_debug_memory_returns_provenance_items():
-    client.post("/api/chat", json={"message": "Margit 我又死了", "session_id": "api-memory-debug"})
+    session_id = "api-memory-debug"
+    client.post("/api/chat", json={"message": "我现在卡在女武神", "session_id": session_id})
+    pending_items = client.get("/api/memory/pending").json()
+    assert pending_items
+    client.post(f"/api/memory/pending/{pending_items[0]['id']}/accept")
 
-    response = client.get("/api/debug/memory?session_id=api-memory-debug")
+    response = client.get(f"/api/debug/memory?session_id={session_id}")
 
     assert response.status_code == 200
     data = response.json()
     assert data["prompt_order"] == ["current_user_message", "current_session", "memory", "persona"]
     assert data["memory_written"] is True
-    assert data["current_boss"] == "恶兆妖鬼 Margit"
+    assert data["current_boss"] == "女武神"
     assert data["recent_episode_count"] >= 1
     sources = {item["source"] for item in data["items"]}
-    assert {"current_session", "profile", "episode"} <= sources
+    assert {"current_session", "episode"} <= sources
     assert all(item["text"] for item in data["items"])
 
 
@@ -189,10 +208,12 @@ def test_prompt_preview_warns_on_negated_clear_phrase():
 
 
 def test_memory_reset_route():
-    client.post("/api/chat", json={"message": "Margit 我又死了", "session_id": "api-memory-reset"})
+    client.post("/api/chat", json={"message": "我不喜欢长篇攻略", "session_id": "api-memory-reset"})
+    assert client.get("/api/memory/pending").json()
     response = client.post("/api/memory/reset")
 
     assert response.status_code == 200
     assert response.json() == {"status": "reset"}
     assert client.get("/api/memory/profile").json()["current_boss"] is None
     assert client.get("/api/memory/episodes").json() == []
+    assert client.get("/api/memory/pending").json() == []

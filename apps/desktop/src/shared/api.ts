@@ -121,6 +121,18 @@ export type PromptPreviewResponse = {
   warnings: string[];
 };
 
+export type PendingMemory = {
+  id: string;
+  type: "game_progress" | "user_preference" | "emotional_pattern" | "relationship_preference" | "playstyle";
+  text: string;
+  source: "game_session" | "conversation" | "explicit_user_statement";
+  confidence: number;
+  status: "pending" | "accepted" | "ignored";
+  created_at: string;
+  updated_at: string;
+  evidence: Record<string, unknown>;
+};
+
 const API_BASE = import.meta.env.VITE_REILINK_API_BASE ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -144,6 +156,10 @@ export const api = {
   chatDebug: () => request<ChatDebugResponse>("/api/debug/chat"),
   gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
   promptPreview: (sessionId = "default") => request<PromptPreviewResponse>(`/api/debug/prompt-preview?session_id=${encodeURIComponent(sessionId)}`),
+  pendingMemories: () => request<PendingMemory[]>("/api/memory/pending"),
+  acceptPendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/accept`, { method: "POST" }),
+  ignorePendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/ignore`, { method: "POST" }),
+  clearPendingMemories: () => request<{ status: "cleared" }>("/api/memory/pending/clear", { method: "POST" }),
   resetMemory: () => request<{ status: "reset" }>("/api/memory/reset", { method: "POST" }),
   chat: (message: string, sessionId = "default") =>
     request<ChatResponse>("/api/chat", {

@@ -22,6 +22,7 @@ from app.modules.elden_ring_knowledge.knowledge import EldenRingKnowledge, Knowl
 from app.modules.elden_ring_knowledge.terminology import normalize_terminology
 from app.modules.game_detector.detector import EldenRingDetector
 from app.modules.game_session.state import GameSessionStore
+from app.modules.memory.pending import PendingMemoryQueue
 from app.modules.memory.profile import PlayerMemory
 from app.modules.memory.store import ConversationStore
 from app.modules.persona_engine.engine import PersonaEngine
@@ -174,11 +175,21 @@ class DialogueAgent:
     def _safe_memory_update(self, user_message: str, reply: str, intent: str, timestamp: datetime) -> None:
         start = time.perf_counter()
         try:
-            self.memory.extract_and_update(user_message, reply, intent, timestamp)
+            pending = PendingMemoryQueue().generate_and_enqueue(
+                user_message,
+                reply,
+                intent,
+                timestamp,
+                self.game_session.debug_state(now=timestamp),
+            )
         except Exception:
             logger.exception("memory update error")
         else:
-            logger.info("memory update completed memory_latency_ms=%s", int((time.perf_counter() - start) * 1000))
+            logger.info(
+                "memory update completed pending_count=%s memory_latency_ms=%s",
+                len(pending),
+                int((time.perf_counter() - start) * 1000),
+            )
 
     def _finalize_reply(self, raw_reply: str, intent: str, session_id: str, user_message: str) -> str:
         reply = apply_rei_style(validate_or_repair(raw_reply, intent), seed=f"{session_id}:{user_message}")

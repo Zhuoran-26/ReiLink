@@ -81,6 +81,22 @@ class MemoryResetResponse(BaseModel):
     status: Literal["reset"]
 
 
+class PendingMemoryItem(BaseModel):
+    id: str
+    type: Literal["game_progress", "user_preference", "emotional_pattern", "relationship_preference", "playstyle"]
+    text: str
+    source: Literal["game_session", "conversation", "explicit_user_statement"]
+    confidence: float
+    status: Literal["pending", "accepted", "ignored"]
+    created_at: str
+    updated_at: str
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class PendingMemoryClearResponse(BaseModel):
+    status: Literal["cleared"]
+
+
 class MemoryProvenanceItem(BaseModel):
     source: Literal["profile", "episode", "current_session"]
     field: str

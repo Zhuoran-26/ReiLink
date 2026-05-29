@@ -113,6 +113,34 @@ const promptPreview = {
   warnings: ["memory boss conflicts with fresh game state"]
 };
 
+const pendingMemories = [
+  {
+    id: "pending-1",
+    type: "user_preference",
+    text: "玩家不喜欢长篇攻略",
+    source: "explicit_user_statement",
+    confidence: 0.95,
+    status: "pending",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    evidence: {
+      user_message: "我不喜欢长篇攻略",
+      game_state_summary: "current_boss=none"
+    }
+  }
+];
+
+const pendingMemoryResponse = (url: string, init?: RequestInit) => {
+  if (url.endsWith("/api/memory/pending")) return Response.json(pendingMemories);
+  if (url.includes("/api/memory/pending/pending-1/accept") && init?.method === "POST") {
+    return Response.json({ ...pendingMemories[0], status: "accepted" });
+  }
+  if (url.includes("/api/memory/pending/pending-1/ignore") && init?.method === "POST") {
+    return Response.json({ ...pendingMemories[0], status: "ignored" });
+  }
+  return null;
+};
+
 const chatResponse = {
   reply: "别急着翻滚。先看动作。再试一次。",
   reply_segments: ["别急着翻滚。先看动作。再试一次。"],
@@ -130,6 +158,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
+        const pendingResponse = pendingMemoryResponse(url, init);
+        if (pendingResponse) return pendingResponse;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -180,6 +210,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string, init?: RequestInit) => {
+        const pendingResponse = pendingMemoryResponse(url, init);
+        if (pendingResponse) return Promise.resolve(pendingResponse);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -226,6 +258,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string, init?: RequestInit) => {
+        const pendingResponse = pendingMemoryResponse(url, init);
+        if (pendingResponse) return Promise.resolve(pendingResponse);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -279,6 +313,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string, init?: RequestInit) => {
+        const pendingResponse = pendingMemoryResponse(url, init);
+        if (pendingResponse) return Promise.resolve(pendingResponse);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -341,6 +377,10 @@ describe("App", () => {
     expect(screen.getByText("Game State Summary")).toBeInTheDocument();
     expect(screen.getByText("Memory Injected")).toBeInTheDocument();
     expect(screen.getByText("Memory Skipped")).toBeInTheDocument();
+    expect(screen.getByText("Pending Memory")).toBeInTheDocument();
+    expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ignore" })).toBeInTheDocument();
     expect(screen.getByText("Warnings")).toBeInTheDocument();
     expect(screen.queryByText(/prompt_preview/)).not.toBeInTheDocument();
     expect(screen.getByText(/selected_model/)).toBeInTheDocument();
@@ -353,6 +393,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
+        const pendingResponse = pendingMemoryResponse(url);
+        if (pendingResponse) return pendingResponse;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -382,5 +424,18 @@ describe("App", () => {
     const warningsSection = screen.getByText("Warnings").closest("section");
     expect(warningsSection).not.toBeNull();
     expect(within(warningsSection as HTMLElement).getByText("无")).toBeInTheDocument();
+  });
+
+  it("accepts pending memory from the debug panel", async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
+    await userEvent.click(await screen.findByRole("button", { name: "Accept" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/memory/pending/pending-1/accept"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
   });
 });

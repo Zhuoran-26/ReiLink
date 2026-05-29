@@ -7,6 +7,7 @@ import {
   GameSessionDebugResponse,
   GameStatus,
   MemoryDebugResponse,
+  PendingMemory,
   PromptPreviewResponse,
   UserProfileMemory
 } from "../shared/api";
@@ -129,6 +130,17 @@ const debugListText = (item: unknown) => {
   return meta ? `${meta}: ${text}` : text;
 };
 
+const pendingEvidenceSummary = (memory: PendingMemory) => {
+  const evidence = asRecord(memory.evidence);
+  const userMessage = debugText(evidence.user_message, "");
+  const gameState = debugText(evidence.game_state_summary, "");
+  const parts = [
+    userMessage ? `user: ${userMessage}` : "",
+    gameState ? `game: ${gameState}` : ""
+  ].filter(Boolean);
+  return parts.join(" / ") || "无";
+};
+
 const firstDefined = (...values: unknown[]) => values.find((value) => value !== null && value !== undefined && value !== "");
 
 export function App() {
@@ -139,6 +151,8 @@ export function App() {
   const [chatDebug, setChatDebug] = useState<ChatDebugResponse>(emptyChatDebug);
   const [gameSessionDebug, setGameSessionDebug] = useState<GameSessionDebugResponse>(emptyGameSessionDebug);
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
+  const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
+  const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。" }
   ]);
@@ -160,6 +174,7 @@ export function App() {
       setChatDebug(await api.chatDebug());
       setGameSessionDebug(await api.gameSessionDebug());
       setPromptPreview(await api.promptPreview());
+      setPendingMemories(await api.pendingMemories());
     } catch (error) {
       setBackendStatus("disconnected");
       setLastError(error instanceof Error ? error.message : "后端暂时连不上");
@@ -222,6 +237,22 @@ export function App() {
       setLastInterimPlaceholderShown(placeholderShown);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handlePendingMemory = async (id: string, action: "accept" | "ignore") => {
+    setPendingMemoryBusyId(id);
+    try {
+      if (action === "accept") {
+        await api.acceptPendingMemory(id);
+      } else {
+        await api.ignorePendingMemory(id);
+      }
+      await refreshStatus();
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : "pending memory update failed");
+    } finally {
+      setPendingMemoryBusyId("");
     }
   };
 
@@ -394,6 +425,40 @@ export function App() {
                 </section>
 
                 <section className="debugSection">
+                  <h3>Pending Memory</h3>
+                  <div className="pendingMemoryList">
+                    {pendingMemories.map((memory) => (
+                      <article className="pendingMemoryItem" key={memory.id}>
+                        <p>{memory.text}</p>
+                        <div className="pendingMemoryMeta">
+                          {memory.type} / {memory.source} / {memory.confidence.toFixed(2)}
+                        </div>
+                        <div className="pendingMemoryEvidence">{pendingEvidenceSummary(memory)}</div>
+                        <div className="pendingMemoryActions">
+                          <button
+                            className="smallButton"
+                            type="button"
+                            disabled={pendingMemoryBusyId === memory.id}
+                            onClick={() => void handlePendingMemory(memory.id, "accept")}
+                          >
+                            Accept
+                          </button>
+                          <button
+                            className="smallButton"
+                            type="button"
+                            disabled={pendingMemoryBusyId === memory.id}
+                            onClick={() => void handlePendingMemory(memory.id, "ignore")}
+                          >
+                            Ignore
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                    {pendingMemories.length === 0 && <p className="emptyDebugText">无</p>}
+                  </div>
+                </section>
+
+                <section className="debugSection">
                   <h3>Warnings</h3>
                   <ul className="debugList">
                     {promptPreview.warnings.map((warning) => (
@@ -417,6 +482,7 @@ export function App() {
                         emotional_note: memoryDebug.emotional_note ?? memoryProfile.emotional_notes.at(-1) ?? null,
                         recent_episode_count: memoryDebug.recent_episode_count
                       },
+                      pending_memory: pendingMemories,
                       memory_provenance: memoryDebug.items,
                       game_session: {
                         current_game: gameSessionDebug.current_game,

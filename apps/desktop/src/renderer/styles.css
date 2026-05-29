@@ -248,6 +248,53 @@ input {
   overflow-wrap: anywhere;
 }
 
+.pendingMemoryList {
+  display: grid;
+  gap: 8px;
+}
+
+.pendingMemoryItem {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #2a323d;
+  border-radius: 8px;
+  background: #0f151d;
+}
+
+.pendingMemoryItem p {
+  margin: 0;
+  color: #e2e8f0;
+  line-height: 1.45;
+}
+
+.pendingMemoryMeta,
+.pendingMemoryEvidence,
+.emptyDebugText {
+  color: #8f9aa8;
+  overflow-wrap: anywhere;
+}
+
+.pendingMemoryActions {
+  display: flex;
+  gap: 8px;
+}
+
+.smallButton {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #3b4350;
+  border-radius: 6px;
+  color: #dbe4ee;
+  background: #1b2230;
+  cursor: pointer;
+}
+
+.smallButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .debugJson {
   overflow: auto;
   max-height: 220px;
