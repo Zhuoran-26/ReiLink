@@ -30,11 +30,6 @@ const idleStatus: GameStatus = {
   tags: []
 };
 
-const gameStatusText = {
-  running: "运行中",
-  idle: "空闲"
-};
-
 const emptyProfile: UserProfileMemory = {
   user_name: null,
   favorite_game: null,
@@ -190,6 +185,7 @@ export function App() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
+  const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [lastError, setLastError] = useState("");
   const [lastInterimPlaceholderShown, setLastInterimPlaceholderShown] = useState(false);
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
@@ -223,8 +219,7 @@ export function App() {
       setAppSettings(updated);
       if (patch.debug_panel === "hide") {
         setDebugOpen(false);
-      } else if (patch.debug_panel === "show") {
-        setDebugOpen(true);
+        setPromptPreviewOpen(false);
       }
       await refreshStatus();
     } catch (error) {
@@ -361,47 +356,93 @@ export function App() {
   const semanticFinalMemoryCandidate = asRecord(semanticFinalDecision.memory_candidate);
   const recentBossHistory = gameSessionDebug.boss_history.slice(0, 5);
   const debugPanelVisible = appSettings.debug_panel === "show";
+  const displayGame = gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
+  const displayBoss = gameSessionDebug.current_boss?.name ?? null;
+  const displayActivity = gameSessionDebug.current_activity ?? "idle";
 
   return (
     <main className="shell">
       <header className="topbar">
-        <div>
+        <div className="brandBlock">
           <h1>ReiLink</h1>
-          <p>艾尔登法环中文陪伴助手</p>
+          <p>安静、冷淡的游戏陪伴</p>
         </div>
-        <span className={`connection ${backendStatus}`}>{statusLabel}</span>
+        <div className="statusStrip" aria-label="当前状态">
+          <span className="topChip">Persona: {appSettings.persona_mode}</span>
+          <span className="topChip">Model: {appSettings.model_preference}</span>
+          <span className="topChip">Game: {displayGame}</span>
+          <span className="topChip">Boss: {displayBoss ?? "idle"}</span>
+          <span className={`connection ${backendStatus}`}>{statusLabel}</span>
+        </div>
       </header>
 
       <section className="layout">
-        <aside className="sidebar" aria-label="状态面板">
-          <section className="panel">
-            <div className="panelTitle">
-              <h2>游戏状态</h2>
-              <button aria-label="刷新游戏状态" className="iconButton" onClick={refreshStatus}>
-                <RefreshCw size={17} />
-              </button>
-            </div>
-            <div className={`statusBadge ${gameStatus.status}`}>艾尔登法环：{gameStatusText[gameStatus.status]}</div>
-            <dl className="facts">
-              <div>
-                <dt>进程</dt>
-                <dd>{gameStatus.process_name ?? "无"}</dd>
-              </div>
-              <div>
-                <dt>置信度</dt>
-                <dd>{gameStatus.confidence.toFixed(1)}</dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="panel characterPanel">
-            <div className="avatar" aria-hidden="true">
+        <section className="mainColumn" aria-label="主聊天区域">
+          <section className="reiHeader">
+            <div className="reiMark" aria-hidden="true">
               R
             </div>
-            <h2>Rei</h2>
-            <p>安静 / 冷淡</p>
+            <div>
+              <p className="eyebrow">Rei</p>
+              <h2>安静 / 冷淡</h2>
+              <p>我在。想问的时候就说。</p>
+            </div>
+            <button aria-label="刷新状态" className="iconButton soft" onClick={refreshStatus}>
+              <RefreshCw size={17} />
+            </button>
           </section>
 
+          <section className="gameSnapshot" aria-label="当前游戏状态">
+            <div>
+              <span>Game</span>
+              <strong>{displayGame}</strong>
+            </div>
+            <div>
+              <span>Boss</span>
+              <strong>{displayBoss ?? "无"}</strong>
+            </div>
+            <div>
+              <span>Activity</span>
+              <strong>{displayActivity}</strong>
+            </div>
+            <div>
+              <span>Deaths</span>
+              <strong>{gameSessionDebug.death_count}</strong>
+            </div>
+          </section>
+
+          <section className="chatPanel" aria-label="聊天面板">
+            <div className="messages">
+              {messages.map((message) => (
+                <article
+                  className={`messageBubble ${message.role}${message.pending ? " pending" : ""}`}
+                  key={message.id}
+                >
+                  <span>{message.role === "user" ? "你" : "Rei"}</span>
+                  <p>{message.text}</p>
+                </article>
+              ))}
+            </div>
+
+            <form className="composer" onSubmit={sendMessage}>
+              <button className="iconButton disabled" type="button" aria-label="按住说话实验功能" disabled>
+                <Mic size={18} />
+              </button>
+              <input
+                aria-label="聊天输入"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="问 Margit、路线、装备，或者随便说点什么。"
+              />
+              <button className="sendButton" type="submit" disabled={sending || !input.trim()}>
+                <Send size={18} />
+                <span>{sending ? "发送中" : "发送"}</span>
+              </button>
+            </form>
+          </section>
+        </section>
+
+        <aside className="controlRail" aria-label="设置与调试">
           <section className="panel settingsPanel" aria-label="Settings">
             <div className="panelTitle">
               <h2>Settings</h2>
@@ -486,192 +527,247 @@ export function App() {
             <p className="settingHint">本地保存到 settings.json，不包含密钥。</p>
           </section>
 
+          <section className="panel pendingPanel" aria-label="Pending Memory">
+            <div className="panelTitle">
+              <h2>Pending Memory</h2>
+            </div>
+            <div className="pendingMemoryList">
+              {pendingMemories.map((memory) => (
+                <article className="pendingMemoryItem" key={memory.id}>
+                  <p>{memory.text}</p>
+                  <div className="pendingMemoryMeta">
+                    <span>{memory.type}</span>
+                    <span>{memory.source}</span>
+                    <span>{memory.confidence.toFixed(2)}</span>
+                  </div>
+                  <p className="pendingMemoryEvidence">{pendingEvidenceSummary(memory)}</p>
+                  <div className="pendingMemoryActions">
+                    <button
+                      className="smallButton"
+                      type="button"
+                      disabled={pendingMemoryBusyId === memory.id}
+                      onClick={() => void handlePendingMemory(memory.id, "accept")}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      className="smallButton quiet"
+                      type="button"
+                      disabled={pendingMemoryBusyId === memory.id}
+                      onClick={() => void handlePendingMemory(memory.id, "ignore")}
+                    >
+                      Ignore
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {pendingMemories.length === 0 && <p className="emptyDebugText">无待确认记忆</p>}
+            </div>
+          </section>
+
+          <section className="panel gameSessionPanel" aria-label="Game Session">
+            <div className="panelTitle">
+              <h2>Game Session</h2>
+            </div>
+            <dl className="debugFacts">
+              <div>
+                <dt>current_game</dt>
+                <dd>{debugText(gameSessionDebug.current_game)}</dd>
+              </div>
+              <div>
+                <dt>current_boss</dt>
+                <dd>{debugText(gameSessionDebug.current_boss?.name)}</dd>
+              </div>
+              <div>
+                <dt>freshness</dt>
+                <dd>{debugText(gameSessionDebug.current_boss?.freshness)}</dd>
+              </div>
+              <div>
+                <dt>activity</dt>
+                <dd>{debugText(gameSessionDebug.current_activity)}</dd>
+              </div>
+              <div>
+                <dt>last_attempted</dt>
+                <dd>{debugText(gameSessionDebug.last_attempted_boss)}</dd>
+              </div>
+              <div>
+                <dt>last_cleared</dt>
+                <dd>{debugText(gameSessionDebug.last_cleared_boss)}</dd>
+              </div>
+              <div>
+                <dt>death_count</dt>
+                <dd>{gameSessionDebug.death_count}</dd>
+              </div>
+              <div>
+                <dt>frustration</dt>
+                <dd>{gameSessionDebug.frustration_count}</dd>
+              </div>
+            </dl>
+            <ul className="debugList compact" aria-label="Recent boss history">
+              {recentBossHistory.map((boss, index) => (
+                <li key={`${boss.name}-${boss.status}-${index}`}>
+                  {boss.name} / {boss.status} / {boss.freshness}
+                </li>
+              ))}
+              {recentBossHistory.length === 0 && <li>无</li>}
+            </ul>
+          </section>
+
           {debugPanelVisible && (
-            <section className="panel">
-            <button className="debugToggle" onClick={() => setDebugOpen((open) => !open)}>
-              <span>调试</span>
-              {debugOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
-            {debugOpen && (
-              <div className="debugPanel">
-                <section className="debugSection">
-                  <h3>Debug Actions</h3>
-                  <div className="debugActions">
-                    <button
-                      className="smallButton"
-                      type="button"
-                      disabled={debugActionBusy !== ""}
-                      onClick={() => void handleDebugAction("refresh")}
-                    >
-                      Refresh Debug
-                    </button>
-                    <button
-                      className="smallButton"
-                      type="button"
-                      disabled={debugActionBusy !== ""}
-                      onClick={() => void handleDebugAction("reset-game-session")}
-                    >
-                      Reset Game Session
-                    </button>
-                    <button
-                      className="smallButton"
-                      type="button"
-                      disabled={debugActionBusy !== ""}
-                      onClick={() => void handleDebugAction("reset-memory")}
-                    >
-                      Reset Memory
-                    </button>
-                    <button
-                      className="smallButton"
-                      type="button"
-                      disabled={debugActionBusy !== ""}
-                      onClick={() => void handleDebugAction("clear-pending")}
-                    >
-                      Clear Pending Memory
-                    </button>
-                  </div>
-                </section>
+            <section className="panel foldPanel" aria-label="Debug Panel">
+              <button
+                className="foldHeader"
+                aria-expanded={debugOpen}
+                onClick={() => setDebugOpen((open) => !open)}
+              >
+                <span>Debug Panel</span>
+                {debugOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+              {debugOpen && (
+                <div className="debugPanel">
+                  <section className="debugSection">
+                    <h3>Debug Actions</h3>
+                    <div className="debugActions">
+                      <button
+                        className="smallButton"
+                        type="button"
+                        disabled={debugActionBusy !== ""}
+                        onClick={() => void handleDebugAction("refresh")}
+                      >
+                        Refresh Debug
+                      </button>
+                      <button
+                        className="smallButton"
+                        type="button"
+                        disabled={debugActionBusy !== ""}
+                        onClick={() => void handleDebugAction("reset-game-session")}
+                      >
+                        Reset Game Session
+                      </button>
+                      <button
+                        className="smallButton"
+                        type="button"
+                        disabled={debugActionBusy !== ""}
+                        onClick={() => void handleDebugAction("reset-memory")}
+                      >
+                        Reset Memory
+                      </button>
+                      <button
+                        className="smallButton"
+                        type="button"
+                        disabled={debugActionBusy !== ""}
+                        onClick={() => void handleDebugAction("clear-pending")}
+                      >
+                        Clear Pending Memory
+                      </button>
+                    </div>
+                  </section>
 
-                <section className="debugSection">
-                  <h3>Game Session</h3>
-                  <dl className="debugFacts">
-                    <div>
-                      <dt>current_game</dt>
-                      <dd>{debugText(gameSessionDebug.current_game)}</dd>
-                    </div>
-                    <div>
-                      <dt>current_boss</dt>
-                      <dd>{debugText(gameSessionDebug.current_boss?.name)}</dd>
-                    </div>
-                    <div>
-                      <dt>freshness</dt>
-                      <dd>{debugText(gameSessionDebug.current_boss?.freshness)}</dd>
-                    </div>
-                    <div>
-                      <dt>activity</dt>
-                      <dd>{debugText(gameSessionDebug.current_activity)}</dd>
-                    </div>
-                    <div>
-                      <dt>last_boss</dt>
-                      <dd>{debugText(gameSessionDebug.last_boss)}</dd>
-                    </div>
-                    <div>
-                      <dt>last_attempted</dt>
-                      <dd>{debugText(gameSessionDebug.last_attempted_boss)}</dd>
-                    </div>
-                    <div>
-                      <dt>last_cleared</dt>
-                      <dd>{debugText(gameSessionDebug.last_cleared_boss)}</dd>
-                    </div>
-                    <div>
-                      <dt>deaths</dt>
-                      <dd>{gameSessionDebug.death_count}</dd>
-                    </div>
-                    <div>
-                      <dt>frustration</dt>
-                      <dd>{gameSessionDebug.frustration_count}</dd>
-                    </div>
-                  </dl>
-                  <ul className="debugList" aria-label="Recent boss history">
-                    {recentBossHistory.map((boss, index) => (
-                      <li key={`${boss.name}-${boss.status}-${index}`}>
-                        {boss.name} / {boss.status} / {boss.freshness} / {boss.mention_count}
-                      </li>
-                    ))}
-                    {recentBossHistory.length === 0 && <li>无</li>}
-                  </ul>
-                </section>
+                  <section className="debugSection">
+                    <h3>Semantic Extraction</h3>
+                    <dl className="debugFacts">
+                      <div>
+                        <dt>latest_user</dt>
+                        <dd>{debugText(semanticDebug.latest_user_message)}</dd>
+                      </div>
+                      <div>
+                        <dt>rule_result</dt>
+                        <dd>
+                          {debugText(semanticRuleResult.type ?? semanticRuleResult.event ?? semanticDebug.rule_result)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>confidence</dt>
+                        <dd>{Number(semanticDebug.rule_confidence ?? 0).toFixed(2)}</dd>
+                      </div>
+                      <div>
+                        <dt>llm_called</dt>
+                        <dd>
+                          <BooleanBadge value={semanticDebug.llm_called} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>llm_event</dt>
+                        <dd>{debugText(semanticLlmGameEvent.type)}</dd>
+                      </div>
+                      <div>
+                        <dt>llm_memory</dt>
+                        <dd>{debugText(semanticLlmMemoryCandidate.type)}</dd>
+                      </div>
+                      <div>
+                        <dt>final_event</dt>
+                        <dd>{debugText(semanticFinalGameEvent.type)}</dd>
+                      </div>
+                      <div>
+                        <dt>final_memory</dt>
+                        <dd>{debugText(semanticFinalMemoryCandidate.type)}</dd>
+                      </div>
+                      <div>
+                        <dt>skip_reason</dt>
+                        <dd>{debugText(semanticDebug.skip_reason)}</dd>
+                      </div>
+                      <div>
+                        <dt>parse_error</dt>
+                        <dd className={semanticDebug.parse_error ? "debugError" : ""}>
+                          {debugText(semanticDebug.parse_error)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>latency_ms</dt>
+                        <dd>{Number(semanticDebug.latency_ms ?? 0).toFixed(0)}</dd>
+                      </div>
+                    </dl>
+                  </section>
 
-                <section className="debugSection">
-                  <h3>Semantic Extraction</h3>
-                  <dl className="debugFacts">
-                    <div>
-                      <dt>latest_user</dt>
-                      <dd>{debugText(semanticDebug.latest_user_message)}</dd>
-                    </div>
-                    <div>
-                      <dt>rule_result</dt>
-                      <dd>{debugText(semanticRuleResult.type ?? semanticRuleResult.event ?? semanticDebug.rule_result)}</dd>
-                    </div>
-                    <div>
-                      <dt>confidence</dt>
-                      <dd>{Number(semanticDebug.rule_confidence ?? 0).toFixed(2)}</dd>
-                    </div>
-                    <div>
-                      <dt>llm_called</dt>
-                      <dd>
-                        <BooleanBadge value={semanticDebug.llm_called} />
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>llm_result.game_event.type</dt>
-                      <dd>{debugText(semanticLlmGameEvent.type)}</dd>
-                    </div>
-                    <div>
-                      <dt>llm_result.memory_candidate.type</dt>
-                      <dd>{debugText(semanticLlmMemoryCandidate.type)}</dd>
-                    </div>
-                    <div>
-                      <dt>final_decision.game_event.type</dt>
-                      <dd>{debugText(semanticFinalGameEvent.type)}</dd>
-                    </div>
-                    <div>
-                      <dt>final_decision.memory_candidate.type</dt>
-                      <dd>{debugText(semanticFinalMemoryCandidate.type)}</dd>
-                    </div>
-                    <div>
-                      <dt>skip_reason</dt>
-                      <dd>{debugText(semanticDebug.skip_reason)}</dd>
-                    </div>
-                    <div>
-                      <dt>parse_error</dt>
-                      <dd className={semanticDebug.parse_error ? "debugError" : ""}>
-                        {debugText(semanticDebug.parse_error)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>latency_ms</dt>
-                      <dd>{Number(semanticDebug.latency_ms ?? 0).toFixed(0)}</dd>
-                    </div>
-                  </dl>
-                </section>
+                  <details className="rawJsonDetails">
+                    <summary>Raw JSON</summary>
+                    <pre className="debugJson">
+                      {JSON.stringify(
+                        {
+                          game_session: gameSessionDebug,
+                          semantic_extraction: semanticDebug,
+                          memory_debug: memoryDebug,
+                          memory_profile: memoryProfile,
+                          pending_memory: pendingMemories,
+                          prompt_preview: promptPreview,
+                          settings: appSettings,
+                          chat: {
+                            intent: chatDebug.intent,
+                            selected_model: chatDebug.selected_model,
+                            last_latency_ms: chatDebug.total_latency_ms,
+                            llm_latency_ms: chatDebug.llm_latency_ms,
+                            memory_latency_ms: chatDebug.memory_latency_ms,
+                            reasoning_enabled: chatDebug.thinking_enabled,
+                            reasoning_effort: chatDebug.reasoning_effort,
+                            reply_segments_count: chatDebug.reply_segments_count,
+                            segmenter_mode: chatDebug.segmenter_mode,
+                            last_interim_placeholder_shown: lastInterimPlaceholderShown,
+                            last_response_latency_ms: lastResponseLatencyMs
+                          },
+                          lastError: lastError || null
+                        },
+                        null,
+                        2
+                      )}
+                    </pre>
+                  </details>
+                </div>
+              )}
+            </section>
+          )}
 
-                <section className="debugSection">
-                  <h3>Pending Memory</h3>
-                  <div className="pendingMemoryList">
-                    {pendingMemories.map((memory) => (
-                      <article className="pendingMemoryItem" key={memory.id}>
-                        <p>{memory.text}</p>
-                        <div className="pendingMemoryMeta">
-                          {memory.type} / {memory.source} / {memory.status} / {memory.confidence.toFixed(2)}
-                        </div>
-                        <div className="pendingMemoryEvidence">{pendingEvidenceSummary(memory)}</div>
-                        <div className="pendingMemoryActions">
-                          <button
-                            className="smallButton"
-                            type="button"
-                            disabled={pendingMemoryBusyId === memory.id}
-                            onClick={() => void handlePendingMemory(memory.id, "accept")}
-                          >
-                            Accept
-                          </button>
-                          <button
-                            className="smallButton"
-                            type="button"
-                            disabled={pendingMemoryBusyId === memory.id}
-                            onClick={() => void handlePendingMemory(memory.id, "ignore")}
-                          >
-                            Ignore
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                    {pendingMemories.length === 0 && <p className="emptyDebugText">无待确认记忆</p>}
-                  </div>
-                </section>
-
-                <section className="debugSection">
-                  <h3>Prompt Preview</h3>
+          {debugPanelVisible && (
+            <section className="panel foldPanel" aria-label="Prompt Preview">
+              <button
+                className="foldHeader"
+                aria-expanded={promptPreviewOpen}
+                onClick={() => setPromptPreviewOpen((open) => !open)}
+              >
+                <span>Prompt Preview</span>
+                {promptPreviewOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+              {promptPreviewOpen && (
+                <div className="debugPanel">
                   <dl className="debugFacts">
                     <div>
                       <dt>persona_mode</dt>
@@ -683,21 +779,21 @@ export function App() {
                     </div>
                     <div>
                       <dt>prompt_order</dt>
-                      <dd>{promptPreview.prompt_order.join(" → ") || "无"}</dd>
+                      <dd>{promptPreview.prompt_order.join(" -> ") || "无"}</dd>
                     </div>
                     <div>
-                      <dt>session_focus_summary</dt>
+                      <dt>session_focus</dt>
                       <dd>{debugText(sessionFocusSummary.prompt_line ?? sessionFocusSummary.boss)}</dd>
                     </div>
                     <div>
-                      <dt>game_state_summary</dt>
+                      <dt>game_state</dt>
                       <dd>
                         {debugText(gameStateSummary.current_game)} / {bossName(gameStateSummary.current_boss)} /{" "}
                         {debugText(gameStateSummary.current_activity)} / {debugText(gameStateSummary.freshness)}
                       </dd>
                     </div>
                     <div>
-                      <dt>memory_summary</dt>
+                      <dt>memory</dt>
                       <dd>
                         injected {injectedMemory.length} / skipped {skippedMemory.length}
                       </dd>
@@ -730,72 +826,11 @@ export function App() {
                       {promptPreview.warnings.length === 0 && <li>无</li>}
                     </ul>
                   </div>
-                </section>
-
-                <details className="rawJsonDetails">
-                  <summary>Raw JSON</summary>
-                  <pre className="debugJson">
-                    {JSON.stringify(
-                      {
-                        game_session: gameSessionDebug,
-                        semantic_extraction: semanticDebug,
-                        memory_debug: memoryDebug,
-                        memory_profile: memoryProfile,
-                        pending_memory: pendingMemories,
-                        prompt_preview: promptPreview,
-                        settings: appSettings,
-                        chat: {
-                          intent: chatDebug.intent,
-                          selected_model: chatDebug.selected_model,
-                          last_latency_ms: chatDebug.total_latency_ms,
-                          llm_latency_ms: chatDebug.llm_latency_ms,
-                          memory_latency_ms: chatDebug.memory_latency_ms,
-                          reasoning_enabled: chatDebug.thinking_enabled,
-                          reasoning_effort: chatDebug.reasoning_effort,
-                          reply_segments_count: chatDebug.reply_segments_count,
-                          segmenter_mode: chatDebug.segmenter_mode,
-                          last_interim_placeholder_shown: lastInterimPlaceholderShown,
-                          last_response_latency_ms: lastResponseLatencyMs
-                        },
-                        lastError: lastError || null
-                      },
-                      null,
-                      2
-                    )}
-                  </pre>
-                </details>
-              </div>
-            )}
-          </section>
+                </div>
+              )}
+            </section>
           )}
         </aside>
-
-        <section className="chatPanel" aria-label="聊天面板">
-          <div className="messages">
-            {messages.map((message) => (
-              <article className={`message ${message.role}`} key={message.id}>
-                <span>{message.role === "user" ? "你" : "Rei"}</span>
-                <p>{message.text}</p>
-              </article>
-            ))}
-          </div>
-
-          <form className="composer" onSubmit={sendMessage}>
-            <button className="iconButton disabled" type="button" aria-label="按住说话实验功能" disabled>
-              <Mic size={18} />
-            </button>
-            <input
-              aria-label="聊天输入"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="问 Margit、路线、装备，或者随便说点什么。"
-            />
-            <button className="sendButton" type="submit" disabled={sending || !input.trim()}>
-              <Send size={18} />
-              <span>{sending ? "发送中" : "发送"}</span>
-            </button>
-          </form>
-        </section>
       </section>
     </main>
   );

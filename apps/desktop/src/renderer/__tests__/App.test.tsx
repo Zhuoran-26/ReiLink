@@ -248,16 +248,32 @@ describe("App", () => {
     await screen.findByText("已连接");
   });
 
+  it("renders the polished companion layout sections", async () => {
+    render(<App />);
+
+    await screen.findByText("已连接");
+    expect(screen.getByRole("region", { name: "主聊天区域" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "设置与调试" })).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByText("Pending Memory")).toBeInTheDocument();
+    expect(screen.getByText("Game Session")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Debug Panel/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Prompt Preview/i })).toBeInTheDocument();
+    expect(screen.queryByText("Semantic Extraction")).not.toBeInTheDocument();
+  });
+
   it("shows running game status", async () => {
     render(<App />);
-    await screen.findByText("艾尔登法环：运行中");
+    await waitFor(() => expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("恶兆妖鬼 Margit").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("boss_attempt").length).toBeGreaterThan(0);
   });
 
   it("renders settings panel values", async () => {
     render(<App />);
 
     expect(await screen.findByLabelText("Persona Mode")).toHaveValue("minimal");
-    expect(screen.getByLabelText("Debug Panel")).toHaveValue("show");
+    expect(screen.getByRole("combobox", { name: "Debug Panel" })).toHaveValue("show");
     expect(screen.getByLabelText("Memory")).toHaveValue("enabled");
     expect(screen.getByLabelText("Pending Memory Mode")).toHaveValue("manual");
     expect(screen.getByLabelText("Response Length")).toHaveValue("normal");
@@ -287,11 +303,11 @@ describe("App", () => {
   it("hides debug panel through settings", async () => {
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /调试/i }));
-    await screen.findByText("Game Session");
-    await userEvent.selectOptions(screen.getByLabelText("Debug Panel"), "hide");
+    await screen.findByRole("button", { name: /Debug Panel/i });
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Debug Panel" }), "hide");
 
-    await waitFor(() => expect(screen.queryByRole("button", { name: /调试/i })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Debug Panel/i })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Prompt Preview/i })).not.toBeInTheDocument();
   });
 
   it("sends chat and renders user plus assistant messages", async () => {
@@ -481,22 +497,29 @@ describe("App", () => {
 
   it("toggles debug panel", async () => {
     render(<App />);
-    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
-    await waitFor(() => expect(screen.getByText("Game Session")).toBeInTheDocument());
+
+    await screen.findByText("Game Session");
     expect(screen.getByText("current_game")).toBeInTheDocument();
     expect(screen.getByText("current_boss")).toBeInTheDocument();
     expect(screen.getByText("freshness")).toBeInTheDocument();
     expect(screen.getByText("last_attempted")).toBeInTheDocument();
     expect(screen.getByText("last_cleared")).toBeInTheDocument();
+    expect(screen.queryByText("Semantic Extraction")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Debug Panel/i }));
+    await waitFor(() => expect(screen.getByText("Semantic Extraction")).toBeInTheDocument());
     expect(screen.getByText("Semantic Extraction")).toBeInTheDocument();
     expect(screen.getByText("llm_called")).toBeInTheDocument();
     expect(screen.getAllByText("guide_preference").length).toBeGreaterThan(0);
-    expect(screen.getByText("Prompt Preview")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Prompt Preview/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Prompt Preview/i }));
+    await waitFor(() => expect(screen.getByText("persona_mode")).toBeInTheDocument());
     expect(screen.getByText("persona_mode")).toBeInTheDocument();
     expect(screen.getByText("prompt_order")).toBeInTheDocument();
     expect(screen.getByText("current_user_message")).toBeInTheDocument();
-    expect(screen.getByText("session_focus_summary")).toBeInTheDocument();
-    expect(screen.getByText("game_state_summary")).toBeInTheDocument();
+    expect(screen.getByText("session_focus")).toBeInTheDocument();
+    expect(screen.getByText("game_state")).toBeInTheDocument();
     expect(screen.getByText("Memory injected")).toBeInTheDocument();
     expect(screen.getByText("Memory skipped")).toBeInTheDocument();
     expect(screen.getByText("Pending Memory")).toBeInTheDocument();
@@ -506,8 +529,8 @@ describe("App", () => {
     expect(screen.getByText("Warnings")).toBeInTheDocument();
     expect(screen.getByText("Raw JSON")).toBeInTheDocument();
     expect(screen.getByText("Raw JSON").closest("details")).not.toHaveAttribute("open");
-    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
-    await waitFor(() => expect(screen.queryByText("Game Session")).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Debug Panel/i }));
+    await waitFor(() => expect(screen.queryByText("Semantic Extraction")).not.toBeInTheDocument());
   });
 
   it("falls back to game session debug data and shows empty warnings as none", async () => {
@@ -540,9 +563,9 @@ describe("App", () => {
     );
 
     render(<App />);
-    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Prompt Preview/i }));
 
-    const gameStateSection = screen.getByText("Prompt Preview").closest("section");
+    const gameStateSection = screen.getByText("game_state").closest("section");
     expect(gameStateSection).not.toBeNull();
     expect(gameStateSection?.textContent).toContain("恶兆妖鬼 Margit");
     expect(gameStateSection?.textContent).toContain("boss_attempt");
@@ -554,7 +577,6 @@ describe("App", () => {
 
   it("accepts pending memory from the debug panel", async () => {
     render(<App />);
-    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
     await userEvent.click(await screen.findByRole("button", { name: "Accept" }));
 
     await waitFor(() =>
@@ -587,13 +609,12 @@ describe("App", () => {
     );
 
     render(<App />);
-    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
     expect(await screen.findByText("无待确认记忆")).toBeInTheDocument();
   });
 
   it("calls debug reset and clear endpoints", async () => {
     render(<App />);
-    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Debug Panel/i }));
 
     await userEvent.click(await screen.findByRole("button", { name: "Reset Game Session" }));
     await waitFor(() =>
