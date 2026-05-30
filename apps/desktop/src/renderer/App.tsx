@@ -9,6 +9,7 @@ import {
   MemoryDebugResponse,
   PendingMemory,
   PromptPreviewResponse,
+  SemanticExtractionDebugResponse,
   UserProfileMemory
 } from "../shared/api";
 
@@ -95,6 +96,18 @@ const emptyPromptPreview: PromptPreviewResponse = {
   warnings: []
 };
 
+const emptySemanticExtractionDebug: SemanticExtractionDebugResponse = {
+  latest_user_message: null,
+  rule_result: null,
+  rule_confidence: 0,
+  llm_called: false,
+  llm_result: null,
+  final_decision: null,
+  skip_reason: null,
+  latency_ms: 0,
+  parse_error: null
+};
+
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 
@@ -143,6 +156,10 @@ const pendingEvidenceSummary = (memory: PendingMemory) => {
 
 const firstDefined = (...values: unknown[]) => values.find((value) => value !== null && value !== undefined && value !== "");
 
+function BooleanBadge({ value }: { value: boolean }) {
+  return <span className={`boolBadge ${value ? "true" : "false"}`}>{value ? "true" : "false"}</span>;
+}
+
 export function App() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [gameStatus, setGameStatus] = useState<GameStatus>(idleStatus);
@@ -150,9 +167,11 @@ export function App() {
   const [memoryDebug, setMemoryDebug] = useState<MemoryDebugResponse>(emptyMemoryDebug);
   const [chatDebug, setChatDebug] = useState<ChatDebugResponse>(emptyChatDebug);
   const [gameSessionDebug, setGameSessionDebug] = useState<GameSessionDebugResponse>(emptyGameSessionDebug);
+  const [semanticDebug, setSemanticDebug] = useState<SemanticExtractionDebugResponse>(emptySemanticExtractionDebug);
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
   const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
+  const [debugActionBusy, setDebugActionBusy] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。" }
   ]);
@@ -173,6 +192,7 @@ export function App() {
       setMemoryDebug(await api.memoryDebug());
       setChatDebug(await api.chatDebug());
       setGameSessionDebug(await api.gameSessionDebug());
+      setSemanticDebug(await api.semanticExtractionDebug());
       setPromptPreview(await api.promptPreview());
       setPendingMemories(await api.pendingMemories());
     } catch (error) {
@@ -256,6 +276,27 @@ export function App() {
     }
   };
 
+  const handleDebugAction = async (
+    action: "refresh" | "reset-game-session" | "reset-memory" | "clear-pending"
+  ) => {
+    setDebugActionBusy(action);
+    try {
+      setLastError("");
+      if (action === "reset-game-session") {
+        await api.resetGameSession();
+      } else if (action === "reset-memory") {
+        await api.resetMemory();
+      } else if (action === "clear-pending") {
+        await api.clearPendingMemories();
+      }
+      await refreshStatus();
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : "debug action failed");
+    } finally {
+      setDebugActionBusy("");
+    }
+  };
+
   const statusLabel = useMemo(() => {
     if (backendStatus === "checking") return "检查中";
     return backendStatus === "connected" ? "已连接" : "未连接";
@@ -278,6 +319,14 @@ export function App() {
   const memorySummary = asRecord(promptPreview.memory_summary);
   const injectedMemory = asArray(memorySummary.injected);
   const skippedMemory = asArray(memorySummary.skipped);
+  const semanticRuleResult = asRecord(semanticDebug.rule_result);
+  const semanticLlmResult = asRecord(semanticDebug.llm_result);
+  const semanticLlmGameEvent = asRecord(semanticLlmResult.game_event);
+  const semanticLlmMemoryCandidate = asRecord(semanticLlmResult.memory_candidate);
+  const semanticFinalDecision = asRecord(semanticDebug.final_decision);
+  const semanticFinalGameEvent = asRecord(semanticFinalDecision.game_event);
+  const semanticFinalMemoryCandidate = asRecord(semanticFinalDecision.memory_candidate);
+  const recentBossHistory = gameSessionDebug.boss_history.slice(0, 5);
 
   return (
     <main className="shell">
@@ -327,101 +376,145 @@ export function App() {
             {debugOpen && (
               <div className="debugPanel">
                 <section className="debugSection">
-                  <h3>Prompt Preview</h3>
-                  <dl className="debugFacts">
-                    <div>
-                      <dt>Persona mode</dt>
-                      <dd>{promptPreview.persona_mode}</dd>
-                    </div>
-                    <div>
-                      <dt>Prompt order</dt>
-                      <dd>{promptPreview.prompt_order.join(" → ") || "无"}</dd>
-                    </div>
-                    <div>
-                      <dt>Current user message</dt>
-                      <dd>{debugText(promptPreview.current_user_message)}</dd>
-                    </div>
-                  </dl>
+                  <h3>Debug Actions</h3>
+                  <div className="debugActions">
+                    <button
+                      className="smallButton"
+                      type="button"
+                      disabled={debugActionBusy !== ""}
+                      onClick={() => void handleDebugAction("refresh")}
+                    >
+                      Refresh Debug
+                    </button>
+                    <button
+                      className="smallButton"
+                      type="button"
+                      disabled={debugActionBusy !== ""}
+                      onClick={() => void handleDebugAction("reset-game-session")}
+                    >
+                      Reset Game Session
+                    </button>
+                    <button
+                      className="smallButton"
+                      type="button"
+                      disabled={debugActionBusy !== ""}
+                      onClick={() => void handleDebugAction("reset-memory")}
+                    >
+                      Reset Memory
+                    </button>
+                    <button
+                      className="smallButton"
+                      type="button"
+                      disabled={debugActionBusy !== ""}
+                      onClick={() => void handleDebugAction("clear-pending")}
+                    >
+                      Clear Pending Memory
+                    </button>
+                  </div>
                 </section>
 
                 <section className="debugSection">
-                  <h3>Session Focus</h3>
+                  <h3>Game Session</h3>
                   <dl className="debugFacts">
                     <div>
-                      <dt>Boss</dt>
-                      <dd>{debugText(sessionFocusSummary.boss)}</dd>
+                      <dt>current_game</dt>
+                      <dd>{debugText(gameSessionDebug.current_game)}</dd>
                     </div>
                     <div>
-                      <dt>Source</dt>
-                      <dd>{debugText(sessionFocusSummary.source)}</dd>
+                      <dt>current_boss</dt>
+                      <dd>{debugText(gameSessionDebug.current_boss?.name)}</dd>
                     </div>
                     <div>
-                      <dt>Prompt line</dt>
-                      <dd>{debugText(sessionFocusSummary.prompt_line)}</dd>
+                      <dt>freshness</dt>
+                      <dd>{debugText(gameSessionDebug.current_boss?.freshness)}</dd>
+                    </div>
+                    <div>
+                      <dt>activity</dt>
+                      <dd>{debugText(gameSessionDebug.current_activity)}</dd>
+                    </div>
+                    <div>
+                      <dt>last_boss</dt>
+                      <dd>{debugText(gameSessionDebug.last_boss)}</dd>
+                    </div>
+                    <div>
+                      <dt>last_attempted</dt>
+                      <dd>{debugText(gameSessionDebug.last_attempted_boss)}</dd>
+                    </div>
+                    <div>
+                      <dt>last_cleared</dt>
+                      <dd>{debugText(gameSessionDebug.last_cleared_boss)}</dd>
+                    </div>
+                    <div>
+                      <dt>deaths</dt>
+                      <dd>{gameSessionDebug.death_count}</dd>
+                    </div>
+                    <div>
+                      <dt>frustration</dt>
+                      <dd>{gameSessionDebug.frustration_count}</dd>
                     </div>
                   </dl>
+                  <ul className="debugList" aria-label="Recent boss history">
+                    {recentBossHistory.map((boss, index) => (
+                      <li key={`${boss.name}-${boss.status}-${index}`}>
+                        {boss.name} / {boss.status} / {boss.freshness} / {boss.mention_count}
+                      </li>
+                    ))}
+                    {recentBossHistory.length === 0 && <li>无</li>}
+                  </ul>
                 </section>
 
                 <section className="debugSection">
-                  <h3>Game State Summary</h3>
+                  <h3>Semantic Extraction</h3>
                   <dl className="debugFacts">
                     <div>
-                      <dt>Current game</dt>
-                      <dd>{debugText(gameStateSummary.current_game)}</dd>
+                      <dt>latest_user</dt>
+                      <dd>{debugText(semanticDebug.latest_user_message)}</dd>
                     </div>
                     <div>
-                      <dt>Current boss</dt>
-                      <dd>{bossName(gameStateSummary.current_boss)}</dd>
+                      <dt>rule_result</dt>
+                      <dd>{debugText(semanticRuleResult.type ?? semanticRuleResult.event ?? semanticDebug.rule_result)}</dd>
                     </div>
                     <div>
-                      <dt>Activity</dt>
-                      <dd>{debugText(gameStateSummary.current_activity)}</dd>
+                      <dt>confidence</dt>
+                      <dd>{Number(semanticDebug.rule_confidence ?? 0).toFixed(2)}</dd>
                     </div>
                     <div>
-                      <dt>Freshness</dt>
-                      <dd>{debugText(gameStateSummary.freshness)}</dd>
-                    </div>
-                    <div>
-                      <dt>Deaths / frustration</dt>
+                      <dt>llm_called</dt>
                       <dd>
-                        {debugText(gameStateSummary.death_count, "0")} / {debugText(gameStateSummary.frustration_count, "0")}
+                        <BooleanBadge value={semanticDebug.llm_called} />
                       </dd>
                     </div>
                     <div>
-                      <dt>Last attempted</dt>
-                      <dd>{debugText(gameStateSummary.last_attempted_boss)}</dd>
+                      <dt>llm_result.game_event.type</dt>
+                      <dd>{debugText(semanticLlmGameEvent.type)}</dd>
                     </div>
                     <div>
-                      <dt>Last cleared</dt>
-                      <dd>{debugText(gameStateSummary.last_cleared_boss)}</dd>
+                      <dt>llm_result.memory_candidate.type</dt>
+                      <dd>{debugText(semanticLlmMemoryCandidate.type)}</dd>
+                    </div>
+                    <div>
+                      <dt>final_decision.game_event.type</dt>
+                      <dd>{debugText(semanticFinalGameEvent.type)}</dd>
+                    </div>
+                    <div>
+                      <dt>final_decision.memory_candidate.type</dt>
+                      <dd>{debugText(semanticFinalMemoryCandidate.type)}</dd>
+                    </div>
+                    <div>
+                      <dt>skip_reason</dt>
+                      <dd>{debugText(semanticDebug.skip_reason)}</dd>
+                    </div>
+                    <div>
+                      <dt>parse_error</dt>
+                      <dd className={semanticDebug.parse_error ? "debugError" : ""}>
+                        {debugText(semanticDebug.parse_error)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>latency_ms</dt>
+                      <dd>{Number(semanticDebug.latency_ms ?? 0).toFixed(0)}</dd>
                     </div>
                   </dl>
-                  <ul className="debugList" aria-label="Boss history">
-                    {gameStateSummary.boss_history.map((item, index) => (
-                      <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
-                    ))}
-                    {gameStateSummary.boss_history.length === 0 && <li>无</li>}
-                  </ul>
-                </section>
-
-                <section className="debugSection">
-                  <h3>Memory Injected</h3>
-                  <ul className="debugList">
-                    {injectedMemory.map((item, index) => (
-                      <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
-                    ))}
-                    {injectedMemory.length === 0 && <li>无</li>}
-                  </ul>
-                </section>
-
-                <section className="debugSection">
-                  <h3>Memory Skipped</h3>
-                  <ul className="debugList">
-                    {skippedMemory.map((item, index) => (
-                      <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
-                    ))}
-                    {skippedMemory.length === 0 && <li>无</li>}
-                  </ul>
                 </section>
 
                 <section className="debugSection">
@@ -431,7 +524,7 @@ export function App() {
                       <article className="pendingMemoryItem" key={memory.id}>
                         <p>{memory.text}</p>
                         <div className="pendingMemoryMeta">
-                          {memory.type} / {memory.source} / {memory.confidence.toFixed(2)}
+                          {memory.type} / {memory.source} / {memory.status} / {memory.confidence.toFixed(2)}
                         </div>
                         <div className="pendingMemoryEvidence">{pendingEvidenceSummary(memory)}</div>
                         <div className="pendingMemoryActions">
@@ -454,69 +547,103 @@ export function App() {
                         </div>
                       </article>
                     ))}
-                    {pendingMemories.length === 0 && <p className="emptyDebugText">无</p>}
+                    {pendingMemories.length === 0 && <p className="emptyDebugText">无待确认记忆</p>}
                   </div>
                 </section>
 
                 <section className="debugSection">
-                  <h3>Warnings</h3>
-                  <ul className="debugList">
-                    {promptPreview.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                    {promptPreview.warnings.length === 0 && <li>无</li>}
-                  </ul>
+                  <h3>Prompt Preview</h3>
+                  <dl className="debugFacts">
+                    <div>
+                      <dt>persona_mode</dt>
+                      <dd>{promptPreview.persona_mode}</dd>
+                    </div>
+                    <div>
+                      <dt>current_user_message</dt>
+                      <dd>{debugText(promptPreview.current_user_message)}</dd>
+                    </div>
+                    <div>
+                      <dt>prompt_order</dt>
+                      <dd>{promptPreview.prompt_order.join(" → ") || "无"}</dd>
+                    </div>
+                    <div>
+                      <dt>session_focus_summary</dt>
+                      <dd>{debugText(sessionFocusSummary.prompt_line ?? sessionFocusSummary.boss)}</dd>
+                    </div>
+                    <div>
+                      <dt>game_state_summary</dt>
+                      <dd>
+                        {debugText(gameStateSummary.current_game)} / {bossName(gameStateSummary.current_boss)} /{" "}
+                        {debugText(gameStateSummary.current_activity)} / {debugText(gameStateSummary.freshness)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>memory_summary</dt>
+                      <dd>
+                        injected {injectedMemory.length} / skipped {skippedMemory.length}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="debugSubgroup">
+                    <h4>Memory injected</h4>
+                    <ul className="debugList">
+                      {injectedMemory.map((item, index) => (
+                        <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
+                      ))}
+                      {injectedMemory.length === 0 && <li>无</li>}
+                    </ul>
+                  </div>
+                  <div className="debugSubgroup">
+                    <h4>Memory skipped</h4>
+                    <ul className="debugList">
+                      {skippedMemory.map((item, index) => (
+                        <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
+                      ))}
+                      {skippedMemory.length === 0 && <li>无</li>}
+                    </ul>
+                  </div>
+                  <div className="debugSubgroup">
+                    <h4>Warnings</h4>
+                    <ul className="debugList">
+                      {promptPreview.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                      {promptPreview.warnings.length === 0 && <li>无</li>}
+                    </ul>
+                  </div>
                 </section>
 
-                <pre className="debugJson">
-                  {JSON.stringify(
-                    {
-                      gameStatus,
-                      personaId: "rei_like",
-                      provider: "由后端配置",
-                      memory: {
-                        written: memoryDebug.memory_written,
-                        current_boss: memoryProfile.current_boss,
-                        repeated_struggles: memoryProfile.repeated_struggles,
-                        preferred_tone: memoryProfile.preferred_tone,
-                        emotional_note: memoryDebug.emotional_note ?? memoryProfile.emotional_notes.at(-1) ?? null,
-                        recent_episode_count: memoryDebug.recent_episode_count
+                <details className="rawJsonDetails">
+                  <summary>Raw JSON</summary>
+                  <pre className="debugJson">
+                    {JSON.stringify(
+                      {
+                        game_session: gameSessionDebug,
+                        semantic_extraction: semanticDebug,
+                        memory_debug: memoryDebug,
+                        memory_profile: memoryProfile,
+                        pending_memory: pendingMemories,
+                        prompt_preview: promptPreview,
+                        chat: {
+                          intent: chatDebug.intent,
+                          selected_model: chatDebug.selected_model,
+                          last_latency_ms: chatDebug.total_latency_ms,
+                          llm_latency_ms: chatDebug.llm_latency_ms,
+                          memory_latency_ms: chatDebug.memory_latency_ms,
+                          reasoning_enabled: chatDebug.thinking_enabled,
+                          reasoning_effort: chatDebug.reasoning_effort,
+                          reply_segments_count: chatDebug.reply_segments_count,
+                          segmenter_mode: chatDebug.segmenter_mode,
+                          last_interim_placeholder_shown: lastInterimPlaceholderShown,
+                          last_response_latency_ms: lastResponseLatencyMs
+                        },
+                        lastError: lastError || null
                       },
-                      pending_memory: pendingMemories,
-                      memory_provenance: memoryDebug.items,
-                      game_session: {
-                        current_game: gameSessionDebug.current_game,
-                        current_boss: gameSessionDebug.current_boss?.name ?? null,
-                        current_boss_confidence: gameSessionDebug.current_boss?.confidence ?? null,
-                        current_boss_age_hours: gameSessionDebug.current_boss?.age_hours ?? null,
-                        current_boss_is_fresh: gameSessionDebug.current_boss?.is_fresh ?? false,
-                        last_boss: gameSessionDebug.last_boss,
-                        last_attempted_boss: gameSessionDebug.last_attempted_boss,
-                        last_cleared_boss: gameSessionDebug.last_cleared_boss,
-                        boss_history: gameSessionDebug.boss_history,
-                        death_count: gameSessionDebug.death_count,
-                        frustration_count: gameSessionDebug.frustration_count,
-                        last_game_intent: gameSessionDebug.last_game_intent
-                      },
-                      chat: {
-                        intent: chatDebug.intent,
-                        selected_model: chatDebug.selected_model,
-                        last_latency_ms: chatDebug.total_latency_ms,
-                        llm_latency_ms: chatDebug.llm_latency_ms,
-                        memory_latency_ms: chatDebug.memory_latency_ms,
-                        reasoning_enabled: chatDebug.thinking_enabled,
-                        reasoning_effort: chatDebug.reasoning_effort,
-                        reply_segments_count: chatDebug.reply_segments_count,
-                        segmenter_mode: chatDebug.segmenter_mode,
-                        last_interim_placeholder_shown: lastInterimPlaceholderShown,
-                        last_response_latency_ms: lastResponseLatencyMs
-                      },
-                      lastError: lastError || null
-                    },
-                    null,
-                    2
-                  )}
-                </pre>
+                      null,
+                      2
+                    )}
+                  </pre>
+                </details>
               </div>
             )}
           </section>

@@ -193,7 +193,7 @@ input {
   overflow: auto;
   display: grid;
   gap: 10px;
-  max-height: 360px;
+  max-height: 520px;
   margin: 12px 0 0;
   color: #b8c4d1;
   font-size: 12px;
@@ -246,6 +246,47 @@ input {
 
 .debugList li {
   overflow-wrap: anywhere;
+}
+
+.debugActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.debugSubgroup {
+  display: grid;
+  gap: 6px;
+}
+
+.debugSubgroup h4 {
+  margin: 0;
+  color: #aeb7c2;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.boolBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid #39414b;
+  border-radius: 999px;
+  background: #151b24;
+}
+
+.boolBadge.true {
+  color: #9af0bd;
+  border-color: #2b6945;
+}
+
+.boolBadge.false {
+  color: #aeb7c2;
+}
+
+.debugError {
+  color: #ffb4a8;
 }
 
 .pendingMemoryList {
@@ -302,6 +343,22 @@ input {
   color: #8f9aa8;
   font: inherit;
   white-space: pre-wrap;
+}
+
+.rawJsonDetails {
+  border: 1px solid #303741;
+  border-radius: 8px;
+  background: #111720;
+}
+
+.rawJsonDetails summary {
+  cursor: pointer;
+  padding: 10px;
+  color: #d8dee6;
+}
+
+.rawJsonDetails .debugJson {
+  padding: 0 10px 10px;
 }
 
 .chatPanel {

@@ -121,6 +121,18 @@ export type PromptPreviewResponse = {
   warnings: string[];
 };
 
+export type SemanticExtractionDebugResponse = {
+  latest_user_message: string | null;
+  rule_result: Record<string, unknown> | null;
+  rule_confidence: number;
+  llm_called: boolean;
+  llm_result: Record<string, unknown> | null;
+  final_decision: Record<string, unknown> | null;
+  skip_reason: string | null;
+  latency_ms: number;
+  parse_error: string | null;
+};
+
 export type PendingMemory = {
   id: string;
   type: "game_progress" | "user_preference" | "emotional_pattern" | "relationship_preference" | "playstyle";
@@ -155,11 +167,13 @@ export const api = {
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),
   chatDebug: () => request<ChatDebugResponse>("/api/debug/chat"),
   gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
+  semanticExtractionDebug: () => request<SemanticExtractionDebugResponse>("/api/debug/semantic-extraction/latest"),
   promptPreview: (sessionId = "default") => request<PromptPreviewResponse>(`/api/debug/prompt-preview?session_id=${encodeURIComponent(sessionId)}`),
   pendingMemories: () => request<PendingMemory[]>("/api/memory/pending"),
   acceptPendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/accept`, { method: "POST" }),
   ignorePendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/ignore`, { method: "POST" }),
   clearPendingMemories: () => request<{ status: "cleared" }>("/api/memory/pending/clear", { method: "POST" }),
+  resetGameSession: () => request<{ status: string }>("/api/debug/game-session/reset", { method: "POST" }),
   resetMemory: () => request<{ status: "reset" }>("/api/memory/reset", { method: "POST" }),
   chat: (message: string, sessionId = "default") =>
     request<ChatResponse>("/api/chat", {

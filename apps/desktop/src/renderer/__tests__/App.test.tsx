@@ -113,6 +113,24 @@ const promptPreview = {
   warnings: ["memory boss conflicts with fresh game state"]
 };
 
+const semanticExtractionDebug = {
+  latest_user_message: "我喜欢简短的游戏攻略",
+  rule_result: { game_event: { type: "none" }, memory_candidate: { type: "guide_preference" } },
+  rule_confidence: 0.65,
+  llm_called: true,
+  llm_result: {
+    game_event: { type: "none" },
+    memory_candidate: { type: "guide_preference" }
+  },
+  final_decision: {
+    game_event: { type: "none" },
+    memory_candidate: { type: "guide_preference" }
+  },
+  skip_reason: null,
+  latency_ms: 42,
+  parse_error: null
+};
+
 const pendingMemories = [
   {
     id: "pending-1",
@@ -132,11 +150,24 @@ const pendingMemories = [
 
 const pendingMemoryResponse = (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/memory/pending")) return Response.json(pendingMemories);
+  if (url.endsWith("/api/memory/pending/clear") && init?.method === "POST") {
+    return Response.json({ status: "cleared" });
+  }
   if (url.includes("/api/memory/pending/pending-1/accept") && init?.method === "POST") {
     return Response.json({ ...pendingMemories[0], status: "accepted" });
   }
   if (url.includes("/api/memory/pending/pending-1/ignore") && init?.method === "POST") {
     return Response.json({ ...pendingMemories[0], status: "ignored" });
+  }
+  return null;
+};
+
+const debugActionResponse = (url: string, init?: RequestInit) => {
+  if (url.endsWith("/api/debug/game-session/reset") && init?.method === "POST") {
+    return Response.json({ status: "reset" });
+  }
+  if (url.endsWith("/api/memory/reset") && init?.method === "POST") {
+    return Response.json({ status: "reset" });
   }
   return null;
 };
@@ -158,6 +189,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return debugAction;
         const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return pendingResponse;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
@@ -166,6 +199,7 @@ describe("App", () => {
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
         if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
         if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return Response.json(chatResponse);
@@ -210,6 +244,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return Promise.resolve(debugAction);
         const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return Promise.resolve(pendingResponse);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
@@ -218,6 +254,7 @@ describe("App", () => {
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
         if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(semanticExtractionDebug));
         if (url.includes("/api/debug/prompt-preview")) return Promise.resolve(Response.json(promptPreview));
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return new Promise<Response>((resolve) => {
@@ -258,6 +295,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return Promise.resolve(debugAction);
         const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return Promise.resolve(pendingResponse);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
@@ -266,6 +305,7 @@ describe("App", () => {
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
         if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(semanticExtractionDebug));
         if (url.includes("/api/debug/prompt-preview")) return Promise.resolve(Response.json(promptPreview));
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return new Promise<Response>((resolve) => {
@@ -313,6 +353,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return Promise.resolve(debugAction);
         const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return Promise.resolve(pendingResponse);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
@@ -321,6 +363,7 @@ describe("App", () => {
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json({ ...chatDebug, reply_segments_count: 3, segmenter_mode: "strategy" }));
         if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(semanticExtractionDebug));
         if (url.includes("/api/debug/prompt-preview")) return Promise.resolve(Response.json(promptPreview));
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           return Promise.resolve(
@@ -365,35 +408,41 @@ describe("App", () => {
   it("toggles debug panel", async () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: /调试/i }));
-    await waitFor(() => expect(screen.getByText(/personaId/)).toBeInTheDocument());
-    expect(screen.getAllByText(/current_boss/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/memory_provenance/)).toBeInTheDocument();
-    expect(screen.getByText(/game_session/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Game Session")).toBeInTheDocument());
+    expect(screen.getByText("current_game")).toBeInTheDocument();
+    expect(screen.getByText("current_boss")).toBeInTheDocument();
+    expect(screen.getByText("freshness")).toBeInTheDocument();
+    expect(screen.getByText("last_attempted")).toBeInTheDocument();
+    expect(screen.getByText("last_cleared")).toBeInTheDocument();
+    expect(screen.getByText("Semantic Extraction")).toBeInTheDocument();
+    expect(screen.getByText("llm_called")).toBeInTheDocument();
+    expect(screen.getAllByText("guide_preference").length).toBeGreaterThan(0);
     expect(screen.getByText("Prompt Preview")).toBeInTheDocument();
-    expect(screen.getByText("Persona mode")).toBeInTheDocument();
-    expect(screen.getByText("Prompt order")).toBeInTheDocument();
-    expect(screen.getByText("Current user message")).toBeInTheDocument();
-    expect(screen.getByText("Session Focus")).toBeInTheDocument();
-    expect(screen.getByText("Game State Summary")).toBeInTheDocument();
-    expect(screen.getByText("Memory Injected")).toBeInTheDocument();
-    expect(screen.getByText("Memory Skipped")).toBeInTheDocument();
+    expect(screen.getByText("persona_mode")).toBeInTheDocument();
+    expect(screen.getByText("prompt_order")).toBeInTheDocument();
+    expect(screen.getByText("current_user_message")).toBeInTheDocument();
+    expect(screen.getByText("session_focus_summary")).toBeInTheDocument();
+    expect(screen.getByText("game_state_summary")).toBeInTheDocument();
+    expect(screen.getByText("Memory injected")).toBeInTheDocument();
+    expect(screen.getByText("Memory skipped")).toBeInTheDocument();
     expect(screen.getByText("Pending Memory")).toBeInTheDocument();
     expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ignore" })).toBeInTheDocument();
     expect(screen.getByText("Warnings")).toBeInTheDocument();
-    expect(screen.queryByText(/prompt_preview/)).not.toBeInTheDocument();
-    expect(screen.getByText(/selected_model/)).toBeInTheDocument();
-    expect(screen.getByText(/reply_segments_count/)).toBeInTheDocument();
+    expect(screen.getByText("Raw JSON")).toBeInTheDocument();
+    expect(screen.getByText("Raw JSON").closest("details")).not.toHaveAttribute("open");
     await userEvent.click(screen.getByRole("button", { name: /调试/i }));
-    await waitFor(() => expect(screen.queryByText(/personaId/)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Game Session")).not.toBeInTheDocument());
   });
 
   it("falls back to game session debug data and shows empty warnings as none", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string) => {
-        const pendingResponse = pendingMemoryResponse(url);
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return debugAction;
+        const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return pendingResponse;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
@@ -401,6 +450,7 @@ describe("App", () => {
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
         if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
         if (url.includes("/api/debug/prompt-preview")) {
           return Response.json({
             ...promptPreview,
@@ -416,12 +466,12 @@ describe("App", () => {
     render(<App />);
     await userEvent.click(screen.getByRole("button", { name: /调试/i }));
 
-    const gameStateSection = screen.getByText("Game State Summary").closest("section");
+    const gameStateSection = screen.getByText("Prompt Preview").closest("section");
     expect(gameStateSection).not.toBeNull();
-    expect(within(gameStateSection as HTMLElement).getAllByText("恶兆妖鬼 Margit").length).toBeGreaterThan(0);
-    expect(within(gameStateSection as HTMLElement).getByText("boss_attempt")).toBeInTheDocument();
+    expect(gameStateSection?.textContent).toContain("恶兆妖鬼 Margit");
+    expect(gameStateSection?.textContent).toContain("boss_attempt");
 
-    const warningsSection = screen.getByText("Warnings").closest("section");
+    const warningsSection = screen.getByText("Warnings").closest(".debugSubgroup");
     expect(warningsSection).not.toBeNull();
     expect(within(warningsSection as HTMLElement).getByText("无")).toBeInTheDocument();
   });
@@ -434,6 +484,59 @@ describe("App", () => {
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/memory/pending/pending-1/accept"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+  });
+
+  it("shows empty pending memory state", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return debugAction;
+        if (url.endsWith("/api/memory/pending")) return Response.json([]);
+        if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
+        if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
+        if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
+        if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+        if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
+        if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
+        return new Response("missing", { status: 404 });
+      })
+    );
+
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
+    expect(await screen.findByText("无待确认记忆")).toBeInTheDocument();
+  });
+
+  it("calls debug reset and clear endpoints", async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /调试/i }));
+
+    await userEvent.click(await screen.findByRole("button", { name: "Reset Game Session" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/debug/game-session/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Reset Memory" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/memory/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear Pending Memory" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/memory/pending/clear"),
         expect.objectContaining({ method: "POST" })
       )
     );
