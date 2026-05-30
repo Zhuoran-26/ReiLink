@@ -15,6 +15,7 @@ from app.modules.dialogue_agent.repetition import (
     is_repetitive_reply,
 )
 from app.modules.dialogue_agent.segmenter import segment_reply
+from app.modules.dialogue_agent.semantic_extraction import extract_semantics
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.dialogue_agent.style import apply_rei_style
 from app.modules.dialogue_agent.validator import validate_or_repair
@@ -62,12 +63,19 @@ class DialogueAgent:
         recent_assistant_replies = self.store.recent_assistant_replies(request.session_id)
         session_focus = resolve_session_focus(request.message, recent_user_messages)
         now = datetime.now(timezone.utc)
+        semantic_extraction = extract_semantics(
+            request.message,
+            intent_result.intent,
+            self.game_session.debug_state(now=now),
+            session_focus_boss=session_focus.boss,
+        )
         self.game_session.update_from_user_message(
             request.message,
             intent_result.intent,
             game_status.model_dump(),
             now,
             session_focus_boss=session_focus.boss,
+            semantic_game_event=(semantic_extraction.get("final_decision") or {}).get("game_event"),
         )
         game_session_summary = self.game_session.build_prompt_summary(now=now, session_focus_boss=session_focus.boss)
         session_context_items = [item["text"] for item in self.store.recent_context(request.session_id)]
@@ -132,9 +140,16 @@ class DialogueAgent:
         )
         memory_start = time.perf_counter()
         if background_tasks is not None:
-            background_tasks.add_task(self._safe_memory_update, request.message, reply, intent_result.intent, now)
+            background_tasks.add_task(
+                self._safe_memory_update,
+                request.message,
+                reply,
+                intent_result.intent,
+                now,
+                semantic_extraction,
+            )
         else:
-            self._safe_memory_update(request.message, reply, intent_result.intent, now)
+            self._safe_memory_update(request.message, reply, intent_result.intent, now, semantic_extraction)
         memory_latency_ms = int((time.perf_counter() - memory_start) * 1000)
         total_latency_ms = int((time.perf_counter() - total_start) * 1000)
         metrics = ChatLatencyMetrics(
@@ -172,7 +187,14 @@ class DialogueAgent:
             timestamp=now,
         )
 
-    def _safe_memory_update(self, user_message: str, reply: str, intent: str, timestamp: datetime) -> None:
+    def _safe_memory_update(
+        self,
+        user_message: str,
+        reply: str,
+        intent: str,
+        timestamp: datetime,
+        semantic_extraction: dict[str, Any] | None = None,
+    ) -> None:
         start = time.perf_counter()
         try:
             pending = PendingMemoryQueue().generate_and_enqueue(
@@ -181,6 +203,7 @@ class DialogueAgent:
                 intent,
                 timestamp,
                 self.game_session.debug_state(now=timestamp),
+                semantic_extraction=semantic_extraction,
             )
         except Exception:
             logger.exception("memory update error")

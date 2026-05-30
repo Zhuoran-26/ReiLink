@@ -198,3 +198,51 @@ def test_game_session_does_not_guess_boss_without_evidence(tmp_path):
 
     assert state.current_boss is None
     assert "暂无明确当前 boss" not in store.build_prompt_summary()
+
+
+def test_semantic_failed_attempt_updates_current_boss_without_clearing(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在恶兆妖鬼", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message(
+        "差点过",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(minutes=1),
+        semantic_game_event={
+            "type": "failed_attempt",
+            "boss_name": "Margit",
+            "confidence": 0.82,
+            "should_update_current_boss": True,
+        },
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "恶兆妖鬼 Margit"
+    assert state.current_activity == "boss_failed"
+    assert state.last_attempted_boss == "恶兆妖鬼 Margit"
+    assert state.last_cleared_boss is None
+
+
+def test_low_confidence_semantic_event_does_not_override_rules(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在恶兆妖鬼", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message(
+        "差点过",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(minutes=1),
+        semantic_game_event={
+            "type": "boss_cleared",
+            "boss_name": "Margit",
+            "confidence": 0.4,
+            "should_update_current_boss": True,
+        },
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "恶兆妖鬼 Margit"
+    assert state.last_cleared_boss is None

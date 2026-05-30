@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.modules.dialogue_agent.metrics import get_last_chat_metrics
 from app.modules.dialogue_agent.prompt_preview import build_prompt_preview
 from app.modules.dialogue_agent.providers import get_provider_info
+from app.modules.dialogue_agent.semantic_extraction import get_latest_semantic_extraction_debug
 from app.modules.game_session.state import GameSessionStore
 from app.modules.memory.profile import PlayerMemory
 from app.modules.memory.store import ConversationStore
@@ -51,3 +52,8 @@ def debug_game_session() -> dict:
 def reset_game_session() -> dict:
     GameSessionStore().reset()
     return {"status": "reset"}
+
+
+@router.get("/debug/semantic-extraction/latest")
+def debug_semantic_extraction_latest() -> dict:
+    return get_latest_semantic_extraction_debug()

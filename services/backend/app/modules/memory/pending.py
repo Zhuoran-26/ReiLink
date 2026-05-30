@@ -70,8 +70,16 @@ class PendingMemoryQueue:
         intent: str,
         timestamp: datetime,
         game_state_summary: dict[str, Any] | None = None,
+        semantic_extraction: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        candidates = self.generate_candidates(user_message, assistant_reply, intent, timestamp, game_state_summary)
+        candidates = self.generate_candidates(
+            user_message,
+            assistant_reply,
+            intent,
+            timestamp,
+            game_state_summary,
+            semantic_extraction=semantic_extraction,
+        )
         return self.enqueue(candidates)
 
     def generate_candidates(
@@ -81,6 +89,7 @@ class PendingMemoryQueue:
         intent: str,
         timestamp: datetime,
         game_state_summary: dict[str, Any] | None = None,
+        semantic_extraction: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         del assistant_reply, intent
         normalized_message = normalize_terminology(user_message.strip())
@@ -94,6 +103,22 @@ class PendingMemoryQueue:
             "game_state_summary": _brief_game_state(game_summary),
         }
         candidates: list[PendingMemory] = []
+
+        if _mentions_short_guide_preference(normalized_message):
+            candidates.append(
+                PendingMemory(
+                    id=str(uuid.uuid4()),
+                    type="user_preference",
+                    text="玩家喜欢简短的游戏攻略",
+                    source="explicit_user_statement",
+                    confidence=0.94,
+                    status="pending",
+                    created_at=now,
+                    updated_at=now,
+                    evidence=evidence,
+                    payload={"preference": "喜欢简短的游戏攻略"},
+                )
+            )
 
         if _mentions_long_guide_preference(normalized_message):
             candidates.append(
@@ -142,6 +167,27 @@ class PendingMemoryQueue:
                     payload={"preferred_tone": "克制但有回应"},
                 )
             )
+
+        explicit_preference = _explicit_personal_preference(normalized_message)
+        if explicit_preference:
+            candidates.append(
+                PendingMemory(
+                    id=str(uuid.uuid4()),
+                    type="user_preference",
+                    text=f"玩家{explicit_preference}",
+                    source="explicit_user_statement",
+                    confidence=0.9,
+                    status="pending",
+                    created_at=now,
+                    updated_at=now,
+                    evidence=evidence,
+                    payload={"preference": explicit_preference},
+                )
+            )
+
+        semantic_candidate = _semantic_memory_candidate(semantic_extraction, now, evidence)
+        if semantic_candidate:
+            candidates.append(semantic_candidate)
 
         current_boss = _boss_name(game_summary.get("current_boss"))
         last_cleared_boss = _boss_name(game_summary.get("last_cleared_boss"))
@@ -296,6 +342,67 @@ def _contains_sensitive_text(text: str) -> bool:
     return bool(SENSITIVE_PATTERN.search(text))
 
 
+SEMANTIC_MEMORY_TYPE_MAP = {
+    "guide_preference": "user_preference",
+    "playstyle_preference": "playstyle",
+    "persona_preference": "relationship_preference",
+    "personal_preference": "user_preference",
+    "game_progress": "game_progress",
+}
+
+
+def _semantic_memory_candidate(
+    semantic_extraction: dict[str, Any] | None,
+    created_at: str,
+    evidence: dict[str, Any],
+) -> PendingMemory | None:
+    if not isinstance(semantic_extraction, dict):
+        return None
+    final_decision = semantic_extraction.get("final_decision")
+    if not isinstance(final_decision, dict):
+        return None
+    candidate = final_decision.get("memory_candidate")
+    if not isinstance(candidate, dict) or not candidate.get("should_create_pending"):
+        return None
+    confidence = float(candidate.get("confidence") or 0)
+    if confidence < 0.75:
+        return None
+    source_type = str(candidate.get("type") or "none")
+    pending_type = SEMANTIC_MEMORY_TYPE_MAP.get(source_type)
+    text = normalize_terminology(str(candidate.get("text") or "")).strip()
+    if not pending_type or not text or _contains_sensitive_text(text):
+        return None
+    return PendingMemory(
+        id=str(uuid.uuid4()),
+        type=pending_type,
+        text=text,
+        source="semantic_extraction",
+        confidence=confidence,
+        status="pending",
+        created_at=created_at,
+        updated_at=created_at,
+        evidence={**evidence, "semantic_reason": str(candidate.get("reason") or "")[:160]},
+        payload=_semantic_payload(source_type, text),
+    )
+
+
+def _semantic_payload(source_type: str, text: str) -> dict[str, Any]:
+    if source_type == "playstyle_preference":
+        return {"playstyle": text.removeprefix("玩家")}
+    if source_type == "persona_preference":
+        return {"preferred_tone": text.removeprefix("玩家")}
+    if source_type in {"guide_preference", "personal_preference"}:
+        return {"preference": text.removeprefix("玩家")}
+    if source_type == "game_progress":
+        return {"progress_status": "semantic_candidate", "summary": text}
+    return {}
+
+
+def _mentions_short_guide_preference(message: str) -> bool:
+    compact = _normalize_text(message)
+    return bool(re.search(r"(?:喜欢|喜歡|希望|想要|尽量|盡量).{0,8}(?:简短|短一点|短點|一句|少一点|少點).{0,8}(?:攻略|提醒|回答)", compact))
+
+
 def _mentions_long_guide_preference(message: str) -> bool:
     compact = _normalize_text(message)
     patterns = (
@@ -320,6 +427,20 @@ def _mentions_spirit_ashes_preference(message: str) -> bool:
 def _mentions_companion_style_preference(message: str) -> bool:
     compact = _normalize_text(message)
     return bool(re.search(r"(?:喜欢|希望).{0,8}(?:克制|冷淡|安静).{0,8}(?:回应|陪|说话)", compact))
+
+
+def _explicit_personal_preference(message: str) -> str | None:
+    compact = _normalize_text(message)
+    if not re.search(r"(?:记住|記住|记得|記得|帮我记|幫我記)", compact):
+        return None
+    match = re.search(r"我(喜欢|喜歡|不喜欢|不喜歡)([^，。,.!?！？]{1,24})", compact)
+    if not match:
+        return None
+    verb = "喜欢" if match.group(1) in {"喜欢", "喜歡"} else "不喜欢"
+    value = normalize_terminology(match.group(2)).strip()
+    if not value:
+        return None
+    return f"{verb}{value}"
 
 
 def _explicitly_mentions_current_attempt(message: str) -> bool:

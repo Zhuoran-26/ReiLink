@@ -207,6 +207,35 @@ def test_prompt_preview_warns_on_negated_clear_phrase():
     assert "current user message contains negated clear phrase" in data["warnings"]
 
 
+def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
+    client.post("/api/chat", json={"message": "我喜欢简短的游戏攻略", "session_id": "api-semantic-debug"})
+
+    response = client.get("/api/debug/semantic-extraction/latest")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "latest_user_message",
+        "rule_result",
+        "rule_confidence",
+        "llm_called",
+        "llm_result",
+        "final_decision",
+        "skip_reason",
+        "latency_ms",
+        "parse_error",
+    } <= data.keys()
+    assert data["latest_user_message"] == "我喜欢简短的游戏攻略"
+    assert data["llm_called"] is False
+    assert data["final_decision"]["memory_candidate"]["should_create_pending"] is True
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "api_key" not in serialized
+    assert "deepseek_api_key" not in serialized
+    assert "authorization" not in serialized
+    assert "bearer" not in serialized
+    assert "sk-" not in serialized
+
+
 def test_memory_reset_route():
     client.post("/api/chat", json={"message": "我不喜欢长篇攻略", "session_id": "api-memory-reset"})
     assert client.get("/api/memory/pending").json()

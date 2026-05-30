@@ -147,6 +147,7 @@ class GameSessionStore:
         game_status: dict[str, Any],
         timestamp: datetime,
         session_focus_boss: str | None = None,
+        semantic_game_event: dict[str, Any] | None = None,
     ) -> GameSessionState:
         state = self.load()
         now = _ensure_aware(timestamp)
@@ -156,6 +157,8 @@ class GameSessionStore:
         fails_boss = _fails_current_boss(user_message)
         clears_boss = _clears_current_boss(user_message)
         abandons_boss = _abandons_current_boss(user_message)
+        semantic_event_type = _semantic_event_type(semantic_game_event)
+        semantic_applied = False
         game_name = _detect_current_game(game_status, user_message, intent, explicit_boss or focused_boss)
 
         state.last_user_intent = intent
@@ -183,6 +186,8 @@ class GameSessionStore:
                 state.current_activity = "boss_failed"
         elif clears_boss and state.current_boss:
             _clear_boss(state, state.current_boss.name, now, "current_context")
+        elif _apply_semantic_game_event(state, semantic_game_event, focused_boss, now):
+            semantic_applied = True
         elif abandons_boss and state.current_boss:
             _abandon_current_boss(state, now)
         elif abandons_boss:
@@ -203,9 +208,9 @@ class GameSessionStore:
             intent,
             explicit_boss or focused_boss or (state.current_boss.name if state.current_boss else None),
             state.current_activity,
-            fails_boss,
-            clears_boss,
-            abandons_boss,
+            fails_boss or (semantic_applied and semantic_event_type == "failed_attempt"),
+            clears_boss or (semantic_applied and semantic_event_type == "boss_cleared"),
+            abandons_boss or (semantic_applied and semantic_event_type == "boss_switch"),
         )
         if game_intent:
             state.last_game_intent = game_intent
@@ -499,6 +504,60 @@ def _context_boss_for_failure(
         if boss_name and _history_is_recent(state, boss_name, timestamp):
             return boss_name
     return None
+
+
+def _semantic_event_type(event: dict[str, Any] | None) -> str | None:
+    if not isinstance(event, dict):
+        return None
+    event_type = str(event.get("type") or "")
+    return event_type if event_type in {"failed_attempt", "boss_cleared", "boss_switch", "boss_attempt"} else None
+
+
+def _apply_semantic_game_event(
+    state: GameSessionState,
+    event: dict[str, Any] | None,
+    focused_boss: str | None,
+    timestamp: datetime,
+) -> bool:
+    event_type = _semantic_event_type(event)
+    if not event_type or not isinstance(event, dict):
+        return False
+    confidence = float(event.get("confidence") or 0)
+    if confidence < 0.7 or event.get("should_update_current_boss") is False:
+        return False
+
+    boss_name = normalize_terminology(str(event.get("boss_name") or focused_boss or "")).strip()
+    if not boss_name and state.current_boss and event_type in {"failed_attempt", "boss_cleared", "boss_attempt"}:
+        boss_name = state.current_boss.name
+    if not state.current_game and boss_name:
+        state.current_game = "Elden Ring"
+
+    if event_type == "failed_attempt":
+        if boss_name:
+            _mark_boss_failed(state, boss_name, timestamp, "semantic_extraction", confidence)
+        else:
+            state.current_activity = "boss_failed"
+        return True
+    if event_type == "boss_cleared":
+        if not boss_name:
+            return False
+        _clear_boss(state, boss_name, timestamp, "semantic_extraction")
+        return True
+    if event_type == "boss_switch":
+        if boss_name:
+            _set_current_boss(state, boss_name, timestamp, "semantic_extraction", confidence)
+        elif state.current_boss:
+            _abandon_current_boss(state, timestamp)
+        else:
+            state.current_activity = "boss_switching"
+        return True
+    if event_type == "boss_attempt":
+        if boss_name:
+            _set_current_boss(state, boss_name, timestamp, "semantic_extraction", confidence)
+        else:
+            state.current_activity = "boss_attempt"
+        return True
+    return False
 
 
 def _history_is_recent(state: GameSessionState, boss_name: str, timestamp: datetime) -> bool:

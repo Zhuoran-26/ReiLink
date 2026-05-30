@@ -42,6 +42,21 @@ def test_explicit_long_guide_preference_creates_pending_memory():
     assert created[0]["status"] == "pending"
 
 
+def test_explicit_short_guide_preference_creates_pending_memory():
+    created = PendingMemoryQueue().generate_and_enqueue(
+        "我喜欢简短的游戏攻略",
+        "",
+        "casual_chat",
+        _now(),
+        {},
+    )
+
+    assert len(created) == 1
+    assert created[0]["type"] == "user_preference"
+    assert created[0]["text"] == "玩家喜欢简短的游戏攻略"
+    assert created[0]["source"] == "explicit_user_statement"
+
+
 def test_explicit_spirit_ashes_preference_creates_playstyle_pending_memory():
     created = PendingMemoryQueue().generate_and_enqueue(
         "我不想召骨灰",
@@ -54,6 +69,62 @@ def test_explicit_spirit_ashes_preference_creates_playstyle_pending_memory():
     assert len(created) == 1
     assert created[0]["type"] == "playstyle"
     assert "骨灰" in created[0]["text"]
+
+
+def test_plain_personal_preference_without_remember_is_not_pending_memory():
+    created = PendingMemoryQueue().generate_and_enqueue(
+        "我喜欢吃菠萝",
+        "",
+        "casual_chat",
+        _now(),
+        {},
+    )
+
+    assert created == []
+    assert PendingMemoryQueue().list() == []
+
+
+def test_explicit_personal_preference_with_remember_creates_pending_memory():
+    created = PendingMemoryQueue().generate_and_enqueue(
+        "记住我喜欢吃菠萝",
+        "",
+        "casual_chat",
+        _now(),
+        {},
+    )
+
+    assert len(created) == 1
+    assert created[0]["type"] == "user_preference"
+    assert created[0]["text"] == "玩家喜欢吃菠萝"
+    assert created[0]["source"] == "explicit_user_statement"
+
+
+def test_semantic_memory_candidate_creates_pending_memory():
+    semantic = {
+        "final_decision": {
+            "memory_candidate": {
+                "should_create_pending": True,
+                "type": "guide_preference",
+                "text": "玩家喜欢简短提醒",
+                "confidence": 0.86,
+                "reason": "用户表达偏好",
+            }
+        }
+    }
+
+    created = PendingMemoryQueue().generate_and_enqueue(
+        "短一点",
+        "",
+        "casual_chat",
+        _now(),
+        {},
+        semantic_extraction=semantic,
+    )
+
+    assert len(created) == 1
+    assert created[0]["type"] == "user_preference"
+    assert created[0]["text"] == "玩家喜欢简短提醒"
+    assert created[0]["source"] == "semantic_extraction"
 
 
 def test_death_loop_does_not_create_long_term_pending_memory():
