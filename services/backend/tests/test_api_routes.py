@@ -61,6 +61,46 @@ def test_debug_provider_returns_current_provider():
     assert data["persona_mode"] in {"guarded", "minimal"}
 
 
+def test_settings_routes_persist_safe_values():
+    response = client.get("/api/settings")
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "persona_mode",
+        "debug_panel",
+        "memory_enabled",
+        "pending_memory_mode",
+        "response_length",
+        "model_preference",
+    } <= data.keys()
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "api_key" not in serialized
+    assert "deepseek" not in serialized
+
+    updated = client.post(
+        "/api/settings",
+        json={
+            "persona_mode": "minimal",
+            "debug_panel": "hide",
+            "memory_enabled": False,
+            "pending_memory_mode": "manual",
+            "response_length": "short",
+            "model_preference": "pro",
+        },
+    )
+
+    assert updated.status_code == 200
+    saved = updated.json()
+    assert saved["persona_mode"] == "minimal"
+    assert saved["debug_panel"] == "hide"
+    assert saved["memory_enabled"] is False
+    assert saved["pending_memory_mode"] == "manual"
+    assert saved["response_length"] == "short"
+    assert saved["model_preference"] == "pro"
+    assert client.get("/api/settings").json() == saved
+    assert client.get("/api/debug/provider").json()["persona_mode"] == "minimal"
+
+
 def test_debug_chat_returns_last_latency_fields():
     client.post("/api/chat", json={"message": "你好", "session_id": "api-debug-chat"})
 

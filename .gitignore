@@ -37,6 +37,9 @@ data/memory/*.backup.jsonl
 # Local game session state
 data/session/*.json
 
+# Local app settings
+data/settings.json
+
 # Env files
 *.env
 services/backend/*.env

@@ -97,6 +97,24 @@ class PendingMemoryClearResponse(BaseModel):
     status: Literal["cleared"]
 
 
+class AppSettings(BaseModel):
+    persona_mode: Literal["minimal", "guarded"] = "guarded"
+    debug_panel: Literal["show", "hide"] = "show"
+    memory_enabled: bool = True
+    pending_memory_mode: Literal["manual"] = "manual"
+    response_length: Literal["short", "normal"] = "normal"
+    model_preference: Literal["fast", "pro", "auto"] = "auto"
+
+
+class AppSettingsUpdate(BaseModel):
+    persona_mode: Literal["minimal", "guarded"] | None = None
+    debug_panel: Literal["show", "hide"] | None = None
+    memory_enabled: bool | None = None
+    pending_memory_mode: Literal["manual"] | None = None
+    response_length: Literal["short", "normal"] | None = None
+    model_preference: Literal["fast", "pro", "auto"] | None = None
+
+
 class MemoryProvenanceItem(BaseModel):
     source: Literal["profile", "episode", "current_session"]
     field: str

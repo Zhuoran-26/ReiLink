@@ -148,6 +148,30 @@ const pendingMemories = [
   }
 ];
 
+const appSettings = {
+  persona_mode: "minimal",
+  debug_panel: "show",
+  memory_enabled: true,
+  pending_memory_mode: "manual",
+  response_length: "normal",
+  model_preference: "auto"
+};
+
+let appSettingsStore = { ...appSettings };
+
+const resetSettingsResponse = () => {
+  appSettingsStore = { ...appSettings };
+};
+
+const settingsResponse = (url: string, init?: RequestInit) => {
+  if (url.endsWith("/api/settings") && init?.method === "POST") {
+    appSettingsStore = { ...appSettingsStore, ...JSON.parse(String(init.body ?? "{}")) };
+    return Response.json(appSettingsStore);
+  }
+  if (url.endsWith("/api/settings")) return Response.json(appSettingsStore);
+  return null;
+};
+
 const pendingMemoryResponse = (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/memory/pending")) return Response.json(pendingMemories);
   if (url.endsWith("/api/memory/pending/clear") && init?.method === "POST") {
@@ -185,6 +209,7 @@ const chatResponse = {
 describe("App", () => {
   beforeEach(() => {
     let uuid = 0;
+    resetSettingsResponse();
     vi.stubGlobal("crypto", { randomUUID: () => `test-id-${uuid++}` });
     vi.stubGlobal(
       "fetch",
@@ -193,6 +218,8 @@ describe("App", () => {
         if (debugAction) return debugAction;
         const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return pendingResponse;
+        const settings = settingsResponse(url, init);
+        if (settings) return settings;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -226,6 +253,47 @@ describe("App", () => {
     await screen.findByText("艾尔登法环：运行中");
   });
 
+  it("renders settings panel values", async () => {
+    render(<App />);
+
+    expect(await screen.findByLabelText("Persona Mode")).toHaveValue("minimal");
+    expect(screen.getByLabelText("Debug Panel")).toHaveValue("show");
+    expect(screen.getByLabelText("Memory")).toHaveValue("enabled");
+    expect(screen.getByLabelText("Pending Memory Mode")).toHaveValue("manual");
+    expect(screen.getByLabelText("Response Length")).toHaveValue("normal");
+    expect(screen.getByLabelText("Model Preference")).toHaveValue("auto");
+  });
+
+  it("updates settings through the API", async () => {
+    render(<App />);
+
+    await userEvent.selectOptions(await screen.findByLabelText("Persona Mode"), "guarded");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ persona_mode: "guarded" }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Memory"), "disabled");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ memory_enabled: false }) })
+      )
+    );
+  });
+
+  it("hides debug panel through settings", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /调试/i }));
+    await screen.findByText("Game Session");
+    await userEvent.selectOptions(screen.getByLabelText("Debug Panel"), "hide");
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: /调试/i })).not.toBeInTheDocument());
+  });
+
   it("sends chat and renders user plus assistant messages", async () => {
     render(<App />);
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
@@ -248,6 +316,8 @@ describe("App", () => {
         if (debugAction) return Promise.resolve(debugAction);
         const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return Promise.resolve(pendingResponse);
+        const settings = settingsResponse(url, init);
+        if (settings) return Promise.resolve(settings);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -299,6 +369,8 @@ describe("App", () => {
         if (debugAction) return Promise.resolve(debugAction);
         const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return Promise.resolve(pendingResponse);
+        const settings = settingsResponse(url, init);
+        if (settings) return Promise.resolve(settings);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -357,6 +429,8 @@ describe("App", () => {
         if (debugAction) return Promise.resolve(debugAction);
         const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return Promise.resolve(pendingResponse);
+        const settings = settingsResponse(url, init);
+        if (settings) return Promise.resolve(settings);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -444,6 +518,8 @@ describe("App", () => {
         if (debugAction) return debugAction;
         const pendingResponse = pendingMemoryResponse(url, init);
         if (pendingResponse) return pendingResponse;
+        const settings = settingsResponse(url, init);
+        if (settings) return settings;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -496,6 +572,8 @@ describe("App", () => {
         const debugAction = debugActionResponse(url, init);
         if (debugAction) return debugAction;
         if (url.endsWith("/api/memory/pending")) return Response.json([]);
+        const settings = settingsResponse(url, init);
+        if (settings) return settings;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);

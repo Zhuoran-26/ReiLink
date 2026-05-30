@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
   api,
+  AppSettings,
   ChatDebugResponse,
   GameSessionDebugResponse,
   GameStatus,
@@ -108,6 +109,15 @@ const emptySemanticExtractionDebug: SemanticExtractionDebugResponse = {
   parse_error: null
 };
 
+const defaultAppSettings: AppSettings = {
+  persona_mode: "guarded",
+  debug_panel: "show",
+  memory_enabled: true,
+  pending_memory_mode: "manual",
+  response_length: "normal",
+  model_preference: "auto"
+};
+
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 
@@ -172,6 +182,8 @@ export function App() {
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
   const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
   const [debugActionBusy, setDebugActionBusy] = useState("");
+  const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
+  const [settingsBusy, setSettingsBusy] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。" }
   ]);
@@ -187,6 +199,7 @@ export function App() {
       setLastError("");
       await api.health();
       setBackendStatus("connected");
+      setAppSettings(await api.settings());
       setGameStatus(await api.gameStatus());
       setMemoryProfile(await api.memoryProfile());
       setMemoryDebug(await api.memoryDebug());
@@ -198,6 +211,26 @@ export function App() {
     } catch (error) {
       setBackendStatus("disconnected");
       setLastError(error instanceof Error ? error.message : "后端暂时连不上");
+    }
+  };
+
+  const updateAppSettings = async (patch: Partial<AppSettings>) => {
+    const busyKey = Object.keys(patch)[0] ?? "settings";
+    setSettingsBusy(busyKey);
+    try {
+      setLastError("");
+      const updated = await api.updateSettings(patch);
+      setAppSettings(updated);
+      if (patch.debug_panel === "hide") {
+        setDebugOpen(false);
+      } else if (patch.debug_panel === "show") {
+        setDebugOpen(true);
+      }
+      await refreshStatus();
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : "settings update failed");
+    } finally {
+      setSettingsBusy("");
     }
   };
 
@@ -327,6 +360,7 @@ export function App() {
   const semanticFinalGameEvent = asRecord(semanticFinalDecision.game_event);
   const semanticFinalMemoryCandidate = asRecord(semanticFinalDecision.memory_candidate);
   const recentBossHistory = gameSessionDebug.boss_history.slice(0, 5);
+  const debugPanelVisible = appSettings.debug_panel === "show";
 
   return (
     <main className="shell">
@@ -368,7 +402,92 @@ export function App() {
             <p>安静 / 冷淡</p>
           </section>
 
-          <section className="panel">
+          <section className="panel settingsPanel" aria-label="Settings">
+            <div className="panelTitle">
+              <h2>Settings</h2>
+            </div>
+            <div className="settingRows">
+              <label className="settingRow">
+                <span>Persona Mode</span>
+                <select
+                  aria-label="Persona Mode"
+                  disabled={settingsBusy !== ""}
+                  value={appSettings.persona_mode}
+                  onChange={(event) =>
+                    void updateAppSettings({ persona_mode: event.target.value as AppSettings["persona_mode"] })
+                  }
+                >
+                  <option value="minimal">minimal</option>
+                  <option value="guarded">guarded</option>
+                </select>
+              </label>
+              <label className="settingRow">
+                <span>Debug Panel</span>
+                <select
+                  aria-label="Debug Panel"
+                  disabled={settingsBusy !== ""}
+                  value={appSettings.debug_panel}
+                  onChange={(event) =>
+                    void updateAppSettings({ debug_panel: event.target.value as AppSettings["debug_panel"] })
+                  }
+                >
+                  <option value="show">show</option>
+                  <option value="hide">hide</option>
+                </select>
+              </label>
+              <label className="settingRow">
+                <span>Memory</span>
+                <select
+                  aria-label="Memory"
+                  disabled={settingsBusy !== ""}
+                  value={appSettings.memory_enabled ? "enabled" : "disabled"}
+                  onChange={(event) => void updateAppSettings({ memory_enabled: event.target.value === "enabled" })}
+                >
+                  <option value="enabled">enabled</option>
+                  <option value="disabled">disabled</option>
+                </select>
+              </label>
+              <label className="settingRow">
+                <span>Pending Memory Mode</span>
+                <select aria-label="Pending Memory Mode" disabled value={appSettings.pending_memory_mode}>
+                  <option value="manual">manual</option>
+                </select>
+              </label>
+              <label className="settingRow">
+                <span>Response Length</span>
+                <select
+                  aria-label="Response Length"
+                  disabled={settingsBusy !== ""}
+                  value={appSettings.response_length}
+                  onChange={(event) =>
+                    void updateAppSettings({ response_length: event.target.value as AppSettings["response_length"] })
+                  }
+                >
+                  <option value="short">short</option>
+                  <option value="normal">normal</option>
+                </select>
+              </label>
+              <label className="settingRow">
+                <span>Model Preference</span>
+                <select
+                  aria-label="Model Preference"
+                  disabled={settingsBusy !== ""}
+                  value={appSettings.model_preference}
+                  onChange={(event) =>
+                    void updateAppSettings({ model_preference: event.target.value as AppSettings["model_preference"] })
+                  }
+                >
+                  <option value="auto">auto</option>
+                  <option value="fast">fast</option>
+                  <option value="pro">pro</option>
+                </select>
+              </label>
+            </div>
+            <p className="settingHint">本地保存到 settings.json，不包含密钥。</p>
+          </section>
+
+          {debugPanelVisible && (
+            <section className="panel">
             <button className="debugToggle" onClick={() => setDebugOpen((open) => !open)}>
               <span>调试</span>
               {debugOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -624,6 +743,7 @@ export function App() {
                         memory_profile: memoryProfile,
                         pending_memory: pendingMemories,
                         prompt_preview: promptPreview,
+                        settings: appSettings,
                         chat: {
                           intent: chatDebug.intent,
                           selected_model: chatDebug.selected_model,
@@ -647,6 +767,7 @@ export function App() {
               </div>
             )}
           </section>
+          )}
         </aside>
 
         <section className="chatPanel" aria-label="聊天面板">

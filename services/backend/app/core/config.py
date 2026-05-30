@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -61,14 +62,27 @@ class Settings:
     game_session_state_path: Path = session_dir / "game_session_state.json"
     conversations_dir: Path = data_dir / "conversations"
     elden_ring_dir: Path = data_dir / "elden_ring"
+    settings_path: Path = data_dir / "settings.json"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "app://."]
 
 
 settings = Settings()
 
 
+def _runtime_setting(key: str) -> object | None:
+    try:
+        if not settings.settings_path.is_file():
+            return None
+        data = json.loads(settings.settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data.get(key)
+
+
 def active_persona_mode() -> str:
-    mode = settings.persona_mode.lower().strip()
+    mode = str(_runtime_setting("persona_mode") or settings.persona_mode).lower().strip()
     if mode == "minimal":
         return "minimal"
     return "guarded"

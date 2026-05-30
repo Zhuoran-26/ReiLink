@@ -145,6 +145,17 @@ export type PendingMemory = {
   evidence: Record<string, unknown>;
 };
 
+export type AppSettings = {
+  persona_mode: "minimal" | "guarded";
+  debug_panel: "show" | "hide";
+  memory_enabled: boolean;
+  pending_memory_mode: "manual";
+  response_length: "short" | "normal";
+  model_preference: "fast" | "pro" | "auto";
+};
+
+export type AppSettingsUpdate = Partial<AppSettings>;
+
 const API_BASE = import.meta.env.VITE_REILINK_API_BASE ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -161,6 +172,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
+  settings: () => request<AppSettings>("/api/settings"),
+  updateSettings: (settings: AppSettingsUpdate) =>
+    request<AppSettings>("/api/settings", {
+      method: "POST",
+      body: JSON.stringify(settings)
+    }),
   gameStatus: () => request<GameStatus>("/api/game/status"),
   memoryProfile: () => request<UserProfileMemory>("/api/memory/profile"),
   memoryEpisodes: () => request<EpisodeMemory[]>("/api/memory/episodes"),
