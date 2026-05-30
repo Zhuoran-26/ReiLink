@@ -8,7 +8,7 @@ import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from app.core.config import settings
+from app.core.config import active_persona_mode, settings
 from app.core.logging import get_logger
 from app.modules.dialogue_agent.emotion import detect_user_emotion
 from app.modules.dialogue_agent.routing import ModelRoute, select_model_route
@@ -37,6 +37,7 @@ class ProviderInfo:
             "fallback_to_mock": self.fallback_to_mock,
             "env_file_loaded": settings.env_file_loaded,
             "env_file_path": str(settings.env_file_path),
+            "persona_mode": active_persona_mode(),
         }
 
 

@@ -9,19 +9,22 @@ def test_loads_rei_like_persona():
     assert persona["display_name"] == "Rei"
 
 
-def test_prompt_contains_chinese_style_constraints_for_idle_context():
+def test_prompt_contains_chinese_style_constraints_for_idle_context(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {"status": "idle"})
     assert "始终使用中文" in prompt
     assert "默认 1-3 句" in prompt
     assert "Game status" not in prompt
 
 
-def test_prompt_avoids_direct_ip_replication_language():
+def test_prompt_avoids_direct_ip_replication_language(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {})
     assert "不要模仿受版权保护" in prompt
 
 
-def test_prompt_prioritizes_message_over_persona():
+def test_prompt_prioritizes_message_over_persona(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt(
         "rei_like",
         {},
@@ -49,7 +52,8 @@ def test_golden_style_dataset_contains_anchor():
     assert "先观察用户状态" in anchor["why_it_works"]
 
 
-def test_prompt_includes_golden_style_anchor_and_guardrails():
+def test_prompt_includes_golden_style_anchor_and_guardrails(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {})
 
     assert "Golden style anchor" in prompt
@@ -61,7 +65,8 @@ def test_prompt_includes_golden_style_anchor_and_guardrails():
     assert "情感类问题不要解释喜欢、关心、陪伴的抽象概念" in prompt
 
 
-def test_prompt_bans_abstract_counselor_phrases():
+def test_prompt_bans_abstract_counselor_phrases(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {})
 
     for phrase in (
@@ -76,7 +81,8 @@ def test_prompt_bans_abstract_counselor_phrases():
     assert "禁止出现或模仿的抽象解释型回答" in prompt
 
 
-def test_prompt_includes_negative_examples_without_turning_them_into_templates():
+def test_prompt_includes_negative_examples_without_turning_them_into_templates(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {})
 
     assert "Negative examples" in prompt
@@ -85,3 +91,31 @@ def test_prompt_includes_negative_examples_without_turning_them_into_templates()
     assert "已经凌晨了。该停了。" in prompt
     assert "只学习边界" in prompt
     assert "不要机械复读或固定套用" in prompt
+
+
+def test_guarded_and_minimal_modes_can_generate_prompts(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
+    guarded_prompt = PersonaEngine().build_prompt("rei_like", {})
+
+    monkeypatch.setattr(settings, "persona_mode", "minimal")
+    minimal_prompt = PersonaEngine().build_prompt(
+        "rei_like",
+        {"status": "idle"},
+        intent="affection",
+        memory_context="- 玩家当前卡点：女武神",
+        session_context="- 当前会话焦点 boss：女武神",
+        companion_policy="Companion-first Response Policy:\n- 测试策略",
+    )
+
+    assert "Golden style anchor" in guarded_prompt
+    assert "人格模式：minimal" in minimal_prompt
+    assert "安静、克制、低情绪波动" in minimal_prompt
+    assert "括号里的动作或神态少用" in minimal_prompt
+    assert "不要把自己介绍成 ReiLink" in minimal_prompt
+    assert "没有明确证据时，说记不清、忘了，或者追问" in minimal_prompt
+    assert "吧" in minimal_prompt
+    assert "已验证长期记忆" in minimal_prompt
+    assert "当前会话上下文" in minimal_prompt
+    assert "ReiLink 的中文陪伴者" not in minimal_prompt
+    assert "风格参考，不是固定回复" not in minimal_prompt
+    assert "Companion-first Response Policy" not in minimal_prompt

@@ -1,13 +1,15 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 import urllib.error
 
 import pytest
 
+from app.core.config import settings
 from app.modules.dialogue_agent.intent import detect_intent
 from app.modules.dialogue_agent.providers import DeepSeekProvider, LLMResult, MockLLMProvider
+from app.modules.game_session.state import CurrentBoss, GameSessionState, GameSessionStore
 from app.modules.memory.store import ConversationStore
 from app.schemas.api import ChatRequest
 
@@ -208,9 +210,10 @@ def test_dialogue_agent_retries_when_reply_repeats_recent_assistant(tmp_path: Pa
     assert "不要重复刚才的回答" in provider.prompts[-1]
 
 
-def test_followup_progression_policy_is_injected_for_relationship_chain(tmp_path: Path):
+def test_followup_progression_policy_is_injected_for_relationship_chain(monkeypatch, tmp_path: Path):
     from app.modules.dialogue_agent.agent import DialogueAgent
 
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     agent = DialogueAgent()
     agent.store = ConversationStore(tmp_path / "conversations")
     agent.store.append("followup", None, "rei_like", "你喜欢我吗？", "不知道。", datetime.now())
@@ -239,6 +242,89 @@ def test_session_focus_boss_is_injected_for_elliptical_reference(tmp_path: Path)
     assert "当前会话焦点 boss：女武神" in provider.prompts[0]
     assert "不要再问“哪个 boss”" in provider.prompts[0]
     assert "哪个 boss" not in response.reply
+
+
+def test_game_session_state_is_injected_for_fresh_elliptical_reference(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now()
+    agent.game_session.update_from_user_message("我现在卡在女武神", "casual_chat", {}, now)
+    provider = _PromptCapturingProvider(["先缓一下。只看她起手。"])
+    agent.provider = provider
+
+    response = agent.chat(ChatRequest(message="我又死了", session_id="game-state"))
+
+    assert "当前游戏状态：玩家最近在打 女武神" in provider.prompts[0]
+    assert "哪个 boss" not in response.reply
+
+
+def test_session_focus_has_priority_over_stale_game_state(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    old = datetime.now().astimezone() - timedelta(hours=80)
+    agent.game_session.save(
+        GameSessionState(
+            current_game="Elden Ring",
+            current_boss=CurrentBoss("大树守卫", old.isoformat(), 0.9, "current_message", 1),
+            last_updated_at=old.isoformat(),
+        )
+    )
+    agent.store.append("focus-priority", None, "rei_like", "女武神", "嗯。", datetime.now())
+    provider = _PromptCapturingProvider(["先别抢。"])
+    agent.provider = provider
+
+    agent.chat(ChatRequest(message="一直打不过啊", session_id="focus-priority"))
+
+    assert "当前会话焦点 boss：女武神" in provider.prompts[0]
+    assert "当前游戏状态：当前会话焦点是 女武神" in provider.prompts[0]
+    assert "当前游戏状态：曾经提到 大树守卫" not in provider.prompts[0]
+
+
+def test_game_session_switches_to_old_general_for_elliptical_followup(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now()
+    agent.store.append("old-general", None, "rei_like", "我现在卡在女武神", "嗯。", now)
+    agent.store.append("old-general", None, "rei_like", "那我就去打老将欧尼尔", "去吧。", now)
+    agent.game_session.update_from_user_message("我现在卡在女武神", "casual_chat", {}, now)
+    agent.game_session.update_from_user_message("那我就去打老将欧尼尔", "casual_chat", {}, now)
+    provider = _PromptCapturingProvider(["先别急。"])
+    agent.provider = provider
+
+    agent.chat(ChatRequest(message="再试试", session_id="old-general"))
+
+    assert "当前会话焦点 boss：老将欧尼尔" in provider.prompts[0]
+    assert "当前游戏状态：当前会话焦点是 老将欧尼尔" in provider.prompts[0]
+    assert "当前游戏状态：当前会话焦点是 女武神" not in provider.prompts[0]
+
+
+def test_game_session_injects_recent_cleared_boss_history(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now()
+    agent.game_session.update_from_user_message("我现在卡在女武神", "casual_chat", {}, now)
+    agent.game_session.update_from_user_message("那我就去打老将欧尼尔", "casual_chat", {}, now)
+    agent.game_session.update_from_user_message("打过老将了", "casual_chat", {}, now)
+    provider = _PromptCapturingProvider(["刚刚是老将欧尼尔。"])
+    agent.provider = provider
+
+    agent.chat(ChatRequest(message="我刚刚在打什么 boss 来着", session_id="cleared-history"))
+
+    assert "刚刚结束的 boss 是 老将欧尼尔" in provider.prompts[0]
+    assert "当前没有正在打的 boss" in provider.prompts[0]
+    assert "刚刚结束的 boss 是 女武神" not in provider.prompts[0]
 
 
 def test_intent_router_core_cases():

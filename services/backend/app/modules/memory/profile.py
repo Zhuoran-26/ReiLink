@@ -245,6 +245,78 @@ class PlayerMemory:
             ]
         )
 
+    def _episode_summary_exists(self, summary: str) -> bool:
+        normalized = normalize_terminology(summary).strip()
+        if not normalized:
+            return False
+        return any(
+            normalize_terminology(str(episode.get("summary") or "")).strip() == normalized
+            for episode in self.recent_episodes(limit=100)
+        )
+
+    def apply_pending_memory(self, pending: dict[str, Any], timestamp: datetime | None = None) -> None:
+        timestamp = _ensure_aware(timestamp or datetime.now(timezone.utc))
+        normalized = normalize_mapping_values(pending)
+        memory_type = str(normalized.get("type") or "")
+        text = normalize_terminology(str(normalized.get("text") or "")).strip()
+        payload = normalize_mapping_values(normalized.get("payload") or {})
+        evidence = normalize_mapping_values(normalized.get("evidence") or {})
+        if not text:
+            return
+
+        profile = self.load_profile()
+        boss = normalize_terminology(str(payload.get("boss") or "")).strip() or None
+        progress_status = str(payload.get("progress_status") or "")
+        preferred_tone = normalize_terminology(str(payload.get("preferred_tone") or "")).strip() or None
+
+        if memory_type == "game_progress":
+            if not profile.favorite_game:
+                profile.favorite_game = "Elden Ring"
+                profile.memory_updated_at["favorite_game"] = timestamp.isoformat()
+            if boss and progress_status in {"current", "attempting", "failed"}:
+                profile.current_boss = boss
+                profile.memory_updated_at["current_boss"] = timestamp.isoformat()
+            elif boss and progress_status == "cleared" and profile.current_boss == boss:
+                profile.current_boss = None
+                profile.memory_updated_at["current_boss"] = timestamp.isoformat()
+        elif memory_type == "relationship_preference" and preferred_tone:
+            profile.preferred_tone = preferred_tone
+            profile.likes_teasing = "吐槽" in preferred_tone
+            profile.memory_updated_at["preferred_tone"] = timestamp.isoformat()
+        elif memory_type == "user_preference":
+            preference = normalize_terminology(str(payload.get("preference") or "")).strip()
+            if preference:
+                profile.preferred_tone = preference
+                profile.memory_updated_at["preferred_tone"] = timestamp.isoformat()
+        elif memory_type == "emotional_pattern":
+            emotional_state = normalize_terminology(str(payload.get("emotional_state") or text)).strip()
+            if emotional_state and (not profile.emotional_notes or profile.emotional_notes[-1] != emotional_state):
+                profile.emotional_notes = [*profile.emotional_notes[-8:], emotional_state]
+                profile.memory_updated_at["emotional_notes"] = timestamp.isoformat()
+
+        profile.last_seen_at = timestamp.isoformat()
+        self.save_profile(profile)
+
+        episode = _normalize_episode(
+            {
+                "timestamp": timestamp.isoformat(),
+                "intent": f"pending_{memory_type}",
+                "boss": boss if memory_type == "game_progress" and progress_status != "cleared" else None,
+                "struggle": None,
+                "preferred_tone": preferred_tone,
+                "skill_level": None,
+                "emotional_state": payload.get("emotional_state"),
+                "topic": boss or memory_type,
+                "attitude_to_rei": None,
+                "user_name": None,
+                "user_message_sample": str(evidence.get("user_message") or "")[:120],
+                "assistant_reply_sample": "",
+                "summary": text,
+            }
+        )
+        if not self._episode_summary_exists(text):
+            self._append_episode(episode)
+
     def extract_and_update(
         self,
         user_message: str,

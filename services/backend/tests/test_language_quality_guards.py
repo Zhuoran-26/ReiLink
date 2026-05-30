@@ -10,6 +10,7 @@ from app.modules.dialogue_agent.repetition import (
 )
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.dialogue_agent.validator import validate_or_repair
+from app.core.config import settings
 from app.modules.persona_engine.engine import PersonaEngine
 
 POETIC_PHRASES = (
@@ -31,7 +32,8 @@ COUNSELOR_PHRASES = (
 )
 
 
-def test_prompt_contains_anti_poetic_and_anti_counselor_boundaries():
+def test_prompt_contains_anti_poetic_and_anti_counselor_boundaries(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {})
 
     for phrase in POETIC_PHRASES + COUNSELOR_PHRASES:
@@ -39,6 +41,10 @@ def test_prompt_contains_anti_poetic_and_anti_counselor_boundaries():
     assert "不要写诗意旁白" in prompt
     assert "不要反复复用" in prompt
     assert "不要猜具体 boss" in prompt
+    assert "你问得太认真" in prompt
+    assert "不知道怎么接" in prompt
+    assert "回复不要只有“嗯”“知道了”“不会”“我在”" in prompt
+    assert "玩过、懂一点的游戏同伴" in prompt
 
 
 def test_validator_rejects_poetic_ai_copy():
@@ -102,12 +108,15 @@ def test_followup_progression_policy_is_not_a_fixed_reply_template():
 
     assert "连续追问关系或情感" in policy
     assert "不要复述刚才回答" in policy
+    assert "安全但原地打转" in policy
+    assert "每次至少推进一点" in policy
     assert "这些只是方向，不是固定台词" in policy
     assert "但我没有走" not in policy
     assert "这样已经够近了" not in policy
 
 
-def test_repetition_guard_is_injected_into_prompt():
+def test_repetition_guard_is_injected_into_prompt(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
     guard = build_repetition_guard(["我在这里。", "别想太多。"])
 
     prompt = PersonaEngine().build_prompt("rei_like", {}, repetition_guard=guard)

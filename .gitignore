@@ -12,6 +12,8 @@ node_modules/
 npm-debug.log*
 
 # Desktop build and test output
+dist/
+build/
 apps/desktop/dist/
 apps/desktop/dist-electron/
 apps/desktop/test-results/
@@ -23,12 +25,20 @@ data/conversations/*.jsonl
 
 # Local env
 .env
+services/backend/.env
 
 # Local memory data
 data/memory/user_profile.json
 data/memory/episodes.jsonl
+data/memory/pending_memories.jsonl
 data/memory/*.backup.json
 data/memory/*.backup.jsonl
+
+# Local game session state
+data/session/*.json
+
+# Local app settings
+data/settings.json
 
 # Env files
 *.env

@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -42,6 +43,7 @@ class Settings:
     stt_provider: str = os.getenv("STT_PROVIDER", "mock")
     enable_voice: bool = os.getenv("ENABLE_VOICE", "false").lower() == "true"
     enable_debug: bool = os.getenv("ENABLE_DEBUG", "true").lower() == "true"
+    persona_mode: str = os.getenv("PERSONA_MODE", "guarded").lower().strip() or "guarded"
 
     backend_dir: Path = BACKEND_DIR
     repo_root: Path = REPO_ROOT
@@ -51,12 +53,36 @@ class Settings:
     personas_dir: Path = data_dir / "personas"
     persona_style_examples_path: Path = data_dir / "persona" / "rei_style_examples.json"
     persona_golden_style_path: Path = data_dir / "persona" / "rei_golden_style.json"
+    persona_minimal_prompt_path: Path = data_dir / "persona" / "rei_minimal_prompt.json"
     memory_dir: Path = data_dir / "memory"
     user_profile_path: Path = memory_dir / "user_profile.json"
     episodes_path: Path = memory_dir / "episodes.jsonl"
+    pending_memories_path: Path = memory_dir / "pending_memories.jsonl"
+    session_dir: Path = data_dir / "session"
+    game_session_state_path: Path = session_dir / "game_session_state.json"
     conversations_dir: Path = data_dir / "conversations"
     elden_ring_dir: Path = data_dir / "elden_ring"
+    settings_path: Path = data_dir / "settings.json"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "app://."]
 
 
 settings = Settings()
+
+
+def _runtime_setting(key: str) -> object | None:
+    try:
+        if not settings.settings_path.is_file():
+            return None
+        data = json.loads(settings.settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data.get(key)
+
+
+def active_persona_mode() -> str:
+    mode = str(_runtime_setting("persona_mode") or settings.persona_mode).lower().strip()
+    if mode == "minimal":
+        return "minimal"
+    return "guarded"

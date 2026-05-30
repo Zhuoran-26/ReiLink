@@ -1,10 +1,13 @@
 from fastapi import APIRouter
 
-from app.modules.dialogue_agent.providers import get_provider_info
 from app.modules.dialogue_agent.metrics import get_last_chat_metrics
+from app.modules.dialogue_agent.prompt_preview import build_prompt_preview
+from app.modules.dialogue_agent.providers import get_provider_info
+from app.modules.dialogue_agent.semantic_extraction import get_latest_semantic_extraction_debug
+from app.modules.game_session.state import GameSessionStore
 from app.modules.memory.profile import PlayerMemory
 from app.modules.memory.store import ConversationStore
-from app.schemas.api import ChatDebugResponse, MemoryDebugResponse
+from app.schemas.api import ChatDebugResponse, MemoryDebugResponse, PromptPreviewResponse
 
 router = APIRouter(tags=["debug"])
 
@@ -33,3 +36,24 @@ def debug_memory(session_id: str = "default") -> dict:
 @router.get("/debug/chat", response_model=ChatDebugResponse)
 def debug_chat() -> dict:
     return get_last_chat_metrics().as_dict()
+
+
+@router.get("/debug/prompt-preview", response_model=PromptPreviewResponse)
+def debug_prompt_preview(session_id: str = "default") -> dict:
+    return build_prompt_preview(session_id=session_id)
+
+
+@router.get("/debug/game-session")
+def debug_game_session() -> dict:
+    return GameSessionStore().debug_state()
+
+
+@router.post("/debug/game-session/reset")
+def reset_game_session() -> dict:
+    GameSessionStore().reset()
+    return {"status": "reset"}
+
+
+@router.get("/debug/semantic-extraction/latest")
+def debug_semantic_extraction_latest() -> dict:
+    return get_latest_semantic_extraction_debug()

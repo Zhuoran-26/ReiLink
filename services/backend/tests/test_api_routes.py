@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -51,10 +53,52 @@ def test_debug_provider_returns_current_provider():
         "fallback_to_mock",
         "env_file_loaded",
         "env_file_path",
+        "persona_mode",
     } <= data.keys()
     assert isinstance(data["api_key_loaded"], bool)
     assert isinstance(data["fallback_to_mock"], bool)
     assert isinstance(data["env_file_loaded"], bool)
+    assert data["persona_mode"] in {"guarded", "minimal"}
+
+
+def test_settings_routes_persist_safe_values():
+    response = client.get("/api/settings")
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "persona_mode",
+        "debug_panel",
+        "memory_enabled",
+        "pending_memory_mode",
+        "response_length",
+        "model_preference",
+    } <= data.keys()
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "api_key" not in serialized
+    assert "deepseek" not in serialized
+
+    updated = client.post(
+        "/api/settings",
+        json={
+            "persona_mode": "minimal",
+            "debug_panel": "hide",
+            "memory_enabled": False,
+            "pending_memory_mode": "manual",
+            "response_length": "short",
+            "model_preference": "pro",
+        },
+    )
+
+    assert updated.status_code == 200
+    saved = updated.json()
+    assert saved["persona_mode"] == "minimal"
+    assert saved["debug_panel"] == "hide"
+    assert saved["memory_enabled"] is False
+    assert saved["pending_memory_mode"] == "manual"
+    assert saved["response_length"] == "short"
+    assert saved["model_preference"] == "pro"
+    assert client.get("/api/settings").json() == saved
+    assert client.get("/api/debug/provider").json()["persona_mode"] == "minimal"
 
 
 def test_debug_chat_returns_last_latency_fields():
@@ -77,38 +121,177 @@ def test_debug_chat_returns_last_latency_fields():
 
 
 def test_memory_profile_and_episodes_routes():
-    client.post("/api/chat", json={"message": "Margit 我又死了", "session_id": "api-memory"})
+    client.post("/api/chat", json={"message": "我不喜欢长篇攻略", "session_id": "api-memory"})
+
+    pending = client.get("/api/memory/pending")
+    assert pending.status_code == 200
+    pending_items = pending.json()
+    assert pending_items
+    assert pending_items[0]["type"] == "user_preference"
+    assert "payload" not in pending_items[0]
 
     profile = client.get("/api/memory/profile")
     assert profile.status_code == 200
-    assert profile.json()["current_boss"] == "恶兆妖鬼 Margit"
+    assert profile.json()["preferred_tone"] is None
+
+    accepted = client.post(f"/api/memory/pending/{pending_items[0]['id']}/accept")
+    assert accepted.status_code == 200
+    assert accepted.json()["status"] == "accepted"
+
+    profile = client.get("/api/memory/profile")
+    assert profile.status_code == 200
+    assert profile.json()["preferred_tone"] == "不喜欢长篇攻略"
 
     episodes = client.get("/api/memory/episodes")
     assert episodes.status_code == 200
-    assert episodes.json()[0]["boss"] == "恶兆妖鬼 Margit"
+    assert episodes.json()[0]["summary"] == "玩家不喜欢长篇攻略"
 
 
 def test_debug_memory_returns_provenance_items():
-    client.post("/api/chat", json={"message": "Margit 我又死了", "session_id": "api-memory-debug"})
+    session_id = "api-memory-debug"
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "我现在卡在女武神", "session_id": session_id})
+    client.post("/api/chat", json={"message": "我不喜欢长篇攻略", "session_id": session_id})
+    pending_items = client.get("/api/memory/pending").json()
+    assert pending_items
+    preference_item = next(item for item in pending_items if item["type"] == "user_preference")
+    client.post(f"/api/memory/pending/{preference_item['id']}/accept")
 
-    response = client.get("/api/debug/memory?session_id=api-memory-debug")
+    response = client.get(f"/api/debug/memory?session_id={session_id}")
 
     assert response.status_code == 200
     data = response.json()
     assert data["prompt_order"] == ["current_user_message", "current_session", "memory", "persona"]
     assert data["memory_written"] is True
-    assert data["current_boss"] == "恶兆妖鬼 Margit"
     assert data["recent_episode_count"] >= 1
     sources = {item["source"] for item in data["items"]}
-    assert {"current_session", "profile", "episode"} <= sources
+    assert {"current_session", "episode"} <= sources
     assert all(item["text"] for item in data["items"])
+
+    game_data = client.get("/api/debug/game-session").json()
+    assert game_data["current_boss"]["name"] == "女武神"
+
+
+def test_debug_game_session_routes():
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "我现在卡在女武神", "session_id": "api-game-session"})
+
+    response = client.get("/api/debug/game-session")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["current_game"] == "Elden Ring"
+    assert data["current_boss"]["name"] == "女武神"
+    assert data["current_boss"]["confidence"] >= 0.9
+    assert data["current_boss"]["is_fresh"] is True
+    assert {
+        "last_boss",
+        "last_attempted_boss",
+        "last_cleared_boss",
+        "boss_history",
+        "death_count",
+        "frustration_count",
+        "last_game_intent",
+    } <= data.keys()
+    assert data["last_attempted_boss"] == "女武神"
+    assert data["boss_history"][0]["name"] == "女武神"
+
+    reset = client.post("/api/debug/game-session/reset")
+    assert reset.status_code == 200
+    assert reset.json() == {"status": "reset"}
+    assert client.get("/api/debug/game-session").json()["current_boss"] is None
+
+
+def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
+    session_id = "api-prompt-preview"
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "我现在卡在女武神", "session_id": session_id})
+
+    response = client.get(f"/api/debug/prompt-preview?session_id={session_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "persona_mode",
+        "current_user_message",
+        "prompt_order",
+        "session_focus_summary",
+        "game_state_summary",
+        "memory_summary",
+        "final_context_summary",
+        "warnings",
+    } <= data.keys()
+    assert data["persona_mode"] in {"guarded", "minimal"}
+    assert data["current_user_message"] == "我现在卡在女武神"
+    assert data["game_state_summary"]["current_game"] == "Elden Ring"
+    assert data["game_state_summary"]["current_boss"]["name"] == "女武神"
+    assert data["game_state_summary"]["freshness"] == "fresh"
+    assert isinstance(data["memory_summary"]["injected"], list)
+    assert isinstance(data["memory_summary"]["skipped"], list)
+    assert data["final_context_summary"]["raw_prompt_omitted"] is True
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "api_key" not in serialized
+    assert "deepseek_api_key" not in serialized
+    assert "authorization" not in serialized
+
+
+def test_prompt_preview_warns_on_negated_clear_phrase():
+    session_id = "api-prompt-preview-negated-clear"
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "我现在卡在恶兆妖鬼", "session_id": session_id})
+    client.post("/api/chat", json={"message": "还是没打过", "session_id": session_id})
+
+    response = client.get(f"/api/debug/prompt-preview?session_id={session_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["current_user_message"] == "还是没打过"
+    assert data["game_state_summary"]["current_activity"] == "boss_failed"
+    assert data["game_state_summary"]["current_boss"]["name"] == "恶兆妖鬼 Margit"
+    assert data["game_state_summary"]["last_cleared_boss"] != "恶兆妖鬼 Margit"
+    assert "current user message contains negated clear phrase" in data["warnings"]
+
+
+def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
+    client.post("/api/chat", json={"message": "我喜欢简短的游戏攻略", "session_id": "api-semantic-debug"})
+
+    response = client.get("/api/debug/semantic-extraction/latest")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "latest_user_message",
+        "rule_result",
+        "rule_confidence",
+        "raw_rule_confidence",
+        "ambiguity_detected",
+        "llm_called",
+        "llm_result",
+        "final_decision",
+        "fallback_reason",
+        "skip_reason",
+        "why_pending_created",
+        "latency_ms",
+        "parse_error",
+    } <= data.keys()
+    assert data["latest_user_message"] == "我喜欢简短的游戏攻略"
+    assert data["llm_called"] is False
+    assert data["final_decision"]["memory_candidate"]["should_create_pending"] is True
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "api_key" not in serialized
+    assert "deepseek_api_key" not in serialized
+    assert "authorization" not in serialized
+    assert "bearer" not in serialized
+    assert "sk-" not in serialized
 
 
 def test_memory_reset_route():
-    client.post("/api/chat", json={"message": "Margit 我又死了", "session_id": "api-memory-reset"})
+    client.post("/api/chat", json={"message": "我不喜欢长篇攻略", "session_id": "api-memory-reset"})
+    assert client.get("/api/memory/pending").json()
     response = client.post("/api/memory/reset")
 
     assert response.status_code == 200
     assert response.json() == {"status": "reset"}
     assert client.get("/api/memory/profile").json()["current_boss"] is None
     assert client.get("/api/memory/episodes").json() == []
+    assert client.get("/api/memory/pending").json() == []

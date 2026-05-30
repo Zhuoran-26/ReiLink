@@ -75,6 +75,87 @@ export type ChatDebugResponse = {
   segmenter_mode: string | null;
 };
 
+export type GameSessionDebugResponse = {
+  current_game: string | null;
+  current_boss: {
+    name: string;
+    updated_at: string;
+    confidence: number;
+    source: string;
+    mention_count: number;
+    age_hours: number | null;
+    is_fresh: boolean;
+    freshness: string;
+  } | null;
+  last_boss: string | null;
+  last_attempted_boss: string | null;
+  last_cleared_boss: string | null;
+  current_activity: string | null;
+  recent_game_topics: string[];
+  boss_history: Array<{
+    name: string;
+    status: string;
+    updated_at: string;
+    confidence: number;
+    source: string;
+    mention_count: number;
+    last_activity: string | null;
+    age_hours: number | null;
+    freshness: string;
+  }>;
+  frustration_count: number;
+  death_count: number;
+  last_user_intent: string | null;
+  last_game_intent: string | null;
+  last_updated_at: string | null;
+};
+
+export type PromptPreviewResponse = {
+  persona_mode: string;
+  current_user_message: string | null;
+  prompt_order: string[];
+  session_focus_summary: Record<string, unknown>;
+  game_state_summary: Record<string, unknown>;
+  memory_summary: Record<string, unknown>;
+  final_context_summary: Record<string, unknown>;
+  warnings: string[];
+};
+
+export type SemanticExtractionDebugResponse = {
+  latest_user_message: string | null;
+  rule_result: Record<string, unknown> | null;
+  rule_confidence: number;
+  llm_called: boolean;
+  llm_result: Record<string, unknown> | null;
+  final_decision: Record<string, unknown> | null;
+  skip_reason: string | null;
+  latency_ms: number;
+  parse_error: string | null;
+};
+
+export type PendingMemory = {
+  id: string;
+  type: "game_progress" | "user_preference" | "emotional_pattern" | "relationship_preference" | "playstyle";
+  text: string;
+  source: "game_session" | "conversation" | "explicit_user_statement";
+  confidence: number;
+  status: "pending" | "accepted" | "ignored";
+  created_at: string;
+  updated_at: string;
+  evidence: Record<string, unknown>;
+};
+
+export type AppSettings = {
+  persona_mode: "minimal" | "guarded";
+  debug_panel: "show" | "hide";
+  memory_enabled: boolean;
+  pending_memory_mode: "manual";
+  response_length: "short" | "normal";
+  model_preference: "fast" | "pro" | "auto";
+};
+
+export type AppSettingsUpdate = Partial<AppSettings>;
+
 const API_BASE = import.meta.env.VITE_REILINK_API_BASE ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -91,11 +172,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
+  settings: () => request<AppSettings>("/api/settings"),
+  updateSettings: (settings: AppSettingsUpdate) =>
+    request<AppSettings>("/api/settings", {
+      method: "POST",
+      body: JSON.stringify(settings)
+    }),
   gameStatus: () => request<GameStatus>("/api/game/status"),
   memoryProfile: () => request<UserProfileMemory>("/api/memory/profile"),
   memoryEpisodes: () => request<EpisodeMemory[]>("/api/memory/episodes"),
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),
   chatDebug: () => request<ChatDebugResponse>("/api/debug/chat"),
+  gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
+  semanticExtractionDebug: () => request<SemanticExtractionDebugResponse>("/api/debug/semantic-extraction/latest"),
+  promptPreview: (sessionId = "default") => request<PromptPreviewResponse>(`/api/debug/prompt-preview?session_id=${encodeURIComponent(sessionId)}`),
+  pendingMemories: () => request<PendingMemory[]>("/api/memory/pending"),
+  acceptPendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/accept`, { method: "POST" }),
+  ignorePendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/ignore`, { method: "POST" }),
+  clearPendingMemories: () => request<{ status: "cleared" }>("/api/memory/pending/clear", { method: "POST" }),
+  resetGameSession: () => request<{ status: string }>("/api/debug/game-session/reset", { method: "POST" }),
   resetMemory: () => request<{ status: "reset" }>("/api/memory/reset", { method: "POST" }),
   chat: (message: string, sessionId = "default") =>
     request<ChatResponse>("/api/chat", {

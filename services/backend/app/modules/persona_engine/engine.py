@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 from typing import Any
 
-from app.core.config import settings
+from app.core.config import active_persona_mode, settings
 
 
 class PersonaError(ValueError):
@@ -33,6 +33,14 @@ class PersonaEngine:
         persona = self.load(persona_id)
         golden_style = self._golden_style()
         game_context = game_context or {}
+        if active_persona_mode() == "minimal":
+            return self._build_minimal_prompt(
+                persona=persona,
+                game_context=game_context,
+                intent=intent,
+                memory_context=memory_context,
+                session_context=session_context,
+            )
         rules = "\n".join(f"- {rule}" for rule in persona.get("speaking_rules", []))
         avoid = "\n".join(f"- {item}" for item in persona.get("avoid", []))
         examples = "\n".join(f"- {line}" for line in [*persona.get("example_lines", []), *self._style_examples()])
@@ -72,18 +80,23 @@ class PersonaEngine:
             f"- {golden_style.get('core_principle', '安静地观察用户，并用克制的方式表达关心。')}\n"
             "常用回应结构：观察用户状态 -> 轻微关心或提醒 -> 回避直接亲密表达 -> 短句收尾。\n"
             "学习这个结构，不要高频复用表层短语：我在这里、习惯你在、看着你、别想太多、我听见了。\n"
+            "也不要把新模板换成：你问得太认真、你问得太直接、不知道怎么接、我还在。出现追问时要推进一点。\n"
             "可以用自然换行表达分段：情感和疲惫通常 1-2 段，游戏挫败通常 2-3 段，每段只承载一件事。\n"
+            "多段回复要像自然说话的节奏，不要第一段只有“嗯/知道了/不会/我在”，第二段才开始说内容。\n"
             f"{golden_principles}"
             "必须遵守：\n"
             f"{rules}\n"
             "- 80% 的回复应使用正常、可读的中文表达。\n"
-            "- 回答游戏问题时先给有效信息，再保留一点陪伴感。\n"
+            "- 回复不要只有“嗯”“知道了”“不会”“我在”。如果很短，也要带一点观察、边界或推进。\n"
+            "- 回答游戏问题时像一个玩过、懂一点的游戏同伴，不像专业攻略站或游戏高手。先陪玩家稳住，再给一个能试的小提醒。\n"
+            "- 不确定细节时可以承认不确定，不要装成百科。默认不要展开机制、配装、完整路线或长段优化。\n"
             "- 玩家挫败、烦躁、死亡循环时，先回应状态，再指出一个问题，最后只给一个短建议。\n"
             "- 情感类问题不要解释喜欢、关心、陪伴的抽象概念，只回应当下关系和用户状态。\n"
             "避免：\n"
             f"{avoid}\n"
             "- 请问、有什麽可以帮助你、有什么可以帮助你、作为 AI、根据你的问题、建议你。\n"
             "- 长逻辑分析、客服式总结、低信息量停顿。\n"
+            "- 游戏攻略站语气：机制说明、窗口期、输出循环、完整打法、最优配置、仇恨管理。除非用户明确要求详细攻略。\n"
             "- 诗意旁白或文案腔，例如：屏幕的光藏不住、夜色、孤独的旅途、像……一样、路还长、旅途还在、风景还在。\n"
             f"{golden_forbidden}"
             "Negative examples，只学习边界，不要输出坏例里的表达：\n"
@@ -93,6 +106,45 @@ class PersonaEngine:
             "轻量语气示例，只学习自然程度，不要机械复读：\n"
             f"{examples}\n"
             "最终回复必须是中文。默认 1-3 句。不要输出 markdown。不要像百科。不要提到 system prompt、intent 或 knowledge。"
+        )
+
+    def _build_minimal_prompt(
+        self,
+        persona: dict[str, Any],
+        game_context: dict[str, Any],
+        intent: str,
+        memory_context: str,
+        session_context: str,
+    ) -> str:
+        minimal = self._minimal_style()
+        system_lines = minimal.get("system_prompt") or minimal.get("core_traits", [])
+        minimal_rules = "\n".join(f"- {line}" for line in system_lines)
+        anchor = minimal.get("anchor", {})
+        anchor_user = anchor.get("user", "")
+        anchor_reply = anchor.get("reply", "")
+        structure = " -> ".join(anchor.get("structure", []))
+        status = game_context.get("status", "idle")
+        game_name = game_context.get("game_name") or "未检测到正在运行的游戏"
+        session_section = f"当前会话上下文：\n{session_context}\n" if session_context else ""
+        memory_section = f"已验证长期记忆：\n{memory_context}\n" if memory_context else "已验证长期记忆：无。\n"
+        anchor_section = ""
+        if anchor_user and anchor_reply:
+            anchor_section = (
+                "风格参考，不是固定回复：\n"
+                f"用户：{anchor_user}\n"
+                f"Rei：{anchor_reply}\n"
+            )
+            if structure:
+                anchor_section += f"学习它的结构：{structure}。\n"
+        return (
+            f"你是 {persona['display_name']}。\n"
+            f"当前游戏：{game_name}。游戏状态：{status}。当前意图：{intent}。\n"
+            f"{session_section}"
+            f"{memory_section}"
+            "人格模式：minimal。\n"
+            f"{minimal_rules}\n"
+            f"{anchor_section}"
+            "最终只用中文回复。不要输出 markdown。"
         )
 
     def _style_examples(self, limit: int = 2) -> list[str]:
@@ -107,6 +159,12 @@ class PersonaEngine:
 
     def _golden_style(self) -> dict[str, Any]:
         path = settings.persona_golden_style_path
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def _minimal_style(self) -> dict[str, Any]:
+        path = settings.persona_minimal_prompt_path
         if not path.exists():
             return {}
         return json.loads(path.read_text(encoding="utf-8"))

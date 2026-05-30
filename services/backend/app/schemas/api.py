@@ -81,6 +81,40 @@ class MemoryResetResponse(BaseModel):
     status: Literal["reset"]
 
 
+class PendingMemoryItem(BaseModel):
+    id: str
+    type: Literal["game_progress", "user_preference", "emotional_pattern", "relationship_preference", "playstyle"]
+    text: str
+    source: Literal["game_session", "conversation", "explicit_user_statement"]
+    confidence: float
+    status: Literal["pending", "accepted", "ignored"]
+    created_at: str
+    updated_at: str
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class PendingMemoryClearResponse(BaseModel):
+    status: Literal["cleared"]
+
+
+class AppSettings(BaseModel):
+    persona_mode: Literal["minimal", "guarded"] = "guarded"
+    debug_panel: Literal["show", "hide"] = "show"
+    memory_enabled: bool = True
+    pending_memory_mode: Literal["manual"] = "manual"
+    response_length: Literal["short", "normal"] = "normal"
+    model_preference: Literal["fast", "pro", "auto"] = "auto"
+
+
+class AppSettingsUpdate(BaseModel):
+    persona_mode: Literal["minimal", "guarded"] | None = None
+    debug_panel: Literal["show", "hide"] | None = None
+    memory_enabled: bool | None = None
+    pending_memory_mode: Literal["manual"] | None = None
+    response_length: Literal["short", "normal"] | None = None
+    model_preference: Literal["fast", "pro", "auto"] | None = None
+
+
 class MemoryProvenanceItem(BaseModel):
     source: Literal["profile", "episode", "current_session"]
     field: str
@@ -108,6 +142,17 @@ class ChatDebugResponse(BaseModel):
     total_latency_ms: int = 0
     reply_segments_count: int = 0
     segmenter_mode: str | None = None
+
+
+class PromptPreviewResponse(BaseModel):
+    persona_mode: str
+    current_user_message: str | None = None
+    prompt_order: list[str]
+    session_focus_summary: dict[str, Any] = Field(default_factory=dict)
+    game_state_summary: dict[str, Any] = Field(default_factory=dict)
+    memory_summary: dict[str, Any] = Field(default_factory=dict)
+    final_context_summary: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class VoiceTranscribeResponse(BaseModel):
