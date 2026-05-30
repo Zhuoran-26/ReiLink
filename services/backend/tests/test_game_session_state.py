@@ -47,6 +47,47 @@ def test_boss_clear_message_removes_current_boss(tmp_path):
     assert state.current_activity == "boss_cleared"
 
 
+def test_boss_start_does_not_increment_death_count(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+
+    state = store.update_from_user_message("我去打大树守卫", "casual_chat", _idle_status(), now)
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "大树守卫"
+    assert state.current_activity == "boss_attempt"
+    assert state.death_count == 0
+    assert state.last_game_intent == "boss_attempt"
+    assert state.last_cleared_boss is None
+
+
+def test_near_clear_phrase_keeps_current_boss_failed(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在恶兆妖鬼", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message("差点就过了", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "恶兆妖鬼 Margit"
+    assert state.current_activity == "boss_failed"
+    assert state.last_failed_boss == "恶兆妖鬼 Margit"
+    assert state.last_cleared_boss is None
+
+
+def test_remaining_health_failure_does_not_clear_current_boss(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在恶兆妖鬼", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message("只剩一点血但没过", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "恶兆妖鬼 Margit"
+    assert state.current_activity == "boss_failed"
+    assert state.last_cleared_boss is None
+
+
 @pytest.mark.parametrize(
     "message",
     [
@@ -100,6 +141,18 @@ def test_negated_failure_phrase_can_clear_current_boss(tmp_path):
     assert state.current_activity == "boss_cleared"
     assert state.last_cleared_boss == "恶兆妖鬼 Margit"
     assert state.last_game_intent == "boss_cleared"
+
+
+def test_solved_phrase_clears_current_boss(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在恶兆妖鬼", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message("解决了", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+
+    assert state.current_boss is None
+    assert state.current_activity == "boss_cleared"
+    assert state.last_cleared_boss == "恶兆妖鬼 Margit"
 
 
 def test_explicit_new_boss_overwrites_previous_boss(tmp_path):
@@ -158,6 +211,45 @@ def test_clear_old_general_records_recent_history(tmp_path):
     assert "老将欧尼尔" in state.recent_game_topics
     assert "老将欧尼尔已结束" in state.recent_game_topics
     assert any(entry.name == "老将欧尼尔" and entry.status == "cleared" for entry in state.boss_history)
+
+
+def test_uncleared_reference_prefers_unresolved_boss_over_cleared(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在大树守卫", "casual_chat", _idle_status(), now)
+    store.update_from_user_message("终于打过大树守卫了", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+    store.update_from_user_message("我现在卡在女武神", "casual_chat", _idle_status(), now + timedelta(minutes=2))
+    store.update_from_user_message("还是没过", "casual_chat", _idle_status(), now + timedelta(minutes=3))
+    store.update_from_user_message("先不打了", "casual_chat", _idle_status(), now + timedelta(minutes=4))
+
+    state = store.update_from_user_message(
+        "那我重新挑战之前没打过的那个 boss",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(minutes=5),
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "女武神"
+    assert state.last_cleared_boss == "大树守卫"
+    assert any(entry.name == "大树守卫" and entry.status == "cleared" for entry in state.boss_history)
+
+
+def test_uncleared_reference_does_not_reopen_cleared_boss_without_unresolved(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在大树守卫", "casual_chat", _idle_status(), now)
+    store.update_from_user_message("终于打过大树守卫了", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+
+    state = store.update_from_user_message(
+        "那我重新挑战之前没打过的那个 boss",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(minutes=2),
+    )
+
+    assert state.current_boss is None
+    assert state.last_cleared_boss == "大树守卫"
 
 
 def test_history_summary_after_boss_cleared_does_not_claim_current(tmp_path):

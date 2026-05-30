@@ -7,6 +7,7 @@ def _game_state(current_boss: str | None = None) -> dict:
     return {
         "current_game": "Elden Ring",
         "current_boss": {"name": current_boss} if current_boss else None,
+        "last_failed_boss": current_boss,
         "last_attempted_boss": current_boss,
         "last_cleared_boss": None,
         "boss_history": [],
@@ -39,6 +40,40 @@ def test_clear_phrase_is_boss_cleared():
     assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
 
 
+def test_near_clear_phrase_is_ambiguous_and_not_cleared(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "mock")
+
+    result = sem.extract_semantics("差点就过了", "casual_chat", _game_state("恶兆妖鬼 Margit"))
+
+    assert result["ambiguity_detected"] is True
+    assert result["llm_called"] is False
+    assert result["fallback_reason"] == "near_clear_phrase"
+    assert result["final_decision"]["game_event"]["type"] in {"near_clear", "failed_attempt"}
+    assert result["final_decision"]["game_event"]["type"] != "boss_cleared"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_remaining_health_failure_is_not_cleared(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "mock")
+
+    result = sem.extract_semantics("只剩一点血但没过", "casual_chat", _game_state("恶兆妖鬼 Margit"))
+
+    assert result["ambiguity_detected"] is True
+    assert result["final_decision"]["game_event"]["type"] in {"near_clear", "failed_attempt"}
+    assert result["final_decision"]["game_event"]["type"] != "boss_cleared"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_boss_start_uses_rule_without_llm(monkeypatch):
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LLM called")))
+
+    result = sem.extract_semantics("我去打大树守卫", "casual_chat", _game_state())
+
+    assert result["llm_called"] is False
+    assert result["final_decision"]["game_event"]["type"] == "boss_attempt"
+    assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
+
+
 def test_short_guide_preference_creates_pending_candidate():
     result = sem.extract_semantics("我喜欢简短的游戏攻略", "casual_chat", _game_state())
 
@@ -65,6 +100,16 @@ def test_personal_preference_with_remember_creates_pending_candidate():
     assert candidate["should_create_pending"] is True
     assert candidate["type"] == "personal_preference"
     assert "喜欢吃菠萝" in candidate["text"]
+
+
+def test_persona_preference_creates_low_confidence_pending_candidate():
+    result = sem.extract_semantics("我喜欢你经常笑的样子", "casual_chat", _game_state())
+
+    candidate = result["final_decision"]["memory_candidate"]
+    assert result["llm_called"] is False
+    assert candidate["should_create_pending"] is True
+    assert candidate["type"] == "persona_preference"
+    assert 0.6 <= candidate["confidence"] < 0.75
 
 
 def test_llm_fallback_can_resolve_ambiguous_game_event(monkeypatch):
@@ -102,6 +147,41 @@ def test_llm_fallback_can_resolve_ambiguous_game_event(monkeypatch):
     assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
 
 
+def test_llm_cleared_result_does_not_override_near_clear_rule(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(
+        sem,
+        "_call_deepseek_flash",
+        lambda *args, **kwargs: json.dumps(
+            {
+                "game_event": {
+                    "type": "boss_cleared",
+                    "boss_name": "Margit",
+                    "confidence": 0.99,
+                    "should_update_current_boss": True,
+                },
+                "memory_candidate": {
+                    "should_create_pending": False,
+                    "type": "none",
+                    "text": "",
+                    "confidence": 0,
+                    "reason": "",
+                },
+                "emotion": {"type": "none", "intensity": 0},
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    result = sem.extract_semantics("差点就过了", "casual_chat", _game_state("恶兆妖鬼 Margit"))
+
+    assert result["llm_called"] is True
+    assert result["final_decision"]["game_event"]["type"] in {"near_clear", "failed_attempt"}
+    assert result["final_decision"]["game_event"]["type"] != "boss_cleared"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
 def test_llm_json_parse_failure_does_not_raise(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
@@ -111,4 +191,4 @@ def test_llm_json_parse_failure_does_not_raise(monkeypatch):
 
     assert result["llm_called"] is True
     assert result["parse_error"]
-    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["final_decision"]["game_event"]["type"] in {"near_clear", "failed_attempt"}

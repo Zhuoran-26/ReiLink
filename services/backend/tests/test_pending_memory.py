@@ -21,6 +21,7 @@ def _game_state(
         "current_game": "Elden Ring",
         "current_boss": {"name": current_boss} if current_boss else None,
         "current_activity": current_activity,
+        "last_failed_boss": current_boss if current_activity == "boss_failed" else None,
         "last_attempted_boss": current_boss,
         "last_cleared_boss": last_cleared_boss,
     }
@@ -127,6 +128,35 @@ def test_semantic_memory_candidate_creates_pending_memory():
     assert created[0]["source"] == "semantic_extraction"
 
 
+def test_semantic_persona_preference_low_confidence_creates_pending_memory():
+    semantic = {
+        "final_decision": {
+            "memory_candidate": {
+                "should_create_pending": True,
+                "type": "persona_preference",
+                "text": "玩家喜欢 Rei 说话更柔和一点",
+                "confidence": 0.68,
+                "reason": "用户表达 persona 偏好",
+            }
+        }
+    }
+
+    created = PendingMemoryQueue().generate_and_enqueue(
+        "我喜欢你说话更柔和一点",
+        "",
+        "casual_chat",
+        _now(),
+        {},
+        semantic_extraction=semantic,
+    )
+
+    assert len(created) == 1
+    assert created[0]["type"] == "relationship_preference"
+    assert created[0]["text"] == "玩家喜欢 Rei 说话更柔和一点"
+    assert created[0]["confidence"] == 0.68
+    assert created[0]["source"] == "semantic_extraction"
+
+
 def test_death_loop_does_not_create_long_term_pending_memory():
     created = PendingMemoryQueue().generate_and_enqueue(
         "我又死了",
@@ -134,6 +164,19 @@ def test_death_loop_does_not_create_long_term_pending_memory():
         "casual_chat",
         _now(),
         _game_state(current_boss="女武神", current_activity="boss_failed"),
+    )
+
+    assert created == []
+    assert PendingMemoryQueue().list() == []
+
+
+def test_boss_attempt_does_not_create_game_progress_pending_memory():
+    created = PendingMemoryQueue().generate_and_enqueue(
+        "我去打大树守卫",
+        "",
+        "casual_chat",
+        _now(),
+        _game_state(current_boss="大树守卫", current_activity="boss_attempt"),
     )
 
     assert created == []

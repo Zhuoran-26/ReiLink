@@ -189,7 +189,6 @@ class PendingMemoryQueue:
         if semantic_candidate:
             candidates.append(semantic_candidate)
 
-        current_boss = _boss_name(game_summary.get("current_boss"))
         last_cleared_boss = _boss_name(game_summary.get("last_cleared_boss"))
         current_activity = str(game_summary.get("current_activity") or "")
         if current_activity == "boss_cleared" and last_cleared_boss:
@@ -207,23 +206,12 @@ class PendingMemoryQueue:
                     payload={"boss": last_cleared_boss, "progress_status": "cleared"},
                 )
             )
-        elif current_activity in {"boss_attempt", "boss_failed"} and current_boss and _explicitly_mentions_current_attempt(normalized_message):
-            candidates.append(
-                PendingMemory(
-                    id=str(uuid.uuid4()),
-                    type="game_progress",
-                    text=f"玩家最近在打{current_boss}",
-                    source="game_session",
-                    confidence=0.86,
-                    status="pending",
-                    created_at=now,
-                    updated_at=now,
-                    evidence=evidence,
-                    payload={"boss": current_boss, "progress_status": "attempting"},
-                )
-            )
 
-        return [candidate.as_dict() for candidate in candidates if candidate.confidence >= 0.85]
+        return [
+            candidate.as_dict()
+            for candidate in candidates
+            if candidate.confidence >= _minimum_candidate_confidence(candidate)
+        ]
 
     def enqueue(self, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not candidates:
@@ -365,9 +353,10 @@ def _semantic_memory_candidate(
     if not isinstance(candidate, dict) or not candidate.get("should_create_pending"):
         return None
     confidence = float(candidate.get("confidence") or 0)
-    if confidence < 0.75:
-        return None
     source_type = str(candidate.get("type") or "none")
+    min_confidence = 0.65 if source_type == "persona_preference" else 0.75
+    if confidence < min_confidence:
+        return None
     pending_type = SEMANTIC_MEMORY_TYPE_MAP.get(source_type)
     text = normalize_terminology(str(candidate.get("text") or "")).strip()
     if not pending_type or not text or _contains_sensitive_text(text):
@@ -384,6 +373,12 @@ def _semantic_memory_candidate(
         evidence={**evidence, "semantic_reason": str(candidate.get("reason") or "")[:160]},
         payload=_semantic_payload(source_type, text),
     )
+
+
+def _minimum_candidate_confidence(candidate: PendingMemory) -> float:
+    if candidate.source == "semantic_extraction" and candidate.type == "relationship_preference":
+        return 0.65
+    return 0.85
 
 
 def _semantic_payload(source_type: str, text: str) -> dict[str, Any]:

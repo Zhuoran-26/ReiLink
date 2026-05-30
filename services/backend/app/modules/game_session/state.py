@@ -62,6 +62,7 @@ class GameSessionState:
     current_boss: CurrentBoss | None = None
     last_boss: str | None = None
     last_attempted_boss: str | None = None
+    last_failed_boss: str | None = None
     last_cleared_boss: str | None = None
     current_activity: str | None = None
     recent_game_topics: list[str] = field(default_factory=list)
@@ -78,6 +79,7 @@ class GameSessionState:
             "current_boss": self.current_boss.as_dict() if self.current_boss else None,
             "last_boss": self.last_boss,
             "last_attempted_boss": self.last_attempted_boss,
+            "last_failed_boss": self.last_failed_boss,
             "last_cleared_boss": self.last_cleared_boss,
             "current_activity": self.current_activity,
             "recent_game_topics": self.recent_game_topics,
@@ -118,6 +120,7 @@ class GameSessionStore:
             current_boss=boss,
             last_boss=normalized.get("last_boss"),
             last_attempted_boss=normalized.get("last_attempted_boss"),
+            last_failed_boss=normalized.get("last_failed_boss"),
             last_cleared_boss=normalized.get("last_cleared_boss"),
             current_activity=normalized.get("current_activity"),
             recent_game_topics=list(normalized.get("recent_game_topics") or []),
@@ -179,6 +182,8 @@ class GameSessionStore:
             _set_current_boss(state, explicit_boss, now, "current_message", 0.95)
         elif fails_boss:
             failed_boss = _context_boss_for_failure(state, focused_boss, now)
+            if not failed_boss and _corrects_clear_to_failure(user_message):
+                failed_boss = _recent_cleared_boss_for_correction(state, now)
             if failed_boss:
                 source = "session_focus" if focused_boss and failed_boss == focused_boss else "current_context"
                 _mark_boss_failed(state, failed_boss, now, source)
@@ -208,7 +213,7 @@ class GameSessionStore:
             intent,
             explicit_boss or focused_boss or (state.current_boss.name if state.current_boss else None),
             state.current_activity,
-            fails_boss or (semantic_applied and semantic_event_type == "failed_attempt"),
+            fails_boss or (semantic_applied and semantic_event_type in {"failed_attempt", "near_clear"}),
             clears_boss or (semantic_applied and semantic_event_type == "boss_cleared"),
             abandons_boss or (semantic_applied and semantic_event_type == "boss_switch"),
         )
@@ -273,6 +278,8 @@ class GameSessionStore:
                 "freshness": freshness.freshness,
             }
         data["boss_history"] = [_history_entry_debug(entry, now) for entry in state.boss_history]
+        data["unresolved_bosses"] = _unresolved_bosses(state)
+        data["cleared_bosses"] = _cleared_bosses(state)
         return data
 
 
@@ -416,6 +423,8 @@ def _clear_boss(state: GameSessionState, boss_name: str, timestamp: datetime, so
     state.last_boss = boss_name
     state.last_attempted_boss = boss_name
     state.last_cleared_boss = boss_name
+    if state.last_failed_boss == boss_name:
+        state.last_failed_boss = _latest_unresolved_boss(state, exclude={boss_name})
     state.current_boss = None
     state.current_activity = "boss_cleared"
     _append_topic(state, boss_name)
@@ -445,6 +454,7 @@ def _mark_boss_failed(
     state.current_activity = "boss_failed"
     state.last_boss = boss_name
     state.last_attempted_boss = boss_name
+    state.last_failed_boss = boss_name
     if state.last_cleared_boss == boss_name:
         state.last_cleared_boss = None
     _append_topic(state, boss_name)
@@ -498,10 +508,26 @@ def _context_boss_for_failure(
 ) -> str | None:
     if state.current_boss:
         return state.current_boss.name
-    if focused_boss:
+    if focused_boss and _history_status(state, focused_boss) != "cleared":
         return focused_boss
-    for boss_name in (state.last_boss, state.last_attempted_boss, state.last_cleared_boss):
-        if boss_name and _history_is_recent(state, boss_name, timestamp):
+    for boss_name in (
+        state.last_failed_boss,
+        _latest_unresolved_boss(state),
+        state.last_attempted_boss,
+        state.last_boss,
+    ):
+        if boss_name and _history_status(state, boss_name) != "cleared" and _history_is_recent(state, boss_name, timestamp):
+            return boss_name
+    return None
+
+
+def _recent_cleared_boss_for_correction(state: GameSessionState, timestamp: datetime) -> str | None:
+    for boss_name in (state.last_cleared_boss, state.last_boss, state.last_attempted_boss):
+        if (
+            boss_name
+            and _history_status(state, boss_name) == "cleared"
+            and _history_is_recent(state, boss_name, timestamp)
+        ):
             return boss_name
     return None
 
@@ -510,7 +536,7 @@ def _semantic_event_type(event: dict[str, Any] | None) -> str | None:
     if not isinstance(event, dict):
         return None
     event_type = str(event.get("type") or "")
-    return event_type if event_type in {"failed_attempt", "boss_cleared", "boss_switch", "boss_attempt"} else None
+    return event_type if event_type in {"failed_attempt", "near_clear", "boss_cleared", "boss_switch", "boss_attempt"} else None
 
 
 def _apply_semantic_game_event(
@@ -527,12 +553,12 @@ def _apply_semantic_game_event(
         return False
 
     boss_name = normalize_terminology(str(event.get("boss_name") or focused_boss or "")).strip()
-    if not boss_name and state.current_boss and event_type in {"failed_attempt", "boss_cleared", "boss_attempt"}:
+    if not boss_name and state.current_boss and event_type in {"failed_attempt", "near_clear", "boss_cleared", "boss_attempt"}:
         boss_name = state.current_boss.name
     if not state.current_game and boss_name:
         state.current_game = "Elden Ring"
 
-    if event_type == "failed_attempt":
+    if event_type in {"failed_attempt", "near_clear"}:
         if boss_name:
             _mark_boss_failed(state, boss_name, timestamp, "semantic_extraction", confidence)
         else:
@@ -570,8 +596,45 @@ def _history_is_recent(state: GameSessionState, boss_name: str, timestamp: datet
     return timestamp - updated_at <= FRESH_WINDOW
 
 
+def _history_status(state: GameSessionState, boss_name: str | None) -> str | None:
+    if not boss_name:
+        return None
+    entry = next((item for item in reversed(state.boss_history) if item.name == boss_name), None)
+    return entry.status if entry else None
+
+
+def _unresolved_bosses(state: GameSessionState) -> list[str]:
+    names: list[str] = []
+    for entry in state.boss_history:
+        if entry.status in {"failed", "current", "attempted", "abandoned"}:
+            names = [name for name in names if name != entry.name]
+            names.append(entry.name)
+        elif entry.status == "cleared":
+            names = [name for name in names if name != entry.name]
+    return names
+
+
+def _cleared_bosses(state: GameSessionState) -> list[str]:
+    names: list[str] = []
+    for entry in state.boss_history:
+        if entry.status == "cleared":
+            names = [name for name in names if name != entry.name]
+            names.append(entry.name)
+    return names
+
+
+def _latest_unresolved_boss(state: GameSessionState, exclude: set[str] | None = None) -> str | None:
+    excluded = exclude or set()
+    for boss_name in reversed(_unresolved_bosses(state)):
+        if boss_name not in excluded and _history_status(state, boss_name) != "cleared":
+            return boss_name
+    return None
+
+
 def _clears_current_boss(message: str) -> bool:
     compact = re.sub(r"\s+", "", message.lower())
+    if _near_clear_signal(compact):
+        return False
     if _fails_current_boss(message):
         return False
     if _has_negated_failure_correction(compact):
@@ -603,6 +666,10 @@ def _clears_current_boss(message: str) -> bool:
             "擊敗了",
             "干掉了",
             "幹掉了",
+            "解决了",
+            "解決了",
+            "解决掉了",
+            "解決掉了",
             "杀了",
             "殺了",
         )
@@ -613,6 +680,8 @@ def _fails_current_boss(message: str) -> bool:
     compact = re.sub(r"\s+", "", message.lower())
     if _has_negated_failure_correction(compact) and not _has_later_failure_after_correction(compact):
         return False
+    if _near_clear_signal(compact):
+        return True
     return any(
         marker in compact
         for marker in (
@@ -656,6 +725,34 @@ def _fails_current_boss(message: str) -> bool:
             "失敗",
             "输了",
             "輸了",
+        )
+    )
+
+
+def _near_clear_signal(compact: str) -> bool:
+    return any(
+        marker in compact
+        for marker in (
+            "差点过",
+            "差點過",
+            "差点就过",
+            "差點就過",
+            "差一点过",
+            "差一點過",
+            "差一点就过",
+            "差一點就過",
+            "差点打过",
+            "差點打過",
+            "差点赢",
+            "差點贏",
+            "只剩一点血",
+            "只剩一點血",
+            "剩一点血",
+            "剩一點血",
+            "快过了",
+            "快過了",
+            "快赢了",
+            "快贏了",
         )
     )
 
@@ -739,6 +836,60 @@ def _has_later_failure_after_correction(compact: str) -> bool:
     )
 
 
+def _corrects_clear_to_failure(message: str) -> bool:
+    compact = re.sub(r"\s+", "", message.lower())
+    negation_positions = [compact.find(marker) for marker in ("不是", "并不是", "並不是") if marker in compact]
+    if not negation_positions:
+        return False
+    clear_positions = [
+        compact.find(marker)
+        for marker in (
+            "打过",
+            "打過",
+            "过了",
+            "過了",
+            "打完",
+            "赢了",
+            "贏了",
+            "通关",
+            "通關",
+            "击败",
+            "擊敗",
+            "解决",
+            "解決",
+        )
+        if marker in compact
+    ]
+    if not clear_positions:
+        return False
+    clear_position = min(clear_positions)
+    if not any(position <= clear_position for position in negation_positions):
+        return False
+    return any(
+        compact.find(marker, clear_position) >= 0
+        for marker in (
+            "没打过",
+            "沒打過",
+            "没有打过",
+            "沒有打過",
+            "没过",
+            "沒過",
+            "没有过",
+            "沒有過",
+            "打不过",
+            "打不過",
+            "过不了",
+            "過不了",
+            "过不去",
+            "過不去",
+            "没赢",
+            "沒贏",
+            "没有赢",
+            "沒有贏",
+        )
+    )
+
+
 def _abandons_current_boss(message: str) -> bool:
     compact = re.sub(r"\s+", "", message.lower())
     return any(
@@ -778,7 +929,10 @@ def _has_frustration_signal(message: str) -> bool:
 
 
 def _has_attempt_signal(message: str) -> bool:
-    return any(word in message for word in ("卡在", "卡住", "打", "试", "試", "再来", "再來", "重试", "重試"))
+    return any(
+        word in message
+        for word in ("卡在", "卡住", "打", "挑战", "挑戰", "准备", "準備", "试", "試", "再来", "再來", "重试", "重試")
+    )
 
 
 def _has_boss_history_query(message: str) -> bool:

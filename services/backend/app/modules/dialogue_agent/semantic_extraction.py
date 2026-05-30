@@ -17,11 +17,12 @@ from app.modules.game_session.state import (
     _clears_current_boss,
     _detect_boss,
     _fails_current_boss,
+    _near_clear_signal,
 )
 
 logger = get_logger(__name__)
 
-ALLOWED_GAME_EVENTS = {"failed_attempt", "boss_cleared", "boss_switch", "boss_attempt", "none"}
+ALLOWED_GAME_EVENTS = {"failed_attempt", "near_clear", "boss_cleared", "boss_switch", "boss_attempt", "none"}
 ALLOWED_MEMORY_TYPES = {
     "guide_preference",
     "playstyle_preference",
@@ -44,8 +45,10 @@ def extract_semantics(
     normalized_message = normalize_terminology(user_message.strip())
     state = game_state or {}
     rule_result = _rule_result(normalized_message, intent, state, session_focus_boss)
-    rule_confidence = _decision_confidence(rule_result)
-    should_call_llm, skip_reason = _should_call_llm(normalized_message, rule_confidence)
+    raw_rule_confidence = _decision_confidence(rule_result)
+    ambiguity_reason = _ambiguity_reason(normalized_message)
+    rule_confidence = min(raw_rule_confidence, 0.55) if ambiguity_reason else raw_rule_confidence
+    should_call_llm, skip_reason = _should_call_llm(normalized_message, rule_confidence, ambiguity_reason)
     llm_called = False
     llm_result: dict[str, Any] | None = None
     parse_error: str | None = None
@@ -60,14 +63,19 @@ def extract_semantics(
             logger.warning("semantic extraction skipped parse_error=%s", parse_error)
 
     final_decision = _merge_decisions(rule_result, llm_result)
+    pending_reason = _pending_reason(final_decision)
     debug = {
         "latest_user_message": normalized_message,
         "rule_result": rule_result,
         "rule_confidence": round(rule_confidence, 3),
+        "raw_rule_confidence": round(raw_rule_confidence, 3),
+        "ambiguity_detected": bool(ambiguity_reason),
+        "fallback_reason": ambiguity_reason or (None if not should_call_llm else "low_confidence_rule"),
         "llm_called": llm_called,
         "llm_result": llm_result,
         "final_decision": final_decision,
         "skip_reason": None if llm_called else skip_reason,
+        "why_pending_created": pending_reason,
         "latency_ms": int((time.perf_counter() - start) * 1000),
         "parse_error": parse_error,
     }
@@ -105,10 +113,14 @@ _latest_debug: dict[str, Any] = {
     "latest_user_message": "",
     "rule_result": _empty_decision(),
     "rule_confidence": 0.0,
+    "raw_rule_confidence": 0.0,
+    "ambiguity_detected": False,
+    "fallback_reason": None,
     "llm_called": False,
     "llm_result": None,
     "final_decision": _empty_decision(),
     "skip_reason": "not_run",
+    "why_pending_created": None,
     "latency_ms": 0,
     "parse_error": None,
 }
@@ -129,19 +141,22 @@ def _rule_result(
     decision = _empty_decision()
     explicit_boss = _detect_boss(message)
     focused_boss = normalize_terminology(session_focus_boss or "") or None
-    context_boss = explicit_boss or focused_boss or _state_boss(game_state.get("current_boss")) or _state_boss(
-        game_state.get("last_attempted_boss")
-    )
+    context_boss = _context_boss_for_rule(game_state, focused_boss, explicit_boss)
     fails_boss = _fails_current_boss(message)
     clears_boss = _clears_current_boss(message)
     abandons_boss = _abandons_current_boss(message)
+    near_clear = _near_clear_signal(_compact(message))
 
-    if explicit_boss and fails_boss:
+    if explicit_boss and near_clear:
+        decision["game_event"] = _game_event("near_clear", explicit_boss, 0.82, True)
+    elif explicit_boss and fails_boss:
         decision["game_event"] = _game_event("failed_attempt", explicit_boss, 0.97, True)
     elif explicit_boss and clears_boss:
         decision["game_event"] = _game_event("boss_cleared", explicit_boss, 0.97, True)
     elif explicit_boss:
         decision["game_event"] = _game_event("boss_attempt", explicit_boss, 0.95, True)
+    elif near_clear and context_boss:
+        decision["game_event"] = _game_event("near_clear", context_boss, 0.82, True)
     elif fails_boss and context_boss:
         decision["game_event"] = _game_event("failed_attempt", context_boss, 0.9, True)
     elif clears_boss and context_boss:
@@ -178,6 +193,8 @@ def _rule_memory_candidate(message: str) -> dict[str, Any] | None:
         return _memory_candidate("guide_preference", "玩家不喜欢攻略站式回答", 0.9, "explicit guide preference")
     if _mentions_spirit_ashes_preference(compact):
         return _memory_candidate("playstyle_preference", "玩家不喜欢召唤骨灰，倾向自己打", 0.95, "explicit playstyle preference")
+    if _mentions_persona_preference(compact):
+        return _memory_candidate("persona_preference", "玩家表达了对 Rei 表达方式的偏好", 0.68, "possible persona preference")
     personal_preference = _explicit_personal_preference(compact)
     if personal_preference:
         return _memory_candidate("personal_preference", f"玩家{personal_preference}", 0.9, "explicit memory request")
@@ -203,9 +220,13 @@ def _rule_emotion(message: str) -> dict[str, Any] | None:
     return None
 
 
-def _should_call_llm(message: str, rule_confidence: float) -> tuple[bool, str]:
+def _should_call_llm(message: str, rule_confidence: float, ambiguity_reason: str | None = None) -> tuple[bool, str]:
     if not _has_semantic_signal(message):
         return False, "no_semantic_signal"
+    if ambiguity_reason:
+        if settings.llm_provider.lower().strip() != "deepseek" or not settings.deepseek_api_key:
+            return False, "provider_unavailable"
+        return True, ambiguity_reason
     if rule_confidence >= 0.9:
         return False, "high_confidence_rule"
     if settings.llm_provider.lower().strip() != "deepseek" or not settings.deepseek_api_key:
@@ -224,12 +245,29 @@ def _has_semantic_signal(message: str) -> bool:
         "過不了",
         "差点过",
         "差點過",
+        "差点就过",
+        "差點就過",
+        "差一点过",
+        "差一點過",
+        "差一点就过",
+        "差一點就過",
+        "只剩一点血",
+        "只剩一點血",
+        "差点赢",
+        "差點贏",
         "又死",
         "换一个",
         "換一個",
         "不打这个",
         "不打這個",
         "不打了",
+        "之前没打过",
+        "之前沒打過",
+        "之前没过",
+        "之前沒過",
+        "之前卡住",
+        "重新挑战",
+        "重新挑戰",
     )
     memory_markers = (
         "不想",
@@ -250,7 +288,8 @@ def _has_semantic_signal(message: str) -> bool:
     ):
         return True
     if any(marker in compact for marker in ("喜欢", "喜歡", "希望", "想要")) and any(
-        topic in compact for topic in ("简短", "短一点", "短點", "一句", "少一点", "少點", "攻略", "提醒")
+        topic in compact
+        for topic in ("简短", "短一点", "短點", "一句", "少一点", "少點", "攻略", "提醒", "笑", "柔和", "温柔", "多回应", "多回應")
     ):
         return True
     return False
@@ -271,6 +310,8 @@ def _call_deepseek_flash(
             "只根据明确证据做语义抽取，不要编造。输出严格 JSON，不要 markdown。"
             "长期信息只能作为待确认 memory_candidate。"
             "personal_preference 只有在用户明确要求记住时才创建。"
+            "差点过、只剩一点血、快过了属于 near_clear 或 failed_attempt，不属于 boss_cleared。"
+            "我去打、准备打、重新挑战属于 boss_attempt，不代表死亡或通关。"
         ),
     }
     payload = {
@@ -370,21 +411,35 @@ def _merge_decisions(rule_result: dict[str, Any], llm_result: dict[str, Any] | N
 
     llm_game = llm_result.get("game_event") or {}
     rule_game = rule_result.get("game_event") or {}
+    disallow_clear_override = (
+        llm_game.get("type") == "boss_cleared"
+        and rule_game.get("type") in {"failed_attempt", "near_clear"}
+    )
     if (
         llm_game.get("type") in ALLOWED_GAME_EVENTS - {"none"}
         and float(llm_game.get("confidence") or 0) >= 0.7
         and float(llm_game.get("confidence") or 0) >= float(rule_game.get("confidence") or 0)
+        and not disallow_clear_override
     ):
         final["game_event"] = deepcopy(llm_game)
 
     llm_memory = llm_result.get("memory_candidate") or {}
-    if llm_memory.get("should_create_pending") and float(llm_memory.get("confidence") or 0) >= 0.75:
+    llm_memory_type = str(llm_memory.get("type") or "none")
+    memory_threshold = 0.65 if llm_memory_type == "persona_preference" else 0.75
+    if llm_memory.get("should_create_pending") and float(llm_memory.get("confidence") or 0) >= memory_threshold:
         final["memory_candidate"] = deepcopy(llm_memory)
 
     llm_emotion = llm_result.get("emotion") or {}
     if llm_emotion.get("type") in ALLOWED_EMOTIONS - {"none"} and float(llm_emotion.get("intensity") or 0) >= 0.5:
         final["emotion"] = deepcopy(llm_emotion)
     return final
+
+
+def _pending_reason(decision: dict[str, Any]) -> str | None:
+    candidate = decision.get("memory_candidate") or {}
+    if not candidate.get("should_create_pending"):
+        return None
+    return str(candidate.get("reason") or candidate.get("type") or "semantic_candidate")
 
 
 def _decision_confidence(decision: dict[str, Any]) -> float:
@@ -399,6 +454,7 @@ def _brief_game_state(game_state: dict[str, Any]) -> dict[str, Any]:
         "current_game": game_state.get("current_game"),
         "current_boss": _state_boss(game_state.get("current_boss")),
         "current_activity": game_state.get("current_activity"),
+        "last_failed_boss": _state_boss(game_state.get("last_failed_boss")),
         "last_attempted_boss": _state_boss(game_state.get("last_attempted_boss")),
         "last_cleared_boss": _state_boss(game_state.get("last_cleared_boss")),
         "boss_history": [
@@ -418,6 +474,75 @@ def _state_boss(value: Any) -> str | None:
         value = value.get("name")
     text = normalize_terminology(str(value or "")).strip()
     return text or None
+
+
+def _context_boss_for_rule(
+    game_state: dict[str, Any],
+    focused_boss: str | None,
+    explicit_boss: str | None,
+) -> str | None:
+    if explicit_boss:
+        return explicit_boss
+    current_boss = _state_boss(game_state.get("current_boss"))
+    if current_boss:
+        return current_boss
+    if focused_boss and _history_status(game_state, focused_boss) != "cleared":
+        return focused_boss
+    last_failed = _state_boss(game_state.get("last_failed_boss"))
+    if last_failed and _history_status(game_state, last_failed) != "cleared":
+        return last_failed
+    unresolved = _latest_unresolved_boss(game_state)
+    if unresolved:
+        return unresolved
+    last_attempted = _state_boss(game_state.get("last_attempted_boss"))
+    if last_attempted and _history_status(game_state, last_attempted) != "cleared":
+        return last_attempted
+    return None
+
+
+def _history_status(game_state: dict[str, Any], boss_name: str | None) -> str | None:
+    if not boss_name:
+        return None
+    for item in reversed(game_state.get("boss_history") or []):
+        if isinstance(item, dict) and _state_boss(item.get("name")) == boss_name:
+            return str(item.get("status") or "")
+    return None
+
+
+def _latest_unresolved_boss(game_state: dict[str, Any]) -> str | None:
+    names: list[str] = []
+    for item in game_state.get("boss_history") or []:
+        if not isinstance(item, dict):
+            continue
+        boss_name = _state_boss(item.get("name"))
+        if not boss_name:
+            continue
+        status = str(item.get("status") or "")
+        if status in {"failed", "current", "attempted", "abandoned"}:
+            names = [name for name in names if name != boss_name]
+            names.append(boss_name)
+        elif status == "cleared":
+            names = [name for name in names if name != boss_name]
+    return names[-1] if names else None
+
+
+def _ambiguity_reason(message: str) -> str | None:
+    compact = _compact(message)
+    if _near_clear_signal(compact):
+        return "near_clear_phrase"
+    if _unresolved_boss_reference(compact):
+        return "unresolved_boss_reference"
+    return None
+
+
+def _unresolved_boss_reference(compact: str) -> bool:
+    return bool(
+        re.search(
+            r"(?:之前|前面|刚才|剛才|刚刚|剛剛).{0,8}(?:没打过|沒打過|没过|沒過|过不了|過不了|卡住|卡了).{0,8}(?:boss|那个|那個|那只|那隻)",
+            compact,
+        )
+        or re.search(r"重新(?:挑战|挑戰|打).{0,8}(?:之前|前面).{0,8}(?:没打过|沒打過|没过|沒過|卡住)", compact)
+    )
 
 
 def _mentions_short_guide_preference(compact: str) -> bool:
@@ -446,6 +571,29 @@ def _mentions_spirit_ashes_preference(compact: str) -> bool:
         r"不想叫骨灰",
     )
     return any(re.search(pattern, compact) for pattern in patterns)
+
+
+def _mentions_persona_preference(compact: str) -> bool:
+    if not any(marker in compact for marker in ("喜欢", "喜歡", "希望", "想要")):
+        return False
+    return any(
+        topic in compact
+        for topic in (
+            "你经常笑",
+            "你經常笑",
+            "你笑",
+            "说话更柔和",
+            "說話更柔和",
+            "更柔和",
+            "温柔一点",
+            "溫柔一點",
+            "多回应",
+            "多回應",
+            "多理我",
+            "多说一点",
+            "多說一點",
+        )
+    )
 
 
 def _explicit_personal_preference(compact: str) -> str | None:

@@ -109,10 +109,13 @@ def test_memory_profile_and_episodes_routes():
 
 def test_debug_memory_returns_provenance_items():
     session_id = "api-memory-debug"
+    client.post("/api/debug/game-session/reset")
     client.post("/api/chat", json={"message": "我现在卡在女武神", "session_id": session_id})
+    client.post("/api/chat", json={"message": "我不喜欢长篇攻略", "session_id": session_id})
     pending_items = client.get("/api/memory/pending").json()
     assert pending_items
-    client.post(f"/api/memory/pending/{pending_items[0]['id']}/accept")
+    preference_item = next(item for item in pending_items if item["type"] == "user_preference")
+    client.post(f"/api/memory/pending/{preference_item['id']}/accept")
 
     response = client.get(f"/api/debug/memory?session_id={session_id}")
 
@@ -120,11 +123,13 @@ def test_debug_memory_returns_provenance_items():
     data = response.json()
     assert data["prompt_order"] == ["current_user_message", "current_session", "memory", "persona"]
     assert data["memory_written"] is True
-    assert data["current_boss"] == "女武神"
     assert data["recent_episode_count"] >= 1
     sources = {item["source"] for item in data["items"]}
     assert {"current_session", "episode"} <= sources
     assert all(item["text"] for item in data["items"])
+
+    game_data = client.get("/api/debug/game-session").json()
+    assert game_data["current_boss"]["name"] == "女武神"
 
 
 def test_debug_game_session_routes():
@@ -218,10 +223,14 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
         "latest_user_message",
         "rule_result",
         "rule_confidence",
+        "raw_rule_confidence",
+        "ambiguity_detected",
         "llm_called",
         "llm_result",
         "final_decision",
+        "fallback_reason",
         "skip_reason",
+        "why_pending_created",
         "latency_ms",
         "parse_error",
     } <= data.keys()
