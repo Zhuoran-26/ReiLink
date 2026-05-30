@@ -252,11 +252,16 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByText("已连接");
-    expect(screen.getByRole("region", { name: "主聊天区域" })).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "设置与调试" })).toBeInTheDocument();
-    expect(screen.getByText("Settings")).toBeInTheDocument();
-    expect(screen.getByText("Pending Memory")).toBeInTheDocument();
-    expect(screen.getByText("Game Session")).toBeInTheDocument();
+    const navigation = screen.getByRole("navigation", { name: "应用导航" });
+    expect(navigation).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "主聊天界面" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "信息侧栏" })).toBeInTheDocument();
+    expect(within(navigation).getByText("Chat")).toBeInTheDocument();
+    expect(within(navigation).getByText("Memory")).toBeInTheDocument();
+    expect(within(navigation).getByText("Game")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Pending Memory" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Game Session" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Debug Panel/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Prompt Preview/i })).toBeInTheDocument();
     expect(screen.queryByText("Semantic Extraction")).not.toBeInTheDocument();
@@ -609,7 +614,7 @@ describe("App", () => {
     );
 
     render(<App />);
-    expect(await screen.findByText("无待确认记忆")).toBeInTheDocument();
+    expect(await screen.findByText("暂无待确认记忆")).toBeInTheDocument();
   });
 
   it("calls debug reset and clear endpoints", async () => {

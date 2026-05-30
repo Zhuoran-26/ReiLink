@@ -1,4 +1,18 @@
-import { ChevronDown, ChevronUp, Mic, RefreshCw, Send } from "lucide-react";
+import {
+  Bot,
+  Brain,
+  Bug,
+  ChevronDown,
+  ChevronUp,
+  Database,
+  Gamepad2,
+  MessageSquare,
+  Mic,
+  RefreshCw,
+  Send,
+  Settings,
+  Sparkles
+} from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
@@ -359,57 +373,96 @@ export function App() {
   const displayGame = gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
   const displayBoss = gameSessionDebug.current_boss?.name ?? null;
   const displayActivity = gameSessionDebug.current_activity ?? "idle";
+  const companionName = "Rei";
+  const companionSubtitle = "安静、冷淡的游戏陪伴";
+  const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
 
   return (
     <main className="shell">
-      <header className="topbar">
-        <div className="brandBlock">
-          <h1>ReiLink</h1>
-          <p>安静、冷淡的游戏陪伴</p>
+      <aside className="appSidebar" aria-label="应用导航">
+        <div className="sidebarBrand">
+          <Sparkles size={21} />
+          <span>ReiLink</span>
         </div>
-        <div className="statusStrip" aria-label="当前状态">
-          <span className="topChip">Persona: {appSettings.persona_mode}</span>
-          <span className="topChip">Model: {appSettings.model_preference}</span>
-          <span className="topChip">Game: {displayGame}</span>
-          <span className="topChip">Boss: {displayBoss ?? "idle"}</span>
-          <span className={`connection ${backendStatus}`}>{statusLabel}</span>
-        </div>
-      </header>
 
-      <section className="layout">
-        <section className="mainColumn" aria-label="主聊天区域">
-          <section className="reiHeader">
-            <div className="reiMark" aria-hidden="true">
-              R
+        <nav className="navMenu" aria-label="应用导航">
+          <a className="navItem active" href="#chat-panel">
+            <MessageSquare size={18} />
+            <span>Chat</span>
+          </a>
+          <a className="navItem" href="#pending-memory-panel">
+            <Database size={18} />
+            <span>Memory</span>
+          </a>
+          <a className="navItem" href="#game-session-panel">
+            <Gamepad2 size={18} />
+            <span>Game</span>
+          </a>
+          <a className="navItem" href="#settings-panel">
+            <Settings size={18} />
+            <span>Settings</span>
+          </a>
+          <a className="navItem" href="#debug-panel">
+            <Bug size={18} />
+            <span>Debug</span>
+          </a>
+        </nav>
+
+        <div className="companionStatusCard">
+          <div className="miniAvatar" aria-hidden="true">
+            {companionName.slice(0, 1)}
+          </div>
+          <div>
+            <span>当前 Companion</span>
+            <strong>{companionName}</strong>
+            <p>
+              <span className={`statusDot ${backendStatus}`} />
+              {companionStatus}
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      <section className="appWorkspace">
+        <header className="workspaceHeader">
+          <div className="companionIntro">
+            <div className="companionAvatar" aria-hidden="true">
+              {companionName.slice(0, 1)}
             </div>
             <div>
-              <p className="eyebrow">Rei</p>
-              <h2>安静 / 冷淡</h2>
-              <p>我在。想问的时候就说。</p>
+              <p className="eyebrow">Companion</p>
+              <h1>
+                {companionName}
+                <span className={`statusDot ${backendStatus}`} />
+                <em>{companionStatus}</em>
+              </h1>
+              <p>{companionSubtitle}</p>
             </div>
+          </div>
+          <div className="statusStrip" aria-label="当前状态">
+            <span className="topChip">
+              <Brain size={15} />
+              Persona: {appSettings.persona_mode}
+            </span>
+            <span className="topChip">
+              <Bot size={15} />
+              Model: {appSettings.model_preference}
+            </span>
+            <span className="topChip">
+              <Gamepad2 size={15} />
+              Game: {displayGame}
+            </span>
+            <span className="topChip">Boss: {displayBoss ?? "idle"}</span>
+            <span className={`connection ${backendStatus}`}>{statusLabel}</span>
             <button aria-label="刷新状态" className="iconButton soft" onClick={refreshStatus}>
               <RefreshCw size={17} />
             </button>
-          </section>
+          </div>
+        </header>
 
-          <section className="gameSnapshot" aria-label="当前游戏状态">
-            <div>
-              <span>Game</span>
-              <strong>{displayGame}</strong>
-            </div>
-            <div>
-              <span>Boss</span>
-              <strong>{displayBoss ?? "无"}</strong>
-            </div>
-            <div>
-              <span>Activity</span>
-              <strong>{displayActivity}</strong>
-            </div>
-            <div>
-              <span>Deaths</span>
-              <strong>{gameSessionDebug.death_count}</strong>
-            </div>
-          </section>
+        <section className="workspaceGrid">
+          <section className="chatColumn" aria-label="主聊天界面" id="chat-panel">
+            <div className="timelineMarker">今天</div>
 
           <section className="chatPanel" aria-label="聊天面板">
             <div className="messages">
@@ -442,9 +495,10 @@ export function App() {
           </section>
         </section>
 
-        <aside className="controlRail" aria-label="设置与调试">
-          <section className="panel settingsPanel" aria-label="Settings">
-            <div className="panelTitle">
+        <aside className="infoRail" aria-label="信息侧栏">
+          <section className="infoCard settingsPanel" aria-label="Settings" id="settings-panel">
+            <div className="cardHeader">
+              <Settings size={17} />
               <h2>Settings</h2>
             </div>
             <div className="settingRows">
@@ -527,9 +581,11 @@ export function App() {
             <p className="settingHint">本地保存到 settings.json，不包含密钥。</p>
           </section>
 
-          <section className="panel pendingPanel" aria-label="Pending Memory">
-            <div className="panelTitle">
+          <section className="infoCard pendingPanel" aria-label="Pending Memory" id="pending-memory-panel">
+            <div className="cardHeader">
+              <Database size={17} />
               <h2>Pending Memory</h2>
+              <span className="countPill">{pendingMemories.length}</span>
             </div>
             <div className="pendingMemoryList">
               {pendingMemories.map((memory) => (
@@ -561,12 +617,13 @@ export function App() {
                   </div>
                 </article>
               ))}
-              {pendingMemories.length === 0 && <p className="emptyDebugText">无待确认记忆</p>}
+              {pendingMemories.length === 0 && <p className="emptyDebugText">暂无待确认记忆</p>}
             </div>
           </section>
 
-          <section className="panel gameSessionPanel" aria-label="Game Session">
-            <div className="panelTitle">
+          <section className="infoCard gameSessionPanel" aria-label="Game Session" id="game-session-panel">
+            <div className="cardHeader">
+              <Gamepad2 size={17} />
               <h2>Game Session</h2>
             </div>
             <dl className="debugFacts">
@@ -614,7 +671,7 @@ export function App() {
           </section>
 
           {debugPanelVisible && (
-            <section className="panel foldPanel" aria-label="Debug Panel">
+            <section className="infoCard foldPanel" aria-label="Debug Panel" id="debug-panel">
               <button
                 className="foldHeader"
                 aria-expanded={debugOpen}
@@ -757,7 +814,7 @@ export function App() {
           )}
 
           {debugPanelVisible && (
-            <section className="panel foldPanel" aria-label="Prompt Preview">
+            <section className="infoCard foldPanel" aria-label="Prompt Preview" id="prompt-preview-panel">
               <button
                 className="foldHeader"
                 aria-expanded={promptPreviewOpen}
@@ -831,6 +888,7 @@ export function App() {
             </section>
           )}
         </aside>
+      </section>
       </section>
     </main>
   );
