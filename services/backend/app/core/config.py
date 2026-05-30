@@ -36,8 +36,13 @@ class Settings:
     deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
     deepseek_model_fast: str = os.getenv("DEEPSEEK_MODEL_FAST", "deepseek-v4-flash") or "deepseek-chat"
-    deepseek_model_reasoning: str = os.getenv("DEEPSEEK_MODEL_REASONING", os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro"))
+    deepseek_model_pro: str = os.getenv(
+        "DEEPSEEK_MODEL_PRO",
+        os.getenv("DEEPSEEK_MODEL_REASONING", os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")),
+    )
+    deepseek_model_reasoning: str = deepseek_model_pro
     deepseek_reasoning_effort: str = os.getenv("DEEPSEEK_REASONING_EFFORT", "medium")
+    model_preference: str = os.getenv("MODEL_PREFERENCE", "auto").lower().strip() or "auto"
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "20"))
     tts_provider: str = os.getenv("TTS_PROVIDER", "mock")
     stt_provider: str = os.getenv("STT_PROVIDER", "mock")
@@ -86,3 +91,10 @@ def active_persona_mode() -> str:
     if mode == "minimal":
         return "minimal"
     return "guarded"
+
+
+def active_model_preference() -> str:
+    preference = str(_runtime_setting("model_preference") or settings.model_preference).lower().strip()
+    if preference in {"fast", "pro"}:
+        return preference
+    return "auto"

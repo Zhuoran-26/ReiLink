@@ -42,14 +42,28 @@ const memoryDebug = {
 const chatDebug = {
   intent: "casual_chat",
   selected_model: "deepseek-v4-flash",
+  model_used: "deepseek-v4-flash",
+  main_reply_model: "deepseek-v4-flash",
+  model_route_mode: "auto",
+  route_reason: "casual_or_short_reply",
+  route_intent: "casual_chat",
+  estimated_complexity: "low",
+  fallback_reason: null,
   thinking_enabled: false,
   reasoning_effort: null,
   prompt_tokens_estimate: 120,
   llm_latency_ms: 300,
+  provider_latency_ms: 300,
   memory_latency_ms: 0,
   total_latency_ms: 320,
+  response_latency_ms: 320,
+  request_started_at: new Date().toISOString(),
   reply_segments_count: 1,
-  segmenter_mode: "compact"
+  segmenter_mode: "compact",
+  semantic_extraction_called: true,
+  semantic_extraction_model: "deepseek-v4-flash",
+  semantic_extraction_latency_ms: 42,
+  semantic_extraction_parse_error: null
 };
 
 const gameSessionDebug = {
@@ -93,6 +107,16 @@ const promptPreview = {
   persona_mode: "minimal",
   current_user_message: "Margit 怎么打？",
   prompt_order: ["current_user_message", "current_session_context", "session_focus", "game_state", "memory", "persona"],
+  model_route_summary: {
+    selected_model: "deepseek-v4-flash",
+    model_route_mode: "auto",
+    route_reason: "simple_game_reminder",
+    route_intent: "elden_ring_boss_strategy",
+    estimated_complexity: "medium",
+    provider_latency_ms: 300,
+    semantic_extraction_model: "deepseek-v4-flash",
+    main_reply_model: "deepseek-v4-flash"
+  },
   session_focus_summary: { boss: "恶兆妖鬼 Margit", source: "current_message", prompt_line: "当前短期焦点：恶兆妖鬼 Margit" },
   game_state_summary: {
     current_game: "Elden Ring",
@@ -118,6 +142,9 @@ const semanticExtractionDebug = {
   rule_result: { game_event: { type: "none" }, memory_candidate: { type: "guide_preference" } },
   rule_confidence: 0.65,
   llm_called: true,
+  semantic_extraction_model: "deepseek-v4-flash",
+  semantic_extraction_latency_ms: 42,
+  provider_latency_ms: 42,
   llm_result: {
     game_event: { type: "none" },
     memory_candidate: { type: "guide_preference" }
@@ -129,6 +156,29 @@ const semanticExtractionDebug = {
   skip_reason: null,
   latency_ms: 42,
   parse_error: null
+};
+
+const providerDebug = {
+  provider: "deepseek",
+  model: "deepseek-v4-pro",
+  base_url: "https://api.deepseek.com",
+  api_key_loaded: true,
+  configured_provider: "deepseek",
+  fallback_to_mock: false,
+  env_file_loaded: true,
+  env_file_path: "/Users/aragoto/Desktop/ReiLink/services/backend/.env",
+  persona_mode: "minimal",
+  model_route_mode: "auto",
+  deepseek_model_fast: "deepseek-v4-flash",
+  deepseek_model_pro: "deepseek-v4-pro",
+  selected_model: "deepseek-v4-flash",
+  main_reply_model: "deepseek-v4-flash",
+  route_reason: "casual_or_short_reply",
+  route_intent: "casual_chat",
+  estimated_complexity: "low",
+  provider_latency_ms: 300,
+  semantic_extraction_model: "deepseek-v4-flash",
+  fallback_reason: null
 };
 
 const pendingMemories = [
@@ -225,6 +275,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+        if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
         if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
         if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
         if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
@@ -303,6 +354,14 @@ describe("App", () => {
         expect.objectContaining({ method: "POST", body: JSON.stringify({ memory_enabled: false }) })
       )
     );
+
+    await userEvent.selectOptions(screen.getByLabelText("Model Preference"), "pro");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ model_preference: "pro" }) })
+      )
+    );
   });
 
   it("hides debug panel through settings", async () => {
@@ -344,6 +403,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
+        if (url.endsWith("/api/debug/provider")) return Promise.resolve(Response.json(providerDebug));
         if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
         if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(semanticExtractionDebug));
         if (url.includes("/api/debug/prompt-preview")) return Promise.resolve(Response.json(promptPreview));
@@ -397,6 +457,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
+        if (url.endsWith("/api/debug/provider")) return Promise.resolve(Response.json(providerDebug));
         if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
         if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(semanticExtractionDebug));
         if (url.includes("/api/debug/prompt-preview")) return Promise.resolve(Response.json(promptPreview));
@@ -457,6 +518,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json({ ...chatDebug, reply_segments_count: 3, segmenter_mode: "strategy" }));
+        if (url.endsWith("/api/debug/provider")) return Promise.resolve(Response.json(providerDebug));
         if (url.endsWith("/api/debug/game-session")) return Promise.resolve(Response.json(gameSessionDebug));
         if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(semanticExtractionDebug));
         if (url.includes("/api/debug/prompt-preview")) return Promise.resolve(Response.json(promptPreview));
@@ -513,6 +575,11 @@ describe("App", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Debug Panel/i }));
     await waitFor(() => expect(screen.getByText("Semantic Extraction")).toBeInTheDocument());
+    expect(screen.getByText("Model Routing")).toBeInTheDocument();
+    expect(screen.getAllByText("selected_model").length).toBeGreaterThan(0);
+    expect(screen.getByText("model_route_mode")).toBeInTheDocument();
+    expect(screen.getAllByText("route_reason").length).toBeGreaterThan(0);
+    expect(screen.getByText("provider_latency_ms")).toBeInTheDocument();
     expect(screen.getByText("Semantic Extraction")).toBeInTheDocument();
     expect(screen.getByText("llm_called")).toBeInTheDocument();
     expect(screen.getAllByText("guide_preference").length).toBeGreaterThan(0);
@@ -522,6 +589,8 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("persona_mode")).toBeInTheDocument());
     expect(screen.getByText("persona_mode")).toBeInTheDocument();
     expect(screen.getByText("prompt_order")).toBeInTheDocument();
+    expect(screen.getAllByText("selected_model").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("route_reason").length).toBeGreaterThan(0);
     expect(screen.getByText("current_user_message")).toBeInTheDocument();
     expect(screen.getByText("session_focus")).toBeInTheDocument();
     expect(screen.getByText("game_state")).toBeInTheDocument();
@@ -553,6 +622,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+        if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
         if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
         if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
         if (url.includes("/api/debug/prompt-preview")) {
@@ -606,6 +676,7 @@ describe("App", () => {
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+        if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
         if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
         if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
         if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);

@@ -54,11 +54,26 @@ def test_debug_provider_returns_current_provider():
         "env_file_loaded",
         "env_file_path",
         "persona_mode",
+        "model_route_mode",
+        "deepseek_model_fast",
+        "deepseek_model_pro",
+        "selected_model",
+        "main_reply_model",
+        "route_reason",
+        "route_intent",
+        "estimated_complexity",
+        "provider_latency_ms",
+        "semantic_extraction_model",
+        "fallback_reason",
     } <= data.keys()
     assert isinstance(data["api_key_loaded"], bool)
     assert isinstance(data["fallback_to_mock"], bool)
     assert isinstance(data["env_file_loaded"], bool)
     assert data["persona_mode"] in {"guarded", "minimal"}
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "api_key" not in serialized.replace("api_key_loaded", "")
+    assert "authorization" not in serialized
+    assert "bearer" not in serialized
 
 
 def test_settings_routes_persist_safe_values():
@@ -111,12 +126,21 @@ def test_debug_chat_returns_last_latency_fields():
     assert {
         "intent",
         "selected_model",
+        "model_route_mode",
+        "route_reason",
+        "route_intent",
+        "estimated_complexity",
+        "provider_latency_ms",
+        "semantic_extraction_model",
+        "main_reply_model",
         "thinking_enabled",
         "reasoning_effort",
         "prompt_tokens_estimate",
         "llm_latency_ms",
         "memory_latency_ms",
         "total_latency_ms",
+        "request_started_at",
+        "response_latency_ms",
     } <= data.keys()
 
 
@@ -215,6 +239,7 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
         "persona_mode",
         "current_user_message",
         "prompt_order",
+        "model_route_summary",
         "session_focus_summary",
         "game_state_summary",
         "memory_summary",
@@ -222,6 +247,7 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
         "warnings",
     } <= data.keys()
     assert data["persona_mode"] in {"guarded", "minimal"}
+    assert {"selected_model", "route_reason"} <= data["model_route_summary"].keys()
     assert data["current_user_message"] == "我现在卡在女武神"
     assert data["game_state_summary"]["current_game"] == "Elden Ring"
     assert data["game_state_summary"]["current_boss"]["name"] == "女武神"
@@ -266,6 +292,9 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
         "raw_rule_confidence",
         "ambiguity_detected",
         "llm_called",
+        "semantic_extraction_model",
+        "semantic_extraction_latency_ms",
+        "provider_latency_ms",
         "llm_result",
         "final_decision",
         "fallback_reason",

@@ -2,6 +2,18 @@ import { expect, test } from "@playwright/test";
 
 test("mock backend chat flow works", async ({ page }) => {
   await page.route("**/api/health", (route) => route.fulfill({ json: { status: "ok" } }));
+  await page.route("**/api/settings", (route) =>
+    route.fulfill({
+      json: {
+        persona_mode: "minimal",
+        debug_panel: "show",
+        memory_enabled: true,
+        pending_memory_mode: "manual",
+        response_length: "normal",
+        model_preference: "auto"
+      }
+    })
+  );
   await page.route("**/api/game/status", (route) =>
     route.fulfill({
       json: {
@@ -47,17 +59,110 @@ test("mock backend chat flow works", async ({ page }) => {
       json: {
         intent: "elden_ring_boss_strategy",
         selected_model: "deepseek-v4-pro",
+        model_used: "deepseek-v4-pro",
+        main_reply_model: "deepseek-v4-pro",
+        model_route_mode: "auto",
+        route_reason: "explicit_detail_request",
+        route_intent: "elden_ring_boss_strategy",
+        estimated_complexity: "high",
+        fallback_reason: null,
         thinking_enabled: true,
         reasoning_effort: "medium",
         prompt_tokens_estimate: 100,
         llm_latency_ms: 100,
+        provider_latency_ms: 100,
         memory_latency_ms: 0,
         total_latency_ms: 120,
+        response_latency_ms: 120,
+        request_started_at: new Date().toISOString(),
         reply_segments_count: 2,
-        segmenter_mode: "strategy"
+        segmenter_mode: "strategy",
+        semantic_extraction_called: false,
+        semantic_extraction_model: null,
+        semantic_extraction_latency_ms: 0,
+        semantic_extraction_parse_error: null
       }
     })
   );
+  await page.route("**/api/debug/provider", (route) =>
+    route.fulfill({
+      json: {
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        base_url: "https://api.deepseek.com",
+        api_key_loaded: true,
+        configured_provider: "deepseek",
+        fallback_to_mock: false,
+        env_file_loaded: true,
+        env_file_path: "/tmp/.env",
+        persona_mode: "minimal",
+        model_route_mode: "auto",
+        deepseek_model_fast: "deepseek-v4-flash",
+        deepseek_model_pro: "deepseek-v4-pro",
+        selected_model: "deepseek-v4-pro",
+        main_reply_model: "deepseek-v4-pro",
+        route_reason: "explicit_detail_request",
+        route_intent: "elden_ring_boss_strategy",
+        estimated_complexity: "high",
+        provider_latency_ms: 100,
+        semantic_extraction_model: null,
+        fallback_reason: null
+      }
+    })
+  );
+  await page.route("**/api/debug/game-session", (route) =>
+    route.fulfill({
+      json: {
+        current_game: "Elden Ring",
+        current_boss: null,
+        last_boss: null,
+        last_attempted_boss: null,
+        last_cleared_boss: null,
+        current_activity: null,
+        recent_game_topics: [],
+        boss_history: [],
+        frustration_count: 0,
+        death_count: 0,
+        last_user_intent: null,
+        last_game_intent: null,
+        last_updated_at: null
+      }
+    })
+  );
+  await page.route("**/api/debug/semantic-extraction/latest", (route) =>
+    route.fulfill({
+      json: {
+        latest_user_message: null,
+        rule_result: null,
+        rule_confidence: 0,
+        llm_called: false,
+        semantic_extraction_model: null,
+        semantic_extraction_latency_ms: 0,
+        provider_latency_ms: 0,
+        llm_result: null,
+        final_decision: null,
+        skip_reason: "not_run",
+        latency_ms: 0,
+        parse_error: null
+      }
+    })
+  );
+  await page.route("**/api/debug/prompt-preview?**", (route) =>
+    route.fulfill({
+      json: {
+        persona_mode: "minimal",
+        current_user_message: null,
+        prompt_order: [],
+        model_route_summary: {},
+        session_focus_summary: {},
+        game_state_summary: {},
+        memory_summary: {},
+        final_context_summary: {},
+        warnings: []
+      }
+    })
+  );
+  await page.route("**/api/memory/pending", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/chat", (route) =>
     route.fulfill({
       json: {
@@ -67,13 +172,19 @@ test("mock backend chat flow works", async ({ page }) => {
         persona_id: "rei_like",
         game_status: "running",
         sources: ["data/elden_ring/bosses.json"],
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        request_started_at: new Date().toISOString(),
+        response_latency_ms: 120,
+        provider_latency_ms: 100,
+        model_used: "deepseek-v4-pro",
+        route_reason: "explicit_detail_request"
       }
     })
   );
 
   await page.goto("/");
-  await expect(page.getByText("艾尔登法环：运行中")).toBeVisible();
+  await expect(page.getByText("已连接")).toBeVisible();
+  await expect(page.getByText("Game: Elden Ring")).toBeVisible();
   await page.getByLabel("聊天输入").fill("Margit 怎么打?");
   await page.getByRole("button", { name: /发送/i }).click();
   await expect(page.getByText("别急。")).toBeVisible();

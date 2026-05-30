@@ -84,9 +84,11 @@ ReiLink 支持 DeepSeek 的 OpenAI-compatible API。
 
 ```bash
 LLM_PROVIDER=deepseek
+MODEL_PREFERENCE=auto
 DEEPSEEK_API_KEY=你的key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL_FAST=deepseek-v4-flash
+DEEPSEEK_MODEL_PRO=deepseek-v4-pro
 ```
 
 如果 `LLM_PROVIDER=deepseek` 但没有配置 `DEEPSEEK_API_KEY`，后端会返回清晰错误，不会崩溃。Phase 1 默认仍是 `LLM_PROVIDER=mock`，无 key 也可以中文演示。

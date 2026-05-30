@@ -3,6 +3,46 @@ import json
 from app.modules.dialogue_agent import semantic_extraction as sem
 
 
+class _FakeResponse:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self):
+        return json.dumps(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "game_event": {
+                                        "type": "failed_attempt",
+                                        "boss_name": "Margit",
+                                        "confidence": 0.82,
+                                        "should_update_current_boss": True,
+                                    },
+                                    "memory_candidate": {
+                                        "should_create_pending": False,
+                                        "type": "none",
+                                        "text": "",
+                                        "confidence": 0,
+                                        "reason": "",
+                                    },
+                                    "emotion": {"type": "frustrated", "intensity": 0.55},
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+
+
 def _game_state(current_boss: str | None = None) -> dict:
     return {
         "current_game": "Elden Ring",
@@ -145,6 +185,26 @@ def test_llm_fallback_can_resolve_ambiguous_game_event(monkeypatch):
     assert result["parse_error"] is None
     assert result["final_decision"]["game_event"]["type"] == "failed_attempt"
     assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_semantic_extraction_llm_defaults_to_fast_model(monkeypatch):
+    captured_models = []
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        captured_models.append(json.loads(request.data.decode("utf-8"))["model"])
+        return _FakeResponse()
+
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem.urllib.request, "urlopen", fake_urlopen)
+
+    result = sem.extract_semantics("差点过", "casual_chat", _game_state("恶兆妖鬼 Margit"))
+
+    assert captured_models == ["deepseek-v4-flash"]
+    assert result["llm_called"] is True
+    assert result["semantic_extraction_model"] == "deepseek-v4-flash"
+    assert result["semantic_extraction_latency_ms"] >= 0
 
 
 def test_llm_cleared_result_does_not_override_near_clear_rule(monkeypatch):

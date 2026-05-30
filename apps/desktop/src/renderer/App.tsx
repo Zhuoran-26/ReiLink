@@ -24,6 +24,7 @@ import {
   MemoryDebugResponse,
   PendingMemory,
   PromptPreviewResponse,
+  ProviderDebugResponse,
   SemanticExtractionDebugResponse,
   UserProfileMemory
 } from "../shared/api";
@@ -69,14 +70,28 @@ const emptyMemoryDebug: MemoryDebugResponse = {
 const emptyChatDebug: ChatDebugResponse = {
   intent: null,
   selected_model: null,
+  model_used: null,
+  main_reply_model: null,
+  model_route_mode: null,
+  route_reason: null,
+  route_intent: null,
+  estimated_complexity: null,
+  fallback_reason: null,
   thinking_enabled: false,
   reasoning_effort: null,
   prompt_tokens_estimate: 0,
   llm_latency_ms: 0,
+  provider_latency_ms: 0,
   memory_latency_ms: 0,
   total_latency_ms: 0,
+  response_latency_ms: 0,
+  request_started_at: null,
   reply_segments_count: 0,
-  segmenter_mode: null
+  segmenter_mode: null,
+  semantic_extraction_called: false,
+  semantic_extraction_model: null,
+  semantic_extraction_latency_ms: 0,
+  semantic_extraction_parse_error: null
 };
 
 const emptyGameSessionDebug: GameSessionDebugResponse = {
@@ -99,6 +114,7 @@ const emptyPromptPreview: PromptPreviewResponse = {
   persona_mode: "unknown",
   current_user_message: null,
   prompt_order: [],
+  model_route_summary: {},
   session_focus_summary: {},
   game_state_summary: {},
   memory_summary: {},
@@ -111,11 +127,37 @@ const emptySemanticExtractionDebug: SemanticExtractionDebugResponse = {
   rule_result: null,
   rule_confidence: 0,
   llm_called: false,
+  semantic_extraction_model: null,
+  semantic_extraction_latency_ms: 0,
+  provider_latency_ms: 0,
   llm_result: null,
   final_decision: null,
   skip_reason: null,
   latency_ms: 0,
   parse_error: null
+};
+
+const emptyProviderDebug: ProviderDebugResponse = {
+  provider: "unknown",
+  model: null,
+  base_url: null,
+  api_key_loaded: false,
+  configured_provider: "unknown",
+  fallback_to_mock: false,
+  env_file_loaded: false,
+  env_file_path: "",
+  persona_mode: "unknown",
+  model_route_mode: "auto",
+  deepseek_model_fast: "deepseek-v4-flash",
+  deepseek_model_pro: "deepseek-v4-pro",
+  selected_model: null,
+  main_reply_model: null,
+  route_reason: null,
+  route_intent: null,
+  estimated_complexity: null,
+  provider_latency_ms: 0,
+  semantic_extraction_model: null,
+  fallback_reason: null
 };
 
 const defaultAppSettings: AppSettings = {
@@ -185,6 +227,7 @@ export function App() {
   const [memoryProfile, setMemoryProfile] = useState<UserProfileMemory>(emptyProfile);
   const [memoryDebug, setMemoryDebug] = useState<MemoryDebugResponse>(emptyMemoryDebug);
   const [chatDebug, setChatDebug] = useState<ChatDebugResponse>(emptyChatDebug);
+  const [providerDebug, setProviderDebug] = useState<ProviderDebugResponse>(emptyProviderDebug);
   const [gameSessionDebug, setGameSessionDebug] = useState<GameSessionDebugResponse>(emptyGameSessionDebug);
   const [semanticDebug, setSemanticDebug] = useState<SemanticExtractionDebugResponse>(emptySemanticExtractionDebug);
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
@@ -214,6 +257,7 @@ export function App() {
       setMemoryProfile(await api.memoryProfile());
       setMemoryDebug(await api.memoryDebug());
       setChatDebug(await api.chatDebug());
+      setProviderDebug(await api.providerDebug());
       setGameSessionDebug(await api.gameSessionDebug());
       setSemanticDebug(await api.semanticExtractionDebug());
       setPromptPreview(await api.promptPreview());
@@ -345,6 +389,7 @@ export function App() {
   }, [backendStatus]);
 
   const sessionFocusSummary = asRecord(promptPreview.session_focus_summary);
+  const promptModelRoute = asRecord(promptPreview.model_route_summary);
   const promptGameState = asRecord(promptPreview.game_state_summary);
   const promptBossHistory = asArray(promptGameState.boss_history);
   const gameStateSummary = {
@@ -721,6 +766,54 @@ export function App() {
                   </section>
 
                   <section className="debugSection">
+                    <h3>Model Routing</h3>
+                    <dl className="debugFacts">
+                      <div>
+                        <dt>selected_model</dt>
+                        <dd>{debugText(chatDebug.selected_model ?? providerDebug.selected_model)}</dd>
+                      </div>
+                      <div>
+                        <dt>model_route_mode</dt>
+                        <dd>{debugText(chatDebug.model_route_mode ?? providerDebug.model_route_mode)}</dd>
+                      </div>
+                      <div>
+                        <dt>route_reason</dt>
+                        <dd>{debugText(chatDebug.route_reason ?? providerDebug.route_reason)}</dd>
+                      </div>
+                      <div>
+                        <dt>route_intent</dt>
+                        <dd>{debugText(chatDebug.route_intent ?? providerDebug.route_intent ?? chatDebug.intent)}</dd>
+                      </div>
+                      <div>
+                        <dt>complexity</dt>
+                        <dd>{debugText(chatDebug.estimated_complexity ?? providerDebug.estimated_complexity)}</dd>
+                      </div>
+                      <div>
+                        <dt>provider_latency_ms</dt>
+                        <dd>{Number(chatDebug.provider_latency_ms ?? providerDebug.provider_latency_ms ?? 0).toFixed(0)}</dd>
+                      </div>
+                      <div>
+                        <dt>main_reply_model</dt>
+                        <dd>{debugText(chatDebug.main_reply_model ?? providerDebug.main_reply_model)}</dd>
+                      </div>
+                      <div>
+                        <dt>semantic_model</dt>
+                        <dd>{debugText(chatDebug.semantic_extraction_model ?? providerDebug.semantic_extraction_model)}</dd>
+                      </div>
+                      <div>
+                        <dt>fallback_reason</dt>
+                        <dd className={chatDebug.fallback_reason || providerDebug.fallback_reason ? "debugError" : ""}>
+                          {debugText(chatDebug.fallback_reason ?? providerDebug.fallback_reason)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>response_latency_ms</dt>
+                        <dd>{Number(chatDebug.response_latency_ms || chatDebug.total_latency_ms || lastResponseLatencyMs || 0).toFixed(0)}</dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section className="debugSection">
                     <h3>Semantic Extraction</h3>
                     <dl className="debugFacts">
                       <div>
@@ -742,6 +835,10 @@ export function App() {
                         <dd>
                           <BooleanBadge value={semanticDebug.llm_called} />
                         </dd>
+                      </div>
+                      <div>
+                        <dt>model</dt>
+                        <dd>{debugText(semanticDebug.semantic_extraction_model)}</dd>
                       </div>
                       <div>
                         <dt>llm_event</dt>
@@ -771,7 +868,7 @@ export function App() {
                       </div>
                       <div>
                         <dt>latency_ms</dt>
-                        <dd>{Number(semanticDebug.latency_ms ?? 0).toFixed(0)}</dd>
+                        <dd>{Number(semanticDebug.semantic_extraction_latency_ms || semanticDebug.latency_ms || 0).toFixed(0)}</dd>
                       </div>
                     </dl>
                   </section>
@@ -781,6 +878,7 @@ export function App() {
                     <pre className="debugJson">
                       {JSON.stringify(
                         {
+                          provider_debug: providerDebug,
                           game_session: gameSessionDebug,
                           semantic_extraction: semanticDebug,
                           memory_debug: memoryDebug,
@@ -791,6 +889,14 @@ export function App() {
                           chat: {
                             intent: chatDebug.intent,
                             selected_model: chatDebug.selected_model,
+                            model_route_mode: chatDebug.model_route_mode,
+                            route_reason: chatDebug.route_reason,
+                            route_intent: chatDebug.route_intent,
+                            estimated_complexity: chatDebug.estimated_complexity,
+                            provider_latency_ms: chatDebug.provider_latency_ms,
+                            semantic_extraction_model: chatDebug.semantic_extraction_model,
+                            main_reply_model: chatDebug.main_reply_model,
+                            fallback_reason: chatDebug.fallback_reason,
                             last_latency_ms: chatDebug.total_latency_ms,
                             llm_latency_ms: chatDebug.llm_latency_ms,
                             memory_latency_ms: chatDebug.memory_latency_ms,
@@ -837,6 +943,30 @@ export function App() {
                     <div>
                       <dt>prompt_order</dt>
                       <dd>{promptPreview.prompt_order.join(" -> ") || "无"}</dd>
+                    </div>
+                    <div>
+                      <dt>selected_model</dt>
+                      <dd>{debugText(promptModelRoute.selected_model)}</dd>
+                    </div>
+                    <div>
+                      <dt>route_reason</dt>
+                      <dd>{debugText(promptModelRoute.route_reason)}</dd>
+                    </div>
+                    <div>
+                      <dt>route_intent</dt>
+                      <dd>{debugText(promptModelRoute.route_intent)}</dd>
+                    </div>
+                    <div>
+                      <dt>complexity</dt>
+                      <dd>{debugText(promptModelRoute.estimated_complexity)}</dd>
+                    </div>
+                    <div>
+                      <dt>main_reply_model</dt>
+                      <dd>{debugText(promptModelRoute.main_reply_model)}</dd>
+                    </div>
+                    <div>
+                      <dt>provider_latency_ms</dt>
+                      <dd>{debugText(promptModelRoute.provider_latency_ms)}</dd>
                     </div>
                     <div>
                       <dt>session_focus</dt>

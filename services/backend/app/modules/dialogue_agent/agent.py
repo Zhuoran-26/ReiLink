@@ -55,6 +55,7 @@ class DialogueAgent:
 
     def chat(self, request: ChatRequest, background_tasks: Any | None = None) -> ChatResponse:
         total_start = time.perf_counter()
+        request_started_at = datetime.now(timezone.utc)
         log_provider_state("chat")
         game_status = self.detector.get_status()
         intent_result = detect_intent(request.message)
@@ -62,7 +63,7 @@ class DialogueAgent:
         recent_user_messages = self.store.recent_user_messages(request.session_id)
         recent_assistant_replies = self.store.recent_assistant_replies(request.session_id)
         session_focus = resolve_session_focus(request.message, recent_user_messages)
-        now = datetime.now(timezone.utc)
+        now = request_started_at
         semantic_extraction = extract_semantics(
             request.message,
             intent_result.intent,
@@ -127,6 +128,9 @@ class DialogueAgent:
                 llm_result = replace(
                     retry_result,
                     llm_latency_ms=llm_result.llm_latency_ms + retry_result.llm_latency_ms,
+                    provider_latency_ms=int(llm_result.provider_latency_ms or llm_result.llm_latency_ms)
+                    + int(retry_result.provider_latency_ms or retry_result.llm_latency_ms),
+                    fallback_reason=retry_result.fallback_reason or llm_result.fallback_reason,
                 )
         reply_segments = segment_reply(reply, intent_result.intent, request.message)
         self.store.append(
@@ -152,30 +156,50 @@ class DialogueAgent:
             self._safe_memory_update(request.message, reply, intent_result.intent, now, semantic_extraction)
         memory_latency_ms = int((time.perf_counter() - memory_start) * 1000)
         total_latency_ms = int((time.perf_counter() - total_start) * 1000)
+        provider_latency_ms = int(llm_result.provider_latency_ms or llm_result.llm_latency_ms)
         metrics = ChatLatencyMetrics(
             intent=intent_result.intent,
             selected_model=llm_result.selected_model,
+            model_used=llm_result.selected_model,
+            main_reply_model=llm_result.selected_model,
+            model_route_mode=llm_result.model_route_mode,
+            route_reason=llm_result.route_reason,
+            route_intent=llm_result.route_intent or intent_result.intent,
+            estimated_complexity=llm_result.estimated_complexity,
+            fallback_reason=llm_result.fallback_reason,
             thinking_enabled=llm_result.thinking_enabled,
             reasoning_effort=llm_result.reasoning_effort,
             prompt_tokens_estimate=llm_result.prompt_tokens_estimate,
             llm_latency_ms=llm_result.llm_latency_ms,
+            provider_latency_ms=provider_latency_ms,
             memory_latency_ms=memory_latency_ms,
             total_latency_ms=total_latency_ms,
+            response_latency_ms=total_latency_ms,
+            request_started_at=request_started_at.isoformat(),
             reply_segments_count=len(reply_segments.segments),
             segmenter_mode=reply_segments.mode,
+            semantic_extraction_called=bool(semantic_extraction.get("llm_called")),
+            semantic_extraction_model=semantic_extraction.get("semantic_extraction_model"),
+            semantic_extraction_latency_ms=int(semantic_extraction.get("semantic_extraction_latency_ms") or 0),
+            semantic_extraction_parse_error=semantic_extraction.get("parse_error"),
         )
         set_last_chat_metrics(metrics)
         logger.info(
-            "chat latency intent=%s selected_model=%s thinking_enabled=%s reasoning_effort=%s "
-            "prompt_tokens_estimate=%s llm_latency_ms=%s memory_latency_ms=%s total_latency_ms=%s",
+            "chat latency intent=%s selected_model=%s route_mode=%s route_reason=%s "
+            "thinking_enabled=%s reasoning_effort=%s prompt_tokens_estimate=%s "
+            "llm_latency_ms=%s provider_latency_ms=%s memory_latency_ms=%s total_latency_ms=%s fallback_reason=%s",
             metrics.intent,
             metrics.selected_model,
+            metrics.model_route_mode,
+            metrics.route_reason,
             metrics.thinking_enabled,
             metrics.reasoning_effort,
             metrics.prompt_tokens_estimate,
             metrics.llm_latency_ms,
+            metrics.provider_latency_ms,
             metrics.memory_latency_ms,
             metrics.total_latency_ms,
+            metrics.fallback_reason,
         )
         return ChatResponse(
             reply=reply,
@@ -185,6 +209,11 @@ class DialogueAgent:
             game_status=game_status.status,
             sources=sorted({snippet.source for snippet in snippets}),
             timestamp=now,
+            request_started_at=request_started_at,
+            response_latency_ms=total_latency_ms,
+            provider_latency_ms=provider_latency_ms,
+            model_used=llm_result.selected_model,
+            route_reason=llm_result.route_reason,
         )
 
     def _safe_memory_update(

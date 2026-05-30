@@ -52,13 +52,18 @@ def extract_semantics(
     llm_called = False
     llm_result: dict[str, Any] | None = None
     parse_error: str | None = None
+    extraction_model = _semantic_extraction_model()
+    extraction_latency_ms = 0
 
     if should_call_llm:
         llm_called = True
+        llm_start = time.perf_counter()
         try:
             raw = _call_deepseek_flash(normalized_message, intent, state, session_focus_boss)
+            extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
             llm_result = _parse_llm_json(raw)
         except Exception as exc:  # noqa: BLE001 - semantic extraction must never break chat.
+            extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
             parse_error = str(exc)
             logger.warning("semantic extraction skipped parse_error=%s", parse_error)
 
@@ -72,6 +77,9 @@ def extract_semantics(
         "ambiguity_detected": bool(ambiguity_reason),
         "fallback_reason": ambiguity_reason or (None if not should_call_llm else "low_confidence_rule"),
         "llm_called": llm_called,
+        "semantic_extraction_model": extraction_model if llm_called else None,
+        "semantic_extraction_latency_ms": extraction_latency_ms,
+        "provider_latency_ms": extraction_latency_ms,
         "llm_result": llm_result,
         "final_decision": final_decision,
         "skip_reason": None if llm_called else skip_reason,
@@ -117,6 +125,9 @@ _latest_debug: dict[str, Any] = {
     "ambiguity_detected": False,
     "fallback_reason": None,
     "llm_called": False,
+    "semantic_extraction_model": None,
+    "semantic_extraction_latency_ms": 0,
+    "provider_latency_ms": 0,
     "llm_result": None,
     "final_decision": _empty_decision(),
     "skip_reason": "not_run",
@@ -315,7 +326,7 @@ def _call_deepseek_flash(
         ),
     }
     payload = {
-        "model": settings.deepseek_model_fast or "deepseek-chat",
+        "model": _semantic_extraction_model(),
         "messages": [
             {
                 "role": "system",
@@ -347,6 +358,10 @@ def _call_deepseek_flash(
         raise RuntimeError(f"semantic extraction provider failed: {exc}") from exc
     except (KeyError, IndexError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"semantic extraction provider returned invalid response: {exc}") from exc
+
+
+def _semantic_extraction_model() -> str:
+    return settings.deepseek_model_fast or "deepseek-chat"
 
 
 def _parse_llm_json(raw: str) -> dict[str, Any]:

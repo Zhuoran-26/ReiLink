@@ -1,14 +1,18 @@
 import json
 from pathlib import Path
 
-from app.core.config import settings
+from app.core.config import active_model_preference, settings
 from app.schemas.api import AppSettings, AppSettingsUpdate
 
 
 def default_app_settings() -> AppSettings:
     persona_mode = "minimal" if settings.persona_mode == "minimal" else "guarded"
     debug_panel = "show" if settings.enable_debug else "hide"
-    return AppSettings(persona_mode=persona_mode, debug_panel=debug_panel)
+    return AppSettings(
+        persona_mode=persona_mode,
+        debug_panel=debug_panel,
+        model_preference=active_model_preference(),
+    )
 
 
 class AppSettingsStore:

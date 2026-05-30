@@ -6,9 +6,9 @@ import time
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from app.core.config import active_persona_mode, settings
+from app.core.config import active_model_preference, active_persona_mode, settings
 from app.core.logging import get_logger
 from app.modules.dialogue_agent.emotion import detect_user_emotion
 from app.modules.dialogue_agent.routing import ModelRoute, select_model_route
@@ -38,6 +38,9 @@ class ProviderInfo:
             "env_file_loaded": settings.env_file_loaded,
             "env_file_path": str(settings.env_file_path),
             "persona_mode": active_persona_mode(),
+            "model_route_mode": active_model_preference(),
+            "deepseek_model_fast": settings.deepseek_model_fast,
+            "deepseek_model_pro": settings.deepseek_model_pro,
         }
 
 
@@ -63,6 +66,11 @@ class LLMProvider(ABC):
             reasoning_effort=None,
             prompt_tokens_estimate=estimate_prompt_tokens(system_prompt, user_message, snippets),
             llm_latency_ms=latency_ms,
+            provider_latency_ms=latency_ms,
+            model_route_mode="mock",
+            route_reason="mock_provider",
+            route_intent=intent,
+            estimated_complexity="low",
         )
 
 
@@ -74,6 +82,16 @@ class LLMResult:
     reasoning_effort: str | None
     prompt_tokens_estimate: int
     llm_latency_ms: int
+    provider_latency_ms: int | None = None
+    model_route_mode: str = "auto"
+    route_reason: str | None = None
+    route_intent: str | None = None
+    estimated_complexity: str | None = None
+    fallback_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.provider_latency_ms is None:
+            object.__setattr__(self, "provider_latency_ms", self.llm_latency_ms)
 
 
 class ProviderTimeoutError(RuntimeError):
@@ -133,6 +151,37 @@ class OpenAICompatibleProvider(LLMProvider):
         if not self.api_key:
             raise RuntimeError(self.missing_key_message)
         route = self._select_route(intent, user_message)
+        try:
+            return self._generate_for_route(route, system_prompt, user_message, snippets)
+        except RuntimeError as exc:
+            fallback_route = self._fallback_route(route, exc)
+            if fallback_route is None:
+                raise
+            fallback_reason = self._fallback_reason(exc)
+            logger.warning(
+                "%s fast model failed; falling back selected_model=%s fallback_model=%s reason=%s",
+                self.provider_name,
+                route.selected_model,
+                fallback_route.selected_model,
+                fallback_reason,
+            )
+            fallback_result = self._generate_for_route(fallback_route, system_prompt, user_message, snippets)
+            return replace(
+                fallback_result,
+                model_route_mode=route.model_route_mode,
+                route_reason=route.route_reason,
+                route_intent=route.route_intent,
+                estimated_complexity=route.estimated_complexity,
+                fallback_reason=fallback_reason,
+            )
+
+    def _generate_for_route(
+        self,
+        route: ModelRoute,
+        system_prompt: str,
+        user_message: str,
+        snippets: list[KnowledgeSnippet],
+    ) -> LLMResult:
         knowledge = _knowledge_context(snippets)
         messages = [{"role": "system", "content": system_prompt}]
         if knowledge:
@@ -172,6 +221,11 @@ class OpenAICompatibleProvider(LLMProvider):
                 reasoning_effort=route.reasoning_effort,
                 prompt_tokens_estimate=estimate_prompt_tokens(system_prompt, user_message, snippets),
                 llm_latency_ms=latency_ms,
+                provider_latency_ms=latency_ms,
+                model_route_mode=route.model_route_mode,
+                route_reason=route.route_reason,
+                route_intent=route.route_intent,
+                estimated_complexity=route.estimated_complexity,
             )
         except socket.timeout as exc:
             raise ProviderTimeoutError(
@@ -198,10 +252,26 @@ class OpenAICompatibleProvider(LLMProvider):
             raise RuntimeError(f"{self.provider_name} provider failed: {exc}") from exc
 
     def _select_route(self, intent: str, user_message: str) -> ModelRoute:
-        return ModelRoute(self.model, False, None, intent)
+        return ModelRoute(
+            selected_model=self.model,
+            thinking_enabled=False,
+            reasoning_effort=None,
+            route=intent,
+            model_route_mode="single",
+            route_reason=intent,
+            route_intent=intent,
+            estimated_complexity="medium",
+        )
 
     def _route_payload(self, route: ModelRoute) -> dict[str, object]:
         return {}
+
+    def _fallback_route(self, route: ModelRoute, exc: RuntimeError) -> ModelRoute | None:
+        del route, exc
+        return None
+
+    def _fallback_reason(self, exc: RuntimeError) -> str:
+        return f"fast_model_failed:{exc.__class__.__name__}"
 
 
 class DeepSeekProvider(OpenAICompatibleProvider):
@@ -210,7 +280,7 @@ class DeepSeekProvider(OpenAICompatibleProvider):
             provider_name="DeepSeek",
             api_key=settings.deepseek_api_key,
             base_url=settings.deepseek_base_url,
-            model=settings.deepseek_model_reasoning,
+            model=settings.deepseek_model_pro,
             missing_key_message="DeepSeek API key missing. Set DEEPSEEK_API_KEY.",
         )
 
@@ -221,6 +291,18 @@ class DeepSeekProvider(OpenAICompatibleProvider):
         if not route.thinking_enabled:
             return {}
         return {"thinking": {"type": "enabled"}, "reasoning_effort": route.reasoning_effort or "medium"}
+
+    def _fallback_route(self, route: ModelRoute, exc: RuntimeError) -> ModelRoute | None:
+        del exc
+        pro_model = settings.deepseek_model_pro
+        if route.selected_model != settings.deepseek_model_fast or not pro_model or pro_model == route.selected_model:
+            return None
+        return replace(
+            route,
+            selected_model=pro_model,
+            thinking_enabled=True,
+            reasoning_effort=settings.deepseek_reasoning_effort or "medium",
+        )
 
 
 def get_provider() -> LLMProvider:
@@ -245,7 +327,7 @@ def get_provider_info() -> ProviderInfo:
     if configured == "deepseek":
         return ProviderInfo(
             provider="deepseek",
-            model=settings.deepseek_model_reasoning,
+            model=settings.deepseek_model_pro,
             base_url=settings.deepseek_base_url,
             api_key_loaded=bool(settings.deepseek_api_key),
             configured_provider=configured,

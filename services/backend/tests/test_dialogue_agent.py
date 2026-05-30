@@ -70,7 +70,7 @@ def test_deepseek_provider_sends_thinking_payload(monkeypatch):
     monkeypatch.setattr("app.modules.dialogue_agent.providers.settings.deepseek_api_key", "test-key")
     monkeypatch.setattr("app.modules.dialogue_agent.providers.urllib.request.urlopen", fake_urlopen)
 
-    reply = DeepSeekProvider().generate("中文短句", "Margit 怎么打", [], "elden_ring_boss_strategy")
+    reply = DeepSeekProvider().generate("中文短句", "详细讲 Margit 怎么打", [], "elden_ring_boss_strategy")
 
     assert reply == "好的"
     assert captured["payload"]["thinking"] == {"type": "enabled"}

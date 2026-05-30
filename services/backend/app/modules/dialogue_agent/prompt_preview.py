@@ -5,6 +5,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.core.config import active_persona_mode
+from app.modules.dialogue_agent.intent import detect_intent
+from app.modules.dialogue_agent.metrics import get_last_chat_metrics
+from app.modules.dialogue_agent.routing import select_model_route
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.game_session.state import GameSessionStore, _fails_current_boss
 from app.modules.memory.profile import BOSS_FRESHNESS, PlayerMemory
@@ -53,6 +56,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
             "persona_mode": active_persona_mode(),
             "current_user_message": current_user_message,
             "prompt_order": PROMPT_ORDER,
+            "model_route_summary": _model_route_summary(current_user_message),
             "session_focus_summary": {
                 "boss": session_focus.boss,
                 "source": session_focus.source,
@@ -130,6 +134,33 @@ def _final_context_summary(
         "blocks": blocks,
         "raw_prompt_omitted": True,
         "memory_injected_count": len(memory_items),
+    }
+
+
+def _model_route_summary(current_user_message: str | None) -> dict[str, Any]:
+    metrics = get_last_chat_metrics().as_dict()
+    if current_user_message:
+        intent = detect_intent(current_user_message).intent
+        route = select_model_route(intent, current_user_message)
+        return {
+            "selected_model": route.selected_model,
+            "model_route_mode": route.model_route_mode,
+            "route_reason": route.route_reason,
+            "route_intent": route.route_intent,
+            "estimated_complexity": route.estimated_complexity,
+            "provider_latency_ms": metrics.get("provider_latency_ms", 0),
+            "semantic_extraction_model": metrics.get("semantic_extraction_model"),
+            "main_reply_model": metrics.get("main_reply_model") or metrics.get("selected_model"),
+        }
+    return {
+        "selected_model": metrics.get("selected_model"),
+        "model_route_mode": metrics.get("model_route_mode"),
+        "route_reason": metrics.get("route_reason"),
+        "route_intent": metrics.get("route_intent") or metrics.get("intent"),
+        "estimated_complexity": metrics.get("estimated_complexity"),
+        "provider_latency_ms": metrics.get("provider_latency_ms", 0),
+        "semantic_extraction_model": metrics.get("semantic_extraction_model"),
+        "main_reply_model": metrics.get("main_reply_model") or metrics.get("selected_model"),
     }
 
 

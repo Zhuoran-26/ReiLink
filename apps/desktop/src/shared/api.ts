@@ -15,6 +15,11 @@ export type ChatResponse = {
   game_status: string;
   sources: string[];
   timestamp: string;
+  request_started_at?: string | null;
+  response_latency_ms?: number;
+  provider_latency_ms?: number;
+  model_used?: string | null;
+  route_reason?: string | null;
 };
 
 export type UserProfileMemory = {
@@ -65,14 +70,28 @@ export type MemoryDebugResponse = {
 export type ChatDebugResponse = {
   intent: string | null;
   selected_model: string | null;
+  model_used: string | null;
+  main_reply_model: string | null;
+  model_route_mode: "auto" | "fast" | "pro" | "mock" | "single" | null;
+  route_reason: string | null;
+  route_intent: string | null;
+  estimated_complexity: "low" | "medium" | "high" | string | null;
+  fallback_reason: string | null;
   thinking_enabled: boolean;
   reasoning_effort: string | null;
   prompt_tokens_estimate: number;
   llm_latency_ms: number;
+  provider_latency_ms: number;
   memory_latency_ms: number;
   total_latency_ms: number;
+  response_latency_ms: number;
+  request_started_at: string | null;
   reply_segments_count: number;
   segmenter_mode: string | null;
+  semantic_extraction_called: boolean;
+  semantic_extraction_model: string | null;
+  semantic_extraction_latency_ms: number;
+  semantic_extraction_parse_error: string | null;
 };
 
 export type GameSessionDebugResponse = {
@@ -114,6 +133,7 @@ export type PromptPreviewResponse = {
   persona_mode: string;
   current_user_message: string | null;
   prompt_order: string[];
+  model_route_summary: Record<string, unknown>;
   session_focus_summary: Record<string, unknown>;
   game_state_summary: Record<string, unknown>;
   memory_summary: Record<string, unknown>;
@@ -126,11 +146,37 @@ export type SemanticExtractionDebugResponse = {
   rule_result: Record<string, unknown> | null;
   rule_confidence: number;
   llm_called: boolean;
+  semantic_extraction_model: string | null;
+  semantic_extraction_latency_ms: number;
+  provider_latency_ms: number;
   llm_result: Record<string, unknown> | null;
   final_decision: Record<string, unknown> | null;
   skip_reason: string | null;
   latency_ms: number;
   parse_error: string | null;
+};
+
+export type ProviderDebugResponse = {
+  provider: string;
+  model: string | null;
+  base_url: string | null;
+  api_key_loaded: boolean;
+  configured_provider: string;
+  fallback_to_mock: boolean;
+  env_file_loaded: boolean;
+  env_file_path: string;
+  persona_mode: string;
+  model_route_mode: string;
+  deepseek_model_fast: string;
+  deepseek_model_pro: string;
+  selected_model: string | null;
+  main_reply_model: string | null;
+  route_reason: string | null;
+  route_intent: string | null;
+  estimated_complexity: string | null;
+  provider_latency_ms: number;
+  semantic_extraction_model: string | null;
+  fallback_reason: string | null;
 };
 
 export type PendingMemory = {
@@ -183,6 +229,7 @@ export const api = {
   memoryEpisodes: () => request<EpisodeMemory[]>("/api/memory/episodes"),
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),
   chatDebug: () => request<ChatDebugResponse>("/api/debug/chat"),
+  providerDebug: () => request<ProviderDebugResponse>("/api/debug/provider"),
   gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
   semanticExtractionDebug: () => request<SemanticExtractionDebugResponse>("/api/debug/semantic-extraction/latest"),
   promptPreview: (sessionId = "default") => request<PromptPreviewResponse>(`/api/debug/prompt-preview?session_id=${encodeURIComponent(sessionId)}`),
