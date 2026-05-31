@@ -24,6 +24,34 @@ export type GameDetectionResponse = {
   detected_at: string;
 };
 
+export type ManualGameOverride = {
+  enabled: boolean;
+  game_id: string | null;
+  display_name: string | null;
+  set_at: string | null;
+  source: "user";
+};
+
+export type GameCatalogOption = {
+  game_id: string;
+  display_name: string;
+  knowledge_available: boolean;
+};
+
+export type GameContextResponse = {
+  active_game_id: string | null;
+  active_game_display_name: string | null;
+  active_source: "manual" | "detector" | "session" | "user_message" | "none";
+  manual_override: ManualGameOverride;
+  detected_game: GameDetectionResponse;
+  session_game: string | null;
+  user_message_game_id: string | null;
+  user_message_game_display_name: string | null;
+  knowledge_available: boolean;
+  fallback_reason: string | null;
+  available_games: GameCatalogOption[];
+};
+
 export type ChatResponse = {
   reply: string;
   reply_segments: string[];
@@ -154,6 +182,9 @@ export type ChatDebugResponse = {
   knowledge_supported_games_count: number;
   knowledge_fallback_reason: string | null;
   knowledge_confidence: number;
+  active_game_id: string | null;
+  active_source: string | null;
+  knowledge_available: boolean;
   matched_topics: string[];
   snippets_count: number;
   snippet_titles: string[];
@@ -200,6 +231,7 @@ export type PromptPreviewResponse = {
   current_user_message: string | null;
   prompt_order: string[];
   model_route_summary: Record<string, unknown>;
+  game_context_summary: Record<string, unknown>;
   session_focus_summary: Record<string, unknown>;
   game_state_summary: Record<string, unknown>;
   knowledge_summary: Record<string, unknown>;
@@ -296,6 +328,12 @@ export const api = {
     }),
   gameStatus: () => request<GameStatus>("/api/game/status"),
   gameDetected: () => request<GameDetectionResponse>("/api/game/detected"),
+  gameContext: () => request<GameContextResponse>("/api/game/context"),
+  setManualGameContext: (gameId: string | null) =>
+    request<GameContextResponse>("/api/game/context/manual", {
+      method: "POST",
+      body: JSON.stringify({ game_id: gameId })
+    }),
   memoryProfile: () => request<UserProfileMemory>("/api/memory/profile"),
   memoryEpisodes: () => request<EpisodeMemory[]>("/api/memory/episodes"),
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),

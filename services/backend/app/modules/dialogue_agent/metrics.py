@@ -37,6 +37,9 @@ class ChatLatencyMetrics:
     knowledge_supported_games_count: int = 0
     knowledge_fallback_reason: str | None = None
     knowledge_confidence: float = 0.0
+    active_game_id: str | None = None
+    active_source: str | None = None
+    knowledge_available: bool = False
     matched_topics: list[str] | None = None
     snippets_count: int = 0
     snippet_titles: list[str] | None = None

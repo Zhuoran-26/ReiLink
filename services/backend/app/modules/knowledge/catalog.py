@@ -69,6 +69,14 @@ class GameCatalog:
     def supported_games_count(self) -> int:
         return sum(1 for game in self.games() if game.enabled)
 
+    def enabled_games(self) -> list[GameCatalogEntry]:
+        return [game for game in self.games() if game.enabled]
+
+    def get_game(self, game_id: str | None) -> GameCatalogEntry | None:
+        if not game_id:
+            return None
+        return next((game for game in self.games() if game.game_id == game_id), None)
+
     def resolve_knowledge_path(self, knowledge_path: str) -> Path:
         path = Path(knowledge_path)
         if path.is_absolute():
@@ -82,9 +90,13 @@ class GameCatalog:
         user_message: str,
         game_session_state: dict[str, Any] | None = None,
         detected_game: dict[str, Any] | None = None,
+        manual_override: dict[str, Any] | None = None,
     ) -> GameMatchResult:
         games = self.games()
         supported_count = sum(1 for game in games if game.enabled)
+        manual_match = self._match_manual_override(manual_override, games, supported_count)
+        if manual_match:
+            return manual_match
         detector_match = self._match_detected_game(detected_game, games, supported_count)
         if detector_match:
             return detector_match
@@ -114,6 +126,31 @@ class GameCatalog:
             return _match_result(content_match, "alias", 0.72, supported_count)
 
         return _empty_match(supported_count, "no_knowledge_match")
+
+    @staticmethod
+    def _match_manual_override(
+        manual_override: dict[str, Any] | None,
+        games: list[GameCatalogEntry],
+        supported_count: int,
+    ) -> GameMatchResult | None:
+        if not isinstance(manual_override, dict) or not manual_override.get("enabled"):
+            return None
+        game_id = str(manual_override.get("game_id") or "").strip()
+        if not game_id:
+            return None
+        entry = next((game for game in games if game.game_id == game_id), None)
+        if not entry:
+            return GameMatchResult(
+                matched_game_id=None,
+                matched_game_display_name=str(manual_override.get("display_name") or game_id),
+                match_source="manual",
+                confidence=0.0,
+                knowledge_path=None,
+                enabled=False,
+                supported_games_count=supported_count,
+                fallback_reason="no_supported_knowledge",
+            )
+        return _match_result(entry, "manual", 1.0, supported_count)
 
     @staticmethod
     def _match_detected_game(

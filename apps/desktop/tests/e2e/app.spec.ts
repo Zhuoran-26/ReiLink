@@ -74,6 +74,70 @@ test("mock backend chat flow works", async ({ page }) => {
       }
     })
   );
+  await page.route("**/api/game/context", (route) =>
+    route.fulfill({
+      json: {
+        active_game_id: "elden_ring",
+        active_game_display_name: "艾尔登法环",
+        active_source: "detector",
+        manual_override: {
+          enabled: false,
+          game_id: null,
+          display_name: null,
+          set_at: null,
+          source: "user"
+        },
+        detected_game: {
+          status: "running",
+          detected_game_id: "elden_ring",
+          display_name: "艾尔登法环",
+          process_name: "eldenring.exe",
+          match_confidence: 1,
+          match_source: "process",
+          knowledge_game_id: "elden_ring",
+          detected_at: new Date().toISOString()
+        },
+        session_game: "Elden Ring",
+        user_message_game_id: null,
+        user_message_game_display_name: null,
+        knowledge_available: true,
+        fallback_reason: null,
+        available_games: [{ game_id: "elden_ring", display_name: "艾尔登法环", knowledge_available: true }]
+      }
+    })
+  );
+  await page.route("**/api/game/context/manual", (route) =>
+    route.fulfill({
+      json: {
+        active_game_id: "elden_ring",
+        active_game_display_name: "艾尔登法环",
+        active_source: "manual",
+        manual_override: {
+          enabled: true,
+          game_id: "elden_ring",
+          display_name: "艾尔登法环",
+          set_at: new Date().toISOString(),
+          source: "user"
+        },
+        detected_game: {
+          status: "running",
+          detected_game_id: "elden_ring",
+          display_name: "艾尔登法环",
+          process_name: "eldenring.exe",
+          match_confidence: 1,
+          match_source: "process",
+          knowledge_game_id: "elden_ring",
+          detected_at: new Date().toISOString()
+        },
+        session_game: "Elden Ring",
+        user_message_game_id: null,
+        user_message_game_display_name: null,
+        knowledge_available: true,
+        fallback_reason: null,
+        available_games: [{ game_id: "elden_ring", display_name: "艾尔登法环", knowledge_available: true }]
+      }
+    })
+  );
   await page.route("**/api/memory/profile", (route) =>
     route.fulfill({
       json: {
@@ -137,6 +201,9 @@ test("mock backend chat flow works", async ({ page }) => {
         knowledge_supported_games_count: 1,
         knowledge_fallback_reason: null,
         knowledge_confidence: 0.83,
+        active_game_id: "elden_ring",
+        active_source: "session",
+        knowledge_available: true,
         matched_topics: ["margit", "boss_strategy"],
         snippets_count: 2,
         snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
@@ -214,6 +281,7 @@ test("mock backend chat flow works", async ({ page }) => {
         current_user_message: null,
         prompt_order: [],
         model_route_summary: {},
+        game_context_summary: {},
         session_focus_summary: {},
         game_state_summary: {},
         knowledge_summary: {},

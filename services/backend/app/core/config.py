@@ -73,6 +73,7 @@ class Settings:
     pending_memories_path: Path = memory_dir / "pending_memories.jsonl"
     session_dir: Path = data_dir / "session"
     game_session_state_path: Path = session_dir / "game_session_state.json"
+    game_context_state_path: Path = session_dir / "game_context_state.json"
     proactive_state_path: Path = session_dir / "proactive_state.json"
     conversations_dir: Path = data_dir / "conversations"
     elden_ring_dir: Path = data_dir / "elden_ring"

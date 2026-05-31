@@ -114,6 +114,60 @@ def test_detected_game_takes_priority_over_session_game():
     assert result.matched is True
     assert result.game_id == "elden_ring"
     assert result.match_source == "process"
+    assert result.active_source == "detector"
+
+
+def test_manual_override_takes_priority_over_detected_game():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="Stardew Valley",
+        user_message="Margit 怎么打",
+        current_boss=None,
+        game_session_state={"current_game": "Stardew Valley"},
+        detected_game={
+            "status": "running",
+            "detected_game_id": "stardew_valley",
+            "display_name": "星露谷物语",
+            "process_name": "Stardew Valley.exe",
+            "match_confidence": 1.0,
+            "match_source": "process",
+            "knowledge_game_id": None,
+        },
+        manual_override={
+            "enabled": True,
+            "game_id": "elden_ring",
+            "display_name": "艾尔登法环",
+            "source": "user",
+        },
+        intent="elden_ring_boss_strategy",
+    )
+
+    assert result.matched is True
+    assert result.game_id == "elden_ring"
+    assert result.match_source == "manual"
+    assert result.active_source == "manual"
+    assert result.knowledge_available is True
+
+
+def test_manual_override_unknown_game_does_not_reuse_elden_ring():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="Elden Ring",
+        user_message="Margit 怎么打",
+        current_boss=None,
+        game_session_state={"current_game": "Elden Ring"},
+        manual_override={
+            "enabled": True,
+            "game_id": "stardew_valley",
+            "display_name": "星露谷物语",
+            "source": "user",
+        },
+        intent="elden_ring_boss_strategy",
+    )
+
+    assert result.matched is False
+    assert result.game_id is None
+    assert result.game_display_name == "星露谷物语"
+    assert result.fallback_reason == "no_supported_knowledge"
+    assert result.knowledge_available is False
 
 
 def test_generic_retriever_matches_waterfowl_sample():

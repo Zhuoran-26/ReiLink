@@ -573,6 +573,15 @@ button {
   gap: 10px;
 }
 
+.gameContextControl {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(145, 164, 213, 0.14);
+  border-radius: 13px;
+  padding: 11px;
+  background: rgba(10, 14, 26, 0.46);
+}
+
 .settingRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 126px;

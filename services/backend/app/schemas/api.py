@@ -30,6 +30,38 @@ class GameDetectionResponse(BaseModel):
     detected_at: datetime
 
 
+class ManualGameOverride(BaseModel):
+    enabled: bool = False
+    game_id: str | None = None
+    display_name: str | None = None
+    set_at: datetime | None = None
+    source: Literal["user"] = "user"
+
+
+class GameCatalogOption(BaseModel):
+    game_id: str
+    display_name: str
+    knowledge_available: bool = True
+
+
+class GameContextResponse(BaseModel):
+    active_game_id: str | None = None
+    active_game_display_name: str | None = None
+    active_source: Literal["manual", "detector", "session", "user_message", "none"] = "none"
+    manual_override: ManualGameOverride = Field(default_factory=ManualGameOverride)
+    detected_game: GameDetectionResponse
+    session_game: str | None = None
+    user_message_game_id: str | None = None
+    user_message_game_display_name: str | None = None
+    knowledge_available: bool = False
+    fallback_reason: str | None = None
+    available_games: list[GameCatalogOption] = Field(default_factory=list)
+
+
+class ManualGameContextRequest(BaseModel):
+    game_id: str | None = None
+
+
 class PersonaPromptRequest(BaseModel):
     persona_id: str = "rei_like"
     game_context: dict[str, Any] = Field(default_factory=dict)
@@ -195,6 +227,9 @@ class ChatDebugResponse(BaseModel):
     knowledge_supported_games_count: int = 0
     knowledge_fallback_reason: str | None = None
     knowledge_confidence: float = 0.0
+    active_game_id: str | None = None
+    active_source: str | None = None
+    knowledge_available: bool = False
     matched_topics: list[str] = Field(default_factory=list)
     snippets_count: int = 0
     snippet_titles: list[str] = Field(default_factory=list)
@@ -206,6 +241,7 @@ class PromptPreviewResponse(BaseModel):
     current_user_message: str | None = None
     prompt_order: list[str]
     model_route_summary: dict[str, Any] = Field(default_factory=dict)
+    game_context_summary: dict[str, Any] = Field(default_factory=dict)
     session_focus_summary: dict[str, Any] = Field(default_factory=dict)
     game_state_summary: dict[str, Any] = Field(default_factory=dict)
     knowledge_summary: dict[str, Any] = Field(default_factory=dict)

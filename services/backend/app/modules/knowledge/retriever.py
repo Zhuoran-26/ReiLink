@@ -33,11 +33,16 @@ class KnowledgeRetrievalResult:
     knowledge_path: str | None = None
     supported_games_count: int = 0
     fallback_reason: str | None = "no_knowledge_match"
+    active_source: str = "none"
+    knowledge_available: bool = False
 
     def as_debug_dict(self) -> dict[str, Any]:
         return {
             "knowledge_matched": self.matched,
             "game_id": self.game_id,
+            "active_game_id": self.game_id,
+            "active_source": self.active_source,
+            "knowledge_available": self.knowledge_available,
             "matched_game_id": self.game_id,
             "matched_game_display_name": self.game_display_name,
             "match_source": self.match_source,
@@ -65,6 +70,7 @@ class GameKnowledgeRetriever:
         current_boss: str | None = None,
         game_session_state: dict[str, Any] | None = None,
         detected_game: dict[str, Any] | None = None,
+        manual_override: dict[str, Any] | None = None,
         intent: str = "casual_chat",
         limit: int = 3,
     ) -> KnowledgeRetrievalResult:
@@ -73,6 +79,7 @@ class GameKnowledgeRetriever:
             user_message=user_message,
             game_session_state=game_session_state,
             detected_game=detected_game,
+            manual_override=manual_override,
         )
         game_id = game_match.matched_game_id
         if not game_id:
@@ -113,6 +120,8 @@ class GameKnowledgeRetriever:
             knowledge_path=game_match.knowledge_path,
             supported_games_count=game_match.supported_games_count,
             fallback_reason=None if snippets else "no_knowledge_match",
+            active_source=_active_source(game_match.match_source),
+            knowledge_available=True,
         )
 
     def search(self, query: str, intent: str = "elden_ring_general_help", limit: int = 3) -> list[KnowledgeSnippet]:
@@ -229,6 +238,10 @@ class GameKnowledgeRetriever:
             knowledge_path=game_match.knowledge_path,
             supported_games_count=game_match.supported_games_count,
             fallback_reason=fallback_reason or game_match.fallback_reason or "no_knowledge_match",
+            active_source=_active_source(game_match.match_source),
+            knowledge_available=bool(
+                game_match.matched_game_id and game_match.enabled and game_match.knowledge_path
+            ),
         )
 
 
@@ -256,6 +269,18 @@ def _dedupe(items: Any) -> list[str]:
         seen.add(text)
         result.append(text)
     return result
+
+
+def _active_source(match_source: str | None) -> str:
+    if match_source == "manual":
+        return "manual"
+    if match_source in {"process", "window_title"}:
+        return "detector"
+    if match_source == "current_game":
+        return "session"
+    if match_source in {"user_message", "alias"}:
+        return "user_message"
+    return "none"
 
 
 def _should_include_session_terms(user_message: str, intent: str) -> bool:

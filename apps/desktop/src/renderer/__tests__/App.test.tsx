@@ -4,7 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App, INTERIM_PLACEHOLDERS } from "../App";
-import type { ProactiveCheckResponse, ProactiveStatusResponse } from "../../shared/api";
+import type {
+  GameContextResponse,
+  GameDetectionResponse,
+  ProactiveCheckResponse,
+  ProactiveStatusResponse
+} from "../../shared/api";
 
 const runningStatus = {
   game_id: "elden_ring",
@@ -21,7 +26,7 @@ const runningStatus = {
   detected_at: new Date().toISOString()
 };
 
-const gameDetection = {
+const gameDetection: GameDetectionResponse = {
   status: "running",
   detected_game_id: "elden_ring",
   display_name: "艾尔登法环",
@@ -32,7 +37,7 @@ const gameDetection = {
   detected_at: new Date().toISOString()
 };
 
-const idleGameDetection = {
+const idleGameDetection: GameDetectionResponse = {
   ...gameDetection,
   status: "idle",
   detected_game_id: null,
@@ -41,6 +46,37 @@ const idleGameDetection = {
   match_confidence: 0,
   match_source: "none",
   knowledge_game_id: null
+};
+
+const gameContext: GameContextResponse = {
+  active_game_id: "elden_ring",
+  active_game_display_name: "艾尔登法环",
+  active_source: "detector",
+  manual_override: {
+    enabled: false,
+    game_id: null,
+    display_name: null,
+    set_at: null,
+    source: "user"
+  },
+  detected_game: gameDetection,
+  session_game: "Elden Ring",
+  user_message_game_id: null,
+  user_message_game_display_name: null,
+  knowledge_available: true,
+  fallback_reason: null,
+  available_games: [{ game_id: "elden_ring", display_name: "艾尔登法环", knowledge_available: true }]
+};
+
+const idleGameContext: GameContextResponse = {
+  ...gameContext,
+  active_game_id: null,
+  active_game_display_name: null,
+  active_source: "none",
+  detected_game: idleGameDetection,
+  session_game: null,
+  knowledge_available: false,
+  fallback_reason: "no_active_game"
 };
 
 const memoryProfile = {
@@ -101,6 +137,9 @@ const chatDebug = {
   knowledge_supported_games_count: 1,
   knowledge_fallback_reason: null,
   knowledge_confidence: 0.83,
+  active_game_id: "elden_ring",
+  active_source: "session",
+  knowledge_available: true,
   matched_topics: ["margit", "boss_strategy"],
   snippets_count: 2,
   snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
@@ -158,6 +197,7 @@ const promptPreview = {
     semantic_extraction_model: "deepseek-v4-flash",
     main_reply_model: "deepseek-v4-flash"
   },
+  game_context_summary: gameContext,
   session_focus_summary: { boss: "恶兆妖鬼 Margit", source: "current_message", prompt_line: "当前短期焦点：恶兆妖鬼 Margit" },
   game_state_summary: {
     current_game: "Elden Ring",
@@ -173,6 +213,9 @@ const promptPreview = {
   knowledge_summary: {
     knowledge_matched: true,
     game_id: "elden_ring",
+    active_game_id: "elden_ring",
+    active_source: "session",
+    knowledge_available: true,
     matched_game_id: "elden_ring",
     matched_game_display_name: "艾尔登法环",
     match_source: "current_game",
@@ -303,9 +346,11 @@ const appSettings = {
 };
 
 let appSettingsStore = { ...appSettings };
+let gameContextStore = { ...gameContext };
 
 const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
+  gameContextStore = { ...gameContext };
   proactiveStatusStore = { ...proactiveStatus };
   proactiveCheckStore = {
     should_send: false,
@@ -323,6 +368,28 @@ const resetSettingsResponse = () => {
     block_reason: "disabled",
     active_candidate_triggers: [] as string[]
   };
+};
+
+const gameContextResponse = (url: string, init?: RequestInit) => {
+  if (url.endsWith("/api/game/context/manual") && init?.method === "POST") {
+    const body = JSON.parse(String(init.body ?? "{}")) as { game_id?: string | null };
+    gameContextStore = body.game_id
+      ? {
+          ...gameContext,
+          active_source: "manual",
+          manual_override: {
+            enabled: true,
+            game_id: body.game_id,
+            display_name: "艾尔登法环",
+            set_at: new Date().toISOString(),
+            source: "user"
+          }
+        }
+      : { ...gameContext, active_source: "detector", manual_override: gameContext.manual_override };
+    return Response.json(gameContextStore);
+  }
+  if (url.endsWith("/api/game/context")) return Response.json(gameContextStore);
+  return null;
 };
 
 const settingsResponse = (url: string, init?: RequestInit) => {
@@ -393,6 +460,8 @@ describe("App", () => {
         if (pendingResponse) return pendingResponse;
         const settings = settingsResponse(url, init);
         if (settings) return settings;
+        const gameContextResponseValue = gameContextResponse(url, init);
+        if (gameContextResponseValue) return gameContextResponseValue;
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
@@ -449,7 +518,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0));
     expect(screen.getAllByText("恶兆妖鬼 Margit").length).toBeGreaterThan(0);
     expect(screen.getAllByText("挑战中").length).toBeGreaterThan(0);
-    expect(screen.getByText("当前游戏")).toBeInTheDocument();
+    expect(screen.getAllByText("当前游戏").length).toBeGreaterThan(0);
     expect(screen.getByText("当前 Boss")).toBeInTheDocument();
     expect(screen.getByText("死亡次数")).toBeInTheDocument();
   });
@@ -464,6 +533,9 @@ describe("App", () => {
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
     expect(screen.getByLabelText("自动游戏检测")).toHaveValue("on");
+    expect(screen.getByLabelText("当前游戏")).toHaveValue("");
+    expect(screen.getByRole("option", { name: "艾尔登法环" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "清除手动选择" })).toBeInTheDocument();
     expect(screen.getByLabelText("主动陪伴")).toHaveValue("off");
     expect(screen.getByLabelText("主动灵敏度")).toHaveValue("low");
     expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
@@ -501,6 +573,22 @@ describe("App", () => {
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),
         expect.objectContaining({ method: "POST", body: JSON.stringify({ auto_game_detection: "off" }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("当前游戏"), "elden_ring");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/game/context/manual"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ game_id: "elden_ring" }) })
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "清除手动选择" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/game/context/manual"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ game_id: null }) })
       )
     );
 
@@ -622,6 +710,8 @@ describe("App", () => {
         if (pendingResponse) return Promise.resolve(pendingResponse);
         const settings = settingsResponse(url, init);
         if (settings) return Promise.resolve(settings);
+        const gameContextResponseValue = gameContextResponse(url, init);
+        if (gameContextResponseValue) return Promise.resolve(gameContextResponseValue);
         const proactive = proactiveResponse(url, init);
         if (proactive) return Promise.resolve(proactive);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
@@ -679,6 +769,8 @@ describe("App", () => {
         if (pendingResponse) return Promise.resolve(pendingResponse);
         const settings = settingsResponse(url, init);
         if (settings) return Promise.resolve(settings);
+        const gameContextResponseValue = gameContextResponse(url, init);
+        if (gameContextResponseValue) return Promise.resolve(gameContextResponseValue);
         const proactive = proactiveResponse(url, init);
         if (proactive) return Promise.resolve(proactive);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
@@ -743,6 +835,8 @@ describe("App", () => {
         if (pendingResponse) return Promise.resolve(pendingResponse);
         const settings = settingsResponse(url, init);
         if (settings) return Promise.resolve(settings);
+        const gameContextResponseValue = gameContextResponse(url, init);
+        if (gameContextResponseValue) return Promise.resolve(gameContextResponseValue);
         const proactive = proactiveResponse(url, init);
         if (proactive) return Promise.resolve(proactive);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
@@ -799,13 +893,19 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByText("游戏状态");
-    expect(screen.getByText("当前游戏")).toBeInTheDocument();
+    expect(screen.getAllByText("当前游戏").length).toBeGreaterThan(0);
     expect(screen.getByText("当前 Boss")).toBeInTheDocument();
     expect(screen.getByText("状态新鲜度")).toBeInTheDocument();
     expect(screen.getByText("最近挑战")).toBeInTheDocument();
     expect(screen.getByText("最近通过")).toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText("语义识别")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "游戏上下文" })).toBeInTheDocument();
+    expect(screen.getAllByText("当前来源").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("手动选择").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("自动检测结果").length).toBeGreaterThan(0);
+    expect(screen.getByText("对话识别结果")).toBeInTheDocument();
+    expect(screen.getAllByText("知识库状态").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument();
     expect(screen.getAllByText("自动游戏检测").length).toBeGreaterThan(0);
     expect(screen.getByText("检测状态")).toBeInTheDocument();
@@ -836,6 +936,9 @@ describe("App", () => {
     expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
     expect(screen.getByText("模型耗时")).toBeInTheDocument();
     expect(screen.getByText("游戏知识")).toBeInTheDocument();
+    expect(screen.getAllByText("当前游戏 ID").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("当前来源").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("知识库状态").length).toBeGreaterThan(0);
     expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
     expect(screen.getAllByText("相关主题").length).toBeGreaterThan(0);
     expect(screen.getAllByText("命中知识条数").length).toBeGreaterThan(0);
@@ -884,6 +987,8 @@ describe("App", () => {
         if (pendingResponse) return pendingResponse;
         const settings = settingsResponse(url, init);
         if (settings) return settings;
+        if (url.endsWith("/api/game/context")) return Response.json(idleGameContext);
+        if (url.endsWith("/api/game/context/manual") && init?.method === "POST") return Response.json(idleGameContext);
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
@@ -904,7 +1009,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument());
-    expect(screen.getByText("未检测到游戏")).toBeInTheDocument();
+    expect(screen.getAllByText("未检测到游戏").length).toBeGreaterThan(0);
   });
 
   it("falls back to game session debug data and shows empty warnings as none", async () => {
@@ -917,6 +1022,8 @@ describe("App", () => {
         if (pendingResponse) return pendingResponse;
         const settings = settingsResponse(url, init);
         if (settings) return settings;
+        const gameContextResponseValue = gameContextResponse(url, init);
+        if (gameContextResponseValue) return gameContextResponseValue;
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
@@ -974,6 +1081,8 @@ describe("App", () => {
         if (url.endsWith("/api/memory/pending")) return Response.json([]);
         const settings = settingsResponse(url, init);
         if (settings) return settings;
+        const gameContextResponseValue = gameContextResponse(url, init);
+        if (gameContextResponseValue) return gameContextResponseValue;
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });

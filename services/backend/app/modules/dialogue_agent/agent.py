@@ -21,11 +21,9 @@ from app.modules.dialogue_agent.style import apply_rei_style
 from app.modules.dialogue_agent.validator import validate_or_repair
 from app.modules.elden_ring_knowledge.terminology import normalize_terminology
 from app.modules.app_settings.store import AppSettingsStore
+from app.modules.game_context.context import GameContextResolver, game_status_from_context
 from app.modules.game_detector.detector import (
     LocalGameDetector,
-    detection_to_game_status,
-    idle_game_status,
-    sync_game_session_from_detection,
 )
 from app.modules.game_session.state import GameSessionStore
 from app.modules.knowledge.retriever import GameKnowledgeRetriever
@@ -65,13 +63,19 @@ class DialogueAgent:
         log_provider_state("chat")
         app_settings = AppSettingsStore().load()
         detection = self.detector.detect(now=request_started_at)
-        if app_settings.auto_game_detection == "on":
-            sync_game_session_from_detection(detection, auto_game_detection=app_settings.auto_game_detection)
-            game_status = detection_to_game_status(detection)
-            detected_game = detection.model_dump()
-        else:
-            game_status = idle_game_status(now=request_started_at)
-            detected_game = None
+        game_context = GameContextResolver(detector=self.detector, game_session=self.game_session).resolve(
+            user_message=request.message,
+            detected_game=detection,
+            now=request_started_at,
+            sync_session=True,
+        )
+        game_status = game_status_from_context(game_context)
+        detected_game = detection.model_dump() if app_settings.auto_game_detection == "on" else None
+        manual_override = (
+            game_context.manual_override.model_dump()
+            if game_context.manual_override.enabled
+            else None
+        )
         intent_result = detect_intent(request.message)
         memory_context = self.memory.build_prompt_context_with_provenance()
         recent_user_messages = self.store.recent_user_messages(request.session_id)
@@ -120,11 +124,12 @@ class DialogueAgent:
             repetition_guard=repetition_guard,
         )
         knowledge_result = self.knowledge.retrieve(
-            current_game=game_status.game_name or game_session_debug.get("current_game"),
+            current_game=game_context.active_game_display_name or game_status.game_name or game_session_debug.get("current_game"),
             user_message=request.message,
             current_boss=session_focus.boss or ((game_session_debug.get("current_boss") or {}).get("name")),
             game_session_state=game_session_debug,
             detected_game=detected_game,
+            manual_override=manual_override,
             intent=intent_result.intent,
         )
         snippets = knowledge_result.snippets
@@ -208,6 +213,9 @@ class DialogueAgent:
             knowledge_supported_games_count=knowledge_result.supported_games_count,
             knowledge_fallback_reason=knowledge_result.fallback_reason,
             knowledge_confidence=knowledge_result.confidence,
+            active_game_id=knowledge_result.game_id,
+            active_source=knowledge_result.active_source,
+            knowledge_available=knowledge_result.knowledge_available,
             matched_topics=knowledge_result.topics,
             snippets_count=len(snippets),
             snippet_titles=[snippet.title for snippet in snippets],

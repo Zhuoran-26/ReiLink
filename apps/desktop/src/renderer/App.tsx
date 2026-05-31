@@ -19,6 +19,7 @@ import {
   api,
   AppSettings,
   ChatDebugResponse,
+  GameContextResponse,
   GameDetectionResponse,
   GameSessionDebugResponse,
   GameStatus,
@@ -59,6 +60,26 @@ const emptyGameDetection: GameDetectionResponse = {
   match_source: "none",
   knowledge_game_id: null,
   detected_at: new Date(0).toISOString()
+};
+
+const emptyGameContext: GameContextResponse = {
+  active_game_id: null,
+  active_game_display_name: null,
+  active_source: "none",
+  manual_override: {
+    enabled: false,
+    game_id: null,
+    display_name: null,
+    set_at: null,
+    source: "user"
+  },
+  detected_game: emptyGameDetection,
+  session_game: null,
+  user_message_game_id: null,
+  user_message_game_display_name: null,
+  knowledge_available: false,
+  fallback_reason: "no_active_game",
+  available_games: []
 };
 
 const emptyProfile: UserProfileMemory = {
@@ -116,6 +137,9 @@ const emptyChatDebug: ChatDebugResponse = {
   knowledge_supported_games_count: 0,
   knowledge_fallback_reason: null,
   knowledge_confidence: 0,
+  active_game_id: null,
+  active_source: null,
+  knowledge_available: false,
   matched_topics: [],
   snippets_count: 0,
   snippet_titles: [],
@@ -143,6 +167,7 @@ const emptyPromptPreview: PromptPreviewResponse = {
   current_user_message: null,
   prompt_order: [],
   model_route_summary: {},
+  game_context_summary: {},
   session_focus_summary: {},
   game_state_summary: {},
   knowledge_summary: {},
@@ -237,6 +262,9 @@ const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : [
 const labelMap: Record<string, string> = {
   activity: "当前活动",
   active_candidate_triggers: "候选触发器",
+  active_game_display_name: "当前游戏",
+  active_game_id: "当前游戏 ID",
+  active_source: "当前来源",
   block_reason: "阻断原因",
   boss_history: "Boss 记录",
   complexity: "复杂度",
@@ -277,6 +305,7 @@ const labelMap: Record<string, string> = {
   latest_user: "最近用户消息",
   latest_user_message: "最近用户消息",
   knowledge: "游戏知识",
+  knowledge_available: "知识库状态",
   knowledge_confidence: "知识命中信心",
   knowledge_fallback_reason: "知识兜底原因",
   knowledge_game_display_name: "匹配游戏",
@@ -288,12 +317,14 @@ const labelMap: Record<string, string> = {
   knowledge_supported_games_count: "已支持游戏数",
   knowledge_used_in_prompt: "已注入回复上下文",
   auto_game_detection: "自动游戏检测",
+  automatic_detected_result: "自动检测结果",
   llm_called: "是否调用 LLM",
   llm_event: "LLM 游戏事件",
   llm_memory: "LLM 记忆",
   llm_result: "LLM 判断",
   main_reply_model: "回复模型",
   memory: "记忆摘要",
+  manual_override: "手动选择",
   model: "模型",
   model_route_mode: "路由模式",
   match_confidence: "匹配置信度",
@@ -316,6 +347,7 @@ const labelMap: Record<string, string> = {
   semantic_model: "语义识别模型",
   selected_model: "选用模型",
   sensitivity: "主动灵敏度",
+  session_game: "会话游戏",
   session_focus: "会话焦点",
   session_focus_summary: "会话焦点",
   skip_reason: "跳过原因",
@@ -371,12 +403,16 @@ const valueMap: Record<string, string> = {
   initial_grace: "初始等待中",
   late_night: "深夜提醒",
   low: "低",
-  manual: "手动",
+  manual: "手动选择",
+  detector: "自动检测",
+  session: "对话状态",
   medium: "中",
   "memory boss conflicts with fresh game state": "记忆里的 Boss 与当前游戏状态冲突",
   minimal: "minimal（自然）",
   no_candidate_trigger: "暂无可触发项",
+  no_active_game: "尚未确定当前游戏",
   no_knowledge_match: "没有可用知识命中",
+  no_supported_knowledge: "未支持知识库",
   none: "无",
   normal: "普通",
   not_connected: "未连接",
@@ -402,7 +438,7 @@ const valueMap: Record<string, string> = {
   waiting_for_user_activity_after_proactive: "等待用户回应",
   weak: "较弱",
   current_game: "当前运行游戏",
-  user_message: "用户消息",
+  user_message: "对话识别",
   alias: "游戏名或内容别名",
   unsupported_game: "暂不支持这个游戏",
   unsupported_detected_game: "检测到的游戏暂未接入知识库",
@@ -516,6 +552,7 @@ export function App() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [gameStatus, setGameStatus] = useState<GameStatus>(idleStatus);
   const [gameDetection, setGameDetection] = useState<GameDetectionResponse>(emptyGameDetection);
+  const [gameContext, setGameContext] = useState<GameContextResponse>(emptyGameContext);
   const [memoryProfile, setMemoryProfile] = useState<UserProfileMemory>(emptyProfile);
   const [memoryDebug, setMemoryDebug] = useState<MemoryDebugResponse>(emptyMemoryDebug);
   const [chatDebug, setChatDebug] = useState<ChatDebugResponse>(emptyChatDebug);
@@ -529,6 +566,7 @@ export function App() {
   const [debugActionBusy, setDebugActionBusy] = useState("");
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [settingsBusy, setSettingsBusy] = useState("");
+  const [gameContextBusy, setGameContextBusy] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。", createdAt: new Date().toISOString() }
   ]);
@@ -547,7 +585,9 @@ export function App() {
       setBackendStatus("connected");
       setAppSettings(await api.settings());
       setGameStatus(await api.gameStatus());
-      setGameDetection(await api.gameDetected());
+      const currentGameContext = await api.gameContext();
+      setGameContext(currentGameContext);
+      setGameDetection(currentGameContext.detected_game);
       setMemoryProfile(await api.memoryProfile());
       setMemoryDebug(await api.memoryDebug());
       setChatDebug(await api.chatDebug());
@@ -581,6 +621,21 @@ export function App() {
       setLastError(error instanceof Error ? error.message : "设置更新失败");
     } finally {
       setSettingsBusy("");
+    }
+  };
+
+  const updateManualGameContext = async (gameId: string | null, action = "manual-game") => {
+    setGameContextBusy(action);
+    try {
+      setLastError("");
+      const updated = await api.setManualGameContext(gameId);
+      setGameContext(updated);
+      setGameDetection(updated.detected_game);
+      await refreshStatus();
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : "当前游戏更新失败");
+    } finally {
+      setGameContextBusy("");
     }
   };
 
@@ -716,6 +771,7 @@ export function App() {
 
   const sessionFocusSummary = asRecord(promptPreview.session_focus_summary);
   const promptModelRoute = asRecord(promptPreview.model_route_summary);
+  const promptGameContext = asRecord(promptPreview.game_context_summary);
   const promptGameState = asRecord(promptPreview.game_state_summary);
   const promptBossHistory = asArray(promptGameState.boss_history);
   const gameStateSummary = {
@@ -735,9 +791,21 @@ export function App() {
   const skippedMemory = asArray(memorySummary.skipped);
   const recentBossHistory = gameSessionDebug.boss_history.slice(0, 5);
   const debugPanelVisible = appSettings.debug_panel === "show";
-  const displayGame = gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
+  const displayGame = gameContext.active_game_display_name ?? gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
   const displayBoss = gameSessionDebug.current_boss?.name ?? null;
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
+  const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
+  const detectedKnowledgeGameId = gameContext.detected_game.knowledge_game_id;
+  const canUseDetectedGame = Boolean(
+    detectedKnowledgeGameId && gameContext.available_games.some((game) => game.game_id === detectedKnowledgeGameId)
+  );
+  const detectedGameDisplay = gameContext.detected_game.display_name ?? (gameContext.detected_game.status === "idle" ? "未检测到游戏" : null);
+  const userMessageGameDisplay = gameContext.user_message_game_display_name ?? (
+    ["user_message", "alias"].includes(String(chatDebug.knowledge_match_source ?? ""))
+      ? chatDebug.knowledge_game_display_name
+      : null
+  );
+  const gameContextKnowledgeStatus = gameContext.knowledge_available ? "可用" : "不可用";
   const companionName = "Rei";
   const companionSubtitle = "安静、冷淡的游戏陪伴";
   const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
@@ -960,6 +1028,60 @@ export function App() {
                   <option value="off">关闭</option>
                 </select>
               </label>
+              <div className="gameContextControl" aria-label="当前游戏控制">
+                <dl className="debugFacts">
+                  <div>
+                    <dt>{formatDebugLabel("current_game")}</dt>
+                    <dd>{debugText(gameContext.active_game_display_name, "未选择")}</dd>
+                  </div>
+                  <div>
+                    <dt>{formatDebugLabel("active_source")}</dt>
+                    <dd>{debugText(gameContext.active_source)}</dd>
+                  </div>
+                  <div>
+                    <dt>{formatDebugLabel("automatic_detected_result")}</dt>
+                    <dd>{debugText(detectedGameDisplay, "未检测到游戏")}</dd>
+                  </div>
+                  <div>
+                    <dt>{formatDebugLabel("knowledge_available")}</dt>
+                    <dd>{gameContextKnowledgeStatus}</dd>
+                  </div>
+                </dl>
+                <label className="settingRow">
+                  <span>当前游戏</span>
+                  <select
+                    aria-label="当前游戏"
+                    disabled={gameContextBusy !== ""}
+                    value={manualGameId}
+                    onChange={(event) => void updateManualGameContext(event.target.value || null)}
+                  >
+                    <option value="">跟随自动/对话</option>
+                    {gameContext.available_games.map((game) => (
+                      <option key={game.game_id} value={game.game_id}>
+                        {game.display_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="debugActions">
+                  <button
+                    className="smallButton"
+                    type="button"
+                    disabled={gameContextBusy !== "" || !canUseDetectedGame}
+                    onClick={() => void updateManualGameContext(detectedKnowledgeGameId ?? null, "use-detected-game")}
+                  >
+                    使用检测结果
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    disabled={gameContextBusy !== "" || !gameContext.manual_override.enabled}
+                    onClick={() => void updateManualGameContext(null, "clear-manual-game")}
+                  >
+                    清除手动选择
+                  </button>
+                </div>
+              </div>
               <label className="settingRow">
                 <span>主动陪伴</span>
                 <select
@@ -1135,6 +1257,42 @@ export function App() {
                   </section>
 
                   <section className="debugSection">
+                    <h3>游戏上下文</h3>
+                    <dl className="debugFacts">
+                      <div>
+                        <dt>{formatDebugLabel("current_game")}</dt>
+                        <dd>{debugText(gameContext.active_game_display_name, "未选择")}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("active_source")}</dt>
+                        <dd>{debugText(gameContext.active_source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("manual_override")}</dt>
+                        <dd>{debugText(gameContext.manual_override.enabled ? gameContext.manual_override.display_name : null)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("automatic_detected_result")}</dt>
+                        <dd>{debugText(detectedGameDisplay, "未检测到游戏")}</dd>
+                      </div>
+                      <div>
+                        <dt>对话识别结果</dt>
+                        <dd>{debugText(userMessageGameDisplay)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_available")}</dt>
+                        <dd>{gameContextKnowledgeStatus}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("fallback_reason")}</dt>
+                        <dd className={gameContext.fallback_reason ? "debugError" : ""}>
+                          {debugText(gameContext.fallback_reason)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section className="debugSection">
                     <h3>游戏检测</h3>
                     <dl className="debugFacts">
                       <div>
@@ -1294,6 +1452,20 @@ export function App() {
                     <h3>游戏知识</h3>
                     <dl className="debugFacts">
                       <div>
+                        <dt>{formatDebugLabel("active_game_id")}</dt>
+                        <dd>{debugText(chatDebug.active_game_id ?? chatDebug.knowledge_game_id)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("active_source")}</dt>
+                        <dd>{debugText(chatDebug.active_source ?? chatDebug.knowledge_match_source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_available")}</dt>
+                        <dd>
+                          <BooleanBadge value={chatDebug.knowledge_available} />
+                        </dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("knowledge_supported_games_count")}</dt>
                         <dd>{chatDebug.knowledge_supported_games_count}</dd>
                       </div>
@@ -1409,6 +1581,7 @@ export function App() {
                         {
                           provider_debug: providerDebug,
                           proactive: proactiveStatus,
+                          game_context: gameContext,
                           game_detector: gameDetection,
                           game_session: gameSessionDebug,
                           semantic_extraction: semanticDebug,
@@ -1428,6 +1601,9 @@ export function App() {
                             semantic_extraction_model: chatDebug.semantic_extraction_model,
                             main_reply_model: chatDebug.main_reply_model,
                             knowledge_matched: chatDebug.knowledge_matched,
+                            active_game_id: chatDebug.active_game_id,
+                            active_source: chatDebug.active_source,
+                            knowledge_available: chatDebug.knowledge_available,
                             knowledge_game_id: chatDebug.knowledge_game_id,
                             knowledge_game_display_name: chatDebug.knowledge_game_display_name,
                             knowledge_match_source: chatDebug.knowledge_match_source,
@@ -1516,6 +1692,14 @@ export function App() {
                       <dd>{debugText(sessionFocusSummary.prompt_line ?? sessionFocusSummary.boss)}</dd>
                     </div>
                     <div>
+                      <dt>游戏上下文</dt>
+                      <dd>
+                        {debugText(promptGameContext.active_game_display_name)} /{" "}
+                        {debugText(promptGameContext.active_source)} /{" "}
+                        {debugText(promptGameContext.knowledge_available)}
+                      </dd>
+                    </div>
+                    <div>
                       <dt>{formatDebugLabel("game_state")}</dt>
                       <dd>
                         {debugText(gameStateSummary.current_game)} / {bossName(gameStateSummary.current_boss)} /{" "}
@@ -1525,6 +1709,18 @@ export function App() {
                     <div>
                       <dt>{formatDebugLabel("knowledge_matched")}</dt>
                       <dd>{debugText(knowledgeSummary.knowledge_matched)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("active_game_id")}</dt>
+                      <dd>{debugText(knowledgeSummary.active_game_id ?? knowledgeSummary.game_id)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("active_source")}</dt>
+                      <dd>{debugText(knowledgeSummary.active_source ?? knowledgeSummary.match_source)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_available")}</dt>
+                      <dd>{debugText(knowledgeSummary.knowledge_available)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("supported_games_count")}</dt>

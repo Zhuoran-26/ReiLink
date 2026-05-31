@@ -52,6 +52,50 @@ def test_game_detected_schema():
     assert data["status"] in {"running", "idle", "unknown"}
 
 
+def test_game_context_schema():
+    response = client.get("/api/game/context")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "active_game_id",
+        "active_game_display_name",
+        "active_source",
+        "manual_override",
+        "detected_game",
+        "session_game",
+        "knowledge_available",
+        "fallback_reason",
+        "available_games",
+    } <= data.keys()
+    assert data["active_source"] in {"manual", "detector", "session", "user_message", "none"}
+    assert isinstance(data["knowledge_available"], bool)
+    assert any(game["game_id"] == "elden_ring" for game in data["available_games"])
+
+
+def test_manual_game_context_api_sets_and_clears_override():
+    selected = client.post("/api/game/context/manual", json={"game_id": "elden_ring"})
+
+    assert selected.status_code == 200
+    data = selected.json()
+    assert data["active_game_id"] == "elden_ring"
+    assert data["active_source"] == "manual"
+    assert data["manual_override"]["enabled"] is True
+    assert data["knowledge_available"] is True
+
+    cleared = client.post("/api/game/context/manual", json={"game_id": None})
+
+    assert cleared.status_code == 200
+    assert cleared.json()["manual_override"]["enabled"] is False
+
+
+def test_manual_game_context_api_rejects_unsupported_game():
+    response = client.post("/api/game/context/manual", json={"game_id": "stardew_valley"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "no_supported_knowledge"
+
+
 def test_chat_returns_chinese_reply():
     response = client.post("/api/chat", json={"message": "Margit 怎么打", "session_id": "api-test"})
     assert response.status_code == 200
@@ -190,6 +234,9 @@ def test_debug_chat_returns_last_latency_fields():
         "knowledge_supported_games_count",
         "knowledge_fallback_reason",
         "knowledge_confidence",
+        "active_game_id",
+        "active_source",
+        "knowledge_available",
         "matched_topics",
         "snippets_count",
         "snippet_titles",
@@ -259,7 +306,7 @@ def test_debug_game_session_routes():
 
     assert response.status_code == 200
     data = response.json()
-    assert data["current_game"] == "Elden Ring"
+    assert data["current_game"] == "艾尔登法环"
     assert data["current_boss"]["name"] == "女武神"
     assert data["current_boss"]["confidence"] >= 0.9
     assert data["current_boss"]["is_fresh"] is True
@@ -295,6 +342,7 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
         "current_user_message",
         "prompt_order",
         "model_route_summary",
+        "game_context_summary",
         "session_focus_summary",
         "game_state_summary",
         "knowledge_summary",
@@ -305,7 +353,8 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert data["persona_mode"] in {"guarded", "minimal"}
     assert {"selected_model", "route_reason"} <= data["model_route_summary"].keys()
     assert data["current_user_message"] == "我现在卡在女武神"
-    assert data["game_state_summary"]["current_game"] == "Elden Ring"
+    assert data["game_state_summary"]["current_game"] == "艾尔登法环"
+    assert data["game_context_summary"]["active_source"] in {"manual", "detector", "session", "user_message", "none"}
     assert data["game_state_summary"]["current_boss"]["name"] == "女武神"
     assert data["game_state_summary"]["freshness"] == "fresh"
     assert isinstance(data["memory_summary"]["injected"], list)
