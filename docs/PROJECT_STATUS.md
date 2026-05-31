@@ -6,9 +6,11 @@ Updated: 2026-06-01
 
 ### 当前阶段
 
-ReiLink 已完成 MVP v0.1，并已发布 pre-release tag。当前 `dev/codex-reilink` 正在进行 v0.2 productization（产品化补齐）阶段。
+当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-v0.2 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示和 release readiness 更清晰、更稳定，方便 GitHub / portfolio / interview 展示。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。当前 `dev/codex-reilink` 已完成 v0.2-pre 的主要产品化补齐，适合后续准备 `reilink-v0.2-pre` tag / pre-release。
+
+v0.2-pre 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示、多游戏知识维护和 release readiness 更清晰、更稳定。
 
 产品方向：
 
@@ -27,7 +29,7 @@ dev/codex-reilink
 
 `PROJECT_STATUS.md` 不维护实时 latest commit hash。需要确认最新提交、稳定基线或发布点时，以 `git log --oneline`、release tag 和当前 git history 为准。
 
-本文件只记录阶段性状态：MVP v0.1 已完成并发布 pre-release tag；当前开发继续在 `dev/codex-reilink` 上推进 v0.2 productization。
+本文件只记录阶段性状态：MVP v0.1.1 已作为公开展示版本发布；当前开发继续在 `dev/codex-reilink` 上准备 v0.2-pre release sync。
 
 ### 已完成主要能力
 
@@ -43,6 +45,7 @@ dev/codex-reilink
 - Proactive Companion，包含 cooldown 与阻断规则。
 - Local Game Detector。
 - Manual Game Context Control。
+- Unsupported Game fallback。
 - Game Catalog / Multi-game Knowledge Interface。
 - Knowledge Pack Manifest v1。
 - Elden Ring sample knowledge pack。
@@ -50,15 +53,29 @@ dev/codex-reilink
 - Prompt Preview。
 - Debug Dashboard。
 - UI polish。
+
+### v0.2-pre 新增 / 补齐能力
+
 - First Run / Provider Setup。
 - Dev Startup / Health Check。
-- Public Readiness / Release Polish。
+- Public Readiness。
+- Public screenshots and showcase assets。
+- Local Game Detector。
+- Manual Game Context Control。
+- Unsupported Game fallback。
+- Knowledge Pack Manifest。
+- Knowledge Pack Validation Tool。
+- Knowledge Pack Authoring Guide。
 
 ### 后续重点
 
-- Public readiness final check。
-- Screenshots / demo assets。
-- Optional public release。
+- v0.2 stable polish。
+- Installer / packaging。
+- Knowledge pack expansion。
+- Optional RAG / vector retrieval。
+- Voice interaction。
+- Overlay / Live2D。
+- Multi-companion system。
 
 ### 当前数据范围
 
@@ -67,6 +84,8 @@ dev/codex-reilink
 - 游戏注册表位于 `data/games/game_registry.json`。
 - 知识目录位于 `data/knowledge/games/catalog.json`。
 - 每个已支持知识包应包含 `manifest.json` 和 `snippets.json`。
+- 本地知识包可用 `make validate-knowledge` 校验。
+- 新增知识包规范见 `docs/KNOWLEDGE_PACK_AUTHORING.md`。
 
 ### 明确不在当前范围
 
@@ -86,6 +105,7 @@ desktop tests: passed
 desktop build: passed
 lint: passed
 desktop e2e: passed
+make validate-knowledge: passed
 git diff --check: passed
 ```
 
@@ -97,9 +117,11 @@ Updated: 2026-06-01
 
 ### Current Stage
 
-ReiLink has completed MVP v0.1 and has been released with a pre-release tag. The current `dev/codex-reilink` branch is now in the v0.2 productization stage.
+Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-The v0.2 focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, and release readiness clearer and more stable for GitHub, portfolio, and interview presentation.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. The current `dev/codex-reilink` branch has completed the main v0.2-pre productization work and is ready for a later `reilink-v0.2-pre` tag / pre-release preparation pass.
+
+The v0.2-pre focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, multi-game knowledge maintenance, and release readiness clearer and more stable.
 
 Product direction:
 
@@ -118,7 +140,7 @@ dev/codex-reilink
 
 `PROJECT_STATUS.md` does not maintain a real-time latest commit hash. To confirm the latest commit, stable baseline, or release point, use `git log --oneline`, release tags, and the current git history.
 
-This file records stage-level status only: MVP v0.1 has been completed and released with a pre-release tag; active development continues on `dev/codex-reilink` for v0.2 productization.
+This file records stage-level status only: MVP v0.1.1 has been published as the public showcase version; active development continues on `dev/codex-reilink` for the v0.2-pre release sync.
 
 ### Completed Major Capabilities
 
@@ -134,6 +156,7 @@ This file records stage-level status only: MVP v0.1 has been completed and relea
 - Proactive Companion with cooldown and blocking safeguards.
 - Local Game Detector.
 - Manual Game Context Control.
+- Unsupported Game fallback.
 - Game Catalog / Multi-game Knowledge Interface.
 - Knowledge Pack Manifest v1.
 - Elden Ring sample knowledge pack.
@@ -141,15 +164,29 @@ This file records stage-level status only: MVP v0.1 has been completed and relea
 - Prompt Preview.
 - Debug Dashboard.
 - UI polish.
+
+### v0.2-pre Additions / Productization Work
+
 - First Run / Provider Setup.
 - Dev Startup / Health Check.
-- Public Readiness / Release Polish.
+- Public Readiness.
+- Public screenshots and showcase assets.
+- Local Game Detector.
+- Manual Game Context Control.
+- Unsupported Game fallback.
+- Knowledge Pack Manifest.
+- Knowledge Pack Validation Tool.
+- Knowledge Pack Authoring Guide.
 
 ### Upcoming Focus
 
-- Public readiness final check.
-- Screenshots / demo assets.
-- Optional public release.
+- v0.2 stable polish.
+- Installer / packaging.
+- Knowledge pack expansion.
+- Optional RAG / vector retrieval.
+- Voice interaction.
+- Overlay / Live2D.
+- Multi-companion system.
 
 ### Current Data Scope
 
@@ -158,6 +195,8 @@ This file records stage-level status only: MVP v0.1 has been completed and relea
 - The game registry lives at `data/games/game_registry.json`.
 - The knowledge catalog lives at `data/knowledge/games/catalog.json`.
 - Each supported knowledge pack should include `manifest.json` and `snippets.json`.
+- Local knowledge packs can be validated with `make validate-knowledge`.
+- New knowledge pack authoring guidance lives in `docs/KNOWLEDGE_PACK_AUTHORING.md`.
 
 ### Explicitly Out Of Scope For Now
 
@@ -177,6 +216,7 @@ desktop tests: passed
 desktop build: passed
 lint: passed
 desktop e2e: passed
+make validate-knowledge: passed
 git diff --check: passed
 ```
 
