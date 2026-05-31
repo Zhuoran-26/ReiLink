@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App, INTERIM_PLACEHOLDERS } from "../App";
 import type {
+  AppSettings,
   GameContextResponse,
   GameDetectionResponse,
   ProactiveCheckResponse,
@@ -619,7 +620,7 @@ const pendingMemories = [
   }
 ];
 
-const appSettings = {
+const appSettings: AppSettings = {
   persona_mode: "minimal",
   debug_panel: "show",
   memory_enabled: true,
@@ -628,7 +629,9 @@ const appSettings = {
   model_preference: "auto",
   proactive_companion: "off",
   proactive_sensitivity: "low",
-  auto_game_detection: "on"
+  auto_game_detection: "on",
+  onboarding_completed: true,
+  onboarding_last_seen_at: "2026-06-01T12:00:00.000Z"
 };
 
 let appSettingsStore = { ...appSettings };
@@ -849,7 +852,66 @@ describe("App", () => {
     expect(within(providerStatusPanel).getByText("auto")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("deepseek-v4-flash")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("deepseek-v4-pro")).toBeInTheDocument();
+    const onboardingSettings = screen.getByRole("group", { name: "新手引导设置" });
+    expect(within(onboardingSettings).getByText("已完成")).toBeInTheDocument();
+    expect(within(onboardingSettings).getByRole("button", { name: "新手引导：重新查看" })).toBeInTheDocument();
     expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
+  });
+
+  it("shows onboarding card when onboarding is incomplete", async () => {
+    appSettingsStore = { ...appSettings, onboarding_completed: false, onboarding_last_seen_at: null };
+
+    render(<App />);
+
+    expect(await screen.findByRole("region", { name: "新手引导" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "快速开始 ReiLink" })).toBeInTheDocument();
+    expect(screen.getByText("当前 DeepSeek API Key 已加载。")).toBeInTheDocument();
+    expect(screen.getByText("可以让 ReiLink 自动检测，也可以手动选择当前游戏。")).toBeInTheDocument();
+    expect(screen.getByText("ReiLink 不会直接写入长期记忆，需要你手动保存。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开始使用" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开设置" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 Demo 文档" })).toBeInTheDocument();
+  });
+
+  it("hides onboarding after start and only persists app settings", async () => {
+    appSettingsStore = { ...appSettings, onboarding_completed: false, onboarding_last_seen_at: null };
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始使用" }));
+
+    await waitFor(() => expect(screen.queryByRole("region", { name: "新手引导" })).not.toBeInTheDocument());
+    expect(appSettingsStore.onboarding_completed).toBe(true);
+    expect(appSettingsStore.onboarding_last_seen_at).toEqual(expect.any(String));
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/settings"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("\"onboarding_completed\":true")
+      })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/pending"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/game/context/manual"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/debug/game-session/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("reopens onboarding from settings", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "新手引导：重新查看" }));
+
+    expect(screen.getByRole("region", { name: "新手引导" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "查看 Demo 文档" }));
+    expect(screen.getByText("Demo 文档在本地仓库：docs/DEMO_SCRIPT.md")).toBeInTheDocument();
   });
 
   it("shows first-run provider setup prompt when the API key is missing", async () => {
@@ -873,6 +935,24 @@ describe("App", () => {
     expect(screen.getByText(/DEEPSEEK_API_KEY=/)).toBeInTheDocument();
     const providerStatusPanel = screen.getByRole("group", { name: "模型服务状态" });
     expect(within(providerStatusPanel).getByText("未配置")).toBeInTheDocument();
+  });
+
+  it("keeps provider setup before onboarding when the API key is missing", async () => {
+    appSettingsStore = { ...appSettings, onboarding_completed: false, onboarding_last_seen_at: null };
+    setupStatusStore = {
+      ...setupStatus,
+      provider_configured: false,
+      api_key_loaded: false,
+      needs_setup: true,
+      missing_items: ["DEEPSEEK_API_KEY"]
+    };
+
+    render(<App />);
+
+    const setupPrompt = await screen.findByLabelText("模型配置提示");
+    const onboarding = screen.getByLabelText("新手引导");
+    expect(setupPrompt.compareDocumentPosition(onboarding) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("当前 API Key 未配置，请先完成模型配置。")).toBeInTheDocument();
   });
 
   it("updates settings through the API", async () => {

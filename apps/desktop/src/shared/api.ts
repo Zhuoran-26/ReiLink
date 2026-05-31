@@ -334,6 +334,8 @@ export type AppSettings = {
   proactive_companion: "on" | "off";
   proactive_sensitivity: "low" | "normal" | "high";
   auto_game_detection: "on" | "off";
+  onboarding_completed: boolean;
+  onboarding_last_seen_at: string | null;
 };
 
 export type AppSettingsUpdate = Partial<AppSettings>;

@@ -13,7 +13,8 @@ import {
   RefreshCw,
   Send,
   Settings,
-  Sparkles
+  Sparkles,
+  X
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -274,7 +275,9 @@ const defaultAppSettings: AppSettings = {
   model_preference: "auto",
   proactive_companion: "off",
   proactive_sensitivity: "low",
-  auto_game_detection: "on"
+  auto_game_detection: "on",
+  onboarding_completed: false,
+  onboarding_last_seen_at: null
 };
 
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
@@ -683,6 +686,9 @@ export function App() {
   const [debugOpen, setDebugOpen] = useState(true);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [setupHelpOpen, setSetupHelpOpen] = useState(false);
+  const [demoDocHintOpen, setDemoDocHintOpen] = useState(false);
+  const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
+  const [onboardingReopened, setOnboardingReopened] = useState(false);
   const [lastError, setLastError] = useState("");
   const [lastRawError, setLastRawError] = useState("");
   const [lastInterimPlaceholderShown, setLastInterimPlaceholderShown] = useState(false);
@@ -754,6 +760,26 @@ export function App() {
       setLastError(productErrorText(error, "当前游戏更新失败"));
     } finally {
       setGameContextBusy("");
+    }
+  };
+
+  const completeOnboarding = async () => {
+    setOnboardingDismissedThisSession(true);
+    setOnboardingReopened(false);
+    setDemoDocHintOpen(false);
+    await updateAppSettings({
+      onboarding_completed: true,
+      onboarding_last_seen_at: new Date().toISOString()
+    });
+  };
+
+  const reopenOnboarding = () => {
+    setOnboardingDismissedThisSession(false);
+    setOnboardingReopened(true);
+    setDemoDocHintOpen(false);
+    const panel = document.getElementById("chat-panel");
+    if (typeof panel?.scrollIntoView === "function") {
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
@@ -940,6 +966,12 @@ export function App() {
   const companionSubtitle = "安静、冷淡的游戏陪伴";
   const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
   const setupNeedsAttention = backendStatus === "connected" && (setupStatus.needs_setup || !setupStatus.provider_configured);
+  const onboardingVisible = backendStatus === "connected" && (
+    (!appSettings.onboarding_completed && !onboardingDismissedThisSession) || onboardingReopened
+  );
+  const onboardingApiKeyText = setupStatus.api_key_loaded
+    ? "当前 DeepSeek API Key 已加载。"
+    : "当前 API Key 未配置，请先完成模型配置。";
   const openSettingsPanel = () => {
     const panel = document.getElementById("settings-panel");
     if (typeof panel?.scrollIntoView === "function") {
@@ -1063,6 +1095,67 @@ export function App() {
 DEEPSEEK_API_KEY=
 DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </div>
+                  )}
+                </section>
+              )}
+              {onboardingVisible && (
+                <section className="onboardingCard" aria-label="新手引导">
+                  <div className="onboardingHeader">
+                    <div>
+                      <p className="eyebrow">Quick Start</p>
+                      <h2>快速开始 ReiLink</h2>
+                    </div>
+                    <button
+                      className="iconButton soft"
+                      type="button"
+                      aria-label="关闭新手引导"
+                      onClick={() => void completeOnboarding()}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <ol className="onboardingSteps">
+                    <li>
+                      <strong>配置模型服务</strong>
+                      <span>{onboardingApiKeyText}</span>
+                    </li>
+                    <li>
+                      <strong>选择当前游戏</strong>
+                      <span>可以让 ReiLink 自动检测，也可以手动选择当前游戏。</span>
+                    </li>
+                    <li>
+                      <strong>开始聊天</strong>
+                      <span>试试：我现在卡在女武神 / 螳螂领主怎么打？</span>
+                    </li>
+                    <li>
+                      <strong>确认记忆</strong>
+                      <span>ReiLink 不会直接写入长期记忆，需要你手动保存。</span>
+                    </li>
+                    <li>
+                      <strong>开启主动陪伴</strong>
+                      <span>如果需要，可以开启主动陪伴；它会保持低频和克制。</span>
+                    </li>
+                    <li>
+                      <strong>查看调试信息</strong>
+                      <span>调试面板可以看到游戏状态、知识匹配和模型路由。</span>
+                    </li>
+                  </ol>
+                  <div className="onboardingActions">
+                    <button className="smallButton" type="button" onClick={() => void completeOnboarding()}>
+                      <Sparkles size={15} />
+                      开始使用
+                    </button>
+                    <button className="smallButton quiet" type="button" onClick={openSettingsPanel}>
+                      <Settings size={15} />
+                      打开设置
+                    </button>
+                    <button className="smallButton quiet" type="button" onClick={() => setDemoDocHintOpen((open) => !open)}>
+                      <FileText size={15} />
+                      查看 Demo 文档
+                    </button>
+                  </div>
+                  {demoDocHintOpen && (
+                    <p className="onboardingDocHint">Demo 文档在本地仓库：docs/DEMO_SCRIPT.md</p>
                   )}
                 </section>
               )}
@@ -1213,6 +1306,15 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <dd>{debugText(setupStatus.pro_model)}</dd>
                   </div>
                 </dl>
+              </div>
+              <div className="onboardingSettingsPanel" role="group" aria-label="新手引导设置">
+                <div>
+                  <span>新手引导</span>
+                  <strong>{appSettings.onboarding_completed ? "已完成" : "未完成"}</strong>
+                </div>
+                <button className="smallButton quiet" type="button" aria-label="新手引导：重新查看" onClick={reopenOnboarding}>
+                  重新查看
+                </button>
               </div>
               <label className="settingRow">
                 <span>自动游戏检测</span>
@@ -1869,7 +1971,17 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           memory_profile: memoryProfile,
                           pending_memory: pendingMemories,
                           prompt_preview: promptPreview,
-                          settings: appSettings,
+                          settings: {
+                            persona_mode: appSettings.persona_mode,
+                            debug_panel: appSettings.debug_panel,
+                            memory_enabled: appSettings.memory_enabled,
+                            pending_memory_mode: appSettings.pending_memory_mode,
+                            response_length: appSettings.response_length,
+                            model_preference: appSettings.model_preference,
+                            proactive_companion: appSettings.proactive_companion,
+                            proactive_sensitivity: appSettings.proactive_sensitivity,
+                            auto_game_detection: appSettings.auto_game_detection
+                          },
                           chat: {
                             intent: chatDebug.intent,
                             selected_model: chatDebug.selected_model,

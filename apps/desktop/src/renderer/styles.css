@@ -476,6 +476,93 @@ button {
   overflow-wrap: anywhere;
 }
 
+.onboardingCard {
+  width: min(660px, 100%);
+  display: grid;
+  gap: 13px;
+  align-self: flex-start;
+  border: 1px solid rgba(119, 190, 172, 0.24);
+  border-radius: 14px;
+  padding: 16px;
+  color: #eef2fb;
+  background:
+    linear-gradient(145deg, rgba(24, 69, 68, 0.5), rgba(25, 31, 49, 0.74)),
+    rgba(21, 27, 45, 0.74);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.onboardingHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboardingHeader .eyebrow {
+  margin: 0 0 5px;
+  color: #8fd9c9;
+}
+
+.onboardingHeader h2 {
+  margin: 0;
+  color: #f5fbff;
+  font-size: 17px;
+  font-weight: 720;
+}
+
+.onboardingSteps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onboardingSteps li {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(145, 164, 213, 0.14);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(9, 14, 26, 0.36);
+}
+
+.onboardingSteps strong {
+  color: #dce4f6;
+  font-size: 13px;
+}
+
+.onboardingSteps span,
+.onboardingDocHint {
+  color: #aeb9cf;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.onboardingActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.onboardingActions .smallButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.onboardingDocHint {
+  margin: 0;
+  border: 1px solid rgba(119, 190, 172, 0.18);
+  border-radius: 11px;
+  padding: 9px 10px;
+  background: rgba(8, 11, 20, 0.34);
+}
+
 .errorNotice {
   margin: 0 18px 10px;
   border: 1px solid rgba(231, 132, 132, 0.24);
@@ -671,6 +758,34 @@ button {
   border-radius: 13px;
   padding: 11px;
   background: rgba(10, 14, 26, 0.46);
+}
+
+.onboardingSettingsPanel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(145, 164, 213, 0.14);
+  border-radius: 13px;
+  padding: 11px;
+  background: rgba(10, 14, 26, 0.46);
+}
+
+.onboardingSettingsPanel div {
+  display: grid;
+  gap: 3px;
+}
+
+.onboardingSettingsPanel span {
+  color: #dce4f6;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.onboardingSettingsPanel strong {
+  color: #9aa6bf;
+  font-size: 12px;
+  font-weight: 520;
 }
 
 .providerStatusTitle {
@@ -999,6 +1114,10 @@ button {
 
   .messageBubble {
     max-width: 92%;
+  }
+
+  .onboardingSteps {
+    grid-template-columns: 1fr;
   }
 
   .composer {

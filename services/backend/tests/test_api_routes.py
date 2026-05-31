@@ -237,11 +237,16 @@ def test_settings_routes_persist_safe_values():
         "proactive_companion",
         "proactive_sensitivity",
         "auto_game_detection",
+        "onboarding_completed",
+        "onboarding_last_seen_at",
     } <= data.keys()
+    assert data["onboarding_completed"] is False
+    assert data["onboarding_last_seen_at"] is None
     serialized = json.dumps(data, ensure_ascii=False).lower()
     assert "api_key" not in serialized
     assert "deepseek" not in serialized
 
+    seen_at = "2026-06-01T12:00:00.000Z"
     updated = client.post(
         "/api/settings",
         json={
@@ -254,6 +259,8 @@ def test_settings_routes_persist_safe_values():
             "proactive_companion": "on",
             "proactive_sensitivity": "high",
             "auto_game_detection": "off",
+            "onboarding_completed": True,
+            "onboarding_last_seen_at": seen_at,
         },
     )
 
@@ -268,9 +275,14 @@ def test_settings_routes_persist_safe_values():
     assert saved["proactive_companion"] == "on"
     assert saved["proactive_sensitivity"] == "high"
     assert saved["auto_game_detection"] == "off"
+    assert saved["onboarding_completed"] is True
+    assert saved["onboarding_last_seen_at"] == seen_at
     assert client.get("/api/settings").json() == saved
     assert client.get("/api/debug/provider").json()["persona_mode"] == "minimal"
     assert client.get("/api/proactive/status").json()["enabled"] is True
+    saved_serialized = json.dumps(saved, ensure_ascii=False).lower()
+    assert "api_key" not in saved_serialized
+    assert "secret" not in saved_serialized
 
 
 def test_debug_chat_returns_last_latency_fields():

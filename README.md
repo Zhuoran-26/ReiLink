@@ -159,6 +159,8 @@ make dev-backend
 make dev-desktop
 ```
 
+首次打开会在聊天区看到 Quick Start / 新手引导。它只写入本地 settings 中的完成状态，不会写入长期记忆，也不会进入待确认记忆；之后可在 Settings 里点“新手引导：重新查看”再次打开。
+
 如果只想启动 Vite renderer：
 
 ```bash
@@ -428,6 +430,8 @@ make dev-backend
 ```bash
 make dev-desktop
 ```
+
+On first open, the chat area shows a Quick Start onboarding card. It only stores completion state in local settings, does not write long-term memory, and does not create pending memory; it can be reopened from Settings.
 
 To start the Vite renderer only:
 

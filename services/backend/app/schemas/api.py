@@ -175,6 +175,8 @@ class AppSettings(BaseModel):
     proactive_companion: Literal["on", "off"] = "off"
     proactive_sensitivity: Literal["low", "normal", "high"] = "low"
     auto_game_detection: Literal["on", "off"] = "on"
+    onboarding_completed: bool = False
+    onboarding_last_seen_at: str | None = None
 
 
 class AppSettingsUpdate(BaseModel):
@@ -187,6 +189,8 @@ class AppSettingsUpdate(BaseModel):
     proactive_companion: Literal["on", "off"] | None = None
     proactive_sensitivity: Literal["low", "normal", "high"] | None = None
     auto_game_detection: Literal["on", "off"] | None = None
+    onboarding_completed: bool | None = None
+    onboarding_last_seen_at: str | None = None
 
 
 class SetupStatusResponse(BaseModel):
