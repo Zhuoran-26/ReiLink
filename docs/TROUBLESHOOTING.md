@@ -22,16 +22,77 @@ make dev-backend
 make dev-desktop
 ```
 
+### make doctor 本地检查
+
+用途：
+
+- 不启动 backend 或 desktop 长进程。
+- 检查 Python、backend venv、backend requirements、Node、npm、`node_modules`、`.env`、DeepSeek API Key 状态、端口、gitignore、当前分支和工作区状态。
+- API Key 只显示 loaded / missing，不显示真实 key。
+
+运行：
+
+```bash
+make doctor
+```
+
+输出中 `✅` 表示通过，`⚠️` 表示需要注意。警告不一定阻止开发，例如 backend 正在运行时，`8000` 端口会显示已被占用。
+
+### 端口占用
+
+现象：
+
+- `make doctor` 显示 `端口 8000 已被占用` 或 `端口 5173 已被占用`。
+- `make dev-backend` 或 `make dev-desktop` 启动失败。
+
+处理：
+
+- 如果对应服务已经在运行，可以继续使用现有进程。
+- 如果是不需要的旧进程，先停止它，再重新运行启动命令。
+- 默认地址：
+  - Backend: `http://127.0.0.1:8000`
+  - Desktop renderer: `http://127.0.0.1:5173`
+
+### Backend venv 不存在
+
+现象：
+
+- `make doctor` 显示 `Backend venv 不存在`。
+- `make dev-backend` 或 `make test-backend` 找不到 Python 环境。
+
+处理：
+
+```bash
+make install-backend
+make doctor
+```
+
+### Desktop node_modules 不存在
+
+现象：
+
+- `make doctor` 显示 `Desktop node_modules 不存在` 或 Electron dependency 未安装。
+- `make dev-desktop`、`make test-desktop` 或 `make lint` 失败。
+
+处理：
+
+```bash
+make install-desktop
+make doctor
+```
+
 ### DeepSeek API key missing（DeepSeek key 缺失）
 
 现象：
 
 - `LLM_PROVIDER=deepseek` 时回复失败。
 - 后端日志提示 API key missing 或 provider configuration error。
+- `make doctor` 显示 `DeepSeek API Key 未配置`。
 
 处理：
 
 - 在 `services/backend/.env` 中配置 `DEEPSEEK_API_KEY`。
+- 确认 `LLM_PROVIDER=deepseek`。
 - 不要把真实 key 提交到 git。
 - 无 key 演示时使用 `LLM_PROVIDER=mock`。
 
@@ -42,6 +103,36 @@ LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
+
+确认 setup status：
+
+```bash
+curl http://127.0.0.1:8000/api/setup/status
+```
+
+如果配置缺失，响应会包含：
+
+```json
+{
+  "provider_configured": false,
+  "api_key_loaded": false,
+  "needs_setup": true,
+  "missing_items": ["DEEPSEEK_API_KEY"]
+}
+```
+
+响应只显示是否已配置，不会返回真实 API key。
+
+### 模型请求错误（Model request errors）
+
+常见前端文案：
+
+- “模型 API Key 未配置”：检查 `DEEPSEEK_API_KEY`。
+- “模型服务连接失败”：检查网络、`DEEPSEEK_BASE_URL` 和本机代理设置。
+- “模型响应超时”：稍后重试，或检查 `LLM_TIMEOUT_SECONDS`。
+- “模型服务返回错误，请检查配置”：检查模型名、额度、权限和 provider 返回的详细错误。
+
+Raw error 默认只放在 Debug 的“原始 JSON”中，默认折叠。
 
 ### SSL certificate issue on macOS（macOS 证书问题）
 
@@ -171,16 +262,77 @@ Confirm the backend is available at `http://127.0.0.1:8000`. Then start or refre
 make dev-desktop
 ```
 
+### make doctor Local Check
+
+Purpose:
+
+- Does not start long-running backend or desktop processes.
+- Checks Python, backend venv, backend requirements, Node, npm, `node_modules`, `.env`, DeepSeek API key state, ports, gitignore, current branch, and working tree state.
+- API keys are reported only as loaded / missing. The real key value is never printed.
+
+Run:
+
+```bash
+make doctor
+```
+
+`✅` means the check passed. `⚠️` means attention is needed. A warning does not always block development; for example, port `8000` is occupied when the backend is already running.
+
+### Port Already In Use
+
+Symptoms:
+
+- `make doctor` reports `端口 8000 已被占用` or `端口 5173 已被占用`.
+- `make dev-backend` or `make dev-desktop` fails to start.
+
+Fix:
+
+- If the matching service is already running, keep using the existing process.
+- If it is an old process, stop it and rerun the startup command.
+- Default addresses:
+  - Backend: `http://127.0.0.1:8000`
+  - Desktop renderer: `http://127.0.0.1:5173`
+
+### Backend venv Missing
+
+Symptoms:
+
+- `make doctor` reports `Backend venv 不存在`.
+- `make dev-backend` or `make test-backend` cannot find the Python environment.
+
+Fix:
+
+```bash
+make install-backend
+make doctor
+```
+
+### Desktop node_modules Missing
+
+Symptoms:
+
+- `make doctor` reports `Desktop node_modules 不存在` or Electron dependency is not installed.
+- `make dev-desktop`, `make test-desktop`, or `make lint` fails.
+
+Fix:
+
+```bash
+make install-desktop
+make doctor
+```
+
 ### DeepSeek API Key Missing
 
 Symptoms:
 
 - Replies fail when `LLM_PROVIDER=deepseek`.
 - Backend logs mention a missing API key or provider configuration error.
+- `make doctor` reports `DeepSeek API Key 未配置`.
 
 Fix:
 
 - Configure `DEEPSEEK_API_KEY` in `services/backend/.env`.
+- Confirm `LLM_PROVIDER=deepseek`.
 - Never commit real keys.
 - Use `LLM_PROVIDER=mock` for demos without a key.
 
@@ -191,6 +343,36 @@ LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
+
+Check setup status:
+
+```bash
+curl http://127.0.0.1:8000/api/setup/status
+```
+
+If setup is incomplete, the response includes:
+
+```json
+{
+  "provider_configured": false,
+  "api_key_loaded": false,
+  "needs_setup": true,
+  "missing_items": ["DEEPSEEK_API_KEY"]
+}
+```
+
+The response only reports configuration state and never returns the real API key.
+
+### Model Request Errors
+
+Common frontend messages:
+
+- "模型 API Key 未配置": check `DEEPSEEK_API_KEY`.
+- "模型服务连接失败": check network access, `DEEPSEEK_BASE_URL`, and local proxy settings.
+- "模型响应超时": retry later or check `LLM_TIMEOUT_SECONDS`.
+- "模型服务返回错误，请检查配置": check model names, quota, permissions, and the provider's detailed error.
+
+Raw errors are kept in Debug "原始 JSON" and are collapsed by default.
 
 ### SSL Certificate Issue on macOS
 

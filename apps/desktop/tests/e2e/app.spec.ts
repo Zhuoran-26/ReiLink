@@ -17,6 +17,25 @@ test("mock backend chat flow works", async ({ page }) => {
       }
     })
   );
+  await page.route("**/api/setup/status", (route) =>
+    route.fulfill({
+      json: {
+        backend_ready: true,
+        provider_configured: true,
+        provider: "deepseek",
+        api_key_loaded: true,
+        base_url: "https://api.deepseek.com",
+        model_preference: "auto",
+        persona_mode: "minimal",
+        memory_ready: true,
+        knowledge_ready: true,
+        needs_setup: false,
+        missing_items: [],
+        fast_model: "deepseek-v4-flash",
+        pro_model: "deepseek-v4-pro"
+      }
+    })
+  );
   await page.route("**/api/proactive/status?**", (route) =>
     route.fulfill({
       json: {

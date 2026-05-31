@@ -76,6 +76,22 @@ export type ChatResponse = {
   route_reason?: string | null;
 };
 
+export type SetupStatus = {
+  backend_ready: boolean;
+  provider_configured: boolean;
+  provider: "deepseek" | string;
+  api_key_loaded: boolean;
+  base_url: string;
+  model_preference: "fast" | "pro" | "auto";
+  persona_mode: "minimal" | "guarded";
+  memory_ready: boolean;
+  knowledge_ready: boolean;
+  needs_setup: boolean;
+  missing_items: string[];
+  fast_model: string;
+  pro_model: string;
+};
+
 export type ProactiveTriggerType = "idle_silence" | "repeated_death" | "late_night" | "frustration_loop" | "none";
 
 export type ProactiveStatusResponse = {
@@ -324,6 +340,20 @@ export type AppSettingsUpdate = Partial<AppSettings>;
 
 const API_BASE = import.meta.env.VITE_REILINK_API_BASE ?? "http://127.0.0.1:8000";
 
+export class ApiRequestError extends Error {
+  status: number;
+  rawBody: string;
+  path: string;
+
+  constructor(message: string, status: number, rawBody: string, path: string) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.rawBody = rawBody;
+    this.path = path;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
@@ -331,13 +361,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    let message = text || `Request failed: ${response.status}`;
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown };
+      if (typeof parsed.detail === "string") {
+        message = parsed.detail;
+      }
+    } catch {
+      // Keep the raw text as the safe diagnostic message.
+    }
+    throw new ApiRequestError(message, response.status, text, path);
   }
   return response.json() as Promise<T>;
 }
 
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
+  setupStatus: () => request<SetupStatus>("/api/setup/status"),
   settings: () => request<AppSettings>("/api/settings"),
   updateSettings: (settings: AppSettingsUpdate) =>
     request<AppSettings>("/api/settings", {

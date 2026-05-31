@@ -5,7 +5,9 @@ import {
   ChevronDown,
   ChevronUp,
   Database,
+  FileText,
   Gamepad2,
+  KeyRound,
   MessageSquare,
   Mic,
   RefreshCw,
@@ -17,6 +19,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   api,
+  ApiRequestError,
   AppSettings,
   ChatDebugResponse,
   GameContextResponse,
@@ -29,6 +32,7 @@ import {
   ProactiveStatusResponse,
   ProviderDebugResponse,
   SemanticExtractionDebugResponse,
+  SetupStatus,
   UserProfileMemory
 } from "../shared/api";
 
@@ -225,6 +229,22 @@ const emptyProviderDebug: ProviderDebugResponse = {
   provider_latency_ms: 0,
   semantic_extraction_model: null,
   fallback_reason: null
+};
+
+const emptySetupStatus: SetupStatus = {
+  backend_ready: false,
+  provider_configured: false,
+  provider: "deepseek",
+  api_key_loaded: false,
+  base_url: "https://api.deepseek.com",
+  model_preference: "auto",
+  persona_mode: "minimal",
+  memory_ready: false,
+  knowledge_ready: false,
+  needs_setup: true,
+  missing_items: ["DEEPSEEK_API_KEY"],
+  fast_model: "deepseek-v4-flash",
+  pro_model: "deepseek-v4-pro"
 };
 
 const emptyProactiveStatus: ProactiveStatusResponse = {
@@ -603,6 +623,38 @@ const messageMetaText = (message: Message) => {
   return time;
 };
 
+const errorRawText = (error: unknown): string => {
+  if (error instanceof ApiRequestError) {
+    return error.rawBody || error.message || `HTTP ${error.status}`;
+  }
+  if (error instanceof Error) return error.message;
+  return String(error);
+};
+
+const productErrorText = (error: unknown, fallback: string): string => {
+  const raw = errorRawText(error);
+  const normalized = raw.toLowerCase();
+  if (/api key.*missing|missing.*api key|deepseek_api_key|openai_api_key/.test(normalized)) {
+    return "模型 API Key 未配置";
+  }
+  if (/timeout|timed out|504/.test(normalized)) {
+    return "模型响应超时";
+  }
+  if (
+    /provider failed/.test(normalized) &&
+    /connection|network|urlopen|temporary failure|name resolution|nodename|refused|unreachable|reset/.test(normalized)
+  ) {
+    return "模型服务连接失败";
+  }
+  if (/provider failed|provider returned|non-2xx|response body|http \d{3}|401|403|429/.test(normalized)) {
+    return "模型服务返回错误，请检查配置";
+  }
+  if (/failed to fetch|networkerror|load failed|offline|econnrefused/.test(normalized)) {
+    return "后端未连接";
+  }
+  return fallback;
+};
+
 export function App() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [gameStatus, setGameStatus] = useState<GameStatus>(idleStatus);
@@ -616,6 +668,7 @@ export function App() {
   const [gameSessionDebug, setGameSessionDebug] = useState<GameSessionDebugResponse>(emptyGameSessionDebug);
   const [semanticDebug, setSemanticDebug] = useState<SemanticExtractionDebugResponse>(emptySemanticExtractionDebug);
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
+  const [setupStatus, setSetupStatus] = useState<SetupStatus>(emptySetupStatus);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
   const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
   const [debugActionBusy, setDebugActionBusy] = useState("");
@@ -629,15 +682,20 @@ export function App() {
   const [sending, setSending] = useState(false);
   const [debugOpen, setDebugOpen] = useState(true);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
+  const [setupHelpOpen, setSetupHelpOpen] = useState(false);
   const [lastError, setLastError] = useState("");
+  const [lastRawError, setLastRawError] = useState("");
   const [lastInterimPlaceholderShown, setLastInterimPlaceholderShown] = useState(false);
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
 
   const refreshStatus = async () => {
     try {
       setLastError("");
+      setLastRawError("");
       await api.health();
+      const currentSetupStatus = await api.setupStatus();
       setBackendStatus("connected");
+      setSetupStatus(currentSetupStatus);
       setAppSettings(await api.settings());
       setGameStatus(await api.gameStatus());
       const currentGameContext = await api.gameContext();
@@ -654,7 +712,8 @@ export function App() {
       setPendingMemories(await api.pendingMemories());
     } catch (error) {
       setBackendStatus("disconnected");
-      setLastError(error instanceof Error ? error.message : "后端暂时连不上");
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "后端未连接"));
     }
   };
 
@@ -663,6 +722,7 @@ export function App() {
     setSettingsBusy(busyKey);
     try {
       setLastError("");
+      setLastRawError("");
       const updated = await api.updateSettings(patch);
       setAppSettings(updated);
       if (patch.debug_panel === "hide") {
@@ -673,7 +733,8 @@ export function App() {
       }
       await refreshStatus();
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : "设置更新失败");
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "设置更新失败"));
     } finally {
       setSettingsBusy("");
     }
@@ -683,12 +744,14 @@ export function App() {
     setGameContextBusy(action);
     try {
       setLastError("");
+      setLastRawError("");
       const updated = await api.setManualGameContext(gameId);
       setGameContext(updated);
       setGameDetection(updated.detected_game);
       await refreshStatus();
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : "当前游戏更新失败");
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "当前游戏更新失败"));
     } finally {
       setGameContextBusy("");
     }
@@ -717,7 +780,8 @@ export function App() {
       }
       setProactiveStatus(await api.proactiveStatus());
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : "主动陪伴检查失败");
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "主动陪伴检查失败"));
     }
   }, [appSettings.proactive_companion, backendStatus, input, sending]);
 
@@ -736,6 +800,8 @@ export function App() {
     let placeholderShown = false;
     const requestStartedAt = Date.now();
     setLastInterimPlaceholderShown(false);
+    setLastError("");
+    setLastRawError("");
     setMessages((current) => [...current, userMessage]);
     setInput("");
     setSending(true);
@@ -767,11 +833,9 @@ export function App() {
     } catch (error) {
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
-      const errorMessage = error instanceof Error ? error.message : "发送失败";
-      setLastError(errorMessage);
-      const reply = /timeout|timed out|504|太慢/i.test(errorMessage)
-        ? "线路太慢了。等一下再试。"
-        : "线路有点安静。先检查后端。";
+      const reply = productErrorText(error, "模型服务返回错误，请检查配置");
+      setLastRawError(errorRawText(error));
+      setLastError(reply);
       setMessages((current) => [
         ...current.filter((message) => message.id !== placeholderId),
         { id: crypto.randomUUID(), role: "assistant", text: reply, createdAt: new Date().toISOString(), pending: false }
@@ -792,7 +856,8 @@ export function App() {
       }
       await refreshStatus();
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : "待确认记忆更新失败");
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "待确认记忆更新失败"));
     } finally {
       setPendingMemoryBusyId("");
     }
@@ -804,6 +869,7 @@ export function App() {
     setDebugActionBusy(action);
     try {
       setLastError("");
+      setLastRawError("");
       if (action === "reset-game-session") {
         await api.resetGameSession();
       } else if (action === "reset-memory") {
@@ -813,7 +879,8 @@ export function App() {
       }
       await refreshStatus();
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : "调试操作失败");
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "调试操作失败"));
     } finally {
       setDebugActionBusy("");
     }
@@ -872,6 +939,15 @@ export function App() {
   const companionName = "Rei";
   const companionSubtitle = "安静、冷淡的游戏陪伴";
   const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
+  const setupNeedsAttention = backendStatus === "connected" && (setupStatus.needs_setup || !setupStatus.provider_configured);
+  const openSettingsPanel = () => {
+    const panel = document.getElementById("settings-panel");
+    if (typeof panel?.scrollIntoView === "function") {
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    const focusTarget = panel?.querySelector("select, button") as HTMLElement | null;
+    focusTarget?.focus();
+  };
 
   return (
     <main className="shell">
@@ -963,6 +1039,33 @@ export function App() {
 
           <section className="chatPanel" aria-label="聊天面板">
             <div className="messages">
+              {setupNeedsAttention && (
+                <section className="setupNotice" role="status" aria-label="模型配置提示">
+                  <div className="setupNoticeHeader">
+                    <KeyRound size={18} />
+                    <h2>需要完成模型配置</h2>
+                  </div>
+                  <p>ReiLink 需要 DeepSeek API Key 才能生成回复。请在本地 .env 中配置，或进入设置查看配置状态。</p>
+                  <div className="setupNoticeActions">
+                    <button className="smallButton" type="button" onClick={openSettingsPanel}>
+                      <Settings size={15} />
+                      打开设置
+                    </button>
+                    <button className="smallButton quiet" type="button" onClick={() => setSetupHelpOpen((open) => !open)}>
+                      <FileText size={15} />
+                      查看配置说明
+                    </button>
+                  </div>
+                  {setupHelpOpen && (
+                    <div className="setupHelp" id="provider-setup-help">
+                      <p>在 `services/backend/.env` 中加入本地配置，保存后重启 backend。</p>
+                      <pre>{`LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
+                    </div>
+                  )}
+                </section>
+              )}
               {messages.map((message) => (
                 <article
                   className={`messageBubble ${message.role}${message.pending ? " pending" : ""}${message.messageType === "proactive" ? " proactive" : ""}`}
@@ -976,6 +1079,8 @@ export function App() {
                 </article>
               ))}
             </div>
+
+            {lastError && <div className="errorNotice" role="status">{lastError}</div>}
 
             <form className="composer" onSubmit={sendMessage}>
               <button className="iconButton disabled" type="button" aria-label="按住说话实验功能" disabled>
@@ -1077,6 +1182,38 @@ export function App() {
                   <option value="pro">高质量</option>
                 </select>
               </label>
+              <div className="providerStatusPanel" role="group" aria-label="模型服务状态">
+                <div className="providerStatusTitle">
+                  <KeyRound size={15} />
+                  <strong>模型服务状态</strong>
+                </div>
+                <dl className="debugFacts">
+                  <div>
+                    <dt>模型服务</dt>
+                    <dd>DeepSeek</dd>
+                  </div>
+                  <div>
+                    <dt>API Key</dt>
+                    <dd>{setupStatus.api_key_loaded ? "已加载" : "未配置"}</dd>
+                  </div>
+                  <div>
+                    <dt>Base URL</dt>
+                    <dd>{debugText(setupStatus.base_url)}</dd>
+                  </div>
+                  <div>
+                    <dt>模型偏好</dt>
+                    <dd>{setupStatus.model_preference}</dd>
+                  </div>
+                  <div>
+                    <dt>Fast Model</dt>
+                    <dd>{debugText(setupStatus.fast_model)}</dd>
+                  </div>
+                  <div>
+                    <dt>Pro Model</dt>
+                    <dd>{debugText(setupStatus.pro_model)}</dd>
+                  </div>
+                </dl>
+              </div>
               <label className="settingRow">
                 <span>自动游戏检测</span>
                 <select
@@ -1722,6 +1859,7 @@ export function App() {
                       {JSON.stringify(
                         {
                           provider_debug: providerDebug,
+                          setup_status: setupStatus,
                           proactive: proactiveStatus,
                           game_context: gameContext,
                           game_detector: gameDetection,
@@ -1777,7 +1915,8 @@ export function App() {
                             last_interim_placeholder_shown: lastInterimPlaceholderShown,
                             last_response_latency_ms: lastResponseLatencyMs
                           },
-                          lastError: lastError || null
+                          lastError: lastError || null,
+                          lastRawError: lastRawError || null
                         },
                         null,
                         2

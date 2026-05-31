@@ -3,10 +3,29 @@ name: test
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
+  repository-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tracked files and obvious secrets
+        run: |
+          if git ls-files | grep -E '(^|/)(node_modules|\.venv|dist|build)(/|$)|(^|/)data/(memory|session)/|(^|/)\.env$|^services/backend/\.env$'; then
+            echo "Forbidden generated, local state, or env file is tracked."
+            exit 1
+          fi
+          if git grep -n -I -E 'sk-[A-Za-z0-9_-]+'; then
+            echo "Potential API key pattern found in tracked files."
+            exit 1
+          fi
+
   backend:
     runs-on: ubuntu-latest
+    env:
+      LLM_PROVIDER: mock
+      DEEPSEEK_API_KEY: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,6 +36,8 @@ jobs:
 
   desktop:
     runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,7 +45,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - run: npm install
+      - run: npm ci
         working-directory: apps/desktop
       - run: npm run lint
         working-directory: apps/desktop
@@ -33,3 +54,21 @@ jobs:
       - run: npm run build
         working-directory: apps/desktop
 
+  e2e:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+        working-directory: apps/desktop
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/desktop
+      - run: npm run test:e2e
+        working-directory: apps/desktop

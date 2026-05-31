@@ -8,7 +8,8 @@ import type {
   GameContextResponse,
   GameDetectionResponse,
   ProactiveCheckResponse,
-  ProactiveStatusResponse
+  ProactiveStatusResponse,
+  SetupStatus
 } from "../../shared/api";
 
 const runningStatus = {
@@ -548,6 +549,22 @@ const providerDebug = {
   fallback_reason: null
 };
 
+const setupStatus: SetupStatus = {
+  backend_ready: true,
+  provider_configured: true,
+  provider: "deepseek",
+  api_key_loaded: true,
+  base_url: "https://api.deepseek.com",
+  model_preference: "auto",
+  persona_mode: "minimal",
+  memory_ready: true,
+  knowledge_ready: true,
+  needs_setup: false,
+  missing_items: [],
+  fast_model: "deepseek-v4-flash",
+  pro_model: "deepseek-v4-pro"
+};
+
 const proactiveStatus: ProactiveStatusResponse = {
   enabled: false,
   sensitivity: "low",
@@ -567,6 +584,7 @@ const proactiveStatus: ProactiveStatusResponse = {
 };
 
 let proactiveStatusStore: ProactiveStatusResponse = { ...proactiveStatus };
+let setupStatusStore: SetupStatus = { ...setupStatus };
 let proactiveCheckStore: ProactiveCheckResponse = {
   should_send: false,
   trigger_type: "none",
@@ -615,11 +633,14 @@ const appSettings = {
 
 let appSettingsStore = { ...appSettings };
 let gameContextStore = { ...gameContext };
+let chatFailureResponse: (() => Response) | null = null;
 
 const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
   gameContextStore = { ...gameContext };
   proactiveStatusStore = { ...proactiveStatus };
+  setupStatusStore = { ...setupStatus };
+  chatFailureResponse = null;
   proactiveCheckStore = {
     should_send: false,
     trigger_type: "none",
@@ -636,6 +657,11 @@ const resetSettingsResponse = () => {
     block_reason: "disabled",
     active_candidate_triggers: [] as string[]
   };
+};
+
+const setupStatusResponse = (url: string) => {
+  if (url.endsWith("/api/setup/status")) return Response.json(setupStatusStore);
+  return null;
 };
 
 const gameContextResponse = (url: string, init?: RequestInit) => {
@@ -732,6 +758,8 @@ describe("App", () => {
         if (gameContextResponseValue) return gameContextResponseValue;
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
+        const setup = setupStatusResponse(url);
+        if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
@@ -743,6 +771,7 @@ describe("App", () => {
         if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
         if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
         if (url.endsWith("/api/chat") && init?.method === "POST") {
+          if (chatFailureResponse) return chatFailureResponse();
           return Response.json(chatResponse);
         }
         return new Response("missing", { status: 404 });
@@ -810,7 +839,40 @@ describe("App", () => {
     expect(screen.getByLabelText("已支持游戏")).toHaveTextContent("空洞骑士");
     expect(screen.getByLabelText("主动陪伴")).toHaveValue("off");
     expect(screen.getByLabelText("主动灵敏度")).toHaveValue("low");
+    const providerStatusPanel = screen.getByRole("group", { name: "模型服务状态" });
+    expect(within(providerStatusPanel).getByText("模型服务")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("DeepSeek")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("API Key")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("已加载")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("Base URL")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("https://api.deepseek.com")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("auto")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("deepseek-v4-flash")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("deepseek-v4-pro")).toBeInTheDocument();
     expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
+  });
+
+  it("shows first-run provider setup prompt when the API key is missing", async () => {
+    setupStatusStore = {
+      ...setupStatus,
+      provider_configured: false,
+      api_key_loaded: false,
+      needs_setup: true,
+      missing_items: ["DEEPSEEK_API_KEY"]
+    };
+
+    render(<App />);
+
+    expect(await screen.findByText("需要完成模型配置")).toBeInTheDocument();
+    expect(screen.getByText("ReiLink 需要 DeepSeek API Key 才能生成回复。请在本地 .env 中配置，或进入设置查看配置状态。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开设置/i })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: /打开设置/i }));
+    expect(screen.getByLabelText("人格模式")).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: /查看配置说明/i }));
+    expect(screen.getByText(/LLM_PROVIDER=deepseek/)).toBeInTheDocument();
+    expect(screen.getByText(/DEEPSEEK_API_KEY=/)).toBeInTheDocument();
+    const providerStatusPanel = screen.getByRole("group", { name: "模型服务状态" });
+    expect(within(providerStatusPanel).getByText("未配置")).toBeInTheDocument();
   });
 
   it("updates settings through the API", async () => {
@@ -910,6 +972,23 @@ describe("App", () => {
     );
   });
 
+  it("shows localized model errors without raw exception text in chat", async () => {
+    chatFailureResponse = () =>
+      new Response(JSON.stringify({ detail: "DeepSeek API key missing. Set DEEPSEEK_API_KEY." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+
+    render(<App />);
+    await userEvent.type(await screen.findByLabelText("聊天输入"), "你好");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    const chatPanel = screen.getByRole("region", { name: "聊天面板" });
+    await waitFor(() => expect(within(chatPanel).getAllByText("模型 API Key 未配置").length).toBeGreaterThan(0));
+    expect(within(chatPanel).queryByText(/DeepSeek API key missing/)).not.toBeInTheDocument();
+    expect(screen.getByText("原始 JSON").closest("details")).not.toHaveAttribute("open");
+  });
+
   it("renders proactive message as a normal Rei message with metadata", async () => {
     vi.useFakeTimers();
     appSettingsStore = { ...appSettings, proactive_companion: "on" };
@@ -986,6 +1065,8 @@ describe("App", () => {
         if (gameContextResponseValue) return Promise.resolve(gameContextResponseValue);
         const proactive = proactiveResponse(url, init);
         if (proactive) return Promise.resolve(proactive);
+        const setup = setupStatusResponse(url);
+        if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
@@ -1045,6 +1126,8 @@ describe("App", () => {
         if (gameContextResponseValue) return Promise.resolve(gameContextResponseValue);
         const proactive = proactiveResponse(url, init);
         if (proactive) return Promise.resolve(proactive);
+        const setup = setupStatusResponse(url);
+        if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
@@ -1111,6 +1194,8 @@ describe("App", () => {
         if (gameContextResponseValue) return Promise.resolve(gameContextResponseValue);
         const proactive = proactiveResponse(url, init);
         if (proactive) return Promise.resolve(proactive);
+        const setup = setupStatusResponse(url);
+        if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
@@ -1159,6 +1244,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 500 })));
     render(<App />);
     await screen.findByText("未连接");
+    expect(screen.getByText("后端未连接")).toBeInTheDocument();
   });
 
   it("toggles debug panel", async () => {
@@ -1276,6 +1362,8 @@ describe("App", () => {
         if (url.endsWith("/api/game/context/manual") && init?.method === "POST") return Response.json(idleGameContext);
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
+        const setup = setupStatusResponse(url);
+        if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, status: "idle", game_id: null, game_name: null });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
@@ -1314,6 +1402,8 @@ describe("App", () => {
         }
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
+        const setup = setupStatusResponse(url);
+        if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "sekiro", game_name: "只狼" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
@@ -1357,6 +1447,8 @@ describe("App", () => {
         }
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
+        const setup = setupStatusResponse(url);
+        if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "hollow_knight", game_name: "空洞骑士" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
@@ -1401,6 +1493,8 @@ describe("App", () => {
         }
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
+        const setup = setupStatusResponse(url);
+        if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
@@ -1446,6 +1540,8 @@ describe("App", () => {
         }
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
+        const setup = setupStatusResponse(url);
+        if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: null, game_name: "星之门遗迹" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
@@ -1482,6 +1578,8 @@ describe("App", () => {
         if (gameContextResponseValue) return gameContextResponseValue;
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
+        const setup = setupStatusResponse(url);
+        if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
@@ -1541,6 +1639,8 @@ describe("App", () => {
         if (gameContextResponseValue) return gameContextResponseValue;
         const proactive = proactiveResponse(url, init);
         if (proactive) return proactive;
+        const setup = setupStatusResponse(url);
+        if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);

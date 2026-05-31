@@ -189,6 +189,22 @@ class AppSettingsUpdate(BaseModel):
     auto_game_detection: Literal["on", "off"] | None = None
 
 
+class SetupStatusResponse(BaseModel):
+    backend_ready: bool = True
+    provider_configured: bool
+    provider: str = "deepseek"
+    api_key_loaded: bool
+    base_url: str
+    model_preference: Literal["fast", "pro", "auto"]
+    persona_mode: Literal["minimal", "guarded"]
+    memory_ready: bool
+    knowledge_ready: bool
+    needs_setup: bool
+    missing_items: list[str] = Field(default_factory=list)
+    fast_model: str
+    pro_model: str
+
+
 class MemoryProvenanceItem(BaseModel):
     source: Literal["profile", "episode", "current_session"]
     field: str
