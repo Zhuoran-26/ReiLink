@@ -77,7 +77,7 @@ Tests:
 - Prompt Preview（回复上下文预览）
 - Knowledge Debug（知识层调试）
 
-### 本地运行
+### 快速启动 / Quick Start
 
 Makefile 已提供常用命令。
 
@@ -93,42 +93,65 @@ make install-backend
 make install-desktop
 ```
 
-3. 配置 backend 环境变量，手动创建 `services/backend/.env`，不要提交真实 key。
+3. 配置 backend 环境变量，手动创建 `services/backend/.env`，不要提交真实 key。可先参考下方“环境变量”。
 
-4. 启动 backend：
+4. 运行本地环境检查：
+
+```bash
+make doctor
+```
+
+5. 启动 backend：
 
 ```bash
 make dev-backend
 ```
 
-5. 启动 desktop renderer：
+6. 启动 desktop / Electron dev：
 
 ```bash
 make dev-desktop
 ```
 
-开发时可以打开 `http://127.0.0.1:5173`。如果需要启动 Electron shell：
+如果只想启动 Vite renderer：
 
 ```bash
 cd apps/desktop
-npm run dev:electron
+npm run dev
 ```
 
-6. 运行测试与检查：
+`make dev` 不做复杂进程管理，只会提示分别运行 `make dev-backend` 和 `make dev-desktop`。
+
+7. 后端健康检查：
 
 ```bash
+curl http://127.0.0.1:8000/api/health
+curl http://127.0.0.1:8000/api/setup/status
+```
+
+### 常用命令 / Common Commands
+
+```bash
+make doctor
+make dev-backend
+make dev-desktop
 make test-backend
 make test-desktop
-make test-e2e
+make test
 make lint
 make typecheck
 ```
 
-也可以运行聚合测试：
+说明：
 
-```bash
-make test
-```
+- `make doctor`：检查本地环境，不启动长进程。
+- `make dev-backend`：启动 FastAPI backend。
+- `make dev-desktop`：启动 Electron dev shell。
+- `make test`：运行 backend + desktop tests。
+- `make lint`：运行 desktop lint 和 `git diff --check`。
+- `make typecheck`：当前等同于 desktop build。
+
+常见启动问题见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
 
 ### 环境变量
 
@@ -296,7 +319,7 @@ Main desktop areas:
 - Prompt Preview
 - Knowledge Debug
 
-### Local Setup
+### Quick Start
 
 The Makefile includes the common development commands.
 
@@ -312,42 +335,65 @@ make install-backend
 make install-desktop
 ```
 
-3. Configure backend environment variables by creating `services/backend/.env` manually. Do not commit real keys.
+3. Configure backend environment variables by creating `services/backend/.env` manually. Do not commit real keys. See "Environment Variables" below.
 
-4. Start the backend:
+4. Run the local environment check:
+
+```bash
+make doctor
+```
+
+5. Start the backend:
 
 ```bash
 make dev-backend
 ```
 
-5. Start the desktop renderer:
+6. Start the desktop / Electron dev shell:
 
 ```bash
 make dev-desktop
 ```
 
-Open `http://127.0.0.1:5173` during development. To run the Electron shell:
+To start the Vite renderer only:
 
 ```bash
 cd apps/desktop
-npm run dev:electron
+npm run dev
 ```
 
-6. Run tests and checks:
+`make dev` does not manage long-running processes. It prints the two commands to run in separate terminals: `make dev-backend` and `make dev-desktop`.
+
+7. Backend health checks:
 
 ```bash
+curl http://127.0.0.1:8000/api/health
+curl http://127.0.0.1:8000/api/setup/status
+```
+
+### Common Commands
+
+```bash
+make doctor
+make dev-backend
+make dev-desktop
 make test-backend
 make test-desktop
-make test-e2e
+make test
 make lint
 make typecheck
 ```
 
-Or run the combined test target:
+Notes:
 
-```bash
-make test
-```
+- `make doctor`: checks the local environment without starting long-running processes.
+- `make dev-backend`: starts the FastAPI backend.
+- `make dev-desktop`: starts the Electron dev shell.
+- `make test`: runs backend + desktop tests.
+- `make lint`: runs desktop lint and `git diff --check`.
+- `make typecheck`: currently runs the desktop build.
+
+For common startup issues, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ### Environment Variables
 

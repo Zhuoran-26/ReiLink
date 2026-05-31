@@ -22,12 +22,72 @@ make dev-backend
 make dev-desktop
 ```
 
+### make doctor 本地检查
+
+用途：
+
+- 不启动 backend 或 desktop 长进程。
+- 检查 Python、backend venv、backend requirements、Node、npm、`node_modules`、`.env`、DeepSeek API Key 状态、端口、gitignore、当前分支和工作区状态。
+- API Key 只显示 loaded / missing，不显示真实 key。
+
+运行：
+
+```bash
+make doctor
+```
+
+输出中 `✅` 表示通过，`⚠️` 表示需要注意。警告不一定阻止开发，例如 backend 正在运行时，`8000` 端口会显示已被占用。
+
+### 端口占用
+
+现象：
+
+- `make doctor` 显示 `端口 8000 已被占用` 或 `端口 5173 已被占用`。
+- `make dev-backend` 或 `make dev-desktop` 启动失败。
+
+处理：
+
+- 如果对应服务已经在运行，可以继续使用现有进程。
+- 如果是不需要的旧进程，先停止它，再重新运行启动命令。
+- 默认地址：
+  - Backend: `http://127.0.0.1:8000`
+  - Desktop renderer: `http://127.0.0.1:5173`
+
+### Backend venv 不存在
+
+现象：
+
+- `make doctor` 显示 `Backend venv 不存在`。
+- `make dev-backend` 或 `make test-backend` 找不到 Python 环境。
+
+处理：
+
+```bash
+make install-backend
+make doctor
+```
+
+### Desktop node_modules 不存在
+
+现象：
+
+- `make doctor` 显示 `Desktop node_modules 不存在` 或 Electron dependency 未安装。
+- `make dev-desktop`、`make test-desktop` 或 `make lint` 失败。
+
+处理：
+
+```bash
+make install-desktop
+make doctor
+```
+
 ### DeepSeek API key missing（DeepSeek key 缺失）
 
 现象：
 
 - `LLM_PROVIDER=deepseek` 时回复失败。
 - 后端日志提示 API key missing 或 provider configuration error。
+- `make doctor` 显示 `DeepSeek API Key 未配置`。
 
 处理：
 
@@ -202,12 +262,72 @@ Confirm the backend is available at `http://127.0.0.1:8000`. Then start or refre
 make dev-desktop
 ```
 
+### make doctor Local Check
+
+Purpose:
+
+- Does not start long-running backend or desktop processes.
+- Checks Python, backend venv, backend requirements, Node, npm, `node_modules`, `.env`, DeepSeek API key state, ports, gitignore, current branch, and working tree state.
+- API keys are reported only as loaded / missing. The real key value is never printed.
+
+Run:
+
+```bash
+make doctor
+```
+
+`✅` means the check passed. `⚠️` means attention is needed. A warning does not always block development; for example, port `8000` is occupied when the backend is already running.
+
+### Port Already In Use
+
+Symptoms:
+
+- `make doctor` reports `端口 8000 已被占用` or `端口 5173 已被占用`.
+- `make dev-backend` or `make dev-desktop` fails to start.
+
+Fix:
+
+- If the matching service is already running, keep using the existing process.
+- If it is an old process, stop it and rerun the startup command.
+- Default addresses:
+  - Backend: `http://127.0.0.1:8000`
+  - Desktop renderer: `http://127.0.0.1:5173`
+
+### Backend venv Missing
+
+Symptoms:
+
+- `make doctor` reports `Backend venv 不存在`.
+- `make dev-backend` or `make test-backend` cannot find the Python environment.
+
+Fix:
+
+```bash
+make install-backend
+make doctor
+```
+
+### Desktop node_modules Missing
+
+Symptoms:
+
+- `make doctor` reports `Desktop node_modules 不存在` or Electron dependency is not installed.
+- `make dev-desktop`, `make test-desktop`, or `make lint` fails.
+
+Fix:
+
+```bash
+make install-desktop
+make doctor
+```
+
 ### DeepSeek API Key Missing
 
 Symptoms:
 
 - Replies fail when `LLM_PROVIDER=deepseek`.
 - Backend logs mention a missing API key or provider configuration error.
+- `make doctor` reports `DeepSeek API Key 未配置`.
 
 Fix:
 
