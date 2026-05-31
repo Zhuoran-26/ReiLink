@@ -33,7 +33,7 @@ dev-renderer:
 test: test-backend test-desktop
 
 test-backend:
-	services/backend/.venv/bin/python -m pytest services/backend/tests
+	PYTHONPATH=.:services/backend LLM_PROVIDER=mock DEEPSEEK_API_KEY= services/backend/.venv/bin/python -m pytest services/backend/tests
 
 test-desktop:
 	cd apps/desktop && npm test
