@@ -264,6 +264,14 @@ ReiLink 使用 MIT License，见 [LICENSE](LICENSE)。
 - `data/knowledge/games/{game_id}/manifest.json`：知识包清单。`version` 表示版本，`language` 表示语言，`coverage` 表示覆盖范围。
 - `data/knowledge/games/{game_id}/snippets.json`：简短事实片段。
 
+本地校验：
+
+```bash
+make validate-knowledge
+```
+
+该命令会检查 catalog、supported 游戏的 manifest 与 snippets 结构。`planned` / `detected_only` 游戏暂未接入知识包时只会输出 warning，不会让校验失败。
+
 当前 sample packs：
 
 - Elden Ring / 艾尔登法环
@@ -521,6 +529,14 @@ Key paths:
 - `data/knowledge/games/catalog.json`: game catalog. `game_id` means game identifier, `display_name` means display name, and `support_status` means support state.
 - `data/knowledge/games/{game_id}/manifest.json`: knowledge pack manifest. `version` means pack version, `language` means pack language, and `coverage` means covered topics.
 - `data/knowledge/games/{game_id}/snippets.json`: short factual snippets.
+
+Local validation:
+
+```bash
+make validate-knowledge
+```
+
+This command checks the catalog plus manifest and snippets structure for supported games. `planned` / `detected_only` games without knowledge packs only produce warnings and do not fail validation.
 
 Current sample packs:
 
