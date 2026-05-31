@@ -51,6 +51,9 @@ class MemoryEntry(BaseModel):
     user_message: str
     assistant_reply: str
     assistant_reply_segments: list[str] = Field(default_factory=list)
+    assistant_message_type: Literal["reply", "proactive"] = "reply"
+    trigger_type: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class UserProfileMemory(BaseModel):
@@ -109,6 +112,8 @@ class AppSettings(BaseModel):
     pending_memory_mode: Literal["manual"] = "manual"
     response_length: Literal["short", "normal"] = "normal"
     model_preference: Literal["fast", "pro", "auto"] = "auto"
+    proactive_companion: Literal["on", "off"] = "off"
+    proactive_sensitivity: Literal["low", "normal", "high"] = "low"
 
 
 class AppSettingsUpdate(BaseModel):
@@ -118,6 +123,8 @@ class AppSettingsUpdate(BaseModel):
     pending_memory_mode: Literal["manual"] | None = None
     response_length: Literal["short", "normal"] | None = None
     model_preference: Literal["fast", "pro", "auto"] | None = None
+    proactive_companion: Literal["on", "off"] | None = None
+    proactive_sensitivity: Literal["low", "normal", "high"] | None = None
 
 
 class MemoryProvenanceItem(BaseModel):
@@ -173,6 +180,39 @@ class PromptPreviewResponse(BaseModel):
     memory_summary: dict[str, Any] = Field(default_factory=dict)
     final_context_summary: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
+
+
+ProactiveTriggerType = Literal["idle_silence", "repeated_death", "late_night", "frustration_loop", "none"]
+
+
+class ProactiveStatusResponse(BaseModel):
+    enabled: bool
+    sensitivity: Literal["low", "normal", "high"]
+    last_triggered_at: str | None = None
+    last_triggered_type: ProactiveTriggerType = "none"
+    next_possible_trigger_at: str | None = None
+    active_candidate_triggers: list[str] = Field(default_factory=list)
+    cooldown_remaining_seconds: int = 0
+    last_trigger_reason: str | None = None
+
+
+class ProactiveCheckRequest(BaseModel):
+    session_id: str = Field(default="default", min_length=1, max_length=80)
+    connected: bool = True
+    is_user_typing: bool = False
+
+
+class ProactiveCheckResponse(BaseModel):
+    should_send: bool
+    trigger_type: ProactiveTriggerType = "none"
+    message: str = ""
+    reason: str = ""
+    cooldown_remaining_seconds: int = 0
+
+
+class ProactiveSettingsRequest(BaseModel):
+    enabled: bool | None = None
+    sensitivity: Literal["low", "normal", "high"] | None = None
 
 
 class VoiceTranscribeResponse(BaseModel):

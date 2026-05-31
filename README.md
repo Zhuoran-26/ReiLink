@@ -85,6 +85,8 @@ ReiLink 支持 DeepSeek 的 OpenAI-compatible API。
 ```bash
 LLM_PROVIDER=deepseek
 MODEL_PREFERENCE=auto
+PROACTIVE_COMPANION=off
+PROACTIVE_SENSITIVITY=low
 DEEPSEEK_API_KEY=你的key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL_FAST=deepseek-v4-flash

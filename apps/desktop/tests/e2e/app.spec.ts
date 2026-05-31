@@ -10,7 +10,34 @@ test("mock backend chat flow works", async ({ page }) => {
         memory_enabled: true,
         pending_memory_mode: "manual",
         response_length: "normal",
-        model_preference: "auto"
+        model_preference: "auto",
+        proactive_companion: "off",
+        proactive_sensitivity: "low"
+      }
+    })
+  );
+  await page.route("**/api/proactive/status?**", (route) =>
+    route.fulfill({
+      json: {
+        enabled: false,
+        sensitivity: "low",
+        last_triggered_at: null,
+        last_triggered_type: "none",
+        next_possible_trigger_at: null,
+        active_candidate_triggers: [],
+        cooldown_remaining_seconds: 0,
+        last_trigger_reason: null
+      }
+    })
+  );
+  await page.route("**/api/proactive/check", (route) =>
+    route.fulfill({
+      json: {
+        should_send: false,
+        trigger_type: "none",
+        message: "",
+        reason: "disabled",
+        cooldown_remaining_seconds: 0
       }
     })
   );

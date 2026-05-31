@@ -355,6 +355,10 @@ button {
   border-color: rgba(155, 178, 221, 0.17);
 }
 
+.messageBubble.proactive {
+  border-color: rgba(155, 178, 221, 0.24);
+}
+
 .messageBubble.user {
   align-self: flex-end;
   background:
@@ -375,6 +379,14 @@ button {
   color: #b7a8ff;
   font-size: 13px;
   font-weight: 640;
+}
+
+.messageMeta {
+  display: inline;
+  margin-left: 8px;
+  color: #7f8aa3;
+  font-size: 11px;
+  font-weight: 560;
 }
 
 .messageBubble.user span {

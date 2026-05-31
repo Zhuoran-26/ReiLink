@@ -87,6 +87,8 @@ def test_settings_routes_persist_safe_values():
         "pending_memory_mode",
         "response_length",
         "model_preference",
+        "proactive_companion",
+        "proactive_sensitivity",
     } <= data.keys()
     serialized = json.dumps(data, ensure_ascii=False).lower()
     assert "api_key" not in serialized
@@ -101,6 +103,8 @@ def test_settings_routes_persist_safe_values():
             "pending_memory_mode": "manual",
             "response_length": "short",
             "model_preference": "pro",
+            "proactive_companion": "on",
+            "proactive_sensitivity": "high",
         },
     )
 
@@ -112,8 +116,11 @@ def test_settings_routes_persist_safe_values():
     assert saved["pending_memory_mode"] == "manual"
     assert saved["response_length"] == "short"
     assert saved["model_preference"] == "pro"
+    assert saved["proactive_companion"] == "on"
+    assert saved["proactive_sensitivity"] == "high"
     assert client.get("/api/settings").json() == saved
     assert client.get("/api/debug/provider").json()["persona_mode"] == "minimal"
+    assert client.get("/api/proactive/status").json()["enabled"] is True
 
 
 def test_debug_chat_returns_last_latency_fields():

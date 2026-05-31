@@ -24,6 +24,7 @@ import {
   MemoryDebugResponse,
   PendingMemory,
   PromptPreviewResponse,
+  ProactiveStatusResponse,
   ProviderDebugResponse,
   SemanticExtractionDebugResponse,
   UserProfileMemory
@@ -34,6 +35,8 @@ type Message = {
   role: "user" | "assistant";
   text: string;
   pending?: boolean;
+  messageType?: "chat" | "proactive";
+  triggerType?: string;
 };
 
 const idleStatus: GameStatus = {
@@ -160,17 +163,31 @@ const emptyProviderDebug: ProviderDebugResponse = {
   fallback_reason: null
 };
 
+const emptyProactiveStatus: ProactiveStatusResponse = {
+  enabled: false,
+  sensitivity: "low",
+  last_triggered_at: null,
+  last_triggered_type: "none",
+  next_possible_trigger_at: null,
+  active_candidate_triggers: [],
+  cooldown_remaining_seconds: 0,
+  last_trigger_reason: null
+};
+
 const defaultAppSettings: AppSettings = {
   persona_mode: "guarded",
   debug_panel: "show",
   memory_enabled: true,
   pending_memory_mode: "manual",
   response_length: "normal",
-  model_preference: "auto"
+  model_preference: "auto",
+  proactive_companion: "off",
+  proactive_sensitivity: "low"
 };
 
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
+const PROACTIVE_CHECK_INTERVAL_MS = 30000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -228,6 +245,7 @@ export function App() {
   const [memoryDebug, setMemoryDebug] = useState<MemoryDebugResponse>(emptyMemoryDebug);
   const [chatDebug, setChatDebug] = useState<ChatDebugResponse>(emptyChatDebug);
   const [providerDebug, setProviderDebug] = useState<ProviderDebugResponse>(emptyProviderDebug);
+  const [proactiveStatus, setProactiveStatus] = useState<ProactiveStatusResponse>(emptyProactiveStatus);
   const [gameSessionDebug, setGameSessionDebug] = useState<GameSessionDebugResponse>(emptyGameSessionDebug);
   const [semanticDebug, setSemanticDebug] = useState<SemanticExtractionDebugResponse>(emptySemanticExtractionDebug);
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
@@ -258,6 +276,7 @@ export function App() {
       setMemoryDebug(await api.memoryDebug());
       setChatDebug(await api.chatDebug());
       setProviderDebug(await api.providerDebug());
+      setProactiveStatus(await api.proactiveStatus());
       setGameSessionDebug(await api.gameSessionDebug());
       setSemanticDebug(await api.semanticExtractionDebug());
       setPromptPreview(await api.promptPreview());
@@ -290,6 +309,34 @@ export function App() {
   useEffect(() => {
     void refreshStatus();
   }, []);
+
+  const checkProactive = async () => {
+    if (backendStatus !== "connected" || appSettings.proactive_companion !== "on" || sending) return;
+    try {
+      const response = await api.checkProactive("default", Boolean(input.trim()), backendStatus === "connected");
+      if (response.should_send && response.message) {
+        setMessages((current) => [
+          ...current,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            text: response.message,
+            messageType: "proactive",
+            triggerType: response.trigger_type
+          }
+        ]);
+      }
+      setProactiveStatus(await api.proactiveStatus());
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : "proactive check failed");
+    }
+  };
+
+  useEffect(() => {
+    if (backendStatus !== "connected" || appSettings.proactive_companion !== "on") return undefined;
+    const interval = window.setInterval(() => void checkProactive(), PROACTIVE_CHECK_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [backendStatus, appSettings.proactive_companion, input, sending]);
 
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault();
@@ -493,6 +540,7 @@ export function App() {
               <Bot size={15} />
               Model: {appSettings.model_preference}
             </span>
+            <span className="topChip">Proactive: {appSettings.proactive_companion}</span>
             <span className="topChip">
               <Gamepad2 size={15} />
               Game: {displayGame}
@@ -513,10 +561,15 @@ export function App() {
             <div className="messages">
               {messages.map((message) => (
                 <article
-                  className={`messageBubble ${message.role}${message.pending ? " pending" : ""}`}
+                  className={`messageBubble ${message.role}${message.pending ? " pending" : ""}${message.messageType === "proactive" ? " proactive" : ""}`}
                   key={message.id}
                 >
-                  <span>{message.role === "user" ? "你" : "Rei"}</span>
+                  <span>
+                    {message.role === "user" ? "你" : "Rei"}
+                    {message.messageType === "proactive" && (
+                      <small className="messageMeta">proactive · {message.triggerType}</small>
+                    )}
+                  </span>
                   <p>{message.text}</p>
                 </article>
               ))}
@@ -622,8 +675,37 @@ export function App() {
                   <option value="pro">pro</option>
                 </select>
               </label>
+              <label className="settingRow">
+                <span>Proactive Companion</span>
+                <select
+                  aria-label="Proactive Companion"
+                  disabled={settingsBusy !== ""}
+                  value={appSettings.proactive_companion}
+                  onChange={(event) =>
+                    void updateAppSettings({ proactive_companion: event.target.value as AppSettings["proactive_companion"] })
+                  }
+                >
+                  <option value="off">off</option>
+                  <option value="on">on</option>
+                </select>
+              </label>
+              <label className="settingRow">
+                <span>Proactive Sensitivity</span>
+                <select
+                  aria-label="Proactive Sensitivity"
+                  disabled={settingsBusy !== "" || appSettings.proactive_companion === "off"}
+                  value={appSettings.proactive_sensitivity}
+                  onChange={(event) =>
+                    void updateAppSettings({ proactive_sensitivity: event.target.value as AppSettings["proactive_sensitivity"] })
+                  }
+                >
+                  <option value="low">low</option>
+                  <option value="normal">normal</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
             </div>
-            <p className="settingHint">本地保存到 settings.json，不包含密钥。</p>
+            <p className="settingHint">本地保存到 settings.json，不包含密钥。Proactive 当前为 {appSettings.proactive_companion}。</p>
           </section>
 
           <section className="infoCard pendingPanel" aria-label="Pending Memory" id="pending-memory-panel">
@@ -766,6 +848,42 @@ export function App() {
                   </section>
 
                   <section className="debugSection">
+                    <h3>Proactive</h3>
+                    <dl className="debugFacts">
+                      <div>
+                        <dt>enabled</dt>
+                        <dd>
+                          <BooleanBadge value={proactiveStatus.enabled} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>sensitivity</dt>
+                        <dd>{debugText(proactiveStatus.sensitivity)}</dd>
+                      </div>
+                      <div>
+                        <dt>last_type</dt>
+                        <dd>{debugText(proactiveStatus.last_triggered_type)}</dd>
+                      </div>
+                      <div>
+                        <dt>last_at</dt>
+                        <dd>{debugText(proactiveStatus.last_triggered_at)}</dd>
+                      </div>
+                      <div>
+                        <dt>cooldown</dt>
+                        <dd>{Number(proactiveStatus.cooldown_remaining_seconds ?? 0).toFixed(0)}</dd>
+                      </div>
+                      <div>
+                        <dt>candidates</dt>
+                        <dd>{proactiveStatus.active_candidate_triggers.join(", ") || "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>last_reason</dt>
+                        <dd>{debugText(proactiveStatus.last_trigger_reason)}</dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section className="debugSection">
                     <h3>Model Routing</h3>
                     <dl className="debugFacts">
                       <div>
@@ -879,6 +997,7 @@ export function App() {
                       {JSON.stringify(
                         {
                           provider_debug: providerDebug,
+                          proactive: proactiveStatus,
                           game_session: gameSessionDebug,
                           semantic_extraction: semanticDebug,
                           memory_debug: memoryDebug,

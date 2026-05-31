@@ -22,6 +22,27 @@ export type ChatResponse = {
   route_reason?: string | null;
 };
 
+export type ProactiveTriggerType = "idle_silence" | "repeated_death" | "late_night" | "frustration_loop" | "none";
+
+export type ProactiveStatusResponse = {
+  enabled: boolean;
+  sensitivity: "low" | "normal" | "high";
+  last_triggered_at: string | null;
+  last_triggered_type: ProactiveTriggerType;
+  next_possible_trigger_at: string | null;
+  active_candidate_triggers: string[];
+  cooldown_remaining_seconds: number;
+  last_trigger_reason: string | null;
+};
+
+export type ProactiveCheckResponse = {
+  should_send: boolean;
+  trigger_type: ProactiveTriggerType;
+  message: string;
+  reason: string;
+  cooldown_remaining_seconds: number;
+};
+
 export type UserProfileMemory = {
   user_name: string | null;
   favorite_game: string | null;
@@ -198,6 +219,8 @@ export type AppSettings = {
   pending_memory_mode: "manual";
   response_length: "short" | "normal";
   model_preference: "fast" | "pro" | "auto";
+  proactive_companion: "on" | "off";
+  proactive_sensitivity: "low" | "normal" | "high";
 };
 
 export type AppSettingsUpdate = Partial<AppSettings>;
@@ -230,6 +253,17 @@ export const api = {
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),
   chatDebug: () => request<ChatDebugResponse>("/api/debug/chat"),
   providerDebug: () => request<ProviderDebugResponse>("/api/debug/provider"),
+  proactiveStatus: (sessionId = "default") => request<ProactiveStatusResponse>(`/api/proactive/status?session_id=${encodeURIComponent(sessionId)}`),
+  checkProactive: (sessionId = "default", isUserTyping = false, connected = true) =>
+    request<ProactiveCheckResponse>("/api/proactive/check", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, is_user_typing: isUserTyping, connected })
+    }),
+  updateProactiveSettings: (enabled?: boolean, sensitivity?: AppSettings["proactive_sensitivity"]) =>
+    request<ProactiveStatusResponse>("/api/proactive/settings", {
+      method: "POST",
+      body: JSON.stringify({ enabled, sensitivity })
+    }),
   gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
   semanticExtractionDebug: () => request<SemanticExtractionDebugResponse>("/api/debug/semantic-extraction/latest"),
   promptPreview: (sessionId = "default") => request<PromptPreviewResponse>(`/api/debug/prompt-preview?session_id=${encodeURIComponent(sessionId)}`),

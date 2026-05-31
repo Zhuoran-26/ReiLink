@@ -181,6 +181,26 @@ const providerDebug = {
   fallback_reason: null
 };
 
+const proactiveStatus = {
+  enabled: false,
+  sensitivity: "low",
+  last_triggered_at: null,
+  last_triggered_type: "none",
+  next_possible_trigger_at: null,
+  active_candidate_triggers: [] as string[],
+  cooldown_remaining_seconds: 0,
+  last_trigger_reason: null
+};
+
+let proactiveStatusStore = { ...proactiveStatus };
+let proactiveCheckStore = {
+  should_send: false,
+  trigger_type: "none",
+  message: "",
+  reason: "disabled",
+  cooldown_remaining_seconds: 0
+};
+
 const pendingMemories = [
   {
     id: "pending-1",
@@ -204,13 +224,23 @@ const appSettings = {
   memory_enabled: true,
   pending_memory_mode: "manual",
   response_length: "normal",
-  model_preference: "auto"
+  model_preference: "auto",
+  proactive_companion: "off",
+  proactive_sensitivity: "low"
 };
 
 let appSettingsStore = { ...appSettings };
 
 const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
+  proactiveStatusStore = { ...proactiveStatus };
+  proactiveCheckStore = {
+    should_send: false,
+    trigger_type: "none",
+    message: "",
+    reason: "disabled",
+    cooldown_remaining_seconds: 0
+  };
 };
 
 const settingsResponse = (url: string, init?: RequestInit) => {
@@ -219,6 +249,17 @@ const settingsResponse = (url: string, init?: RequestInit) => {
     return Response.json(appSettingsStore);
   }
   if (url.endsWith("/api/settings")) return Response.json(appSettingsStore);
+  return null;
+};
+
+const proactiveResponse = (url: string, init?: RequestInit) => {
+  if (url.includes("/api/proactive/status")) return Response.json(proactiveStatusStore);
+  if (url.endsWith("/api/proactive/check") && init?.method === "POST") {
+    return Response.json(proactiveCheckStore);
+  }
+  if (url.endsWith("/api/proactive/settings") && init?.method === "POST") {
+    return Response.json(proactiveStatusStore);
+  }
   return null;
 };
 
@@ -270,6 +311,8 @@ describe("App", () => {
         if (pendingResponse) return pendingResponse;
         const settings = settingsResponse(url, init);
         if (settings) return settings;
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -334,6 +377,8 @@ describe("App", () => {
     expect(screen.getByLabelText("Pending Memory Mode")).toHaveValue("manual");
     expect(screen.getByLabelText("Response Length")).toHaveValue("normal");
     expect(screen.getByLabelText("Model Preference")).toHaveValue("auto");
+    expect(screen.getByLabelText("Proactive Companion")).toHaveValue("off");
+    expect(screen.getByLabelText("Proactive Sensitivity")).toHaveValue("low");
   });
 
   it("updates settings through the API", async () => {
@@ -362,6 +407,14 @@ describe("App", () => {
         expect.objectContaining({ method: "POST", body: JSON.stringify({ model_preference: "pro" }) })
       )
     );
+
+    await userEvent.selectOptions(screen.getByLabelText("Proactive Companion"), "on");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ proactive_companion: "on" }) })
+      )
+    );
   });
 
   it("hides debug panel through settings", async () => {
@@ -386,6 +439,57 @@ describe("App", () => {
     );
   });
 
+  it("renders proactive message as a normal Rei message with metadata", async () => {
+    vi.useFakeTimers();
+    appSettingsStore = { ...appSettings, proactive_companion: "on" };
+    proactiveStatusStore = {
+      ...proactiveStatus,
+      enabled: true,
+      sensitivity: "low",
+      active_candidate_triggers: ["repeated_death"]
+    };
+    proactiveCheckStore = {
+      should_send: true,
+      trigger_type: "repeated_death",
+      message: "你开始急了。",
+      reason: "death_delta=2",
+      cooldown_remaining_seconds: 0
+    };
+
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText("已连接")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+
+    const proactiveMessage = screen.getByText("你开始急了。");
+    const bubble = proactiveMessage.closest("article");
+    expect(screen.getByText("proactive · repeated_death")).toBeInTheDocument();
+    expect(bubble).toHaveClass("messageBubble", "assistant", "proactive");
+    expect(bubble).not.toHaveClass("system");
+  });
+
+  it("does not poll proactive check while proactive companion is off", async () => {
+    vi.useFakeTimers();
+    render(<App />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText("已连接")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/proactive/check"),
+      expect.anything()
+    );
+  });
+
   it("does not show an interim placeholder before three seconds", async () => {
     vi.useFakeTimers();
     let resolveChat: (value: Response) => void = () => {};
@@ -398,6 +502,8 @@ describe("App", () => {
         if (pendingResponse) return Promise.resolve(pendingResponse);
         const settings = settingsResponse(url, init);
         if (settings) return Promise.resolve(settings);
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return Promise.resolve(proactive);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -452,6 +558,8 @@ describe("App", () => {
         if (pendingResponse) return Promise.resolve(pendingResponse);
         const settings = settingsResponse(url, init);
         if (settings) return Promise.resolve(settings);
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return Promise.resolve(proactive);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -513,6 +621,8 @@ describe("App", () => {
         if (pendingResponse) return Promise.resolve(pendingResponse);
         const settings = settingsResponse(url, init);
         if (settings) return Promise.resolve(settings);
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return Promise.resolve(proactive);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -575,6 +685,10 @@ describe("App", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Debug Panel/i }));
     await waitFor(() => expect(screen.getByText("Semantic Extraction")).toBeInTheDocument());
+    expect(screen.getByText("Proactive")).toBeInTheDocument();
+    expect(screen.getAllByText("enabled").length).toBeGreaterThan(0);
+    expect(screen.getByText("last_type")).toBeInTheDocument();
+    expect(screen.getByText("candidates")).toBeInTheDocument();
     expect(screen.getByText("Model Routing")).toBeInTheDocument();
     expect(screen.getAllByText("selected_model").length).toBeGreaterThan(0);
     expect(screen.getByText("model_route_mode")).toBeInTheDocument();
@@ -617,6 +731,8 @@ describe("App", () => {
         if (pendingResponse) return pendingResponse;
         const settings = settingsResponse(url, init);
         if (settings) return settings;
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -671,6 +787,8 @@ describe("App", () => {
         if (url.endsWith("/api/memory/pending")) return Response.json([]);
         const settings = settingsResponse(url, init);
         if (settings) return settings;
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);

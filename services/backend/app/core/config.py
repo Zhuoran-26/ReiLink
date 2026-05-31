@@ -44,6 +44,12 @@ class Settings:
     deepseek_reasoning_effort: str = os.getenv("DEEPSEEK_REASONING_EFFORT", "medium")
     model_preference: str = os.getenv("MODEL_PREFERENCE", "auto").lower().strip() or "auto"
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "20"))
+    proactive_companion: str = os.getenv("PROACTIVE_COMPANION", "off").lower().strip() or "off"
+    proactive_sensitivity: str = os.getenv("PROACTIVE_SENSITIVITY", "low").lower().strip() or "low"
+    proactive_idle_seconds: float = float(os.getenv("PROACTIVE_IDLE_SECONDS", "600"))
+    proactive_type_cooldown_seconds: float = float(os.getenv("PROACTIVE_TYPE_COOLDOWN_SECONDS", "600"))
+    proactive_global_cooldown_seconds: float = float(os.getenv("PROACTIVE_GLOBAL_COOLDOWN_SECONDS", "300"))
+    proactive_user_grace_seconds: float = float(os.getenv("PROACTIVE_USER_GRACE_SECONDS", "30"))
     tts_provider: str = os.getenv("TTS_PROVIDER", "mock")
     stt_provider: str = os.getenv("STT_PROVIDER", "mock")
     enable_voice: bool = os.getenv("ENABLE_VOICE", "false").lower() == "true"
@@ -65,6 +71,7 @@ class Settings:
     pending_memories_path: Path = memory_dir / "pending_memories.jsonl"
     session_dir: Path = data_dir / "session"
     game_session_state_path: Path = session_dir / "game_session_state.json"
+    proactive_state_path: Path = session_dir / "proactive_state.json"
     conversations_dir: Path = data_dir / "conversations"
     elden_ring_dir: Path = data_dir / "elden_ring"
     settings_path: Path = data_dir / "settings.json"
