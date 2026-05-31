@@ -4,66 +4,68 @@
 
 ### 仓库安全
 
-- [ ] 没有 `.env`、`*.env` 或 `services/backend/.env` 被 tracked。
-- [ ] 没有 `data/memory/*` 或 `data/session/*` 被 tracked。
-- [ ] 没有 `node_modules/`、`.venv/`、`dist/` 或 `build/` 被 tracked。
-- [ ] 没有真实 DeepSeek API key、`sk-` token 或其他 secrets 出现在 tracked 文件中。
+- [x] 没有 `.env`、`*.env` 或 `services/backend/.env` 被 tracked。
+- [x] 没有 `data/memory/*` 或 `data/session/*` 被 tracked。
+- [x] 没有 `node_modules/`、`.venv/`、`dist/` 或 `build/` 被 tracked。
+- [x] 没有真实 DeepSeek API key、`sk-` token 或其他 secrets 出现在 tracked 文件中。
 
 ### CI / 验证
 
-- [ ] GitHub Actions backend tests 通过。
-- [ ] GitHub Actions desktop lint / test / build 通过。
-- [ ] E2E 已作为手动或 optional 检查准备好。
-- [ ] 本地 `make doctor`、`make lint`、`make test`、`make typecheck` 通过。
+- [x] GitHub Actions workflow 已配置 backend tests，并使用 `LLM_PROVIDER=mock`，不依赖真实 DeepSeek API key。
+- [x] GitHub Actions workflow 已配置 desktop lint / test / build。
+- [x] E2E 已作为 `workflow_dispatch` 手动检查准备好。
+- [ ] GitHub Actions 最新远端运行结果需在 GitHub 上确认。
+- [ ] 本地 `make doctor`、`make lint`、`make test`、`make typecheck` 需在代码改动发布前重新确认。本轮只做文档与静态发布检查。
 
 ### 公开材料
 
-- [ ] MIT License 已添加。
-- [ ] README 包含 status、quick start、health check、privacy、disclaimer、license。
+- [x] MIT License 已添加。
+- [x] README 包含 status、quick start、health check、privacy、disclaimer、license。
 - [x] Demo screenshots 已整理到 `docs/assets/`。
 - [x] README screenshot section 已更新。
 - [x] Release notes screenshot links 已添加。
-- [ ] `docs/RELEASE_NOTES_v0.1.md` 已准备。
-- [ ] `docs/TROUBLESHOOTING.md` 已覆盖常见启动问题。
+- [x] `docs/RELEASE_NOTES_v0.1.md` 已准备。
+- [x] `docs/TROUBLESHOOTING.md` 已覆盖常见启动问题。
 
 ### 范围与声明
 
-- [ ] README 明确 Rei 是原创 companion persona。
-- [ ] README 明确项目不隶属于 Evangelion、FromSoftware 或 Team Cherry。
-- [ ] README 明确不使用官方 IP 元素。
-- [ ] 已决定仓库公开 / 私有策略。
-- [ ] 如公开仓库，确认 sample knowledge packs 不包含敏感或未授权材料。
+- [x] README 明确 Rei 是原创 companion persona。
+- [x] README 明确项目不隶属于 Evangelion、FromSoftware 或 Team Cherry。
+- [x] README 明确不使用官方 IP 元素。
+- [x] 当前仓库保持 private；公开发布需另行手动切换 visibility。
+- [x] Sample knowledge packs 未发现 secrets、local paths 或 API key；商标与授权风险需发布者在公开前最终确认。
 
 ## English
 
 ### Repository Safety
 
-- [ ] No `.env`, `*.env`, or `services/backend/.env` files are tracked.
-- [ ] No `data/memory/*` or `data/session/*` files are tracked.
-- [ ] No `node_modules/`, `.venv/`, `dist/`, or `build/` directories are tracked.
-- [ ] No real DeepSeek API key, `sk-` token, or other secret appears in tracked files.
+- [x] No `.env`, `*.env`, or `services/backend/.env` files are tracked.
+- [x] No `data/memory/*` or `data/session/*` files are tracked.
+- [x] No `node_modules/`, `.venv/`, `dist/`, or `build/` directories are tracked.
+- [x] No real DeepSeek API key, `sk-` token, or other secret appears in tracked files.
 
 ### CI / Verification
 
-- [ ] GitHub Actions backend tests pass.
-- [ ] GitHub Actions desktop lint / test / build pass.
-- [ ] E2E is prepared as a manual or optional check.
-- [ ] Local `make doctor`, `make lint`, `make test`, and `make typecheck` pass.
+- [x] GitHub Actions workflow configures backend tests with `LLM_PROVIDER=mock` and does not require a real DeepSeek API key.
+- [x] GitHub Actions workflow configures desktop lint / test / build.
+- [x] E2E is prepared as a manual `workflow_dispatch` check.
+- [ ] The latest remote GitHub Actions run still needs to be confirmed on GitHub.
+- [ ] Local `make doctor`, `make lint`, `make test`, and `make typecheck` should be re-confirmed before a code-changing release. This pass only covers documentation and static release checks.
 
 ### Public Materials
 
-- [ ] MIT License is added.
-- [ ] README includes status, quick start, health check, privacy, disclaimer, and license.
+- [x] MIT License is added.
+- [x] README includes status, quick start, health check, privacy, disclaimer, and license.
 - [x] Demo screenshots are organized under `docs/assets/`.
 - [x] README screenshot section is updated.
 - [x] Release notes screenshot links are added.
-- [ ] `docs/RELEASE_NOTES_v0.1.md` is ready.
-- [ ] `docs/TROUBLESHOOTING.md` covers common startup issues.
+- [x] `docs/RELEASE_NOTES_v0.1.md` is ready.
+- [x] `docs/TROUBLESHOOTING.md` covers common startup issues.
 
 ### Scope And Disclaimers
 
-- [ ] README clearly states Rei is an original companion persona.
-- [ ] README clearly states the project is not affiliated with Evangelion, FromSoftware, or Team Cherry.
-- [ ] README clearly states it does not use official IP elements.
-- [ ] Public / private repository decision is made.
-- [ ] If public, sample knowledge packs have been checked for sensitive or unauthorized material.
+- [x] README clearly states Rei is an original companion persona.
+- [x] README clearly states the project is not affiliated with Evangelion, FromSoftware, or Team Cherry.
+- [x] README clearly states it does not use official IP elements.
+- [x] The repository remains private for now; public release requires a separate manual visibility change.
+- [x] Sample knowledge packs show no secrets, local paths, or API keys; trademark and authorization risk should still be finally confirmed by the publisher before public release.
