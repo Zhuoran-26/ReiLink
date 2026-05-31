@@ -1,44 +1,122 @@
 # ReiLink
 
-ReiLink is a Phase 1 MVP for a local AI game companion desktop app. This phase supports one game, Elden Ring, and one original Rei-like companion persona.
+## 中文
 
-The implemented loop is:
+### 项目简介
 
-Detect Elden Ring process -> build persona prompt -> search local Elden Ring knowledge -> generate a mock or OpenAI-compatible reply -> show it in the desktop UI -> save JSONL conversation history.
+ReiLink 是一个面向单机游戏玩家的中文 AI Companion 桌面应用。它会结合当前游戏、玩家对话、临时游戏状态、已确认记忆偏好和本地知识包，让一个 Rei-like 的原创低情绪陪伴角色用克制、简短的中文与玩家互动。
 
-## Stack
+ReiLink 不是通用 chatbot，也不是纯攻略站。它更接近一个带有游戏上下文的陪伴层：由 AI companion、game context（游戏上下文）、memory（记忆）和 knowledge layer（知识层）共同组成，但最终回复仍保持 LLM-first，由 persona 与模型生成。
 
-- Backend: Python, FastAPI, psutil, pytest
-- Desktop: Electron, React, TypeScript, Vite
-- Tests: pytest, Vitest, React Testing Library, Playwright
-- Storage: local JSONL files under `data/conversations`
+本项目不使用 Evangelion、Rei Ayanami、NERV 或任何官方 IP 元素。
 
-## Quick Start
+### 功能介绍
+
+- 中文 AI companion chat（中文陪伴聊天）
+- Rei-like original minimal persona（原创 minimal 人格）
+- DeepSeek provider（DeepSeek 模型提供方）
+- Model routing（模型路由）：`fast` / `pro` / `auto`
+- Multi-part replies（分段回复）
+- Pending memory confirmation（待确认记忆）
+- Game session state（游戏会话状态）
+- Semantic extraction（语义识别）
+- Proactive companion trigger（低频主动陪伴触发）
+- Local game detection（本地游戏检测）
+- Manual game context override（手动当前游戏覆盖）
+- Multi-game knowledge catalog（多游戏知识目录）
+- Knowledge pack manifest（知识包清单）
+- Elden Ring 与 Hollow Knight sample knowledge packs（样例知识包）
+- Debug dashboard（调试面板）
+- Prompt / context preview（回复上下文预览）
+- Settings panel（设置面板）
+- Local-first memory and session state（本地优先的记忆与会话状态）
+
+### 技术栈
+
+Backend:
+
+- Python
+- FastAPI
+- JSON / JSONL local state
+- DeepSeek-compatible provider
+
+Desktop:
+
+- Electron
+- React
+- TypeScript
+- Vite
+
+Tests:
+
+- pytest
+- Vitest
+- React Testing Library
+- Playwright
+
+### 架构概览
+
+主要 backend 模块：
+
+- `persona_engine`：加载 persona 配置并构建系统提示。
+- `dialogue_agent`：编排设置、游戏状态、知识、模型路由、provider 调用和 debug 数据。
+- `game_session`：维护当前游戏、Boss、进度和临时状态。
+- `memory`：维护待确认记忆和已接受长期记忆。
+- `semantic_extraction`：从用户消息中识别游戏状态和记忆候选。
+- `game_knowledge` / `knowledge`：基于 catalog 与 snippets 提供事实上下文。
+- `game_detector`：本地进程 / 应用名检测当前游戏。
+- `proactive`：低频主动陪伴触发与冷却控制。
+- `app_settings`：持久化用户设置。
+
+主要 desktop 区域：
+
+- Chat UI（聊天）
+- Settings（设置）
+- Pending Memory（待确认记忆）
+- Game Session / Game Context Debug（游戏状态与上下文）
+- Prompt Preview（回复上下文预览）
+- Knowledge Debug（知识层调试）
+
+### 本地运行
+
+Makefile 已提供常用命令。
+
+1. 创建 backend 虚拟环境并安装依赖：
 
 ```bash
-cp .env.example .env
 make install-backend
+```
+
+2. 安装 desktop 依赖：
+
+```bash
 make install-desktop
 ```
 
-Run backend:
+3. 配置 backend 环境变量，手动创建 `services/backend/.env`，不要提交真实 key。
+
+4. 启动 backend：
 
 ```bash
 make dev-backend
 ```
 
-Run desktop renderer:
+5. 启动 desktop renderer：
 
 ```bash
 make dev-desktop
 ```
 
-Open `http://127.0.0.1:5173` during development, or run Electron from `apps/desktop` with `npm run dev:electron`.
-
-## Test
+开发时可以打开 `http://127.0.0.1:5173`。如果需要启动 Electron shell：
 
 ```bash
-make test
+cd apps/desktop
+npm run dev:electron
+```
+
+6. 运行测试与检查：
+
+```bash
 make test-backend
 make test-desktop
 make test-e2e
@@ -46,51 +124,268 @@ make lint
 make typecheck
 ```
 
-If Electron's binary download is unstable during install, run:
+也可以运行聚合测试：
 
 ```bash
-cd apps/desktop
-ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
+make test
 ```
 
-That is enough for renderer lint, unit tests, and build checks. Running the packaged Electron shell still requires the Electron binary.
+### 环境变量
 
-## Provider Configuration
-
-Mock mode is the default and needs no API key.
-
-To use an OpenAI-compatible provider, set:
-
-```bash
-LLM_PROVIDER=openai-compatible
-OPENAI_API_KEY=...
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=...
-```
-
-STT and TTS are mocked in Phase 1. Voice endpoints exist but no continuous microphone listening is implemented.
-
-## Current Limitations
-
-- Elden Ring process detection is Windows-first and returns idle on non-Windows systems.
-- Knowledge search is keyword based local file retrieval, not full RAG.
-- The avatar is an original placeholder, not official or copyrighted game or anime artwork.
-- Voice is API placeholder plus mock fallback.
-
-
-## DeepSeek 配置
-
-ReiLink 支持 DeepSeek 的 OpenAI-compatible API。
+示例配置，放在 `services/backend/.env`：
 
 ```bash
 LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL_FAST=
+DEEPSEEK_MODEL_PRO=
 MODEL_PREFERENCE=auto
+PERSONA_MODE=minimal
 PROACTIVE_COMPANION=off
 PROACTIVE_SENSITIVITY=low
-DEEPSEEK_API_KEY=你的key
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL_FAST=deepseek-v4-flash
-DEEPSEEK_MODEL_PRO=deepseek-v4-pro
+AUTO_GAME_DETECTION=on
 ```
 
-如果 `LLM_PROVIDER=deepseek` 但没有配置 `DEEPSEEK_API_KEY`，后端会返回清晰错误，不会崩溃。Phase 1 默认仍是 `LLM_PROVIDER=mock`，无 key 也可以中文演示。
+不要在仓库中提交真实 API key。`LLM_PROVIDER=mock` 可用于无 key 的本地演示。
+
+### 隐私与本地数据
+
+- `.env`、`*.env` 和 `services/backend/.env` 不应提交。
+- `data/memory/*` 保存本地长期记忆数据，不应提交。
+- `data/session/*` 保存本地临时会话状态，不应提交。
+- Pending memory（待确认记忆）必须由用户接受后才会进入长期记忆。
+- Pending memory 不会直接注入 prompt。
+- ReiLink 不会自动上传用户记忆或会话状态。
+- 本地 knowledge packs 只提供事实上下文，不直接生成 Rei 的最终回复。
+
+### 知识包结构
+
+知识层使用本地 JSON 文件，不使用外部抓取、Steam API、RAG 或 vector database。
+
+关键路径：
+
+- `data/knowledge/games/catalog.json`：游戏目录。`game_id` 表示游戏 ID，`display_name` 表示显示名称，`support_status` 表示支持状态。
+- `data/knowledge/games/{game_id}/manifest.json`：知识包清单。`version` 表示版本，`language` 表示语言，`coverage` 表示覆盖范围。
+- `data/knowledge/games/{game_id}/snippets.json`：简短事实片段。
+
+当前 sample packs：
+
+- Elden Ring / 艾尔登法环
+- Hollow Knight / 空洞骑士
+
+知识层只提供 factual context（事实上下文）。Rei 的最终表达仍由 persona + LLM 生成，避免变成攻略站。
+
+### 当前限制
+
+- 目前只有 Elden Ring 与 Hollow Knight 的样例知识包，不是完整攻略库。
+- Game detector 仍是轻量本地进程 / 应用名检测。
+- 没有 Live2D / Voice / Vision / Overlay。
+- 没有完整 RAG、embedding 或 vector database。
+- 多游戏知识库仍处于样例阶段。
+- “这个 / 那个 / 刚才说的游戏”这类指代表达仍有已知限制，未来需要 Recent Entity Tracker 或 LLM semantic resolver。
+
+### Roadmap（路线图）
+
+- RAG / vector search
+- Steam library integration
+- Voice interaction
+- Live2D / overlay
+- Multi-companion system
+- Richer game knowledge packs
+- Better entity resolution
+
+## English
+
+### Project Overview
+
+ReiLink is a Chinese-first desktop AI companion for single-player game players. It combines the active game, user conversation, temporary game state, accepted memory preferences, and local knowledge packs so an original Rei-like minimal companion can respond in restrained, concise Chinese.
+
+It is not a generic chatbot and not a pure guide site. ReiLink is designed as an AI companion with game context, memory, and a factual knowledge layer. Final replies remain LLM-first and are generated through the persona and model.
+
+This project does not use Evangelion, Rei Ayanami, NERV, or any official IP elements.
+
+### Key Features
+
+- Chinese AI companion chat
+- Original Rei-like minimal persona
+- DeepSeek model provider
+- Model routing: `fast` / `pro` / `auto`
+- Multi-part replies
+- Pending memory confirmation
+- Game session state
+- Semantic extraction
+- Proactive companion trigger
+- Local game detection
+- Manual game context override
+- Multi-game knowledge catalog
+- Knowledge pack manifest
+- Elden Ring and Hollow Knight sample knowledge packs
+- Debug dashboard
+- Prompt / context preview
+- Settings panel
+- Local-first memory and session state
+
+### Tech Stack
+
+Backend:
+
+- Python
+- FastAPI
+- JSON / JSONL local state
+- DeepSeek-compatible provider
+
+Desktop:
+
+- Electron
+- React
+- TypeScript
+- Vite
+
+Tests:
+
+- pytest
+- Vitest
+- React Testing Library
+- Playwright
+
+### Architecture
+
+Main backend modules:
+
+- `persona_engine`: loads persona configuration and builds system prompt context.
+- `dialogue_agent`: orchestrates settings, game state, knowledge, model routing, provider calls, and debug data.
+- `game_session`: tracks active game, boss, progress, and temporary session state.
+- `memory`: separates pending memory from accepted long-term memory.
+- `semantic_extraction`: extracts game-state and memory-candidate signals from user messages.
+- `game_knowledge` / `knowledge`: provides factual context through catalog and snippets.
+- `game_detector`: detects the active game from local process or app names.
+- `proactive`: handles low-frequency proactive companion triggers and cooldowns.
+- `app_settings`: persists user-facing settings.
+
+Main desktop areas:
+
+- Chat UI
+- Settings
+- Pending Memory
+- Game Session / Game Context Debug
+- Prompt Preview
+- Knowledge Debug
+
+### Local Setup
+
+The Makefile includes the common development commands.
+
+1. Create the backend virtual environment and install dependencies:
+
+```bash
+make install-backend
+```
+
+2. Install desktop dependencies:
+
+```bash
+make install-desktop
+```
+
+3. Configure backend environment variables by creating `services/backend/.env` manually. Do not commit real keys.
+
+4. Start the backend:
+
+```bash
+make dev-backend
+```
+
+5. Start the desktop renderer:
+
+```bash
+make dev-desktop
+```
+
+Open `http://127.0.0.1:5173` during development. To run the Electron shell:
+
+```bash
+cd apps/desktop
+npm run dev:electron
+```
+
+6. Run tests and checks:
+
+```bash
+make test-backend
+make test-desktop
+make test-e2e
+make lint
+make typecheck
+```
+
+Or run the combined test target:
+
+```bash
+make test
+```
+
+### Environment Variables
+
+Example `services/backend/.env`:
+
+```bash
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL_FAST=
+DEEPSEEK_MODEL_PRO=
+MODEL_PREFERENCE=auto
+PERSONA_MODE=minimal
+PROACTIVE_COMPANION=off
+PROACTIVE_SENSITIVITY=low
+AUTO_GAME_DETECTION=on
+```
+
+Never commit real API keys. `LLM_PROVIDER=mock` can be used for local demos without a key.
+
+### Privacy / Local Data
+
+- `.env`, `*.env`, and `services/backend/.env` should never be committed.
+- `data/memory/*` stores local long-term memory data and should not be committed.
+- `data/session/*` stores local temporary session state and should not be committed.
+- Pending memory must be accepted by the user before it enters long-term memory.
+- Pending memory is not injected directly into prompts.
+- ReiLink does not automatically upload user memory or session state.
+- Local knowledge packs provide factual context only; they do not generate Rei's final reply directly.
+
+### Knowledge Packs
+
+The knowledge layer uses local JSON files. It does not use external crawling, Steam API, RAG, or a vector database.
+
+Key paths:
+
+- `data/knowledge/games/catalog.json`: game catalog. `game_id` means game identifier, `display_name` means display name, and `support_status` means support state.
+- `data/knowledge/games/{game_id}/manifest.json`: knowledge pack manifest. `version` means pack version, `language` means pack language, and `coverage` means covered topics.
+- `data/knowledge/games/{game_id}/snippets.json`: short factual snippets.
+
+Current sample packs:
+
+- Elden Ring
+- Hollow Knight
+
+The knowledge layer only provides factual context. Rei's final wording is still generated by persona + LLM, so the product does not become a guide site.
+
+### Current Limitations
+
+- Only Elden Ring and Hollow Knight have sample knowledge packs today.
+- Game detection is still lightweight local process / app-name detection.
+- No Live2D / Voice / Vision / Overlay.
+- No full RAG, embeddings, or vector database.
+- Multi-game knowledge is still at sample-pack stage.
+- Referential phrases such as "this game", "that one", or "the game we just mentioned" have known limitations and will need a Recent Entity Tracker or LLM semantic resolver.
+
+### Roadmap
+
+- RAG / vector search
+- Steam library integration
+- Voice interaction
+- Live2D / overlay
+- Multi-companion system
+- Richer game knowledge packs
+- Better entity resolution
