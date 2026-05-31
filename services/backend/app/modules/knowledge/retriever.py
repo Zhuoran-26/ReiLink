@@ -64,6 +64,7 @@ class GameKnowledgeRetriever:
         user_message: str,
         current_boss: str | None = None,
         game_session_state: dict[str, Any] | None = None,
+        detected_game: dict[str, Any] | None = None,
         intent: str = "casual_chat",
         limit: int = 3,
     ) -> KnowledgeRetrievalResult:
@@ -71,6 +72,7 @@ class GameKnowledgeRetriever:
             current_game=current_game,
             user_message=user_message,
             game_session_state=game_session_state,
+            detected_game=detected_game,
         )
         game_id = game_match.matched_game_id
         if not game_id:

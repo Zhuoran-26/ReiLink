@@ -18,7 +18,38 @@ def test_health_ok():
 
 def test_game_status_schema():
     data = client.get("/api/game/status").json()
-    assert {"game_id", "game_name", "process_name", "status", "confidence", "tags"} <= data.keys()
+    assert {
+        "game_id",
+        "game_name",
+        "process_name",
+        "status",
+        "confidence",
+        "tags",
+        "detected_game_id",
+        "display_name",
+        "match_confidence",
+        "match_source",
+        "knowledge_game_id",
+        "detected_at",
+    } <= data.keys()
+
+
+def test_game_detected_schema():
+    response = client.get("/api/game/detected")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "status",
+        "detected_game_id",
+        "display_name",
+        "process_name",
+        "match_confidence",
+        "match_source",
+        "knowledge_game_id",
+        "detected_at",
+    } <= data.keys()
+    assert data["status"] in {"running", "idle", "unknown"}
 
 
 def test_chat_returns_chinese_reply():
@@ -89,6 +120,7 @@ def test_settings_routes_persist_safe_values():
         "model_preference",
         "proactive_companion",
         "proactive_sensitivity",
+        "auto_game_detection",
     } <= data.keys()
     serialized = json.dumps(data, ensure_ascii=False).lower()
     assert "api_key" not in serialized
@@ -105,6 +137,7 @@ def test_settings_routes_persist_safe_values():
             "model_preference": "pro",
             "proactive_companion": "on",
             "proactive_sensitivity": "high",
+            "auto_game_detection": "off",
         },
     )
 
@@ -118,6 +151,7 @@ def test_settings_routes_persist_safe_values():
     assert saved["model_preference"] == "pro"
     assert saved["proactive_companion"] == "on"
     assert saved["proactive_sensitivity"] == "high"
+    assert saved["auto_game_detection"] == "off"
     assert client.get("/api/settings").json() == saved
     assert client.get("/api/debug/provider").json()["persona_mode"] == "minimal"
     assert client.get("/api/proactive/status").json()["enabled"] is True

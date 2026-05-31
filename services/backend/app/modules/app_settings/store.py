@@ -10,12 +10,14 @@ def default_app_settings() -> AppSettings:
     debug_panel = "show" if settings.enable_debug else "hide"
     proactive_companion = "on" if settings.proactive_companion == "on" else "off"
     proactive_sensitivity = settings.proactive_sensitivity if settings.proactive_sensitivity in {"low", "normal", "high"} else "low"
+    auto_game_detection = "off" if settings.auto_game_detection == "off" else "on"
     return AppSettings(
         persona_mode=persona_mode,
         debug_panel=debug_panel,
         model_preference=active_model_preference(),
         proactive_companion=proactive_companion,
         proactive_sensitivity=proactive_sensitivity,
+        auto_game_detection=auto_game_detection,
     )
 
 

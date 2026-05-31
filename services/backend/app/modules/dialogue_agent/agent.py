@@ -20,7 +20,13 @@ from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.dialogue_agent.style import apply_rei_style
 from app.modules.dialogue_agent.validator import validate_or_repair
 from app.modules.elden_ring_knowledge.terminology import normalize_terminology
-from app.modules.game_detector.detector import EldenRingDetector
+from app.modules.app_settings.store import AppSettingsStore
+from app.modules.game_detector.detector import (
+    LocalGameDetector,
+    detection_to_game_status,
+    idle_game_status,
+    sync_game_session_from_detection,
+)
 from app.modules.game_session.state import GameSessionStore
 from app.modules.knowledge.retriever import GameKnowledgeRetriever
 from app.modules.memory.pending import PendingMemoryQueue
@@ -45,7 +51,7 @@ class DialogueAgent:
     persona_id = "rei_like"
 
     def __init__(self) -> None:
-        self.detector = EldenRingDetector()
+        self.detector = LocalGameDetector()
         self.persona = PersonaEngine()
         self.knowledge = GameKnowledgeRetriever()
         self.store = ConversationStore()
@@ -57,7 +63,15 @@ class DialogueAgent:
         total_start = time.perf_counter()
         request_started_at = datetime.now(timezone.utc)
         log_provider_state("chat")
-        game_status = self.detector.get_status()
+        app_settings = AppSettingsStore().load()
+        detection = self.detector.detect(now=request_started_at)
+        if app_settings.auto_game_detection == "on":
+            sync_game_session_from_detection(detection, auto_game_detection=app_settings.auto_game_detection)
+            game_status = detection_to_game_status(detection)
+            detected_game = detection.model_dump()
+        else:
+            game_status = idle_game_status(now=request_started_at)
+            detected_game = None
         intent_result = detect_intent(request.message)
         memory_context = self.memory.build_prompt_context_with_provenance()
         recent_user_messages = self.store.recent_user_messages(request.session_id)
@@ -110,6 +124,7 @@ class DialogueAgent:
             user_message=request.message,
             current_boss=session_focus.boss or ((game_session_debug.get("current_boss") or {}).get("name")),
             game_session_state=game_session_debug,
+            detected_game=detected_game,
             intent=intent_result.intent,
         )
         snippets = knowledge_result.snippets

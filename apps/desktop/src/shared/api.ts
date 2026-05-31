@@ -2,9 +2,26 @@ export type GameStatus = {
   game_id: string | null;
   game_name: string | null;
   process_name: string | null;
-  status: "running" | "idle";
+  status: "running" | "idle" | "unknown";
   confidence: number;
   tags: string[];
+  detected_game_id?: string | null;
+  display_name?: string | null;
+  match_confidence?: number;
+  match_source?: "process" | "window_title" | "manual" | "none";
+  knowledge_game_id?: string | null;
+  detected_at?: string | null;
+};
+
+export type GameDetectionResponse = {
+  status: "running" | "idle" | "unknown";
+  detected_game_id: string | null;
+  display_name: string | null;
+  process_name: string | null;
+  match_confidence: number;
+  match_source: "process" | "window_title" | "manual" | "none";
+  knowledge_game_id: string | null;
+  detected_at: string;
 };
 
 export type ChatResponse = {
@@ -250,6 +267,7 @@ export type AppSettings = {
   model_preference: "fast" | "pro" | "auto";
   proactive_companion: "on" | "off";
   proactive_sensitivity: "low" | "normal" | "high";
+  auto_game_detection: "on" | "off";
 };
 
 export type AppSettingsUpdate = Partial<AppSettings>;
@@ -277,6 +295,7 @@ export const api = {
       body: JSON.stringify(settings)
     }),
   gameStatus: () => request<GameStatus>("/api/game/status"),
+  gameDetected: () => request<GameDetectionResponse>("/api/game/detected"),
   memoryProfile: () => request<UserProfileMemory>("/api/memory/profile"),
   memoryEpisodes: () => request<EpisodeMemory[]>("/api/memory/episodes"),
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),

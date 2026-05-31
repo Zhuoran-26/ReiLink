@@ -12,7 +12,35 @@ const runningStatus = {
   process_name: "eldenring.exe",
   status: "running",
   confidence: 1,
-  tags: ["soulslike"]
+  tags: ["soulslike"],
+  detected_game_id: "elden_ring",
+  display_name: "艾尔登法环",
+  match_confidence: 1,
+  match_source: "process",
+  knowledge_game_id: "elden_ring",
+  detected_at: new Date().toISOString()
+};
+
+const gameDetection = {
+  status: "running",
+  detected_game_id: "elden_ring",
+  display_name: "艾尔登法环",
+  process_name: "eldenring.exe",
+  match_confidence: 1,
+  match_source: "process",
+  knowledge_game_id: "elden_ring",
+  detected_at: new Date().toISOString()
+};
+
+const idleGameDetection = {
+  ...gameDetection,
+  status: "idle",
+  detected_game_id: null,
+  display_name: null,
+  process_name: null,
+  match_confidence: 0,
+  match_source: "none",
+  knowledge_game_id: null
 };
 
 const memoryProfile = {
@@ -270,7 +298,8 @@ const appSettings = {
   response_length: "normal",
   model_preference: "auto",
   proactive_companion: "off",
-  proactive_sensitivity: "low"
+  proactive_sensitivity: "low",
+  auto_game_detection: "on"
 };
 
 let appSettingsStore = { ...appSettings };
@@ -368,6 +397,7 @@ describe("App", () => {
         if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
+        if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
@@ -433,9 +463,10 @@ describe("App", () => {
     expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
+    expect(screen.getByLabelText("自动游戏检测")).toHaveValue("on");
     expect(screen.getByLabelText("主动陪伴")).toHaveValue("off");
     expect(screen.getByLabelText("主动灵敏度")).toHaveValue("low");
-    expect(screen.getByText(/主动陪伴当前为关闭/)).toBeInTheDocument();
+    expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
   });
 
   it("updates settings through the API", async () => {
@@ -462,6 +493,14 @@ describe("App", () => {
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),
         expect.objectContaining({ method: "POST", body: JSON.stringify({ model_preference: "pro" }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("自动游戏检测"), "off");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ auto_game_detection: "off" }) })
       )
     );
 
@@ -587,6 +626,7 @@ describe("App", () => {
         if (proactive) return Promise.resolve(proactive);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
+        if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
@@ -643,6 +683,7 @@ describe("App", () => {
         if (proactive) return Promise.resolve(proactive);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
+        if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json(chatDebug));
@@ -706,6 +747,7 @@ describe("App", () => {
         if (proactive) return Promise.resolve(proactive);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
+        if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
         if (url.includes("/api/debug/memory")) return Promise.resolve(Response.json(memoryDebug));
         if (url.endsWith("/api/debug/chat")) return Promise.resolve(Response.json({ ...chatDebug, reply_segments_count: 3, segmenter_mode: "strategy" }));
@@ -764,6 +806,15 @@ describe("App", () => {
     expect(screen.getByText("最近通过")).toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText("语义识别")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument();
+    expect(screen.getAllByText("自动游戏检测").length).toBeGreaterThan(0);
+    expect(screen.getByText("检测状态")).toBeInTheDocument();
+    expect(screen.getByText("检测到的游戏")).toBeInTheDocument();
+    expect(screen.getByText("进程名")).toBeInTheDocument();
+    expect(screen.getByText("匹配置信度")).toBeInTheDocument();
+    expect(screen.getByText("知识库游戏 ID")).toBeInTheDocument();
+    expect(screen.getByText("检测时间")).toBeInTheDocument();
+    expect(screen.getAllByText("艾尔登法环").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "主动陪伴" })).toBeInTheDocument();
     expect(screen.getAllByText("是否开启").length).toBeGreaterThan(0);
     expect(screen.getByText("开启时间")).toBeInTheDocument();
@@ -823,6 +874,39 @@ describe("App", () => {
     await waitFor(() => expect(screen.queryByText("语义识别")).not.toBeInTheDocument());
   });
 
+  it("shows idle game detector state", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return debugAction;
+        const pendingResponse = pendingMemoryResponse(url, init);
+        if (pendingResponse) return pendingResponse;
+        const settings = settingsResponse(url, init);
+        if (settings) return settings;
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return proactive;
+        if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, status: "idle", game_id: null, game_name: null });
+        if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
+        if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
+        if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
+        if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+        if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
+        if (url.endsWith("/api/debug/game-session")) return Response.json({ ...gameSessionDebug, current_game: null });
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
+        if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
+        if (url.endsWith("/api/chat") && init?.method === "POST") return Response.json(chatResponse);
+        return new Response("missing", { status: 404 });
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument());
+    expect(screen.getByText("未检测到游戏")).toBeInTheDocument();
+  });
+
   it("falls back to game session debug data and shows empty warnings as none", async () => {
     vi.stubGlobal(
       "fetch",
@@ -837,6 +921,7 @@ describe("App", () => {
         if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
+        if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
@@ -893,6 +978,7 @@ describe("App", () => {
         if (proactive) return proactive;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
+        if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
         if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
         if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);

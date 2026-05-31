@@ -1,0 +1,9 @@
+{
+  "elden_ring": {
+    "display_name": "艾尔登法环",
+    "aliases": ["Elden Ring", "老头环", "艾尔登法环", "艾爾登法環"],
+    "process_names": ["eldenring.exe", "Elden Ring"],
+    "steam_app_id": "1245620",
+    "knowledge_game_id": "elden_ring"
+  }
+}

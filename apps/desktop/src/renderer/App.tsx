@@ -19,6 +19,7 @@ import {
   api,
   AppSettings,
   ChatDebugResponse,
+  GameDetectionResponse,
   GameSessionDebugResponse,
   GameStatus,
   MemoryDebugResponse,
@@ -47,6 +48,17 @@ const idleStatus: GameStatus = {
   status: "idle",
   confidence: 0,
   tags: []
+};
+
+const emptyGameDetection: GameDetectionResponse = {
+  status: "idle",
+  detected_game_id: null,
+  display_name: null,
+  process_name: null,
+  match_confidence: 0,
+  match_source: "none",
+  knowledge_game_id: null,
+  detected_at: new Date(0).toISOString()
 };
 
 const emptyProfile: UserProfileMemory = {
@@ -203,7 +215,8 @@ const defaultAppSettings: AppSettings = {
   response_length: "normal",
   model_preference: "auto",
   proactive_companion: "off",
-  proactive_sensitivity: "low"
+  proactive_sensitivity: "low",
+  auto_game_detection: "on"
 };
 
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
@@ -235,6 +248,11 @@ const labelMap: Record<string, string> = {
   current_session_context: "当前会话",
   current_user_message: "当前用户消息",
   death_count: "死亡次数",
+  detected_at: "检测时间",
+  detected_game: "检测到的游戏",
+  detected_game_id: "检测游戏 ID",
+  detected_knowledge_game_id: "知识库游戏 ID",
+  detector_status: "检测状态",
   enabled: "是否开启",
   enabled_at: "开启时间",
   fallback_reason: "兜底原因",
@@ -269,6 +287,7 @@ const labelMap: Record<string, string> = {
   knowledge_summary: "游戏知识摘要",
   knowledge_supported_games_count: "已支持游戏数",
   knowledge_used_in_prompt: "已注入回复上下文",
+  auto_game_detection: "自动游戏检测",
   llm_called: "是否调用 LLM",
   llm_event: "LLM 游戏事件",
   llm_memory: "LLM 记忆",
@@ -277,6 +296,7 @@ const labelMap: Record<string, string> = {
   memory: "记忆摘要",
   model: "模型",
   model_route_mode: "路由模式",
+  match_confidence: "匹配置信度",
   match_source: "匹配来源",
   matched_game_display_name: "匹配游戏",
   matched_game_id: "匹配游戏 ID",
@@ -286,6 +306,7 @@ const labelMap: Record<string, string> = {
   persona: "人格",
   persona_mode: "人格模式",
   prompt_order: "上下文顺序",
+  process_name: "进程名",
   provider_latency_ms: "模型耗时",
   requires_user_activity_after_proactive: "等待用户回应",
   response_latency_ms: "回复耗时",
@@ -371,6 +392,7 @@ const valueMap: Record<string, string> = {
   recent_user_message: "刚刚发言",
   relationship_preference: "互动偏好",
   repeated_death: "反复死亡",
+  running: "运行中",
   short: "简短",
   simple_game_reminder: "简单游戏提醒",
   show: "显示",
@@ -383,8 +405,12 @@ const valueMap: Record<string, string> = {
   user_message: "用户消息",
   alias: "游戏名或内容别名",
   unsupported_game: "暂不支持这个游戏",
+  unsupported_detected_game: "检测到的游戏暂未接入知识库",
   knowledge_disabled: "该游戏知识库已关闭",
-  knowledge_file_missing: "知识文件不存在"
+  knowledge_file_missing: "知识文件不存在",
+  process: "本地进程",
+  window_title: "窗口标题",
+  unknown: "未知"
 };
 
 const formatDebugLabel = (key: string) => labelMap[key] ?? key;
@@ -489,6 +515,7 @@ const messageMetaText = (message: Message) => {
 export function App() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [gameStatus, setGameStatus] = useState<GameStatus>(idleStatus);
+  const [gameDetection, setGameDetection] = useState<GameDetectionResponse>(emptyGameDetection);
   const [memoryProfile, setMemoryProfile] = useState<UserProfileMemory>(emptyProfile);
   const [memoryDebug, setMemoryDebug] = useState<MemoryDebugResponse>(emptyMemoryDebug);
   const [chatDebug, setChatDebug] = useState<ChatDebugResponse>(emptyChatDebug);
@@ -520,6 +547,7 @@ export function App() {
       setBackendStatus("connected");
       setAppSettings(await api.settings());
       setGameStatus(await api.gameStatus());
+      setGameDetection(await api.gameDetected());
       setMemoryProfile(await api.memoryProfile());
       setMemoryDebug(await api.memoryDebug());
       setChatDebug(await api.chatDebug());
@@ -709,6 +737,7 @@ export function App() {
   const debugPanelVisible = appSettings.debug_panel === "show";
   const displayGame = gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
   const displayBoss = gameSessionDebug.current_boss?.name ?? null;
+  const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const companionName = "Rei";
   const companionSubtitle = "安静、冷淡的游戏陪伴";
   const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
@@ -918,6 +947,20 @@ export function App() {
                 </select>
               </label>
               <label className="settingRow">
+                <span>自动游戏检测</span>
+                <select
+                  aria-label="自动游戏检测"
+                  disabled={settingsBusy !== ""}
+                  value={appSettings.auto_game_detection}
+                  onChange={(event) =>
+                    void updateAppSettings({ auto_game_detection: event.target.value as AppSettings["auto_game_detection"] })
+                  }
+                >
+                  <option value="on">开启</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
+              <label className="settingRow">
                 <span>主动陪伴</span>
                 <select
                   aria-label="主动陪伴"
@@ -947,7 +990,9 @@ export function App() {
                 </select>
               </label>
             </div>
-            <p className="settingHint">本地保存到 settings.json，不包含密钥。主动陪伴当前为{debugText(appSettings.proactive_companion)}。</p>
+            <p className="settingHint">
+              本地保存到 settings.json，不包含密钥。自动游戏检测当前为{debugText(appSettings.auto_game_detection)}。
+            </p>
           </section>
 
           <section className="infoCard pendingPanel" aria-label="待确认记忆" id="pending-memory-panel">
@@ -1087,6 +1132,44 @@ export function App() {
                         清空待确认记忆
                       </button>
                     </div>
+                  </section>
+
+                  <section className="debugSection">
+                    <h3>游戏检测</h3>
+                    <dl className="debugFacts">
+                      <div>
+                        <dt>{formatDebugLabel("auto_game_detection")}</dt>
+                        <dd>{debugText(appSettings.auto_game_detection)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("detector_status")}</dt>
+                        <dd>{detectionStatusText}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("detected_game")}</dt>
+                        <dd>{debugText(gameDetection.display_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("process_name")}</dt>
+                        <dd>{debugText(gameDetection.process_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("match_source")}</dt>
+                        <dd>{debugText(gameDetection.match_source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("match_confidence")}</dt>
+                        <dd>{Number(gameDetection.match_confidence ?? 0).toFixed(2)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("detected_knowledge_game_id")}</dt>
+                        <dd>{debugText(gameDetection.knowledge_game_id)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("detected_at")}</dt>
+                        <dd>{debugTime(gameDetection.detected_at)}</dd>
+                      </div>
+                    </dl>
                   </section>
 
                   <section className="debugSection">
@@ -1326,6 +1409,7 @@ export function App() {
                         {
                           provider_debug: providerDebug,
                           proactive: proactiveStatus,
+                          game_detector: gameDetection,
                           game_session: gameSessionDebug,
                           semantic_extraction: semanticDebug,
                           memory_debug: memoryDebug,

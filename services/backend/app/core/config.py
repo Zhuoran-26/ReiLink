@@ -46,6 +46,7 @@ class Settings:
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "20"))
     proactive_companion: str = os.getenv("PROACTIVE_COMPANION", "off").lower().strip() or "off"
     proactive_sensitivity: str = os.getenv("PROACTIVE_SENSITIVITY", "low").lower().strip() or "low"
+    auto_game_detection: str = os.getenv("AUTO_GAME_DETECTION", "on").lower().strip() or "on"
     proactive_idle_seconds: float = float(os.getenv("PROACTIVE_IDLE_SECONDS", "600"))
     proactive_initial_grace_seconds: float = float(os.getenv("PROACTIVE_INITIAL_GRACE_SECONDS", "0"))
     proactive_type_cooldown_seconds: float = float(os.getenv("PROACTIVE_TYPE_COOLDOWN_SECONDS", "600"))
@@ -75,6 +76,7 @@ class Settings:
     proactive_state_path: Path = session_dir / "proactive_state.json"
     conversations_dir: Path = data_dir / "conversations"
     elden_ring_dir: Path = data_dir / "elden_ring"
+    game_registry_path: Path = data_dir / "games" / "game_registry.json"
     knowledge_games_dir: Path = data_dir / "knowledge" / "games"
     settings_path: Path = data_dir / "settings.json"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "app://."]

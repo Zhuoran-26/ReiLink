@@ -12,7 +12,8 @@ test("mock backend chat flow works", async ({ page }) => {
         response_length: "normal",
         model_preference: "auto",
         proactive_companion: "off",
-        proactive_sensitivity: "low"
+        proactive_sensitivity: "low",
+        auto_game_detection: "on"
       }
     })
   );
@@ -49,7 +50,27 @@ test("mock backend chat flow works", async ({ page }) => {
         process_name: "eldenring.exe",
         status: "running",
         confidence: 1,
-        tags: ["soulslike"]
+        tags: ["soulslike"],
+        detected_game_id: "elden_ring",
+        display_name: "艾尔登法环",
+        match_confidence: 1,
+        match_source: "process",
+        knowledge_game_id: "elden_ring",
+        detected_at: new Date().toISOString()
+      }
+    })
+  );
+  await page.route("**/api/game/detected", (route) =>
+    route.fulfill({
+      json: {
+        status: "running",
+        detected_game_id: "elden_ring",
+        display_name: "艾尔登法环",
+        process_name: "eldenring.exe",
+        match_confidence: 1,
+        match_source: "process",
+        knowledge_game_id: "elden_ring",
+        detected_at: new Date().toISOString()
       }
     })
   );

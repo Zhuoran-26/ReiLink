@@ -81,9 +81,14 @@ class GameCatalog:
         current_game: str | None,
         user_message: str,
         game_session_state: dict[str, Any] | None = None,
+        detected_game: dict[str, Any] | None = None,
     ) -> GameMatchResult:
         games = self.games()
         supported_count = sum(1 for game in games if game.enabled)
+        detector_match = self._match_detected_game(detected_game, games, supported_count)
+        if detector_match:
+            return detector_match
+
         current_game_text = _first_text(current_game, _state_value(game_session_state, "current_game"))
         current_game_unsupported = False
 
@@ -109,6 +114,24 @@ class GameCatalog:
             return _match_result(content_match, "alias", 0.72, supported_count)
 
         return _empty_match(supported_count, "no_knowledge_match")
+
+    @staticmethod
+    def _match_detected_game(
+        detected_game: dict[str, Any] | None,
+        games: list[GameCatalogEntry],
+        supported_count: int,
+    ) -> GameMatchResult | None:
+        if not isinstance(detected_game, dict) or detected_game.get("status") != "running":
+            return None
+        knowledge_game_id = str(detected_game.get("knowledge_game_id") or "").strip()
+        source = str(detected_game.get("match_source") or "process")
+        confidence = float(detected_game.get("match_confidence") or 0)
+        if not knowledge_game_id:
+            return _unsupported_detected_match(detected_game, source, supported_count)
+        entry = next((game for game in games if game.game_id == knowledge_game_id), None)
+        if not entry:
+            return _unsupported_detected_match(detected_game, source, supported_count)
+        return _match_result(entry, source, confidence or 0.95, supported_count)
 
     @staticmethod
     def _match_by_primary_name(text: str, games: list[GameCatalogEntry]) -> GameCatalogEntry | None:
@@ -180,6 +203,23 @@ def _empty_match(supported_games_count: int, fallback_reason: str) -> GameMatchR
         enabled=False,
         supported_games_count=supported_games_count,
         fallback_reason=fallback_reason,
+    )
+
+
+def _unsupported_detected_match(
+    detected_game: dict[str, Any],
+    source: str,
+    supported_games_count: int,
+) -> GameMatchResult:
+    return GameMatchResult(
+        matched_game_id=None,
+        matched_game_display_name=str(detected_game.get("display_name") or detected_game.get("detected_game_id") or ""),
+        match_source=source,
+        confidence=0.0,
+        knowledge_path=None,
+        enabled=False,
+        supported_games_count=supported_games_count,
+        fallback_reason="unsupported_detected_game",
     )
 
 

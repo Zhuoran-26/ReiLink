@@ -93,6 +93,29 @@ def test_generic_retriever_infers_game_from_content_alias_without_game_name():
     assert any("恶兆妖鬼 Margit" in snippet.title for snippet in result.snippets)
 
 
+def test_detected_game_takes_priority_over_session_game():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="Stardew Valley",
+        user_message="Margit 怎么打",
+        current_boss=None,
+        game_session_state={"current_game": "Stardew Valley"},
+        detected_game={
+            "status": "running",
+            "detected_game_id": "elden_ring",
+            "display_name": "艾尔登法环",
+            "process_name": "eldenring.exe",
+            "match_confidence": 1.0,
+            "match_source": "process",
+            "knowledge_game_id": "elden_ring",
+        },
+        intent="elden_ring_boss_strategy",
+    )
+
+    assert result.matched is True
+    assert result.game_id == "elden_ring"
+    assert result.match_source == "process"
+
+
 def test_generic_retriever_matches_waterfowl_sample():
     result = GameKnowledgeRetriever().retrieve(
         current_game="Elden Ring",
@@ -175,6 +198,30 @@ def test_unsupported_current_game_does_not_reuse_elden_ring_content_alias():
     assert result.game_id is None
     assert result.snippets == []
     assert result.fallback_reason == "unsupported_game"
+
+
+def test_detected_unsupported_game_blocks_elden_ring_knowledge():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="Elden Ring",
+        user_message="Margit 怎么打",
+        current_boss=None,
+        game_session_state={"current_game": "Elden Ring"},
+        detected_game={
+            "status": "running",
+            "detected_game_id": "stardew_valley",
+            "display_name": "星露谷物语",
+            "process_name": "Stardew Valley.exe",
+            "match_confidence": 1.0,
+            "match_source": "process",
+            "knowledge_game_id": None,
+        },
+        intent="elden_ring_boss_strategy",
+    )
+
+    assert result.matched is False
+    assert result.game_id is None
+    assert result.game_display_name == "星露谷物语"
+    assert result.fallback_reason == "unsupported_detected_game"
 
 
 def test_generic_retriever_returns_at_most_three_snippets():

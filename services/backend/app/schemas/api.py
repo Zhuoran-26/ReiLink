@@ -8,9 +8,26 @@ class GameStatus(BaseModel):
     game_id: str | None
     game_name: str | None
     process_name: str | None
-    status: Literal["running", "idle"]
+    status: Literal["running", "idle", "unknown"]
     confidence: float
     tags: list[str] = Field(default_factory=list)
+    detected_game_id: str | None = None
+    display_name: str | None = None
+    match_confidence: float = 0.0
+    match_source: Literal["process", "window_title", "manual", "none"] = "none"
+    knowledge_game_id: str | None = None
+    detected_at: datetime | None = None
+
+
+class GameDetectionResponse(BaseModel):
+    status: Literal["running", "idle", "unknown"]
+    detected_game_id: str | None = None
+    display_name: str | None = None
+    process_name: str | None = None
+    match_confidence: float = 0.0
+    match_source: Literal["process", "window_title", "manual", "none"] = "none"
+    knowledge_game_id: str | None = None
+    detected_at: datetime
 
 
 class PersonaPromptRequest(BaseModel):
@@ -114,6 +131,7 @@ class AppSettings(BaseModel):
     model_preference: Literal["fast", "pro", "auto"] = "auto"
     proactive_companion: Literal["on", "off"] = "off"
     proactive_sensitivity: Literal["low", "normal", "high"] = "low"
+    auto_game_detection: Literal["on", "off"] = "on"
 
 
 class AppSettingsUpdate(BaseModel):
@@ -125,6 +143,7 @@ class AppSettingsUpdate(BaseModel):
     model_preference: Literal["fast", "pro", "auto"] | None = None
     proactive_companion: Literal["on", "off"] | None = None
     proactive_sensitivity: Literal["low", "normal", "high"] | None = None
+    auto_game_detection: Literal["on", "off"] | None = None
 
 
 class MemoryProvenanceItem(BaseModel):

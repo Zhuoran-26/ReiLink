@@ -350,6 +350,8 @@ def _detect_current_game(
     intent: str,
     boss: str | None,
 ) -> str | None:
+    if game_status.get("detected_game_id") and not game_status.get("knowledge_game_id"):
+        return None
     if game_status.get("game_name"):
         return str(game_status["game_name"])
     if game_status.get("game_id") == "elden_ring" or boss or intent.startswith("elden_ring"):
