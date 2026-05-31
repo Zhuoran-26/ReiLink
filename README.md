@@ -264,6 +264,8 @@ ReiLink 使用 MIT License，见 [LICENSE](LICENSE)。
 - `data/knowledge/games/{game_id}/manifest.json`：知识包清单。`version` 表示版本，`language` 表示语言，`coverage` 表示覆盖范围。
 - `data/knowledge/games/{game_id}/snippets.json`：简短事实片段。
 
+新增游戏知识包见 [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md)。
+
 本地校验：
 
 ```bash
@@ -529,6 +531,8 @@ Key paths:
 - `data/knowledge/games/catalog.json`: game catalog. `game_id` means game identifier, `display_name` means display name, and `support_status` means support state.
 - `data/knowledge/games/{game_id}/manifest.json`: knowledge pack manifest. `version` means pack version, `language` means pack language, and `coverage` means covered topics.
 - `data/knowledge/games/{game_id}/snippets.json`: short factual snippets.
+
+See [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md) for adding new game knowledge packs.
 
 Local validation:
 
