@@ -1,0 +1,11 @@
+{
+  "game_id": "hollow_knight",
+  "display_name": "空洞骑士",
+  "version": "0.1.0",
+  "language": "zh-CN",
+  "status": "sample",
+  "knowledge_files": ["snippets.json"],
+  "coverage": ["boss", "mechanic", "beginner_tip"],
+  "last_updated": "2026-06-01",
+  "notes": "Minimal sample knowledge pack for validating multi-game knowledge retrieval."
+}

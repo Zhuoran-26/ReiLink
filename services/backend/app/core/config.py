@@ -36,9 +36,22 @@ class Settings:
     deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
     deepseek_model_fast: str = os.getenv("DEEPSEEK_MODEL_FAST", "deepseek-v4-flash") or "deepseek-chat"
-    deepseek_model_reasoning: str = os.getenv("DEEPSEEK_MODEL_REASONING", os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro"))
+    deepseek_model_pro: str = os.getenv(
+        "DEEPSEEK_MODEL_PRO",
+        os.getenv("DEEPSEEK_MODEL_REASONING", os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")),
+    )
+    deepseek_model_reasoning: str = deepseek_model_pro
     deepseek_reasoning_effort: str = os.getenv("DEEPSEEK_REASONING_EFFORT", "medium")
+    model_preference: str = os.getenv("MODEL_PREFERENCE", "auto").lower().strip() or "auto"
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "20"))
+    proactive_companion: str = os.getenv("PROACTIVE_COMPANION", "off").lower().strip() or "off"
+    proactive_sensitivity: str = os.getenv("PROACTIVE_SENSITIVITY", "low").lower().strip() or "low"
+    auto_game_detection: str = os.getenv("AUTO_GAME_DETECTION", "on").lower().strip() or "on"
+    proactive_idle_seconds: float = float(os.getenv("PROACTIVE_IDLE_SECONDS", "600"))
+    proactive_initial_grace_seconds: float = float(os.getenv("PROACTIVE_INITIAL_GRACE_SECONDS", "0"))
+    proactive_type_cooldown_seconds: float = float(os.getenv("PROACTIVE_TYPE_COOLDOWN_SECONDS", "600"))
+    proactive_global_cooldown_seconds: float = float(os.getenv("PROACTIVE_GLOBAL_COOLDOWN_SECONDS", "300"))
+    proactive_user_grace_seconds: float = float(os.getenv("PROACTIVE_USER_GRACE_SECONDS", "30"))
     tts_provider: str = os.getenv("TTS_PROVIDER", "mock")
     stt_provider: str = os.getenv("STT_PROVIDER", "mock")
     enable_voice: bool = os.getenv("ENABLE_VOICE", "false").lower() == "true"
@@ -60,8 +73,12 @@ class Settings:
     pending_memories_path: Path = memory_dir / "pending_memories.jsonl"
     session_dir: Path = data_dir / "session"
     game_session_state_path: Path = session_dir / "game_session_state.json"
+    game_context_state_path: Path = session_dir / "game_context_state.json"
+    proactive_state_path: Path = session_dir / "proactive_state.json"
     conversations_dir: Path = data_dir / "conversations"
     elden_ring_dir: Path = data_dir / "elden_ring"
+    game_registry_path: Path = data_dir / "games" / "game_registry.json"
+    knowledge_games_dir: Path = data_dir / "knowledge" / "games"
     settings_path: Path = data_dir / "settings.json"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "app://."]
 
@@ -86,3 +103,10 @@ def active_persona_mode() -> str:
     if mode == "minimal":
         return "minimal"
     return "guarded"
+
+
+def active_model_preference() -> str:
+    preference = str(_runtime_setting("model_preference") or settings.model_preference).lower().strip()
+    if preference in {"fast", "pro"}:
+        return preference
+    return "auto"

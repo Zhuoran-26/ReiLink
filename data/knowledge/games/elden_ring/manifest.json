@@ -1,0 +1,11 @@
+{
+  "game_id": "elden_ring",
+  "display_name": "艾尔登法环",
+  "version": "0.1.0",
+  "language": "zh-CN",
+  "status": "sample",
+  "knowledge_files": ["snippets.json"],
+  "coverage": ["boss", "mechanic", "beginner_tip"],
+  "last_updated": "2026-06-01",
+  "notes": "Minimal sample knowledge pack for validating game knowledge retrieval."
+}

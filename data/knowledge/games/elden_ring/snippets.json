@@ -1,0 +1,47 @@
+[
+  {
+    "id": "margit_opening_strategy",
+    "title": "恶兆妖鬼 Margit：延迟攻击",
+    "kind": "boss_strategy",
+    "topics": ["margit", "boss_strategy", "delayed_attacks"],
+    "aliases": ["Margit", "恶兆妖鬼", "玛尔基特", "恶兆"],
+    "intent_tags": ["elden_ring_boss_strategy", "elden_ring_general_help"],
+    "summary": "Margit 很多攻击会故意延迟。保持中距离，先看手和杖的起势，不要见抬手就翻滚；等一整套连段结束后只反击一两刀。"
+  },
+  {
+    "id": "margit_preparation",
+    "title": "恶兆妖鬼 Margit：战前准备",
+    "kind": "boss_strategy",
+    "topics": ["margit", "preparation", "summon"],
+    "aliases": ["Margit", "恶兆妖鬼", "玛尔基特", "恶兆"],
+    "intent_tags": ["elden_ring_boss_strategy"],
+    "summary": "如果伤害明显不够，可以先强化武器、提高血量，或使用骨灰与 NPC 召唤分担压力。准备不足时绕路探索比硬磨更稳。"
+  },
+  {
+    "id": "margit_location",
+    "title": "恶兆妖鬼 Margit：位置",
+    "kind": "location",
+    "topics": ["margit", "location", "stormveil"],
+    "aliases": ["Margit", "恶兆妖鬼", "玛尔基特", "恶兆", "史东薇尔"],
+    "intent_tags": ["elden_ring_location"],
+    "summary": "Margit 位于通往史东薇尔城的主线入口附近，通常会在进入城门前的关键路线上遭遇。"
+  },
+  {
+    "id": "malenia_waterfowl_dodge",
+    "title": "玛莲妮亚：水鸟乱舞",
+    "kind": "boss_strategy",
+    "topics": ["malenia", "waterfowl", "dodge"],
+    "aliases": ["Malenia", "玛莲妮亚", "女武神", "水鸟乱舞", "Waterfowl Dance"],
+    "intent_tags": ["elden_ring_boss_strategy", "elden_ring_general_help"],
+    "summary": "水鸟乱舞起跳后不要贴脸硬滚。距离够远时先向后跑开第一段；被贴近时优先拉开、看准停顿再连续翻滚，最后一段常需要向她身后或侧后方躲。"
+  },
+  {
+    "id": "elden_ring_combat_pacing",
+    "title": "战斗节奏：少贪刀",
+    "kind": "general",
+    "topics": ["combat_pacing", "stamina"],
+    "aliases": ["战斗节奏", "翻滚", "精力", "贪刀"],
+    "intent_tags": ["elden_ring_general_help", "elden_ring_boss_strategy"],
+    "summary": "多数 Boss 战先活下来比多打一下更重要。留精力撤退，确认硬直后再出手；一轮只多贪一刀，往往就是重新来过。"
+  }
+]

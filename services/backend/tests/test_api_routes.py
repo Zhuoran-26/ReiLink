@@ -18,7 +18,111 @@ def test_health_ok():
 
 def test_game_status_schema():
     data = client.get("/api/game/status").json()
-    assert {"game_id", "game_name", "process_name", "status", "confidence", "tags"} <= data.keys()
+    assert {
+        "game_id",
+        "game_name",
+        "process_name",
+        "status",
+        "confidence",
+        "tags",
+        "detected_game_id",
+        "display_name",
+        "match_confidence",
+        "match_source",
+        "knowledge_game_id",
+        "detected_at",
+    } <= data.keys()
+
+
+def test_game_detected_schema():
+    response = client.get("/api/game/detected")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "status",
+        "detected_game_id",
+        "display_name",
+        "process_name",
+        "match_confidence",
+        "match_source",
+        "knowledge_game_id",
+        "detected_at",
+    } <= data.keys()
+    assert data["status"] in {"running", "idle", "unknown"}
+
+
+def test_game_context_schema():
+    response = client.get("/api/game/context")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {
+        "active_game_id",
+        "active_game_display_name",
+        "active_source",
+        "manual_override",
+        "detected_game",
+        "session_game",
+        "previous_game",
+        "game_switched",
+        "support_status",
+        "knowledge_available",
+        "fallback_reason",
+        "warnings",
+        "available_games",
+    } <= data.keys()
+    assert data["active_source"] in {"manual", "user_switch", "detector", "session", "user_message", "none"}
+    assert isinstance(data["knowledge_available"], bool)
+    assert isinstance(data["game_switched"], bool)
+    assert isinstance(data["warnings"], list)
+    assert any(game["game_id"] == "elden_ring" for game in data["available_games"])
+    assert any(
+        game["game_id"] == "hollow_knight"
+        and game["support_status"] == "supported"
+        and game["knowledge_available"] is True
+        and game["manifest_path"] == "data/knowledge/games/hollow_knight/manifest.json"
+        for game in data["available_games"]
+    )
+
+
+def test_manual_game_context_api_sets_and_clears_override():
+    selected = client.post("/api/game/context/manual", json={"game_id": "elden_ring"})
+
+    assert selected.status_code == 200
+    data = selected.json()
+    assert data["active_game_id"] == "elden_ring"
+    assert data["active_source"] == "manual"
+    assert data["manual_override"]["enabled"] is True
+    assert data["knowledge_available"] is True
+    assert data["support_status"] == "supported"
+
+    cleared = client.post("/api/game/context/manual", json={"game_id": None})
+
+    assert cleared.status_code == 200
+    assert cleared.json()["manual_override"]["enabled"] is False
+
+
+def test_manual_game_context_api_allows_planned_game_without_knowledge():
+    selected = client.post("/api/game/context/manual", json={"game_id": "sekiro"})
+
+    assert selected.status_code == 200
+    data = selected.json()
+    assert data["active_game_id"] == "sekiro"
+    assert data["active_game_display_name"] == "只狼"
+    assert data["active_source"] == "manual"
+    assert data["support_status"] == "planned"
+    assert data["knowledge_available"] is False
+    assert data["fallback_reason"] == "no_supported_knowledge"
+
+    client.post("/api/game/context/manual", json={"game_id": None})
+
+
+def test_manual_game_context_api_rejects_unsupported_game():
+    response = client.post("/api/game/context/manual", json={"game_id": "stardew_valley"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "no_supported_knowledge"
 
 
 def test_chat_returns_chinese_reply():
@@ -54,11 +158,26 @@ def test_debug_provider_returns_current_provider():
         "env_file_loaded",
         "env_file_path",
         "persona_mode",
+        "model_route_mode",
+        "deepseek_model_fast",
+        "deepseek_model_pro",
+        "selected_model",
+        "main_reply_model",
+        "route_reason",
+        "route_intent",
+        "estimated_complexity",
+        "provider_latency_ms",
+        "semantic_extraction_model",
+        "fallback_reason",
     } <= data.keys()
     assert isinstance(data["api_key_loaded"], bool)
     assert isinstance(data["fallback_to_mock"], bool)
     assert isinstance(data["env_file_loaded"], bool)
     assert data["persona_mode"] in {"guarded", "minimal"}
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "api_key" not in serialized.replace("api_key_loaded", "")
+    assert "authorization" not in serialized
+    assert "bearer" not in serialized
 
 
 def test_settings_routes_persist_safe_values():
@@ -72,6 +191,9 @@ def test_settings_routes_persist_safe_values():
         "pending_memory_mode",
         "response_length",
         "model_preference",
+        "proactive_companion",
+        "proactive_sensitivity",
+        "auto_game_detection",
     } <= data.keys()
     serialized = json.dumps(data, ensure_ascii=False).lower()
     assert "api_key" not in serialized
@@ -86,6 +208,9 @@ def test_settings_routes_persist_safe_values():
             "pending_memory_mode": "manual",
             "response_length": "short",
             "model_preference": "pro",
+            "proactive_companion": "on",
+            "proactive_sensitivity": "high",
+            "auto_game_detection": "off",
         },
     )
 
@@ -97,8 +222,12 @@ def test_settings_routes_persist_safe_values():
     assert saved["pending_memory_mode"] == "manual"
     assert saved["response_length"] == "short"
     assert saved["model_preference"] == "pro"
+    assert saved["proactive_companion"] == "on"
+    assert saved["proactive_sensitivity"] == "high"
+    assert saved["auto_game_detection"] == "off"
     assert client.get("/api/settings").json() == saved
     assert client.get("/api/debug/provider").json()["persona_mode"] == "minimal"
+    assert client.get("/api/proactive/status").json()["enabled"] is True
 
 
 def test_debug_chat_returns_last_latency_fields():
@@ -111,13 +240,48 @@ def test_debug_chat_returns_last_latency_fields():
     assert {
         "intent",
         "selected_model",
+        "model_route_mode",
+        "route_reason",
+        "route_intent",
+        "estimated_complexity",
+        "provider_latency_ms",
+        "semantic_extraction_model",
+        "main_reply_model",
         "thinking_enabled",
         "reasoning_effort",
         "prompt_tokens_estimate",
         "llm_latency_ms",
         "memory_latency_ms",
         "total_latency_ms",
+        "request_started_at",
+        "response_latency_ms",
+        "knowledge_matched",
+        "knowledge_game_id",
+        "knowledge_game_display_name",
+        "knowledge_match_source",
+        "knowledge_path",
+        "manifest_path",
+        "manifest_status",
+        "knowledge_pack_version",
+        "knowledge_pack_language",
+        "knowledge_pack_status",
+        "coverage",
+        "last_updated",
+        "knowledge_supported_games_count",
+        "knowledge_fallback_reason",
+        "knowledge_confidence",
+        "active_game_id",
+        "active_game_display_name",
+        "active_source",
+        "support_status",
+        "knowledge_available",
+        "matched_topics",
+        "snippets_count",
+        "snippet_titles",
+        "knowledge_used_in_prompt",
     } <= data.keys()
+    assert data["knowledge_matched"] is False
+    assert data["snippets_count"] == 0
 
 
 def test_memory_profile_and_episodes_routes():
@@ -180,7 +344,7 @@ def test_debug_game_session_routes():
 
     assert response.status_code == 200
     data = response.json()
-    assert data["current_game"] == "Elden Ring"
+    assert data["current_game"] == "艾尔登法环"
     assert data["current_boss"]["name"] == "女武神"
     assert data["current_boss"]["confidence"] >= 0.9
     assert data["current_boss"]["is_fresh"] is True
@@ -215,15 +379,21 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
         "persona_mode",
         "current_user_message",
         "prompt_order",
+        "model_route_summary",
+        "game_context_summary",
         "session_focus_summary",
         "game_state_summary",
+        "knowledge_summary",
         "memory_summary",
         "final_context_summary",
         "warnings",
     } <= data.keys()
     assert data["persona_mode"] in {"guarded", "minimal"}
+    assert {"selected_model", "route_reason"} <= data["model_route_summary"].keys()
     assert data["current_user_message"] == "我现在卡在女武神"
-    assert data["game_state_summary"]["current_game"] == "Elden Ring"
+    assert data["game_state_summary"]["current_game"] == "艾尔登法环"
+    assert data["game_context_summary"]["active_source"] in {"manual", "user_switch", "detector", "session", "user_message", "none"}
+    assert {"support_status", "knowledge_available", "fallback_reason"} <= data["game_context_summary"].keys()
     assert data["game_state_summary"]["current_boss"]["name"] == "女武神"
     assert data["game_state_summary"]["freshness"] == "fresh"
     assert isinstance(data["memory_summary"]["injected"], list)
@@ -233,6 +403,71 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert "api_key" not in serialized
     assert "deepseek_api_key" not in serialized
     assert "authorization" not in serialized
+
+
+def test_prompt_preview_shows_knowledge_summary():
+    session_id = "api-prompt-preview-knowledge"
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "Margit 怎么打", "session_id": session_id})
+
+    response = client.get(f"/api/debug/prompt-preview?session_id={session_id}")
+
+    assert response.status_code == 200
+    knowledge = response.json()["knowledge_summary"]
+    assert knowledge["knowledge_matched"] is True
+    assert knowledge["game_id"] == "elden_ring"
+    assert knowledge["matched_game_id"] == "elden_ring"
+    assert knowledge["matched_game_display_name"] == "艾尔登法环"
+    assert knowledge["support_status"] == "supported"
+    assert knowledge["knowledge_available"] is True
+    assert knowledge["match_source"] in {"alias", "current_game", "user_message"}
+    assert knowledge["knowledge_path"] == "data/knowledge/games/elden_ring/snippets.json"
+    assert knowledge["manifest_path"] == "data/knowledge/games/elden_ring/manifest.json"
+    assert knowledge["manifest_status"] == "loaded"
+    assert knowledge["knowledge_pack_version"] == "0.1.0"
+    assert knowledge["knowledge_pack_language"] == "zh-CN"
+    assert knowledge["knowledge_pack_status"] == "sample"
+    assert "boss" in knowledge["coverage"]
+    assert knowledge["last_updated"] == "2026-06-01"
+    assert knowledge["supported_games_count"] == 2
+    assert knowledge["snippets_count"] > 0
+    assert knowledge["snippet_titles"]
+    assert knowledge["knowledge_used_in_prompt"] is True
+    assert knowledge["fallback_reason"] is None
+
+
+def test_prompt_preview_shows_hollow_knight_knowledge_summary():
+    session_id = "api-prompt-preview-hollow-knight"
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "我在玩空洞骑士，螳螂领主怎么打？", "session_id": session_id})
+
+    response = client.get(f"/api/debug/prompt-preview?session_id={session_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    game_context = data["game_context_summary"]
+    knowledge = data["knowledge_summary"]
+    assert game_context["active_game_id"] == "hollow_knight"
+    assert game_context["active_game_display_name"] == "空洞骑士"
+    assert game_context["active_source"] == "user_switch"
+    assert game_context["support_status"] == "supported"
+    assert game_context["knowledge_available"] is True
+    assert game_context["fallback_reason"] is None
+    assert knowledge["active_game_id"] == "hollow_knight"
+    assert knowledge["active_game_display_name"] == "空洞骑士"
+    assert knowledge["active_source"] == "user_switch"
+    assert knowledge["support_status"] == "supported"
+    assert knowledge["knowledge_available"] is True
+    assert knowledge["manifest_status"] == "loaded"
+    assert knowledge["knowledge_pack_version"] == "0.1.0"
+    assert knowledge["knowledge_pack_language"] == "zh-CN"
+    assert knowledge["knowledge_pack_status"] == "sample"
+    assert "beginner_tip" in knowledge["coverage"]
+    assert knowledge["knowledge_used_in_prompt"] is True
+    assert knowledge["snippets_count"] > 0
+    assert any("螳螂领主" in title for title in knowledge["snippet_titles"])
+    assert "螳螂领主" in knowledge["matched_topics"]
+    assert knowledge["fallback_reason"] is None
 
 
 def test_prompt_preview_warns_on_negated_clear_phrase():
@@ -266,6 +501,9 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
         "raw_rule_confidence",
         "ambiguity_detected",
         "llm_called",
+        "semantic_extraction_model",
+        "semantic_extraction_latency_ms",
+        "provider_latency_ms",
         "llm_result",
         "final_decision",
         "fallback_reason",

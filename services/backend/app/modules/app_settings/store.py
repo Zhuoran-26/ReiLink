@@ -1,14 +1,24 @@
 import json
 from pathlib import Path
 
-from app.core.config import settings
+from app.core.config import active_model_preference, settings
 from app.schemas.api import AppSettings, AppSettingsUpdate
 
 
 def default_app_settings() -> AppSettings:
     persona_mode = "minimal" if settings.persona_mode == "minimal" else "guarded"
     debug_panel = "show" if settings.enable_debug else "hide"
-    return AppSettings(persona_mode=persona_mode, debug_panel=debug_panel)
+    proactive_companion = "on" if settings.proactive_companion == "on" else "off"
+    proactive_sensitivity = settings.proactive_sensitivity if settings.proactive_sensitivity in {"low", "normal", "high"} else "low"
+    auto_game_detection = "off" if settings.auto_game_detection == "off" else "on"
+    return AppSettings(
+        persona_mode=persona_mode,
+        debug_panel=debug_panel,
+        model_preference=active_model_preference(),
+        proactive_companion=proactive_companion,
+        proactive_sensitivity=proactive_sensitivity,
+        auto_game_detection=auto_game_detection,
+    )
 
 
 class AppSettingsStore:

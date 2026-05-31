@@ -46,9 +46,29 @@ _BOSS_NAMES = (
     "malenia",
     "玛莲妮亚",
     "瑪蓮妮亞",
+    "水鸟乱舞",
+    "水鳥亂舞",
+    "waterfowl",
+    "waterfowl dance",
 )
 _LOCATION_WORDS = ("where", "where is", "在哪", "哪里", "哪裡", "位置", "怎么去", "路上", "地点")
-_STRATEGY_WORDS = ("beat", "fight", "kill", "打不过", "打不過", "怎么打", "怎麼打", "攻略", "打法", "boss", "boss战", "boss戰")
+_STRATEGY_WORDS = (
+    "beat",
+    "fight",
+    "kill",
+    "打不过",
+    "打不過",
+    "怎么打",
+    "怎麼打",
+    "怎么躲",
+    "怎麼躲",
+    "攻略",
+    "打法",
+    "躲",
+    "boss",
+    "boss战",
+    "boss戰",
+)
 _BUILD_WORDS = ("build", "加点", "加點", "配装", "配裝", "武器", "装备", "裝備", "流派", "推荐", "推薦")
 _GENERAL_HELP_WORDS = ("艾尔登", "艾爾登", "elden ring", "交界地", "史东薇尔", "史東薇爾", "赐福", "賜福", "boss")
 _UNCLEAR_SHORT = ("how", "怎么", "怎麼", "怎么办", "怎麼辦", "咋办", "咋辦")

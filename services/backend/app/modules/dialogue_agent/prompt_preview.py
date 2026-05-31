@@ -5,8 +5,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.core.config import active_persona_mode
+from app.modules.dialogue_agent.intent import detect_intent
+from app.modules.dialogue_agent.metrics import get_last_chat_metrics
+from app.modules.dialogue_agent.routing import select_model_route
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
+from app.modules.game_context.context import GameContextResolver
 from app.modules.game_session.state import GameSessionStore, _fails_current_boss
+from app.modules.knowledge.retriever import GameKnowledgeRetriever, KnowledgeRetrievalResult
 from app.modules.memory.profile import BOSS_FRESHNESS, PlayerMemory
 from app.modules.memory.store import ConversationStore
 
@@ -15,6 +20,7 @@ PROMPT_ORDER = [
     "current_session_context",
     "session_focus",
     "game_state",
+    "knowledge",
     "memory",
     "persona",
 ]
@@ -36,13 +42,19 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
     )
 
     game_debug = game_session.debug_state(now=now)
+    game_context = GameContextResolver(game_session=game_session).resolve(
+        user_message=current_user_message or "",
+        now=now,
+    )
     game_prompt_summary = game_session.build_prompt_summary(now=now, session_focus_boss=session_focus.boss)
+    knowledge_result = _knowledge_summary_result(current_user_message, session_focus.boss, game_debug, game_context)
     memory_context = memory.build_prompt_context_with_provenance(now=now)
     memory_debug_items = memory_context.as_debug_items()
     skipped_memory, memory_warnings = _skipped_memory_items(memory, memory_debug_items, game_debug, now)
     session_items = store.recent_context(session_id)
 
     warnings = [
+        *(game_context.warnings or []),
         *memory_warnings,
         *_game_state_warnings(game_debug),
         *_message_warnings(current_user_message),
@@ -53,6 +65,8 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
             "persona_mode": active_persona_mode(),
             "current_user_message": current_user_message,
             "prompt_order": PROMPT_ORDER,
+            "model_route_summary": _model_route_summary(current_user_message),
+            "game_context_summary": game_context.model_dump(mode="json"),
             "session_focus_summary": {
                 "boss": session_focus.boss,
                 "source": session_focus.source,
@@ -70,6 +84,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
                 "boss_history": _brief_boss_history(game_debug.get("boss_history") or []),
                 "injected_summary": game_prompt_summary,
             },
+            "knowledge_summary": knowledge_result.as_debug_dict(),
             "memory_summary": {
                 "injected": memory_debug_items,
                 "skipped": skipped_memory,
@@ -80,6 +95,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
                 session_items=session_items,
                 session_focus_line=session_focus.as_prompt_line() if session_focus.has_boss else "",
                 game_prompt_summary=game_prompt_summary,
+                knowledge_result=knowledge_result,
                 memory_items=memory_debug_items,
             ),
             "warnings": _dedupe(warnings),
@@ -92,6 +108,7 @@ def _final_context_summary(
     session_items: list[dict[str, str]],
     session_focus_line: str,
     game_prompt_summary: str,
+    knowledge_result: KnowledgeRetrievalResult,
     memory_items: list[dict[str, str]],
 ) -> dict[str, Any]:
     blocks = [
@@ -116,6 +133,11 @@ def _final_context_summary(
             "summary": _truncate(game_prompt_summary, limit=180),
         },
         {
+            "name": "knowledge",
+            "present": knowledge_result.matched,
+            "items": [_truncate(f"{snippet.title}: {snippet.content}", limit=160) for snippet in knowledge_result.snippets],
+        },
+        {
             "name": "memory",
             "present": bool(memory_items),
             "items": [_truncate(item["text"]) for item in memory_items],
@@ -130,6 +152,64 @@ def _final_context_summary(
         "blocks": blocks,
         "raw_prompt_omitted": True,
         "memory_injected_count": len(memory_items),
+    }
+
+
+def _knowledge_summary_result(
+    current_user_message: str | None,
+    session_focus_boss: str | None,
+    game_debug: dict[str, Any],
+    game_context: Any,
+) -> KnowledgeRetrievalResult:
+    if not current_user_message:
+        return GameKnowledgeRetriever().empty_result()
+    intent_result = detect_intent(current_user_message)
+    current_boss = session_focus_boss or ((game_debug.get("current_boss") or {}).get("name"))
+    detected_game = (
+        game_context.detected_game.model_dump()
+        if game_context.active_source == "detector"
+        else None
+    )
+    manual_override = (
+        game_context.manual_override.model_dump()
+        if game_context.manual_override.enabled
+        else None
+    )
+    return GameKnowledgeRetriever().retrieve(
+        current_game=game_context.active_game_display_name or game_debug.get("current_game"),
+        user_message=current_user_message,
+        current_boss=current_boss,
+        game_session_state=game_debug,
+        detected_game=detected_game,
+        manual_override=manual_override,
+        intent=intent_result.intent,
+    )
+
+
+def _model_route_summary(current_user_message: str | None) -> dict[str, Any]:
+    metrics = get_last_chat_metrics().as_dict()
+    if current_user_message:
+        intent = detect_intent(current_user_message).intent
+        route = select_model_route(intent, current_user_message)
+        return {
+            "selected_model": route.selected_model,
+            "model_route_mode": route.model_route_mode,
+            "route_reason": route.route_reason,
+            "route_intent": route.route_intent,
+            "estimated_complexity": route.estimated_complexity,
+            "provider_latency_ms": metrics.get("provider_latency_ms", 0),
+            "semantic_extraction_model": metrics.get("semantic_extraction_model"),
+            "main_reply_model": metrics.get("main_reply_model") or metrics.get("selected_model"),
+        }
+    return {
+        "selected_model": metrics.get("selected_model"),
+        "model_route_mode": metrics.get("model_route_mode"),
+        "route_reason": metrics.get("route_reason"),
+        "route_intent": metrics.get("route_intent") or metrics.get("intent"),
+        "estimated_complexity": metrics.get("estimated_complexity"),
+        "provider_latency_ms": metrics.get("provider_latency_ms", 0),
+        "semantic_extraction_model": metrics.get("semantic_extraction_model"),
+        "main_reply_model": metrics.get("main_reply_model") or metrics.get("selected_model"),
     }
 
 

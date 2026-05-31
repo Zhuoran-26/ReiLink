@@ -1,0 +1,2 @@
+"""Generic game knowledge retrieval."""
+

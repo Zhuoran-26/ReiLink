@@ -13,8 +13,22 @@ router = APIRouter(tags=["debug"])
 
 
 @router.get("/debug/provider")
-def debug_provider() -> dict[str, str | bool | None]:
-    return get_provider_info().as_dict()
+def debug_provider() -> dict:
+    data = get_provider_info().as_dict()
+    metrics = get_last_chat_metrics().as_dict()
+    data.update(
+        {
+            "selected_model": metrics.get("selected_model"),
+            "main_reply_model": metrics.get("main_reply_model") or metrics.get("selected_model"),
+            "route_reason": metrics.get("route_reason"),
+            "route_intent": metrics.get("route_intent") or metrics.get("intent"),
+            "estimated_complexity": metrics.get("estimated_complexity"),
+            "provider_latency_ms": metrics.get("provider_latency_ms", 0),
+            "semantic_extraction_model": metrics.get("semantic_extraction_model"),
+            "fallback_reason": metrics.get("fallback_reason"),
+        }
+    )
+    return data
 
 
 @router.get("/debug/memory", response_model=MemoryDebugResponse)

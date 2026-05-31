@@ -355,6 +355,10 @@ button {
   border-color: rgba(155, 178, 221, 0.17);
 }
 
+.messageBubble.proactive {
+  border-color: rgba(155, 178, 221, 0.24);
+}
+
 .messageBubble.user {
   align-self: flex-end;
   background:
@@ -369,15 +373,27 @@ button {
   box-shadow: none;
 }
 
-.messageBubble span {
-  display: block;
+.messageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+.messageSpeaker {
   color: #b7a8ff;
   font-size: 13px;
   font-weight: 640;
 }
 
-.messageBubble.user span {
+.messageTime {
+  color: #7f8aa3;
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.messageBubble.user .messageSpeaker {
   color: #c8c7e8;
 }
 
@@ -476,15 +492,37 @@ button {
 
 .infoRail {
   min-width: 0;
+  height: calc(100vh - 152px);
   max-height: calc(100vh - 152px);
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   overflow: auto;
   padding-right: 2px;
 }
 
+#settings-panel {
+  order: 1;
+}
+
+#debug-panel {
+  order: 2;
+}
+
+#prompt-preview-panel {
+  order: 3;
+}
+
+#pending-memory-panel {
+  order: 4;
+}
+
+#game-session-panel {
+  order: 5;
+}
+
 .infoCard {
+  flex: 0 0 auto;
   border: 1px solid rgba(145, 164, 213, 0.15);
   border-radius: 17px;
   padding: 16px;
@@ -533,6 +571,38 @@ button {
 .pendingMemoryList {
   display: grid;
   gap: 10px;
+}
+
+.gameContextControl {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(145, 164, 213, 0.14);
+  border-radius: 13px;
+  padding: 11px;
+  background: rgba(10, 14, 26, 0.46);
+}
+
+.catalogSummary {
+  display: grid;
+  gap: 6px;
+  color: #9aa6bf;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.catalogSummary div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.catalogSummary strong {
+  color: #dce4f6;
+  font-weight: 650;
+}
+
+.catalogSummary span {
+  overflow-wrap: anywhere;
 }
 
 .settingRow {
@@ -764,6 +834,7 @@ button {
   }
 
   .infoRail {
+    height: auto;
     max-height: none;
   }
 
