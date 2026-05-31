@@ -190,9 +190,11 @@ const proactiveStatus: ProactiveStatusResponse = {
   idle_for_seconds: 0,
   idle_threshold_seconds: 600,
   initial_grace_remaining_seconds: 0,
+  requires_user_activity_after_proactive: false,
   last_triggered_at: null,
   last_triggered_type: "none",
   next_possible_trigger_at: null,
+  block_reason: "disabled",
   active_candidate_triggers: [] as string[],
   cooldown_remaining_seconds: 0,
   last_trigger_reason: null
@@ -211,6 +213,8 @@ let proactiveCheckStore: ProactiveCheckResponse = {
   next_possible_trigger_at: null,
   enabled_at: null,
   last_user_activity_at: null,
+  requires_user_activity_after_proactive: false,
+  block_reason: "disabled",
   active_candidate_triggers: [] as string[]
 };
 
@@ -259,6 +263,8 @@ const resetSettingsResponse = () => {
     next_possible_trigger_at: null,
     enabled_at: null,
     last_user_activity_at: null,
+    requires_user_activity_after_proactive: false,
+    block_reason: "disabled",
     active_candidate_triggers: [] as string[]
   };
 };
@@ -480,6 +486,8 @@ describe("App", () => {
       next_possible_trigger_at: null,
       enabled_at: new Date().toISOString(),
       last_user_activity_at: new Date().toISOString(),
+      requires_user_activity_after_proactive: false,
+      block_reason: "eligible",
       active_candidate_triggers: ["repeated_death"]
     };
 
@@ -719,7 +727,9 @@ describe("App", () => {
     expect(screen.getByText("idle_for_seconds")).toBeInTheDocument();
     expect(screen.getByText("idle_threshold_seconds")).toBeInTheDocument();
     expect(screen.getByText("initial_grace_remaining_seconds")).toBeInTheDocument();
+    expect(screen.getByText("requires_user_activity_after_proactive")).toBeInTheDocument();
     expect(screen.getByText("next_possible_trigger_at")).toBeInTheDocument();
+    expect(screen.getByText("block_reason")).toBeInTheDocument();
     expect(screen.getByText("cooldown_remaining_seconds")).toBeInTheDocument();
     expect(screen.getByText("last_triggered_type")).toBeInTheDocument();
     expect(screen.getByText("last_triggered_at")).toBeInTheDocument();

@@ -59,6 +59,8 @@ class ProactiveState:
     enabled: bool = False
     sensitivity: str = "low"
     enabled_at: str | None = None
+    last_user_activity_at: str | None = None
+    requires_user_activity_after_proactive: bool = False
     last_triggered_at: str | None = None
     last_triggered_type: str | None = None
     trigger_cooldowns: dict[str, str] = field(default_factory=dict)
@@ -72,6 +74,8 @@ class ProactiveState:
             "enabled": self.enabled,
             "sensitivity": self.sensitivity,
             "enabled_at": self.enabled_at,
+            "last_user_activity_at": self.last_user_activity_at,
+            "requires_user_activity_after_proactive": self.requires_user_activity_after_proactive,
             "last_triggered_at": self.last_triggered_at,
             "last_triggered_type": self.last_triggered_type,
             "trigger_cooldowns": self.trigger_cooldowns,
@@ -114,20 +118,19 @@ class ProactiveCompanion:
         now = _ensure_aware(now or datetime.now().astimezone())
         state = self._load_ready_state(now)
         snapshot = self._conversation_snapshot(session_id)
+        state = self._sync_user_activity(state, snapshot)
         game_debug = self.game_session.debug_state(now=now)
         timing = self._idle_timing(state, snapshot, now)
         candidates = self._active_candidates(state, snapshot, game_debug, now, timing)
-        cooldown_remaining = self._global_cooldown_remaining(state, now)
-        next_possible = _future_iso(now, self._next_possible_remaining(state, candidates, timing, now))
+        block_reason = self._block_reason(state, snapshot, candidates, timing, connected=True, is_user_typing=False, now=now)
+        debug = self._response_debug(state, candidates, timing, block_reason, now)
         return {
             "enabled": state.enabled,
             "sensitivity": state.sensitivity,
             **timing,
             "last_triggered_at": state.last_triggered_at,
             "last_triggered_type": state.last_triggered_type or "none",
-            "next_possible_trigger_at": next_possible,
-            "active_candidate_triggers": [candidate.trigger_type for candidate in candidates],
-            "cooldown_remaining_seconds": cooldown_remaining,
+            **debug,
             "last_trigger_reason": state.last_trigger_reason,
         }
 
@@ -141,32 +144,22 @@ class ProactiveCompanion:
         now = _ensure_aware(now or datetime.now().astimezone())
         state = self._load_ready_state(now)
         snapshot = self._conversation_snapshot(session_id)
+        state = self._sync_user_activity(state, snapshot)
         game_debug = self.game_session.debug_state(now=now)
         timing = self._idle_timing(state, snapshot, now)
         candidates = self._active_candidates(state, snapshot, game_debug, now, timing)
-        response_debug = self._response_debug(state, candidates, timing, now)
+        block_reason = self._block_reason(state, snapshot, candidates, timing, connected, is_user_typing, now)
+        response_debug = self._response_debug(state, candidates, timing, block_reason, now)
 
-        blocked_reason = self._blocked_reason(state, snapshot, connected, is_user_typing, now)
-        if blocked_reason:
-            return _no_send(blocked_reason, candidates=candidates, debug=response_debug)
-        if not candidates:
-            return _no_send("no_candidate", candidates=candidates, debug=response_debug)
+        if block_reason != "eligible":
+            return _no_send(_response_reason(block_reason), candidates=candidates, debug=response_debug)
 
         candidate = self._select_candidate(candidates)
-        cooldown_remaining = self._cooldown_remaining(state, candidate.trigger_type, now)
-        if cooldown_remaining > 0:
-            return _no_send(
-                "cooldown",
-                candidate.trigger_type,
-                cooldown_remaining,
-                candidates,
-                debug={**response_debug, "cooldown_remaining_seconds": cooldown_remaining},
-            )
-
         message = self._pick_message(candidate.trigger_type, state)
         state.last_triggered_at = now.isoformat()
         state.last_triggered_type = candidate.trigger_type
         state.last_trigger_reason = candidate.reason
+        state.requires_user_activity_after_proactive = True
         state.trigger_cooldowns[candidate.trigger_type] = now.isoformat()
         state.last_observed_death_count = int(game_debug.get("death_count") or 0)
         state.last_observed_frustration_count = int(game_debug.get("frustration_count") or 0)
@@ -194,6 +187,8 @@ class ProactiveCompanion:
             "message": message,
             "reason": candidate.reason,
             **response_debug,
+            "requires_user_activity_after_proactive": True,
+            "next_possible_trigger_at": None,
             "cooldown_remaining_seconds": 0,
         }
 
@@ -221,10 +216,14 @@ class ProactiveCompanion:
         state.enabled = saved.proactive_companion == "on"
         state.sensitivity = saved.proactive_sensitivity
         was_enabled = previous.proactive_companion == "on"
-        if state.enabled and (not was_enabled or not state.enabled_at):
+        if state.enabled and not was_enabled:
+            state.enabled_at = now.isoformat()
+            state.requires_user_activity_after_proactive = False
+        elif state.enabled and not state.enabled_at:
             state.enabled_at = now.isoformat()
         if not state.enabled:
             state.enabled_at = None
+            state.requires_user_activity_after_proactive = False
         self.save(state)
 
     def load(self) -> ProactiveState:
@@ -240,6 +239,8 @@ class ProactiveCompanion:
             enabled=app_settings.proactive_companion == "on",
             sensitivity=app_settings.proactive_sensitivity,
             enabled_at=_optional_str(raw.get("enabled_at") or raw.get("proactive_enabled_at")),
+            last_user_activity_at=_optional_str(raw.get("last_user_activity_at")),
+            requires_user_activity_after_proactive=bool(raw.get("requires_user_activity_after_proactive")),
             last_triggered_at=_optional_str(raw.get("last_triggered_at")),
             last_triggered_type=_known_trigger(raw.get("last_triggered_type")),
             trigger_cooldowns=_string_dict(raw.get("trigger_cooldowns")),
@@ -253,6 +254,27 @@ class ProactiveCompanion:
         state = self.load()
         if state.enabled and not state.enabled_at:
             state.enabled_at = now.isoformat()
+            state.requires_user_activity_after_proactive = False
+            self.save(state)
+        return state
+
+    def _sync_user_activity(self, state: ProactiveState, snapshot: ConversationSnapshot) -> ProactiveState:
+        last_user_at = _entry_time(snapshot.last_user_entry)
+        if not last_user_at:
+            return state
+
+        changed = False
+        stored_user_at = _parse_timestamp(state.last_user_activity_at)
+        if not stored_user_at or last_user_at > stored_user_at:
+            state.last_user_activity_at = last_user_at.isoformat()
+            changed = True
+
+        last_triggered_at = _parse_timestamp(state.last_triggered_at)
+        if state.requires_user_activity_after_proactive and (not last_triggered_at or last_user_at > last_triggered_at):
+            state.requires_user_activity_after_proactive = False
+            changed = True
+
+        if changed:
             self.save(state)
         return state
 
@@ -289,12 +311,15 @@ class ProactiveCompanion:
         state: ProactiveState,
         candidates: list[TriggerCandidate],
         timing: dict[str, Any],
+        block_reason: str,
         now: datetime,
     ) -> dict[str, Any]:
-        cooldown_remaining = self._global_cooldown_remaining(state, now)
+        cooldown_remaining = self._candidate_cooldown_remaining(state, candidates, now)
         return {
             **timing,
-            "next_possible_trigger_at": _future_iso(now, self._next_possible_remaining(state, candidates, timing, now)),
+            "requires_user_activity_after_proactive": state.requires_user_activity_after_proactive,
+            "next_possible_trigger_at": _future_iso(now, self._next_possible_remaining(state, candidates, timing, block_reason, now)),
+            "block_reason": block_reason,
             "active_candidate_triggers": [candidate.trigger_type for candidate in candidates],
             "cooldown_remaining_seconds": cooldown_remaining,
         }
@@ -304,19 +329,22 @@ class ProactiveCompanion:
         state: ProactiveState,
         candidates: list[TriggerCandidate],
         timing: dict[str, Any],
+        block_reason: str,
         now: datetime,
     ) -> int:
-        if not state.enabled:
+        if block_reason in {"disabled", "not_connected", "user_is_typing", "waiting_for_user_activity_after_proactive"}:
             return 0
-        if candidates:
-            return self._cooldown_remaining(state, self._select_candidate(candidates).trigger_type, now)
-        global_remaining = self._global_cooldown_remaining(state, now)
+        cooldown_remaining = self._candidate_cooldown_remaining(state, candidates, now)
+        if block_reason == "cooldown":
+            return cooldown_remaining
         grace_remaining = int(timing.get("initial_grace_remaining_seconds") or 0)
         last_user_at = _parse_timestamp(timing.get("last_user_activity_at"))
         if not last_user_at:
-            return max(global_remaining, grace_remaining)
+            return 0
         idle_remaining = int(timing.get("idle_threshold_seconds") or 0) - int(timing.get("idle_for_seconds") or 0)
-        return max(global_remaining, grace_remaining, idle_remaining, 0)
+        if block_reason in {"initial_grace", "recent_user_message", "no_candidate_trigger"}:
+            return max(cooldown_remaining, grace_remaining, idle_remaining, 0)
+        return 0
 
     def _conversation_snapshot(self, session_id: str) -> ConversationSnapshot:
         entries = self.conversation_store.read_session(session_id)
@@ -388,26 +416,41 @@ class ProactiveCompanion:
             )
         return _dedupe_candidates(candidates)
 
-    def _blocked_reason(
+    def _block_reason(
         self,
         state: ProactiveState,
         snapshot: ConversationSnapshot,
+        candidates: list[TriggerCandidate],
+        timing: dict[str, Any],
         connected: bool,
         is_user_typing: bool,
         now: datetime,
-    ) -> str | None:
+    ) -> str:
         if not state.enabled:
             return "disabled"
         if not connected:
             return "not_connected"
         if is_user_typing:
-            return "user_typing"
+            return "user_is_typing"
+        if state.requires_user_activity_after_proactive or self._last_entry_is_current_proactive(state, snapshot):
+            return "waiting_for_user_activity_after_proactive"
         last_user_at = _entry_time(snapshot.last_user_entry)
         if last_user_at and now - last_user_at < timedelta(seconds=settings.proactive_user_grace_seconds):
             return "recent_user_message"
-        if snapshot.last_entry and snapshot.last_entry.assistant_message_type == "proactive":
-            return "last_message_proactive"
-        return None
+        if not candidates:
+            if int(timing.get("initial_grace_remaining_seconds") or 0) > 0:
+                return "initial_grace"
+            return "no_candidate_trigger"
+        if self._cooldown_remaining(state, self._select_candidate(candidates).trigger_type, now) > 0:
+            return "cooldown"
+        return "eligible"
+
+    def _last_entry_is_current_proactive(self, state: ProactiveState, snapshot: ConversationSnapshot) -> bool:
+        if not snapshot.last_entry or snapshot.last_entry.assistant_message_type != "proactive":
+            return False
+        enabled_at = _parse_timestamp(state.enabled_at)
+        proactive_at = _entry_time(snapshot.last_entry)
+        return bool(enabled_at and proactive_at and proactive_at >= enabled_at)
 
     def _select_candidate(self, candidates: list[TriggerCandidate]) -> TriggerCandidate:
         ranked = sorted(candidates, key=lambda item: (PRIORITY.index(item.trigger_type), -item.score))
@@ -415,15 +458,22 @@ class ProactiveCompanion:
 
     def _cooldown_remaining(self, state: ProactiveState, trigger_type: str, now: datetime) -> int:
         global_remaining = self._global_cooldown_remaining(state, now)
-        type_remaining = _remaining_seconds(
+        type_remaining = _remaining_since_enabled(
+            state,
             state.trigger_cooldowns.get(trigger_type),
             timedelta(seconds=settings.proactive_type_cooldown_seconds),
             now,
         )
         return max(global_remaining, type_remaining)
 
+    def _candidate_cooldown_remaining(self, state: ProactiveState, candidates: list[TriggerCandidate], now: datetime) -> int:
+        if candidates:
+            return self._cooldown_remaining(state, self._select_candidate(candidates).trigger_type, now)
+        return self._global_cooldown_remaining(state, now)
+
     def _global_cooldown_remaining(self, state: ProactiveState, now: datetime) -> int:
-        return _remaining_seconds(
+        return _remaining_since_enabled(
+            state,
             state.last_triggered_at,
             timedelta(seconds=settings.proactive_global_cooldown_seconds),
             now,
@@ -445,19 +495,22 @@ class ProactiveCompanion:
 def _no_send(
     reason: str,
     trigger_type: str = "none",
-    cooldown_remaining_seconds: int = 0,
+    cooldown_remaining_seconds: int | None = None,
     candidates: list[TriggerCandidate] | None = None,
     debug: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if trigger_type == "none" and candidates:
         trigger_type = candidates[0].trigger_type
+    cooldown_remaining = cooldown_remaining_seconds
+    if cooldown_remaining is None:
+        cooldown_remaining = int((debug or {}).get("cooldown_remaining_seconds") or 0)
     return {
         "should_send": False,
         "trigger_type": trigger_type,
         "message": "",
         "reason": reason,
         **(debug or {}),
-        "cooldown_remaining_seconds": cooldown_remaining_seconds,
+        "cooldown_remaining_seconds": cooldown_remaining,
     }
 
 
@@ -472,6 +525,16 @@ def _thresholds(sensitivity: str) -> dict[str, int]:
     return {"idle_seconds": idle_seconds, "death_delta": 2, "frustration_delta": 2, "recent_signal_count": 2}
 
 
+def _response_reason(block_reason: str) -> str:
+    if block_reason == "no_candidate_trigger":
+        return "no_candidate"
+    if block_reason == "user_is_typing":
+        return "user_typing"
+    if block_reason == "waiting_for_user_activity_after_proactive":
+        return "waiting_for_user_activity_after_proactive"
+    return block_reason
+
+
 def _initial_grace_seconds(sensitivity: str) -> int:
     override = int(settings.proactive_initial_grace_seconds)
     if override > 0:
@@ -483,9 +546,12 @@ def _initial_grace_seconds(sensitivity: str) -> int:
     return 600
 
 
-def _remaining_seconds(last_at: str | None, cooldown: timedelta, now: datetime) -> int:
+def _remaining_since_enabled(state: ProactiveState, last_at: str | None, cooldown: timedelta, now: datetime) -> int:
     parsed = _parse_timestamp(last_at)
     if not parsed:
+        return 0
+    enabled_at = _parse_timestamp(state.enabled_at)
+    if enabled_at and parsed < enabled_at:
         return 0
     return _remaining_from_datetime(parsed, cooldown, now)
 

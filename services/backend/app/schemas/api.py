@@ -193,9 +193,11 @@ class ProactiveStatusResponse(BaseModel):
     idle_for_seconds: int = 0
     idle_threshold_seconds: int = 0
     initial_grace_remaining_seconds: int = 0
+    requires_user_activity_after_proactive: bool = False
     last_triggered_at: str | None = None
     last_triggered_type: ProactiveTriggerType = "none"
     next_possible_trigger_at: str | None = None
+    block_reason: str = "disabled"
     active_candidate_triggers: list[str] = Field(default_factory=list)
     cooldown_remaining_seconds: int = 0
     last_trigger_reason: str | None = None
@@ -219,6 +221,8 @@ class ProactiveCheckResponse(BaseModel):
     next_possible_trigger_at: str | None = None
     enabled_at: str | None = None
     last_user_activity_at: str | None = None
+    requires_user_activity_after_proactive: bool = False
+    block_reason: str = "disabled"
     active_candidate_triggers: list[str] = Field(default_factory=list)
 
 

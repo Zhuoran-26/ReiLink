@@ -171,9 +171,11 @@ const emptyProactiveStatus: ProactiveStatusResponse = {
   idle_for_seconds: 0,
   idle_threshold_seconds: 0,
   initial_grace_remaining_seconds: 0,
+  requires_user_activity_after_proactive: false,
   last_triggered_at: null,
   last_triggered_type: "none",
   next_possible_trigger_at: null,
+  block_reason: "disabled",
   active_candidate_triggers: [],
   cooldown_remaining_seconds: 0,
   last_trigger_reason: null
@@ -209,6 +211,13 @@ const debugText = (value: unknown, fallback = "无") => {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
   return JSON.stringify(value);
+};
+
+const debugTime = (value: string | null | undefined) => {
+  if (!value) return "无";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return debugText(value);
+  return `${date.toLocaleString()} local`;
 };
 
 const bossName = (value: unknown) => {
@@ -867,11 +876,11 @@ export function App() {
                       </div>
                       <div>
                         <dt>enabled_at</dt>
-                        <dd>{debugText(proactiveStatus.enabled_at)}</dd>
+                        <dd>{debugTime(proactiveStatus.enabled_at)}</dd>
                       </div>
                       <div>
                         <dt>last_user_activity_at</dt>
-                        <dd>{debugText(proactiveStatus.last_user_activity_at)}</dd>
+                        <dd>{debugTime(proactiveStatus.last_user_activity_at)}</dd>
                       </div>
                       <div>
                         <dt>idle_for_seconds</dt>
@@ -886,12 +895,22 @@ export function App() {
                         <dd>{Number(proactiveStatus.initial_grace_remaining_seconds ?? 0).toFixed(0)}</dd>
                       </div>
                       <div>
-                        <dt>next_possible_trigger_at</dt>
-                        <dd>{debugText(proactiveStatus.next_possible_trigger_at)}</dd>
-                      </div>
-                      <div>
                         <dt>cooldown_remaining_seconds</dt>
                         <dd>{Number(proactiveStatus.cooldown_remaining_seconds ?? 0).toFixed(0)}</dd>
+                      </div>
+                      <div>
+                        <dt>requires_user_activity_after_proactive</dt>
+                        <dd>
+                          <BooleanBadge value={proactiveStatus.requires_user_activity_after_proactive} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>next_possible_trigger_at</dt>
+                        <dd>{debugTime(proactiveStatus.next_possible_trigger_at)}</dd>
+                      </div>
+                      <div>
+                        <dt>block_reason</dt>
+                        <dd>{debugText(proactiveStatus.block_reason)}</dd>
                       </div>
                       <div>
                         <dt>last_triggered_type</dt>
@@ -899,7 +918,7 @@ export function App() {
                       </div>
                       <div>
                         <dt>last_triggered_at</dt>
-                        <dd>{debugText(proactiveStatus.last_triggered_at)}</dd>
+                        <dd>{debugTime(proactiveStatus.last_triggered_at)}</dd>
                       </div>
                       <div>
                         <dt>active_candidate_triggers</dt>

@@ -32,9 +32,11 @@ export type ProactiveStatusResponse = {
   idle_for_seconds: number;
   idle_threshold_seconds: number;
   initial_grace_remaining_seconds: number;
+  requires_user_activity_after_proactive: boolean;
   last_triggered_at: string | null;
   last_triggered_type: ProactiveTriggerType;
   next_possible_trigger_at: string | null;
+  block_reason: string;
   active_candidate_triggers: string[];
   cooldown_remaining_seconds: number;
   last_trigger_reason: string | null;
@@ -52,6 +54,8 @@ export type ProactiveCheckResponse = {
   next_possible_trigger_at: string | null;
   enabled_at: string | null;
   last_user_activity_at: string | null;
+  requires_user_activity_after_proactive: boolean;
+  block_reason: string;
   active_candidate_triggers: string[];
 };
 
