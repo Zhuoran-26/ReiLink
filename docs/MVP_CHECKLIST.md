@@ -7,7 +7,7 @@
 - [ ] Backend tests pass：运行 `make test-backend`。
 - [ ] Desktop tests pass：运行 `make test-desktop`。
 - [ ] Lint pass：运行 `make lint`。
-- [ ] Build pass：运行 `make typecheck`。
+- [ ] Build / type check pass：运行 `make typecheck`，当前 Makefile 中该目标会执行 desktop build。
 - [ ] E2E pass：运行 `make test-e2e`。
 - [ ] `git diff --check` pass：确认没有空白或补丁格式问题。
 - [ ] 当前分支为 `dev/codex-reilink`。
@@ -51,7 +51,7 @@
 - [ ] Backend tests pass: run `make test-backend`.
 - [ ] Desktop tests pass: run `make test-desktop`.
 - [ ] Lint pass: run `make lint`.
-- [ ] Build pass: run `make typecheck`.
+- [ ] Build / type check pass: run `make typecheck`; the current Makefile target runs the desktop build.
 - [ ] E2E pass: run `make test-e2e`.
 - [ ] `git diff --check` passes with no whitespace or patch-format issues.
 - [ ] Current branch is `dev/codex-reilink`.
