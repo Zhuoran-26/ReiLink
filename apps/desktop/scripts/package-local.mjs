@@ -63,7 +63,8 @@ await writeFile(plistPath, plist, "utf8");
 await chmod(path.join(outputApp, "Contents", "MacOS", "Electron"), 0o755).catch(() => undefined);
 
 console.log(`✅ ReiLink desktop app packaged: ${path.relative(process.cwd(), outputApp)}`);
-console.log("Note: this is an unsigned local development build. Start the backend separately with `make dev-backend`.");
+console.log("Note: this is an unsigned local development build.");
+console.log("Backend auto-start uses the local repo backend when services/backend/.venv is available.");
 
 async function requirePath(target, message) {
   try {

@@ -1,10 +1,13 @@
-import { app, BrowserWindow, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
+
+import { BackendRuntimeManager } from "./backendRuntime.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const APP_PROTOCOL = "app";
+let backendRuntime: BackendRuntimeManager | null = null;
 const isDevRenderer = () => Boolean(process.env.VITE_DEV_SERVER_URL);
 
 protocol.registerSchemesAsPrivileged([
@@ -49,7 +52,12 @@ const createWindow = () => {
     height: 780,
     minWidth: 900,
     minHeight: 640,
-    backgroundColor: "#111318"
+    backgroundColor: "#111318",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
   });
 
   win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
@@ -77,7 +85,25 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   registerPackagedRendererProtocol();
+  backendRuntime = new BackendRuntimeManager({
+    appUserDataPath: app.getPath("userData"),
+    compiledMainDir: __dirname
+  });
+  backendRuntime.onStatusChange((status) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send("backend-runtime:status", status);
+    }
+  });
+  ipcMain.handle("backend-runtime:get-status", () => backendRuntime?.getStatus());
+  ipcMain.handle("backend-runtime:set-auto-start", (_event, enabled: boolean) =>
+    backendRuntime?.setAutoStartEnabled(Boolean(enabled))
+  );
+  void backendRuntime.ensureBackend();
   createWindow();
+});
+
+app.on("before-quit", () => {
+  void backendRuntime?.stopStartedBackend();
 });
 
 app.on("window-all-closed", () => {

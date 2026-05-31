@@ -12,6 +12,7 @@ import type {
   ProactiveStatusResponse,
   SetupStatus
 } from "../../shared/api";
+import type { BackendRuntimeStatus, ReilinkRuntimeBridge } from "../../shared/runtime";
 
 const runningStatus = {
   game_id: "elden_ring",
@@ -634,10 +635,50 @@ const appSettings: AppSettings = {
   onboarding_last_seen_at: "2026-06-01T12:00:00.000Z"
 };
 
+const backendRuntimeStatus: BackendRuntimeStatus = {
+  backend_auto_start_enabled: true,
+  backend_started_by_app: false,
+  backend_start_error: null,
+  backend_status: "connected"
+};
+
 let appSettingsStore = { ...appSettings };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
 let scrollToMock: ReturnType<typeof vi.fn>;
+
+const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
+  let status = { ...initialStatus };
+  const listeners = new Set<(nextStatus: BackendRuntimeStatus) => void>();
+  const bridge: ReilinkRuntimeBridge = {
+    getBackendStatus: vi.fn(async () => status),
+    setBackendAutoStart: vi.fn(async (enabled: boolean) => {
+      status = {
+        ...status,
+        backend_auto_start_enabled: enabled,
+        backend_start_error: enabled ? null : "自动启动本地后端已关闭，请手动运行 make dev-backend。",
+        backend_status: enabled ? status.backend_status : "disabled"
+      };
+      for (const listener of listeners) listener(status);
+      return status;
+    }),
+    onBackendStatus: vi.fn((callback: (nextStatus: BackendRuntimeStatus) => void) => {
+      listeners.add(callback);
+      return () => listeners.delete(callback);
+    })
+  };
+  Object.defineProperty(window, "reilinkRuntime", {
+    configurable: true,
+    value: bridge
+  });
+  return {
+    bridge,
+    emit: (nextStatus: BackendRuntimeStatus) => {
+      status = nextStatus;
+      for (const listener of listeners) listener(status);
+    }
+  };
+};
 
 const setChatScroll = (
   element: HTMLElement,
@@ -819,6 +860,7 @@ describe("App", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    Reflect.deleteProperty(window, "reilinkRuntime");
   });
 
   it("renders the app", async () => {
@@ -865,6 +907,8 @@ describe("App", () => {
     expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
+    expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("on");
+    expect(screen.getByLabelText("自动启动本地后端")).toBeDisabled();
     expect(screen.getByLabelText("自动游戏检测")).toHaveValue("on");
     expect(screen.getByLabelText("当前游戏")).toHaveValue("");
     expect(screen.getByRole("option", { name: "艾尔登法环（已支持）" })).toBeInTheDocument();
@@ -878,6 +922,8 @@ describe("App", () => {
     const providerStatusPanel = screen.getByRole("group", { name: "模型服务状态" });
     expect(within(providerStatusPanel).getByText("模型服务")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("DeepSeek")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("本地后端")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("后端已连接")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("API Key")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("已加载")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("Base URL")).toBeInTheDocument();
@@ -898,6 +944,47 @@ describe("App", () => {
     expect(within(demoResetPanel).getByRole("button", { name: "重置主动陪伴状态" })).toBeInTheDocument();
     expect(within(demoResetPanel).getByRole("button", { name: "一键重置演示状态" })).toBeInTheDocument();
     expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
+  });
+
+  it("shows backend runtime startup status from Electron", async () => {
+    installRuntimeBridge({
+      ...backendRuntimeStatus,
+      backend_started_by_app: true,
+      backend_status: "starting"
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 500 })));
+
+    render(<App />);
+
+    expect(await screen.findByRole("status", { name: "后端状态提示" })).toHaveTextContent("正在启动本地后端");
+    expect(screen.getByText("ReiLink 正在尝试启动本地 FastAPI backend。")).toBeInTheDocument();
+  });
+
+  it("shows a clear Chinese error when backend auto-start fails", async () => {
+    installRuntimeBridge({
+      ...backendRuntimeStatus,
+      backend_start_error: "本地后端启动失败，请在项目目录运行 make dev-backend。",
+      backend_status: "failed"
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 500 })));
+
+    render(<App />);
+
+    const notice = await screen.findByRole("status", { name: "后端状态提示" });
+    expect(notice).toHaveTextContent("后端启动失败");
+    expect(notice).toHaveTextContent("本地后端启动失败，请在项目目录运行 make dev-backend。");
+  });
+
+  it("lets settings disable backend auto-start", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    const select = await screen.findByLabelText("自动启动本地后端");
+    expect(select).toBeEnabled();
+    await userEvent.selectOptions(select, "off");
+
+    await waitFor(() => expect(runtime.bridge.setBackendAutoStart).toHaveBeenCalledWith(false));
+    expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("off");
   });
 
   it("keeps the debug panel last in the right rail", async () => {
@@ -1620,7 +1707,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 500 })));
     render(<App />);
     await screen.findByText("未连接");
-    expect(screen.getByText("后端未连接")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "后端状态提示" })).toHaveTextContent("后端未连接");
   });
 
   it("toggles debug panel", async () => {

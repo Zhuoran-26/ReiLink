@@ -10,7 +10,9 @@
     "build": "tsc -p tsconfig.json && vite build && tsc -p tsconfig.electron.json",
     "package": "npm run build && node scripts/package-local.mjs",
     "lint": "eslint src --ext .ts,.tsx",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "npm run test:renderer && npm run test:main",
+    "test:renderer": "vitest run --config vitest.config.ts",
+    "test:main": "vitest run --config vitest.main.config.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

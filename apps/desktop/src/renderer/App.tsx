@@ -36,6 +36,7 @@ import {
   SetupStatus,
   UserProfileMemory
 } from "../shared/api";
+import type { BackendRuntimeStatus } from "../shared/runtime";
 
 type Message = {
   id: string;
@@ -255,6 +256,13 @@ const emptySetupStatus: SetupStatus = {
   missing_items: ["DEEPSEEK_API_KEY"],
   fast_model: "deepseek-v4-flash",
   pro_model: "deepseek-v4-pro"
+};
+
+const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
+  backend_auto_start_enabled: true,
+  backend_started_by_app: false,
+  backend_start_error: null,
+  backend_status: "checking"
 };
 
 const emptyProactiveStatus: ProactiveStatusResponse = {
@@ -614,6 +622,16 @@ const formatSeconds = (value: number | null | undefined) => {
   return `${seconds} 秒`;
 };
 
+const backendRuntimeStatusText = (status: BackendRuntimeStatus) => {
+  if (status.backend_status === "connected") return "后端已连接";
+  if (status.backend_status === "starting") return "正在启动本地后端";
+  if (status.backend_status === "checking") return "后端连接中";
+  if (status.backend_status === "failed") return "后端启动失败";
+  if (status.backend_status === "not_found") return "未找到后端运行环境";
+  if (status.backend_status === "disabled") return "自动启动已关闭";
+  return "后端未连接";
+};
+
 const formatPromptOrder = (order: string[]) =>
   order.map((item) => formatDebugLabel(item)).join(" → ") || "无";
 
@@ -682,11 +700,14 @@ export function App() {
   const [semanticDebug, setSemanticDebug] = useState<SemanticExtractionDebugResponse>(emptySemanticExtractionDebug);
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
   const [setupStatus, setSetupStatus] = useState<SetupStatus>(emptySetupStatus);
+  const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
+  const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
   const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
   const [debugActionBusy, setDebugActionBusy] = useState("");
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [settingsBusy, setSettingsBusy] = useState("");
+  const [backendRuntimeBusy, setBackendRuntimeBusy] = useState(false);
   const [gameContextBusy, setGameContextBusy] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。", createdAt: new Date().toISOString() }
@@ -733,7 +754,7 @@ export function App() {
     shouldAutoScrollRef.current = isMessagesNearBottom();
   }, [isMessagesNearBottom]);
 
-  const refreshStatus = async () => {
+  const refreshStatus = useCallback(async () => {
     try {
       setLastError("");
       setLastRawError("");
@@ -760,7 +781,7 @@ export function App() {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "后端未连接"));
     }
-  };
+  }, []);
 
   const updateAppSettings = async (patch: Partial<AppSettings>) => {
     const busyKey = Object.keys(patch)[0] ?? "settings";
@@ -782,6 +803,22 @@ export function App() {
       setLastError(productErrorText(error, "设置更新失败"));
     } finally {
       setSettingsBusy("");
+    }
+  };
+
+  const updateBackendAutoStart = async (enabled: boolean) => {
+    const runtime = window.reilinkRuntime;
+    if (!runtime) return;
+    setBackendRuntimeBusy(true);
+    try {
+      setLastError("");
+      setLastRawError("");
+      setBackendRuntimeStatus(await runtime.setBackendAutoStart(enabled));
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "本地后端自动启动设置失败"));
+    } finally {
+      setBackendRuntimeBusy(false);
     }
   };
 
@@ -825,7 +862,36 @@ export function App() {
 
   useEffect(() => {
     void refreshStatus();
-  }, []);
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    const runtime = window.reilinkRuntime;
+    setBackendRuntimeAvailable(Boolean(runtime));
+    if (!runtime) return undefined;
+
+    let active = true;
+    const applyStatus = (status: BackendRuntimeStatus) => {
+      if (!active) return;
+      setBackendRuntimeStatus(status);
+      if (status.backend_status === "connected") {
+        void refreshStatus();
+      }
+    };
+    void runtime.getBackendStatus().then(applyStatus).catch(() => {
+      if (active) {
+        setBackendRuntimeStatus({
+          ...emptyBackendRuntimeStatus,
+          backend_start_error: "无法读取本地后端运行状态。",
+          backend_status: "failed"
+        });
+      }
+    });
+    const unsubscribe = runtime.onBackendStatus(applyStatus);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [refreshStatus]);
 
   const checkProactive = useCallback(async () => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on" || sending) return;
@@ -1095,7 +1161,27 @@ export function App() {
   const plannedCatalogGames = gameContext.available_games.filter((game) => game.support_status !== "supported" || !game.knowledge_available);
   const companionName = "Rei";
   const companionSubtitle = "安静、冷淡的游戏陪伴";
-  const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
+  const runtimeState = backendRuntimeStatus.backend_status;
+  const runtimeIsStarting = runtimeState === "checking" || runtimeState === "starting";
+  const companionStatus = backendStatus === "connected" ? "在线" : runtimeIsStarting ? "启动中" : backendStatus === "checking" ? "检查中" : "离线";
+  const runtimeStatusLabel = backendStatus === "connected" ? "已连接" : backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : statusLabel;
+  const providerBackendStatusText = backendStatus === "connected"
+    ? "后端已连接"
+    : backendRuntimeAvailable
+      ? backendRuntimeStatusText(backendRuntimeStatus)
+      : "后端未连接";
+  const backendRuntimeNotice = backendStatus !== "connected"
+    ? {
+        title: backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : "后端未连接",
+        body: backendRuntimeAvailable
+          ? backendRuntimeStatus.backend_start_error || (
+              runtimeState === "starting"
+                ? "ReiLink 正在尝试启动本地 FastAPI backend。"
+                : "请确认本地 backend 可用，或在项目目录运行 make dev-backend。"
+            )
+          : "请在项目目录运行 make dev-backend 后刷新。"
+      }
+    : null;
   const setupNeedsAttention = backendStatus === "connected" && (setupStatus.needs_setup || !setupStatus.provider_configured);
   const onboardingVisible = backendStatus === "connected" && (
     (!appSettings.onboarding_completed && !onboardingDismissedThisSession) || onboardingReopened
@@ -1197,7 +1283,7 @@ export function App() {
               游戏：{debugText(displayGame)}
             </span>
             <span className="topChip">Boss：{displayBoss ?? "空闲"}</span>
-            <span className={`connection ${backendStatus}`}>{statusLabel}</span>
+            <span className={`connection ${backendStatus}`}>{runtimeStatusLabel}</span>
             <button aria-label="刷新状态" className="iconButton soft" onClick={refreshStatus}>
               <RefreshCw size={17} />
             </button>
@@ -1210,6 +1296,15 @@ export function App() {
 
           <section className="chatPanel" aria-label="聊天面板">
             <div className="messages" role="log" aria-label="聊天消息列表" ref={messagesRef} onScroll={handleMessagesScroll}>
+              {backendRuntimeNotice && (
+                <section className="setupNotice backendRuntimeNotice" role="status" aria-label="后端状态提示">
+                  <div className="setupNoticeHeader">
+                    <RefreshCw size={18} />
+                    <h2>{backendRuntimeNotice.title}</h2>
+                  </div>
+                  <p>{backendRuntimeNotice.body}</p>
+                </section>
+              )}
               {setupNeedsAttention && (
                 <section className="setupNotice" role="status" aria-label="模型配置提示">
                   <div className="setupNoticeHeader">
@@ -1414,6 +1509,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="pro">高质量</option>
                 </select>
               </label>
+              <label className="settingRow">
+                <span>自动启动本地后端</span>
+                <select
+                  aria-label="自动启动本地后端"
+                  disabled={!backendRuntimeAvailable || backendRuntimeBusy}
+                  value={backendRuntimeStatus.backend_auto_start_enabled ? "on" : "off"}
+                  onChange={(event) => void updateBackendAutoStart(event.target.value === "on")}
+                >
+                  <option value="on">开启</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
               <div className="providerStatusPanel" role="group" aria-label="模型服务状态">
                 <div className="providerStatusTitle">
                   <KeyRound size={15} />
@@ -1423,6 +1530,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <div>
                     <dt>模型服务</dt>
                     <dd>DeepSeek</dd>
+                  </div>
+                  <div>
+                    <dt>本地后端</dt>
+                    <dd>{providerBackendStatusText}</dd>
+                  </div>
+                  <div>
+                    <dt>启动来源</dt>
+                    <dd>{backendRuntimeStatus.backend_started_by_app ? "桌面端启动" : "外部或未启动"}</dd>
                   </div>
                   <div>
                     <dt>API Key</dt>
@@ -2196,6 +2311,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           memory_profile: memoryProfile,
                           pending_memory: pendingMemories,
                           prompt_preview: promptPreview,
+                          backend_runtime: backendRuntimeStatus,
                           settings: {
                             persona_mode: appSettings.persona_mode,
                             debug_panel: appSettings.debug_panel,
