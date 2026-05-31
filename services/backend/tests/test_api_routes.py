@@ -150,6 +150,12 @@ def test_debug_chat_returns_last_latency_fields():
         "response_latency_ms",
         "knowledge_matched",
         "knowledge_game_id",
+        "knowledge_game_display_name",
+        "knowledge_match_source",
+        "knowledge_path",
+        "knowledge_supported_games_count",
+        "knowledge_fallback_reason",
+        "knowledge_confidence",
         "matched_topics",
         "snippets_count",
         "snippet_titles",
@@ -288,9 +294,15 @@ def test_prompt_preview_shows_knowledge_summary():
     knowledge = response.json()["knowledge_summary"]
     assert knowledge["knowledge_matched"] is True
     assert knowledge["game_id"] == "elden_ring"
+    assert knowledge["matched_game_id"] == "elden_ring"
+    assert knowledge["matched_game_display_name"] == "艾尔登法环"
+    assert knowledge["match_source"] in {"alias", "current_game", "user_message"}
+    assert knowledge["knowledge_path"] == "data/knowledge/games/elden_ring/snippets.json"
+    assert knowledge["supported_games_count"] == 1
     assert knowledge["snippets_count"] > 0
     assert knowledge["snippet_titles"]
     assert knowledge["knowledge_used_in_prompt"] is True
+    assert knowledge["fallback_reason"] is None
 
 
 def test_prompt_preview_warns_on_negated_clear_phrase():

@@ -105,17 +105,14 @@ class DialogueAgent:
             companion_policy=companion_policy,
             repetition_guard=repetition_guard,
         )
-        knowledge_result = self.knowledge.empty_result()
-        snippets = []
-        if intent_result.should_retrieve_knowledge:
-            knowledge_result = self.knowledge.retrieve(
-                current_game=game_status.game_name or game_session_debug.get("current_game"),
-                user_message=request.message,
-                current_boss=session_focus.boss or ((game_session_debug.get("current_boss") or {}).get("name")),
-                game_session_state=game_session_debug,
-                intent=intent_result.intent,
-            )
-            snippets = knowledge_result.snippets
+        knowledge_result = self.knowledge.retrieve(
+            current_game=game_status.game_name or game_session_debug.get("current_game"),
+            user_message=request.message,
+            current_boss=session_focus.boss or ((game_session_debug.get("current_boss") or {}).get("name")),
+            game_session_state=game_session_debug,
+            intent=intent_result.intent,
+        )
+        snippets = knowledge_result.snippets
         try:
             llm_result = self.provider.generate_with_metrics(system_prompt, request.message, snippets, intent_result.intent)
         except RuntimeError as exc:
@@ -188,9 +185,15 @@ class DialogueAgent:
             semantic_extraction_model=semantic_extraction.get("semantic_extraction_model"),
             semantic_extraction_latency_ms=int(semantic_extraction.get("semantic_extraction_latency_ms") or 0),
             semantic_extraction_parse_error=semantic_extraction.get("parse_error"),
-            knowledge_matched=knowledge_result.matched if intent_result.should_retrieve_knowledge else False,
-            knowledge_game_id=knowledge_result.game_id if intent_result.should_retrieve_knowledge else None,
-            matched_topics=knowledge_result.topics if intent_result.should_retrieve_knowledge else [],
+            knowledge_matched=knowledge_result.matched,
+            knowledge_game_id=knowledge_result.game_id,
+            knowledge_game_display_name=knowledge_result.game_display_name,
+            knowledge_match_source=knowledge_result.match_source,
+            knowledge_path=knowledge_result.knowledge_path,
+            knowledge_supported_games_count=knowledge_result.supported_games_count,
+            knowledge_fallback_reason=knowledge_result.fallback_reason,
+            knowledge_confidence=knowledge_result.confidence,
+            matched_topics=knowledge_result.topics,
             snippets_count=len(snippets),
             snippet_titles=[snippet.title for snippet in snippets],
             knowledge_used_in_prompt=bool(snippets),

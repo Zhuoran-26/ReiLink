@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from app.modules.elden_ring_knowledge.knowledge import EldenRingKnowledge, KnowledgeError
+from app.modules.knowledge.catalog import GameCatalog
 from app.modules.knowledge.retriever import GameKnowledgeRetriever
 
 
@@ -39,10 +40,57 @@ def test_generic_retriever_matches_margit_for_current_game():
 
     assert result.matched is True
     assert result.game_id == "elden_ring"
+    assert result.game_display_name == "艾尔登法环"
+    assert result.match_source == "current_game"
     assert any("Margit" in snippet.title for snippet in result.snippets)
     assert any("margit" in topic for topic in result.topics)
     assert result.snippets[0].source_id
     assert result.snippets[0].source.endswith("data/knowledge/games/elden_ring/snippets.json")
+    assert result.knowledge_path == "data/knowledge/games/elden_ring/snippets.json"
+    assert result.supported_games_count == 1
+
+
+def test_game_catalog_matches_explicit_user_game_alias():
+    match = GameCatalog().match_game(
+        current_game=None,
+        user_message="我在玩老头环，先看看路线",
+        game_session_state={},
+    )
+
+    assert match.matched_game_id == "elden_ring"
+    assert match.matched_game_display_name == "艾尔登法环"
+    assert match.match_source == "alias"
+    assert match.knowledge_path == "data/knowledge/games/elden_ring/snippets.json"
+    assert match.supported_games_count == 1
+
+
+def test_game_catalog_prefers_current_game_when_supported():
+    match = GameCatalog().match_game(
+        current_game="Elden Ring",
+        user_message="老头环里恶兆妖鬼怎么打",
+        game_session_state={},
+    )
+
+    assert match.matched_game_id == "elden_ring"
+    assert match.match_source == "current_game"
+    assert match.confidence >= 0.9
+
+
+def test_generic_retriever_infers_game_from_content_alias_without_game_name():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=None,
+        user_message="我在打恶兆妖鬼，节奏好怪",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert result.game_id == "elden_ring"
+    assert result.game_display_name == "艾尔登法环"
+    assert result.match_source == "alias"
+    assert result.snippets
+    assert any("恶兆妖鬼 Margit" in snippet.title for snippet in result.snippets)
 
 
 def test_generic_retriever_matches_waterfowl_sample():
@@ -72,6 +120,34 @@ def test_generic_retriever_ignores_non_game_chat():
     assert result.snippets == []
 
 
+def test_current_boss_context_is_used_for_followup_game_message():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="Elden Ring",
+        user_message="还是没打过",
+        current_boss="恶兆妖鬼 Margit",
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert any("恶兆妖鬼 Margit" in snippet.title for snippet in result.snippets)
+
+
+def test_current_boss_context_is_not_used_for_unrelated_preference():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="Elden Ring",
+        user_message="我不喜欢长篇攻略",
+        current_boss="恶兆妖鬼 Margit",
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id == "elden_ring"
+    assert result.snippets == []
+    assert result.fallback_reason == "no_knowledge_match"
+
+
 def test_generic_retriever_falls_back_for_unsupported_game():
     result = GameKnowledgeRetriever().retrieve(
         current_game="Stardew Valley",
@@ -83,6 +159,22 @@ def test_generic_retriever_falls_back_for_unsupported_game():
 
     assert result.matched is False
     assert result.game_id is None
+    assert result.fallback_reason == "unsupported_game"
+
+
+def test_unsupported_current_game_does_not_reuse_elden_ring_content_alias():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="Stardew Valley",
+        user_message="我在打恶兆妖鬼",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id is None
+    assert result.snippets == []
+    assert result.fallback_reason == "unsupported_game"
 
 
 def test_generic_retriever_returns_at_most_three_snippets():

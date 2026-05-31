@@ -98,6 +98,12 @@ const emptyChatDebug: ChatDebugResponse = {
   semantic_extraction_parse_error: null,
   knowledge_matched: false,
   knowledge_game_id: null,
+  knowledge_game_display_name: null,
+  knowledge_match_source: null,
+  knowledge_path: null,
+  knowledge_supported_games_count: 0,
+  knowledge_fallback_reason: null,
+  knowledge_confidence: 0,
   matched_topics: [],
   snippets_count: 0,
   snippet_titles: [],
@@ -239,7 +245,7 @@ const labelMap: Record<string, string> = {
   frustration: "挫败次数",
   frustration_count: "挫败次数",
   game_state: "游戏状态摘要",
-  game_id: "游戏",
+  game_id: "游戏 ID",
   idle_for_seconds: "已空闲时间",
   idle_threshold_seconds: "空闲触发阈值",
   initial_grace_remaining_seconds: "初始等待剩余",
@@ -253,10 +259,16 @@ const labelMap: Record<string, string> = {
   latest_user: "最近用户消息",
   latest_user_message: "最近用户消息",
   knowledge: "游戏知识",
-  knowledge_game_id: "游戏",
-  knowledge_matched: "知识匹配",
+  knowledge_confidence: "知识命中信心",
+  knowledge_fallback_reason: "知识兜底原因",
+  knowledge_game_display_name: "匹配游戏",
+  knowledge_game_id: "匹配游戏 ID",
+  knowledge_match_source: "匹配来源",
+  knowledge_matched: "知识命中",
+  knowledge_path: "知识文件",
   knowledge_summary: "游戏知识摘要",
-  knowledge_used_in_prompt: "已用于 Prompt",
+  knowledge_supported_games_count: "已支持游戏数",
+  knowledge_used_in_prompt: "已注入回复上下文",
   llm_called: "是否调用 LLM",
   llm_event: "LLM 游戏事件",
   llm_memory: "LLM 记忆",
@@ -265,12 +277,15 @@ const labelMap: Record<string, string> = {
   memory: "记忆摘要",
   model: "模型",
   model_route_mode: "路由模式",
-  matched_topics: "匹配主题",
+  match_source: "匹配来源",
+  matched_game_display_name: "匹配游戏",
+  matched_game_id: "匹配游戏 ID",
+  matched_topics: "相关主题",
   next_possible_trigger_at: "下次可能触发",
   parse_error: "解析错误",
   persona: "人格",
   persona_mode: "人格模式",
-  prompt_order: "注入顺序",
+  prompt_order: "上下文顺序",
   provider_latency_ms: "模型耗时",
   requires_user_activity_after_proactive: "等待用户回应",
   response_latency_ms: "回复耗时",
@@ -283,8 +298,9 @@ const labelMap: Record<string, string> = {
   session_focus: "会话焦点",
   session_focus_summary: "会话焦点",
   skip_reason: "跳过原因",
-  snippet_titles: "片段标题",
-  snippets_count: "片段数量",
+  snippet_titles: "命中的知识标题",
+  snippets_count: "命中知识条数",
+  supported_games_count: "已支持游戏数",
   summary: "摘要"
 };
 
@@ -339,6 +355,7 @@ const valueMap: Record<string, string> = {
   "memory boss conflicts with fresh game state": "记忆里的 Boss 与当前游戏状态冲突",
   minimal: "minimal（自然）",
   no_candidate_trigger: "暂无可触发项",
+  no_knowledge_match: "没有可用知识命中",
   none: "无",
   normal: "普通",
   not_connected: "未连接",
@@ -361,7 +378,13 @@ const valueMap: Record<string, string> = {
   user_is_typing: "正在输入",
   user_preference: "用户偏好",
   waiting_for_user_activity_after_proactive: "等待用户回应",
-  weak: "较弱"
+  weak: "较弱",
+  current_game: "当前运行游戏",
+  user_message: "用户消息",
+  alias: "游戏名或内容别名",
+  unsupported_game: "暂不支持这个游戏",
+  knowledge_disabled: "该游戏知识库已关闭",
+  knowledge_file_missing: "知识文件不存在"
 };
 
 const formatDebugLabel = (key: string) => labelMap[key] ?? key;
@@ -1188,14 +1211,30 @@ export function App() {
                     <h3>游戏知识</h3>
                     <dl className="debugFacts">
                       <div>
+                        <dt>{formatDebugLabel("knowledge_supported_games_count")}</dt>
+                        <dd>{chatDebug.knowledge_supported_games_count}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("knowledge_matched")}</dt>
                         <dd>
                           <BooleanBadge value={chatDebug.knowledge_matched} />
                         </dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("knowledge_game_display_name")}</dt>
+                        <dd>{debugText(chatDebug.knowledge_game_display_name)}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("knowledge_game_id")}</dt>
                         <dd>{debugText(chatDebug.knowledge_game_id)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_match_source")}</dt>
+                        <dd>{debugText(chatDebug.knowledge_match_source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_path")}</dt>
+                        <dd>{debugText(chatDebug.knowledge_path)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("matched_topics")}</dt>
@@ -1213,6 +1252,16 @@ export function App() {
                         <dt>{formatDebugLabel("knowledge_used_in_prompt")}</dt>
                         <dd>
                           <BooleanBadge value={chatDebug.knowledge_used_in_prompt} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_confidence")}</dt>
+                        <dd>{Number(chatDebug.knowledge_confidence ?? 0).toFixed(2)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_fallback_reason")}</dt>
+                        <dd className={chatDebug.knowledge_fallback_reason ? "debugError" : ""}>
+                          {debugText(chatDebug.knowledge_fallback_reason)}
                         </dd>
                       </div>
                     </dl>
@@ -1296,6 +1345,12 @@ export function App() {
                             main_reply_model: chatDebug.main_reply_model,
                             knowledge_matched: chatDebug.knowledge_matched,
                             knowledge_game_id: chatDebug.knowledge_game_id,
+                            knowledge_game_display_name: chatDebug.knowledge_game_display_name,
+                            knowledge_match_source: chatDebug.knowledge_match_source,
+                            knowledge_path: chatDebug.knowledge_path,
+                            knowledge_supported_games_count: chatDebug.knowledge_supported_games_count,
+                            knowledge_fallback_reason: chatDebug.knowledge_fallback_reason,
+                            knowledge_confidence: chatDebug.knowledge_confidence,
                             matched_topics: chatDebug.matched_topics,
                             snippets_count: chatDebug.snippets_count,
                             snippet_titles: chatDebug.snippet_titles,
@@ -1324,13 +1379,13 @@ export function App() {
           )}
 
           {debugPanelVisible && (
-            <section className="infoCard foldPanel" aria-label="Prompt 预览" id="prompt-preview-panel">
+            <section className="infoCard foldPanel" aria-label="回复上下文预览" id="prompt-preview-panel">
               <button
                 className="foldHeader"
                 aria-expanded={promptPreviewOpen}
                 onClick={() => setPromptPreviewOpen((open) => !open)}
               >
-                <span>Prompt 预览</span>
+                <span>回复上下文预览</span>
                 {promptPreviewOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
               {promptPreviewOpen && (
@@ -1388,8 +1443,24 @@ export function App() {
                       <dd>{debugText(knowledgeSummary.knowledge_matched)}</dd>
                     </div>
                     <div>
-                      <dt>{formatDebugLabel("knowledge_game_id")}</dt>
-                      <dd>{debugText(knowledgeSummary.game_id)}</dd>
+                      <dt>{formatDebugLabel("supported_games_count")}</dt>
+                      <dd>{debugText(knowledgeSummary.supported_games_count)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("matched_game_display_name")}</dt>
+                      <dd>{debugText(knowledgeSummary.matched_game_display_name)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("matched_game_id")}</dt>
+                      <dd>{debugText(knowledgeSummary.matched_game_id ?? knowledgeSummary.game_id)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("match_source")}</dt>
+                      <dd>{debugText(knowledgeSummary.match_source)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_path")}</dt>
+                      <dd>{debugText(knowledgeSummary.knowledge_path)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("matched_topics")}</dt>
@@ -1406,6 +1477,16 @@ export function App() {
                     <div>
                       <dt>{formatDebugLabel("knowledge_used_in_prompt")}</dt>
                       <dd>{debugText(knowledgeSummary.knowledge_used_in_prompt)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("confidence")}</dt>
+                      <dd>{debugText(knowledgeSummary.confidence)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("fallback_reason")}</dt>
+                      <dd className={knowledgeSummary.fallback_reason ? "debugError" : ""}>
+                        {debugText(knowledgeSummary.fallback_reason)}
+                      </dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("memory")}</dt>

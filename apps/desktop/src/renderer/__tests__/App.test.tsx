@@ -67,6 +67,12 @@ const chatDebug = {
   semantic_extraction_parse_error: null,
   knowledge_matched: true,
   knowledge_game_id: "elden_ring",
+  knowledge_game_display_name: "艾尔登法环",
+  knowledge_match_source: "current_game",
+  knowledge_path: "data/knowledge/games/elden_ring/snippets.json",
+  knowledge_supported_games_count: 1,
+  knowledge_fallback_reason: null,
+  knowledge_confidence: 0.83,
   matched_topics: ["margit", "boss_strategy"],
   snippets_count: 2,
   snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
@@ -139,10 +145,17 @@ const promptPreview = {
   knowledge_summary: {
     knowledge_matched: true,
     game_id: "elden_ring",
+    matched_game_id: "elden_ring",
+    matched_game_display_name: "艾尔登法环",
+    match_source: "current_game",
+    knowledge_path: "data/knowledge/games/elden_ring/snippets.json",
+    supported_games_count: 1,
     matched_topics: ["margit", "boss_strategy"],
     snippets_count: 2,
     snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
-    knowledge_used_in_prompt: true
+    knowledge_used_in_prompt: true,
+    confidence: 0.83,
+    fallback_reason: null
   },
   memory_summary: {
     injected: memoryDebug.items,
@@ -397,7 +410,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "游戏状态" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /调试面板/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Prompt 预览/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
     expect(screen.getByText("语义识别")).toBeInTheDocument();
   });
 
@@ -468,7 +481,7 @@ describe("App", () => {
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "调试面板" }), "hide");
 
     await waitFor(() => expect(screen.queryByRole("button", { name: /调试面板/i })).not.toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /Prompt 预览/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /回复上下文预览/i })).not.toBeInTheDocument();
   });
 
   it("shows and expands debug panel when settings switch from hidden to visible", async () => {
@@ -482,7 +495,7 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: /调试面板/i })).toHaveAttribute("aria-expanded", "true"));
     expect(screen.getByText("语义识别")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Prompt 预览/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
   });
 
   it("sends chat and renders user plus assistant messages", async () => {
@@ -772,26 +785,28 @@ describe("App", () => {
     expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
     expect(screen.getByText("模型耗时")).toBeInTheDocument();
     expect(screen.getByText("游戏知识")).toBeInTheDocument();
-    expect(screen.getAllByText("知识匹配").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("匹配主题").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("片段数量").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("片段标题").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("已用于 Prompt").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("相关主题").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("命中知识条数").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("命中的知识标题").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("已注入回复上下文").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("匹配来源").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("知识文件").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/恶兆妖鬼 Margit：延迟攻击/).length).toBeGreaterThan(0);
     expect(screen.getByText("语义识别")).toBeInTheDocument();
     expect(screen.getByText("是否调用 LLM")).toBeInTheDocument();
     expect(screen.getAllByText(/攻略偏好/).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /Prompt 预览/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Prompt 预览/i }));
+    await userEvent.click(screen.getByRole("button", { name: /回复上下文预览/i }));
     await waitFor(() => expect(screen.getAllByText("人格模式").length).toBeGreaterThan(1));
-    expect(screen.getByText("注入顺序")).toBeInTheDocument();
+    expect(screen.getByText("上下文顺序")).toBeInTheDocument();
     expect(screen.getAllByText("选用模型").length).toBeGreaterThan(0);
     expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
     expect(screen.getByText("当前用户消息")).toBeInTheDocument();
     expect(screen.getByText("会话焦点")).toBeInTheDocument();
     expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
-    expect(screen.getAllByText("知识匹配").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Boss 攻略").length).toBeGreaterThan(0);
     expect(screen.getByText("记忆摘要")).toBeInTheDocument();
@@ -841,7 +856,7 @@ describe("App", () => {
     );
 
     render(<App />);
-    await userEvent.click(await screen.findByRole("button", { name: /Prompt 预览/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /回复上下文预览/i }));
 
     const gameStateSection = screen.getByText("游戏状态摘要").closest("section");
     expect(gameStateSection).not.toBeNull();

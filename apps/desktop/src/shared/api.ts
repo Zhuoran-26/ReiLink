@@ -131,6 +131,12 @@ export type ChatDebugResponse = {
   semantic_extraction_parse_error: string | null;
   knowledge_matched: boolean;
   knowledge_game_id: string | null;
+  knowledge_game_display_name: string | null;
+  knowledge_match_source: string | null;
+  knowledge_path: string | null;
+  knowledge_supported_games_count: number;
+  knowledge_fallback_reason: string | null;
+  knowledge_confidence: number;
   matched_topics: string[];
   snippets_count: number;
   snippet_titles: string[];

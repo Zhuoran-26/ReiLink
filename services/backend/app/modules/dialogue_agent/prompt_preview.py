@@ -156,8 +156,6 @@ def _knowledge_summary_result(
     if not current_user_message:
         return GameKnowledgeRetriever().empty_result()
     intent_result = detect_intent(current_user_message)
-    if not intent_result.should_retrieve_knowledge:
-        return GameKnowledgeRetriever().empty_result()
     current_boss = session_focus_boss or ((game_debug.get("current_boss") or {}).get("name"))
     return GameKnowledgeRetriever().retrieve(
         current_game=game_debug.get("current_game"),

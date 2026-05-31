@@ -170,6 +170,12 @@ class ChatDebugResponse(BaseModel):
     semantic_extraction_parse_error: str | None = None
     knowledge_matched: bool = False
     knowledge_game_id: str | None = None
+    knowledge_game_display_name: str | None = None
+    knowledge_match_source: str | None = None
+    knowledge_path: str | None = None
+    knowledge_supported_games_count: int = 0
+    knowledge_fallback_reason: str | None = None
+    knowledge_confidence: float = 0.0
     matched_topics: list[str] = Field(default_factory=list)
     snippets_count: int = 0
     snippet_titles: list[str] = Field(default_factory=list)

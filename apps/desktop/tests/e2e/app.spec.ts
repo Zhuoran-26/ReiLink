@@ -107,7 +107,19 @@ test("mock backend chat flow works", async ({ page }) => {
         semantic_extraction_called: false,
         semantic_extraction_model: null,
         semantic_extraction_latency_ms: 0,
-        semantic_extraction_parse_error: null
+        semantic_extraction_parse_error: null,
+        knowledge_matched: true,
+        knowledge_game_id: "elden_ring",
+        knowledge_game_display_name: "艾尔登法环",
+        knowledge_match_source: "current_game",
+        knowledge_path: "data/knowledge/games/elden_ring/snippets.json",
+        knowledge_supported_games_count: 1,
+        knowledge_fallback_reason: null,
+        knowledge_confidence: 0.83,
+        matched_topics: ["margit", "boss_strategy"],
+        snippets_count: 2,
+        snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
+        knowledge_used_in_prompt: true
       }
     })
   );
@@ -183,6 +195,7 @@ test("mock backend chat flow works", async ({ page }) => {
         model_route_summary: {},
         session_focus_summary: {},
         game_state_summary: {},
+        knowledge_summary: {},
         memory_summary: {},
         final_context_summary: {},
         warnings: []
@@ -198,7 +211,7 @@ test("mock backend chat flow works", async ({ page }) => {
         segmenter_mode: "strategy",
         persona_id: "rei_like",
         game_status: "running",
-        sources: ["data/elden_ring/bosses.json"],
+        sources: ["data/knowledge/games/elden_ring/snippets.json"],
         timestamp: new Date().toISOString(),
         request_started_at: new Date().toISOString(),
         response_latency_ms: 120,
@@ -211,7 +224,7 @@ test("mock backend chat flow works", async ({ page }) => {
 
   await page.goto("/");
   await expect(page.getByText("已连接")).toBeVisible();
-  await expect(page.getByText("Game: Elden Ring")).toBeVisible();
+  await expect(page.getByText("游戏：Elden Ring")).toBeVisible();
   await page.getByLabel("聊天输入").fill("Margit 怎么打?");
   await page.getByRole("button", { name: /发送/i }).click();
   await expect(page.getByText("别急。")).toBeVisible();
