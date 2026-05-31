@@ -15,11 +15,35 @@ class GameCatalogEntry:
     game_id: str
     display_name: str
     aliases: list[str] = field(default_factory=list)
+    manifest_path: str = ""
     knowledge_path: str = ""
     knowledge_game_id: str | None = None
     knowledge_available: bool = False
     support_status: str = "unsupported"
     enabled: bool = True
+
+
+@dataclass(frozen=True)
+class KnowledgePackManifest:
+    manifest_path: str | None = None
+    manifest_status: str = "unknown"
+    knowledge_pack_version: str = "unknown"
+    knowledge_pack_language: str = "unknown"
+    knowledge_pack_status: str = "unknown"
+    coverage: list[str] = field(default_factory=list)
+    last_updated: str = "unknown"
+    knowledge_files: list[str] = field(default_factory=list)
+
+    def as_debug_dict(self) -> dict[str, Any]:
+        return {
+            "manifest_path": self.manifest_path,
+            "manifest_status": self.manifest_status,
+            "knowledge_pack_version": self.knowledge_pack_version,
+            "knowledge_pack_language": self.knowledge_pack_language,
+            "knowledge_pack_status": self.knowledge_pack_status,
+            "coverage": self.coverage,
+            "last_updated": self.last_updated,
+        }
 
 
 @dataclass(frozen=True)
@@ -63,6 +87,7 @@ class GameCatalog:
                 continue
             game_id = str(item.get("game_id") or "").strip()
             display_name = str(item.get("display_name") or "").strip()
+            manifest_path = str(item.get("manifest_path") or "").strip()
             knowledge_path = str(item.get("knowledge_path") or "").strip()
             if not game_id or not display_name:
                 continue
@@ -77,6 +102,7 @@ class GameCatalog:
                     game_id=game_id,
                     display_name=display_name,
                     aliases=aliases,
+                    manifest_path=manifest_path,
                     knowledge_path=knowledge_path,
                     knowledge_game_id=knowledge_game_id,
                     knowledge_available=knowledge_available,
@@ -119,6 +145,54 @@ class GameCatalog:
         if path.is_absolute():
             return path
         return settings.repo_root / path
+
+    def resolve_manifest_path(self, manifest_path: str) -> Path:
+        path = Path(manifest_path)
+        if path.is_absolute():
+            return path
+        return settings.repo_root / path
+
+    def load_manifest(self, game: GameCatalogEntry | None) -> KnowledgePackManifest:
+        if not game or not game.manifest_path:
+            return KnowledgePackManifest(
+                manifest_path=game.manifest_path if game else None,
+                manifest_status="manifest_missing",
+            )
+        path = self.resolve_manifest_path(game.manifest_path)
+        if not path.is_file():
+            return KnowledgePackManifest(
+                manifest_path=game.manifest_path,
+                manifest_status="manifest_missing",
+            )
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return KnowledgePackManifest(
+                manifest_path=game.manifest_path,
+                manifest_status="manifest_invalid",
+            )
+        if not isinstance(raw, dict):
+            return KnowledgePackManifest(
+                manifest_path=game.manifest_path,
+                manifest_status="manifest_invalid",
+            )
+        coverage = [str(item).strip() for item in raw.get("coverage") or [] if str(item).strip()]
+        knowledge_files = [str(item).strip() for item in raw.get("knowledge_files") or [] if str(item).strip()]
+        return KnowledgePackManifest(
+            manifest_path=game.manifest_path,
+            manifest_status="loaded",
+            knowledge_pack_version=str(raw.get("version") or "unknown"),
+            knowledge_pack_language=str(raw.get("language") or "unknown"),
+            knowledge_pack_status=str(raw.get("status") or "unknown"),
+            coverage=coverage,
+            last_updated=str(raw.get("last_updated") or "unknown"),
+            knowledge_files=knowledge_files,
+        )
+
+    def load_manifest_for_game_id(self, game_id: str | None) -> KnowledgePackManifest:
+        if not game_id:
+            return KnowledgePackManifest()
+        return self.load_manifest(self.get_game(game_id))
 
     def match_game(
         self,

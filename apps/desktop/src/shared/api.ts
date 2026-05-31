@@ -39,6 +39,7 @@ export type GameCatalogOption = {
   knowledge_available: boolean;
   support_status: "supported" | "detected_only" | "planned" | "unsupported";
   knowledge_game_id: string | null;
+  manifest_path: string | null;
   knowledge_path: string | null;
 };
 
@@ -187,6 +188,13 @@ export type ChatDebugResponse = {
   knowledge_game_display_name: string | null;
   knowledge_match_source: string | null;
   knowledge_path: string | null;
+  manifest_path: string | null;
+  manifest_status: string;
+  knowledge_pack_version: string;
+  knowledge_pack_language: string;
+  knowledge_pack_status: string;
+  coverage: string[];
+  last_updated: string;
   knowledge_supported_games_count: number;
   knowledge_fallback_reason: string | null;
   knowledge_confidence: number;

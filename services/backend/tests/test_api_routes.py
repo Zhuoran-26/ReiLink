@@ -81,6 +81,7 @@ def test_game_context_schema():
         game["game_id"] == "hollow_knight"
         and game["support_status"] == "supported"
         and game["knowledge_available"] is True
+        and game["manifest_path"] == "data/knowledge/games/hollow_knight/manifest.json"
         for game in data["available_games"]
     )
 
@@ -259,6 +260,13 @@ def test_debug_chat_returns_last_latency_fields():
         "knowledge_game_display_name",
         "knowledge_match_source",
         "knowledge_path",
+        "manifest_path",
+        "manifest_status",
+        "knowledge_pack_version",
+        "knowledge_pack_language",
+        "knowledge_pack_status",
+        "coverage",
+        "last_updated",
         "knowledge_supported_games_count",
         "knowledge_fallback_reason",
         "knowledge_confidence",
@@ -414,6 +422,13 @@ def test_prompt_preview_shows_knowledge_summary():
     assert knowledge["knowledge_available"] is True
     assert knowledge["match_source"] in {"alias", "current_game", "user_message"}
     assert knowledge["knowledge_path"] == "data/knowledge/games/elden_ring/snippets.json"
+    assert knowledge["manifest_path"] == "data/knowledge/games/elden_ring/manifest.json"
+    assert knowledge["manifest_status"] == "loaded"
+    assert knowledge["knowledge_pack_version"] == "0.1.0"
+    assert knowledge["knowledge_pack_language"] == "zh-CN"
+    assert knowledge["knowledge_pack_status"] == "sample"
+    assert "boss" in knowledge["coverage"]
+    assert knowledge["last_updated"] == "2026-06-01"
     assert knowledge["supported_games_count"] == 2
     assert knowledge["snippets_count"] > 0
     assert knowledge["snippet_titles"]
@@ -443,6 +458,11 @@ def test_prompt_preview_shows_hollow_knight_knowledge_summary():
     assert knowledge["active_source"] == "user_switch"
     assert knowledge["support_status"] == "supported"
     assert knowledge["knowledge_available"] is True
+    assert knowledge["manifest_status"] == "loaded"
+    assert knowledge["knowledge_pack_version"] == "0.1.0"
+    assert knowledge["knowledge_pack_language"] == "zh-CN"
+    assert knowledge["knowledge_pack_status"] == "sample"
+    assert "beginner_tip" in knowledge["coverage"]
     assert knowledge["knowledge_used_in_prompt"] is True
     assert knowledge["snippets_count"] > 0
     assert any("螳螂领主" in title for title in knowledge["snippet_titles"])

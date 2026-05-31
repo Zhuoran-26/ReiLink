@@ -138,6 +138,13 @@ const emptyChatDebug: ChatDebugResponse = {
   knowledge_game_display_name: null,
   knowledge_match_source: null,
   knowledge_path: null,
+  manifest_path: null,
+  manifest_status: "unknown",
+  knowledge_pack_version: "unknown",
+  knowledge_pack_language: "unknown",
+  knowledge_pack_status: "unknown",
+  coverage: [],
+  last_updated: "unknown",
   knowledge_supported_games_count: 0,
   knowledge_fallback_reason: null,
   knowledge_confidence: 0,
@@ -276,6 +283,7 @@ const labelMap: Record<string, string> = {
   complexity: "复杂度",
   confidence: "规则置信度",
   cooldown_remaining_seconds: "冷却剩余",
+  coverage: "覆盖范围",
   current_boss: "当前 Boss",
   current_game: "当前游戏",
   current_session: "当前会话",
@@ -307,6 +315,7 @@ const labelMap: Record<string, string> = {
   last_trigger_reason: "上次触发原因",
   last_triggered_at: "上次触发时间",
   last_triggered_type: "上次触发类型",
+  last_updated: "最后更新",
   last_user_activity_at: "最近用户活动",
   latency_ms: "耗时",
   latest_user: "最近用户消息",
@@ -319,6 +328,9 @@ const labelMap: Record<string, string> = {
   knowledge_game_id: "匹配游戏 ID",
   knowledge_match_source: "匹配来源",
   knowledge_matched: "知识命中",
+  knowledge_pack_language: "语言",
+  knowledge_pack_status: "知识包状态",
+  knowledge_pack_version: "知识包版本",
   knowledge_path: "知识文件",
   knowledge_summary: "游戏知识摘要",
   knowledge_supported_games_count: "已支持游戏数",
@@ -332,6 +344,8 @@ const labelMap: Record<string, string> = {
   main_reply_model: "回复模型",
   memory: "记忆摘要",
   manual_override: "手动选择",
+  manifest_path: "知识包清单文件",
+  manifest_status: "知识包清单",
   model: "模型",
   model_route_mode: "路由模式",
   match_confidence: "匹配置信度",
@@ -381,6 +395,8 @@ const valueMap: Record<string, string> = {
   disabled: "关闭",
   eligible: "可触发",
   enabled: "开启",
+  beginner_tip: "新手建议",
+  boss: "Boss",
   elden_ring: "Elden Ring",
   explicit_user_statement: "明确表达",
   fast: "快速",
@@ -396,6 +412,7 @@ const valueMap: Record<string, string> = {
   preparation: "战前准备",
   summon: "召唤",
   location: "位置",
+  loaded: "已加载",
   stormveil: "史东薇尔",
   malenia: "玛莲妮亚",
   waterfowl: "水鸟乱舞",
@@ -441,6 +458,7 @@ const valueMap: Record<string, string> = {
   relationship_preference: "互动偏好",
   repeated_death: "反复死亡",
   running: "运行中",
+  sample: "样例",
   short: "简短",
   simple_game_reminder: "简单游戏提醒",
   show: "显示",
@@ -457,6 +475,9 @@ const valueMap: Record<string, string> = {
   user_message_game_conflicts_with_manual_override: "用户消息疑似切换游戏，但手动选择优先",
   knowledge_disabled: "该游戏知识库已关闭",
   knowledge_file_missing: "知识文件不存在",
+  manifest_invalid: "manifest 无效",
+  manifest_missing: "manifest 缺失",
+  mechanic: "机制",
   process: "本地进程",
   planned: "暂未支持",
   detected_only: "暂未支持",
@@ -1587,6 +1608,32 @@ export function App() {
                         <dd>{debugText(chatDebug.knowledge_path)}</dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("manifest_status")}</dt>
+                        <dd className={chatDebug.manifest_status === "manifest_missing" ? "debugError" : ""}>
+                          {debugText(chatDebug.manifest_status)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_pack_version")}</dt>
+                        <dd>{debugText(chatDebug.knowledge_pack_version)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_pack_language")}</dt>
+                        <dd>{debugText(chatDebug.knowledge_pack_language)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_pack_status")}</dt>
+                        <dd>{debugText(chatDebug.knowledge_pack_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("coverage")}</dt>
+                        <dd>{debugText(chatDebug.coverage)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("last_updated")}</dt>
+                        <dd>{debugText(chatDebug.last_updated)}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("matched_topics")}</dt>
                         <dd>{debugText(chatDebug.matched_topics)}</dd>
                       </div>
@@ -1705,6 +1752,13 @@ export function App() {
                             knowledge_game_display_name: chatDebug.knowledge_game_display_name,
                             knowledge_match_source: chatDebug.knowledge_match_source,
                             knowledge_path: chatDebug.knowledge_path,
+                            manifest_path: chatDebug.manifest_path,
+                            manifest_status: chatDebug.manifest_status,
+                            knowledge_pack_version: chatDebug.knowledge_pack_version,
+                            knowledge_pack_language: chatDebug.knowledge_pack_language,
+                            knowledge_pack_status: chatDebug.knowledge_pack_status,
+                            coverage: chatDebug.coverage,
+                            last_updated: chatDebug.last_updated,
                             knowledge_supported_games_count: chatDebug.knowledge_supported_games_count,
                             knowledge_fallback_reason: chatDebug.knowledge_fallback_reason,
                             knowledge_confidence: chatDebug.knowledge_confidence,
@@ -1870,6 +1924,32 @@ export function App() {
                     <div>
                       <dt>{formatDebugLabel("knowledge_path")}</dt>
                       <dd>{debugText(knowledgeSummary.knowledge_path)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("manifest_status")}</dt>
+                      <dd className={knowledgeSummary.manifest_status === "manifest_missing" ? "debugError" : ""}>
+                        {debugText(knowledgeSummary.manifest_status)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_pack_version")}</dt>
+                      <dd>{debugText(knowledgeSummary.knowledge_pack_version)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_pack_language")}</dt>
+                      <dd>{debugText(knowledgeSummary.knowledge_pack_language)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_pack_status")}</dt>
+                      <dd>{debugText(knowledgeSummary.knowledge_pack_status)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("coverage")}</dt>
+                      <dd>{debugText(knowledgeSummary.coverage)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("last_updated")}</dt>
+                      <dd>{debugText(knowledgeSummary.last_updated)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("matched_topics")}</dt>

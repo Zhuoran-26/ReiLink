@@ -47,6 +47,12 @@ def test_generic_retriever_matches_margit_for_current_game():
     assert result.snippets[0].source_id
     assert result.snippets[0].source.endswith("data/knowledge/games/elden_ring/snippets.json")
     assert result.knowledge_path == "data/knowledge/games/elden_ring/snippets.json"
+    assert result.manifest_status == "loaded"
+    assert result.knowledge_pack_version == "0.1.0"
+    assert result.knowledge_pack_language == "zh-CN"
+    assert result.knowledge_pack_status == "sample"
+    assert "boss" in result.coverage
+    assert result.last_updated == "2026-06-01"
     assert result.supported_games_count == 2
 
 
@@ -70,7 +76,20 @@ def test_game_catalog_reports_supported_status_for_elden_ring():
     assert game is not None
     assert game.support_status == "supported"
     assert game.knowledge_available is True
+    assert game.manifest_path == "data/knowledge/games/elden_ring/manifest.json"
     assert GameCatalog().is_knowledge_available(game) is True
+
+
+def test_game_catalog_loads_elden_ring_manifest():
+    catalog = GameCatalog()
+    manifest = catalog.load_manifest(catalog.get_game("elden_ring"))
+
+    assert manifest.manifest_status == "loaded"
+    assert manifest.knowledge_pack_version == "0.1.0"
+    assert manifest.knowledge_pack_language == "zh-CN"
+    assert manifest.knowledge_pack_status == "sample"
+    assert "boss" in manifest.coverage
+    assert manifest.last_updated == "2026-06-01"
 
 
 def test_game_catalog_loads_hollow_knight_as_supported():
@@ -80,8 +99,21 @@ def test_game_catalog_loads_hollow_knight_as_supported():
     assert game.display_name == "空洞骑士"
     assert game.support_status == "supported"
     assert game.knowledge_available is True
+    assert game.manifest_path == "data/knowledge/games/hollow_knight/manifest.json"
     assert game.knowledge_path == "data/knowledge/games/hollow_knight/snippets.json"
     assert GameCatalog().is_knowledge_available(game) is True
+
+
+def test_game_catalog_loads_hollow_knight_manifest():
+    catalog = GameCatalog()
+    manifest = catalog.load_manifest(catalog.get_game("hollow_knight"))
+
+    assert manifest.manifest_status == "loaded"
+    assert manifest.knowledge_pack_version == "0.1.0"
+    assert manifest.knowledge_pack_language == "zh-CN"
+    assert manifest.knowledge_pack_status == "sample"
+    assert "beginner_tip" in manifest.coverage
+    assert manifest.last_updated == "2026-06-01"
 
 
 def test_game_catalog_matches_hollow_knight_chinese_alias():
@@ -270,6 +302,11 @@ def test_hollow_knight_query_uses_hollow_knight_snippets():
     assert result.support_status == "supported"
     assert result.knowledge_available is True
     assert result.knowledge_path == "data/knowledge/games/hollow_knight/snippets.json"
+    assert result.manifest_status == "loaded"
+    assert result.knowledge_pack_version == "0.1.0"
+    assert result.knowledge_pack_language == "zh-CN"
+    assert result.knowledge_pack_status == "sample"
+    assert "boss" in result.coverage
     assert result.snippets
     assert any("螳螂领主" in snippet.title for snippet in result.snippets)
     assert all("hollow_knight" in snippet.source for snippet in result.snippets)
@@ -636,6 +673,65 @@ def test_knowledge_disabled_does_not_inject_snippets(tmp_path):
     assert result.support_status == "supported"
     assert result.knowledge_available is False
     assert result.fallback_reason == "knowledge_disabled"
+
+
+def test_missing_manifest_does_not_block_snippet_retrieval(tmp_path):
+    games_dir = tmp_path / "games"
+    snippets_path = games_dir / "test_game" / "snippets.json"
+    missing_manifest_path = games_dir / "test_game" / "missing_manifest.json"
+    snippets_path.parent.mkdir(parents=True)
+    snippets_path.write_text(
+        """
+[
+  {
+    "id": "test_boss",
+    "title": "Test Boss",
+    "kind": "boss_strategy",
+    "topics": ["test_game", "boss_strategy"],
+    "aliases": ["Test Boss"],
+    "summary": "A short local sample."
+  }
+]
+""",
+        encoding="utf-8",
+    )
+    (games_dir / "catalog.json").write_text(
+        f"""
+{{
+  "games": [
+    {{
+      "game_id": "test_game",
+      "display_name": "测试游戏",
+      "aliases": ["Test Game", "测试游戏"],
+      "knowledge_game_id": "test_game",
+      "manifest_path": "{missing_manifest_path}",
+      "knowledge_path": "{snippets_path}",
+      "knowledge_available": true,
+      "support_status": "supported",
+      "enabled": true
+    }}
+  ]
+}}
+""",
+        encoding="utf-8",
+    )
+
+    result = GameKnowledgeRetriever(games_dir).retrieve(
+        current_game="测试游戏",
+        user_message="Test Boss 怎么打",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert result.snippets
+    assert result.manifest_status == "manifest_missing"
+    assert result.knowledge_pack_version == "unknown"
+    assert result.knowledge_pack_language == "unknown"
+    assert result.knowledge_pack_status == "unknown"
+    assert result.coverage == []
+    assert result.last_updated == "unknown"
 
 
 def test_generic_retriever_returns_at_most_three_snippets():

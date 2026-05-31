@@ -77,6 +77,7 @@ const gameContext: GameContextResponse = {
       knowledge_available: true,
       support_status: "supported",
       knowledge_game_id: "elden_ring",
+      manifest_path: "data/knowledge/games/elden_ring/manifest.json",
       knowledge_path: "data/knowledge/games/elden_ring/snippets.json"
     },
     {
@@ -86,6 +87,7 @@ const gameContext: GameContextResponse = {
       knowledge_available: true,
       support_status: "supported",
       knowledge_game_id: "hollow_knight",
+      manifest_path: "data/knowledge/games/hollow_knight/manifest.json",
       knowledge_path: "data/knowledge/games/hollow_knight/snippets.json"
     },
     {
@@ -95,6 +97,7 @@ const gameContext: GameContextResponse = {
       knowledge_available: false,
       support_status: "planned",
       knowledge_game_id: "sekiro",
+      manifest_path: null,
       knowledge_path: null
     }
   ]
@@ -228,6 +231,13 @@ const chatDebug = {
   knowledge_game_display_name: "艾尔登法环",
   knowledge_match_source: "current_game",
   knowledge_path: "data/knowledge/games/elden_ring/snippets.json",
+  manifest_path: "data/knowledge/games/elden_ring/manifest.json",
+  manifest_status: "loaded",
+  knowledge_pack_version: "0.1.0",
+  knowledge_pack_language: "zh-CN",
+  knowledge_pack_status: "sample",
+  coverage: ["boss", "mechanic", "beginner_tip"],
+  last_updated: "2026-06-01",
   knowledge_supported_games_count: 2,
   knowledge_fallback_reason: null,
   knowledge_confidence: 0.83,
@@ -249,6 +259,13 @@ const unsupportedChatDebug = {
   knowledge_game_display_name: "只狼",
   knowledge_match_source: "alias",
   knowledge_path: null,
+  manifest_path: null,
+  manifest_status: "manifest_missing",
+  knowledge_pack_version: "unknown",
+  knowledge_pack_language: "unknown",
+  knowledge_pack_status: "unknown",
+  coverage: [],
+  last_updated: "unknown",
   knowledge_fallback_reason: "no_supported_knowledge",
   knowledge_confidence: 0,
   active_game_id: "sekiro",
@@ -269,6 +286,13 @@ const hollowKnightChatDebug = {
   knowledge_game_display_name: "空洞骑士",
   knowledge_match_source: "user_switch",
   knowledge_path: "data/knowledge/games/hollow_knight/snippets.json",
+  manifest_path: "data/knowledge/games/hollow_knight/manifest.json",
+  manifest_status: "loaded",
+  knowledge_pack_version: "0.1.0",
+  knowledge_pack_language: "zh-CN",
+  knowledge_pack_status: "sample",
+  coverage: ["boss", "mechanic", "beginner_tip"],
+  last_updated: "2026-06-01",
   knowledge_supported_games_count: 2,
   knowledge_fallback_reason: null,
   knowledge_confidence: 0.83,
@@ -290,7 +314,8 @@ const unknownChatDebug = {
   knowledge_fallback_reason: "unknown_game",
   active_game_id: null,
   active_game_display_name: "星之门遗迹",
-  support_status: "unsupported"
+  support_status: "unsupported",
+  manifest_status: "unknown"
 };
 
 const gameSessionDebug = {
@@ -369,6 +394,13 @@ const promptPreview = {
     matched_game_display_name: "艾尔登法环",
     match_source: "current_game",
     knowledge_path: "data/knowledge/games/elden_ring/snippets.json",
+    manifest_path: "data/knowledge/games/elden_ring/manifest.json",
+    manifest_status: "loaded",
+    knowledge_pack_version: "0.1.0",
+    knowledge_pack_language: "zh-CN",
+    knowledge_pack_status: "sample",
+    coverage: ["boss", "mechanic", "beginner_tip"],
+    last_updated: "2026-06-01",
     supported_games_count: 2,
     matched_topics: ["margit", "boss_strategy"],
     snippets_count: 2,
@@ -401,6 +433,13 @@ const unsupportedPromptPreview = {
     matched_game_display_name: "只狼",
     match_source: "alias",
     knowledge_path: null,
+    manifest_path: null,
+    manifest_status: "manifest_missing",
+    knowledge_pack_version: "unknown",
+    knowledge_pack_language: "unknown",
+    knowledge_pack_status: "unknown",
+    coverage: [],
+    last_updated: "unknown",
     matched_topics: [],
     snippets_count: 0,
     snippet_titles: [],
@@ -426,6 +465,13 @@ const hollowKnightPromptPreview = {
     matched_game_display_name: "空洞骑士",
     match_source: "user_switch",
     knowledge_path: "data/knowledge/games/hollow_knight/snippets.json",
+    manifest_path: "data/knowledge/games/hollow_knight/manifest.json",
+    manifest_status: "loaded",
+    knowledge_pack_version: "0.1.0",
+    knowledge_pack_language: "zh-CN",
+    knowledge_pack_status: "sample",
+    coverage: ["boss", "mechanic", "beginner_tip"],
+    last_updated: "2026-06-01",
     supported_games_count: 2,
     matched_topics: ["螳螂领主", "boss_strategy"],
     snippets_count: 1,
@@ -447,6 +493,13 @@ const unknownPromptPreview = {
     matched_game_id: null,
     matched_game_display_name: "星之门遗迹",
     support_status: "unsupported",
+    manifest_path: null,
+    manifest_status: "unknown",
+    knowledge_pack_version: "unknown",
+    knowledge_pack_language: "unknown",
+    knowledge_pack_status: "unknown",
+    coverage: [],
+    last_updated: "unknown",
     fallback_reason: "unknown_game"
   }
 };
@@ -1169,6 +1222,15 @@ describe("App", () => {
     expect(screen.getAllByText("已注入回复上下文").length).toBeGreaterThan(0);
     expect(screen.getAllByText("匹配来源").length).toBeGreaterThan(0);
     expect(screen.getAllByText("知识文件").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("知识包清单").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("知识包版本").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("语言").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("知识包状态").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("覆盖范围").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("最后更新").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("0.1.0").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("zh-CN").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("样例").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/恶兆妖鬼 Margit：延迟攻击/).length).toBeGreaterThan(0);
     expect(screen.getByText("语义识别")).toBeInTheDocument();
     expect(screen.getByText("是否调用 LLM")).toBeInTheDocument();
@@ -1274,6 +1336,7 @@ describe("App", () => {
     expect(screen.getByText("该游戏暂未接入本地知识库，Rei 会先根据通用模型回答。")).toBeInTheDocument();
     expect(screen.getAllByText("仅使用模型回答").length).toBeGreaterThan(0);
     expect(screen.getAllByText("未支持知识库").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("manifest 缺失").length).toBeGreaterThan(0);
     expect(screen.getAllByText("用户切换").length).toBeGreaterThan(0);
     expect(screen.queryByText(/恶兆妖鬼 Margit：延迟攻击/)).not.toBeInTheDocument();
   });
@@ -1314,6 +1377,10 @@ describe("App", () => {
     await waitFor(() => expect(screen.getAllByText("空洞骑士").length).toBeGreaterThan(0));
     expect(screen.getAllByText("已支持").length).toBeGreaterThan(0);
     expect(screen.getAllByText("使用知识库").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("0.1.0").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("zh-CN").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("样例").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/机制/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/螳螂领主/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("螳螂领主：节奏观察").length).toBeGreaterThan(0);
   });

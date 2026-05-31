@@ -114,6 +114,7 @@ test("mock backend chat flow works", async ({ page }) => {
             knowledge_available: true,
             support_status: "supported",
             knowledge_game_id: "elden_ring",
+            manifest_path: "data/knowledge/games/elden_ring/manifest.json",
             knowledge_path: "data/knowledge/games/elden_ring/snippets.json"
           },
           {
@@ -123,6 +124,7 @@ test("mock backend chat flow works", async ({ page }) => {
             knowledge_available: true,
             support_status: "supported",
             knowledge_game_id: "hollow_knight",
+            manifest_path: "data/knowledge/games/hollow_knight/manifest.json",
             knowledge_path: "data/knowledge/games/hollow_knight/snippets.json"
           }
         ]
@@ -169,6 +171,7 @@ test("mock backend chat flow works", async ({ page }) => {
             knowledge_available: true,
             support_status: "supported",
             knowledge_game_id: "elden_ring",
+            manifest_path: "data/knowledge/games/elden_ring/manifest.json",
             knowledge_path: "data/knowledge/games/elden_ring/snippets.json"
           },
           {
@@ -178,6 +181,7 @@ test("mock backend chat flow works", async ({ page }) => {
             knowledge_available: true,
             support_status: "supported",
             knowledge_game_id: "hollow_knight",
+            manifest_path: "data/knowledge/games/hollow_knight/manifest.json",
             knowledge_path: "data/knowledge/games/hollow_knight/snippets.json"
           }
         ]
@@ -244,6 +248,13 @@ test("mock backend chat flow works", async ({ page }) => {
         knowledge_game_display_name: "艾尔登法环",
         knowledge_match_source: "current_game",
         knowledge_path: "data/knowledge/games/elden_ring/snippets.json",
+        manifest_path: "data/knowledge/games/elden_ring/manifest.json",
+        manifest_status: "loaded",
+        knowledge_pack_version: "0.1.0",
+        knowledge_pack_language: "zh-CN",
+        knowledge_pack_status: "sample",
+        coverage: ["boss", "mechanic", "beginner_tip"],
+        last_updated: "2026-06-01",
         knowledge_supported_games_count: 2,
         knowledge_fallback_reason: null,
         knowledge_confidence: 0.83,

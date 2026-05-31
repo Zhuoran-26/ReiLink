@@ -77,6 +77,7 @@ class GameContextResolver:
                 knowledge_available=self.catalog.is_knowledge_available(game),
                 support_status=game.support_status,
                 knowledge_game_id=game.knowledge_game_id,
+                manifest_path=game.manifest_path or None,
                 knowledge_path=game.knowledge_path or None,
             )
             for game in self.catalog.enabled_games()

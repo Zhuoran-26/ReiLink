@@ -36,6 +36,13 @@ class KnowledgeRetrievalResult:
     active_source: str = "none"
     knowledge_available: bool = False
     support_status: str | None = None
+    manifest_path: str | None = None
+    manifest_status: str = "unknown"
+    knowledge_pack_version: str = "unknown"
+    knowledge_pack_language: str = "unknown"
+    knowledge_pack_status: str = "unknown"
+    coverage: list[str] = field(default_factory=list)
+    last_updated: str = "unknown"
 
     def as_debug_dict(self) -> dict[str, Any]:
         return {
@@ -50,6 +57,13 @@ class KnowledgeRetrievalResult:
             "matched_game_display_name": self.game_display_name,
             "match_source": self.match_source,
             "knowledge_path": self.knowledge_path,
+            "manifest_path": self.manifest_path,
+            "manifest_status": self.manifest_status,
+            "knowledge_pack_version": self.knowledge_pack_version,
+            "knowledge_pack_language": self.knowledge_pack_language,
+            "knowledge_pack_status": self.knowledge_pack_status,
+            "coverage": self.coverage,
+            "last_updated": self.last_updated,
             "supported_games_count": self.supported_games_count,
             "matched_topics": self.topics,
             "snippets_count": len(self.snippets),
@@ -112,6 +126,7 @@ class GameKnowledgeRetriever:
         snippets = [snippet for _, snippet in scored[: max(1, min(limit, 3))]]
         topics = _dedupe(topic for snippet in snippets for topic in snippet.topics)
         confidence = min(1.0, round((scored[0][0] / 12), 2)) if scored else 0.0
+        manifest = self.catalog.load_manifest_for_game_id(game_id)
         return KnowledgeRetrievalResult(
             matched=bool(snippets),
             game_id=game_id,
@@ -126,6 +141,7 @@ class GameKnowledgeRetriever:
             active_source=_active_source(game_match.match_source),
             knowledge_available=True,
             support_status=game_match.support_status,
+            **manifest.as_debug_dict(),
         )
 
     def search(self, query: str, intent: str = "elden_ring_general_help", limit: int = 3) -> list[KnowledgeSnippet]:
@@ -227,11 +243,12 @@ class GameKnowledgeRetriever:
     def _empty(game_id: str | None = None) -> KnowledgeRetrievalResult:
         return KnowledgeRetrievalResult(False, game_id, [], [], 0.0)
 
-    @staticmethod
     def _empty_from_match(
+        self,
         game_match: GameMatchResult,
         fallback_reason: str | None = None,
     ) -> KnowledgeRetrievalResult:
+        manifest = self.catalog.load_manifest_for_game_id(game_match.matched_game_id)
         return KnowledgeRetrievalResult(
             matched=False,
             game_id=game_match.matched_game_id,
@@ -246,6 +263,7 @@ class GameKnowledgeRetriever:
             active_source=_active_source(game_match.match_source),
             knowledge_available=game_match.knowledge_available,
             support_status=game_match.support_status,
+            **manifest.as_debug_dict(),
         )
 
 

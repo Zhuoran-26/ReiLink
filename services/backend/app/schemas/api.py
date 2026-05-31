@@ -47,6 +47,7 @@ class GameCatalogOption(BaseModel):
     knowledge_available: bool = True
     support_status: SupportStatus = "supported"
     knowledge_game_id: str | None = None
+    manifest_path: str | None = None
     knowledge_path: str | None = None
 
 
@@ -234,6 +235,13 @@ class ChatDebugResponse(BaseModel):
     knowledge_game_display_name: str | None = None
     knowledge_match_source: str | None = None
     knowledge_path: str | None = None
+    manifest_path: str | None = None
+    manifest_status: str = "unknown"
+    knowledge_pack_version: str = "unknown"
+    knowledge_pack_language: str = "unknown"
+    knowledge_pack_status: str = "unknown"
+    coverage: list[str] = Field(default_factory=list)
+    last_updated: str = "unknown"
     knowledge_supported_games_count: int = 0
     knowledge_fallback_reason: str | None = None
     knowledge_confidence: float = 0.0

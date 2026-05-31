@@ -34,6 +34,13 @@ class ChatLatencyMetrics:
     knowledge_game_display_name: str | None = None
     knowledge_match_source: str | None = None
     knowledge_path: str | None = None
+    manifest_path: str | None = None
+    manifest_status: str = "unknown"
+    knowledge_pack_version: str = "unknown"
+    knowledge_pack_language: str = "unknown"
+    knowledge_pack_status: str = "unknown"
+    coverage: list[str] | None = None
+    last_updated: str = "unknown"
     knowledge_supported_games_count: int = 0
     knowledge_fallback_reason: str | None = None
     knowledge_confidence: float = 0.0
@@ -51,6 +58,7 @@ class ChatLatencyMetrics:
         data = asdict(self)
         data["matched_topics"] = data.get("matched_topics") or []
         data["snippet_titles"] = data.get("snippet_titles") or []
+        data["coverage"] = data.get("coverage") or []
         return data
 
 
