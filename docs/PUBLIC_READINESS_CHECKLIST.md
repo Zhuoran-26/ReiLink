@@ -17,6 +17,16 @@
 - [ ] GitHub Actions 最新远端运行结果需在 GitHub 上确认。
 - [ ] 本地 `make doctor`、`make lint`、`make test`、`make typecheck` 需在代码改动发布前重新确认。本轮只做文档与静态发布检查。
 
+### v0.2-pre Release Sync
+
+- [ ] 创建 `reilink-v0.2-pre` tag 前重新运行 `make doctor`。
+- [x] `make validate-knowledge` 已加入本地 release readiness 检查。
+- [x] Screenshot showcase assets 已存在于 `docs/assets/`。
+- [x] Knowledge Pack Authoring Guide 已存在：`docs/KNOWLEDGE_PACK_AUTHORING.md`。
+- [x] v0.2-pre release notes 已存在：`docs/RELEASE_NOTES_v0.2-pre.md`。
+- [x] CI 不依赖真实 DeepSeek API key。
+- [x] v0.1.1 public repository / showcase status 已确认；v0.2-pre tag / release 仍需手动创建。
+
 ### 公开材料
 
 - [x] MIT License 已添加。
@@ -32,7 +42,7 @@
 - [x] README 明确 Rei 是原创 companion persona。
 - [x] README 明确项目不隶属于 Evangelion、FromSoftware 或 Team Cherry。
 - [x] README 明确不使用官方 IP 元素。
-- [x] 当前仓库保持 private；公开发布需另行手动切换 visibility。
+- [x] 当前 public showcase 状态已确认；后续 pre-release / tag 仍需另行手动创建。
 - [x] Sample knowledge packs 未发现 secrets、local paths 或 API key；商标与授权风险需发布者在公开前最终确认。
 
 ## English
@@ -52,6 +62,16 @@
 - [ ] The latest remote GitHub Actions run still needs to be confirmed on GitHub.
 - [ ] Local `make doctor`, `make lint`, `make test`, and `make typecheck` should be re-confirmed before a code-changing release. This pass only covers documentation and static release checks.
 
+### v0.2-pre Release Sync
+
+- [ ] Re-run `make doctor` before creating the `reilink-v0.2-pre` tag.
+- [x] `make validate-knowledge` is included in local release readiness checks.
+- [x] Screenshot showcase assets are present under `docs/assets/`.
+- [x] Knowledge Pack Authoring Guide is present: `docs/KNOWLEDGE_PACK_AUTHORING.md`.
+- [x] v0.2-pre release notes are present: `docs/RELEASE_NOTES_v0.2-pre.md`.
+- [x] CI does not require a real DeepSeek API key.
+- [x] v0.1.1 public repository / showcase status is confirmed; v0.2-pre tag / release creation remains manual.
+
 ### Public Materials
 
 - [x] MIT License is added.
@@ -67,5 +87,5 @@
 - [x] README clearly states Rei is an original companion persona.
 - [x] README clearly states the project is not affiliated with Evangelion, FromSoftware, or Team Cherry.
 - [x] README clearly states it does not use official IP elements.
-- [x] The repository remains private for now; public release requires a separate manual visibility change.
+- [x] Current public showcase status is confirmed; future pre-release / tag creation remains a separate manual step.
 - [x] Sample knowledge packs show no secrets, local paths, or API keys; trademark and authorization risk should still be finally confirmed by the publisher before public release.
