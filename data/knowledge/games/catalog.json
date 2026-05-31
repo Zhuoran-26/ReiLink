@@ -4,7 +4,60 @@
       "game_id": "elden_ring",
       "display_name": "艾尔登法环",
       "aliases": ["Elden Ring", "老头环", "艾尔登法环", "艾爾登法環", "法环", "法環"],
+      "knowledge_game_id": "elden_ring",
       "knowledge_path": "data/knowledge/games/elden_ring/snippets.json",
+      "knowledge_available": true,
+      "support_status": "supported",
+      "enabled": true
+    },
+    {
+      "game_id": "hollow_knight",
+      "display_name": "空洞骑士",
+      "aliases": ["Hollow Knight", "空洞骑士", "空洞騎士", "空洞"],
+      "knowledge_game_id": "hollow_knight",
+      "knowledge_path": "",
+      "knowledge_available": false,
+      "support_status": "planned",
+      "enabled": true
+    },
+    {
+      "game_id": "sekiro",
+      "display_name": "只狼",
+      "aliases": ["Sekiro", "只狼", "只狼：影逝二度", "隻狼"],
+      "knowledge_game_id": "sekiro",
+      "knowledge_path": "",
+      "knowledge_available": false,
+      "support_status": "planned",
+      "enabled": true
+    },
+    {
+      "game_id": "baldurs_gate_3",
+      "display_name": "博德之门3",
+      "aliases": ["Baldur's Gate 3", "Baldurs Gate 3", "BG3", "博德之门3", "博德之門3"],
+      "knowledge_game_id": "baldurs_gate_3",
+      "knowledge_path": "",
+      "knowledge_available": false,
+      "support_status": "planned",
+      "enabled": true
+    },
+    {
+      "game_id": "cyberpunk_2077",
+      "display_name": "赛博朋克2077",
+      "aliases": ["Cyberpunk 2077", "赛博朋克2077", "電馭叛客2077", "2077"],
+      "knowledge_game_id": "cyberpunk_2077",
+      "knowledge_path": "",
+      "knowledge_available": false,
+      "support_status": "detected_only",
+      "enabled": true
+    },
+    {
+      "game_id": "monster_hunter",
+      "display_name": "怪物猎人",
+      "aliases": ["Monster Hunter", "怪物猎人", "魔物獵人", "猛汉"],
+      "knowledge_game_id": "monster_hunter",
+      "knowledge_path": "",
+      "knowledge_available": false,
+      "support_status": "planned",
       "enabled": true
     }
   ]

@@ -63,9 +63,29 @@ const gameContext: GameContextResponse = {
   session_game: "Elden Ring",
   user_message_game_id: null,
   user_message_game_display_name: null,
+  support_status: "supported",
   knowledge_available: true,
   fallback_reason: null,
-  available_games: [{ game_id: "elden_ring", display_name: "艾尔登法环", knowledge_available: true }]
+  available_games: [
+    {
+      game_id: "elden_ring",
+      display_name: "艾尔登法环",
+      enabled: true,
+      knowledge_available: true,
+      support_status: "supported",
+      knowledge_game_id: "elden_ring",
+      knowledge_path: "data/knowledge/games/elden_ring/snippets.json"
+    },
+    {
+      game_id: "hollow_knight",
+      display_name: "空洞骑士",
+      enabled: true,
+      knowledge_available: false,
+      support_status: "planned",
+      knowledge_game_id: "hollow_knight",
+      knowledge_path: null
+    }
+  ]
 };
 
 const idleGameContext: GameContextResponse = {
@@ -75,8 +95,21 @@ const idleGameContext: GameContextResponse = {
   active_source: "none",
   detected_game: idleGameDetection,
   session_game: null,
+  support_status: null,
   knowledge_available: false,
-  fallback_reason: "no_active_game"
+  fallback_reason: "no_game_detected"
+};
+
+const unsupportedGameContext: GameContextResponse = {
+  ...gameContext,
+  active_game_id: "hollow_knight",
+  active_game_display_name: "空洞骑士",
+  active_source: "user_message",
+  user_message_game_id: "hollow_knight",
+  user_message_game_display_name: "空洞骑士",
+  support_status: "planned",
+  knowledge_available: false,
+  fallback_reason: "no_supported_knowledge"
 };
 
 const memoryProfile = {
@@ -138,12 +171,34 @@ const chatDebug = {
   knowledge_fallback_reason: null,
   knowledge_confidence: 0.83,
   active_game_id: "elden_ring",
+  active_game_display_name: "艾尔登法环",
   active_source: "session",
+  support_status: "supported",
   knowledge_available: true,
   matched_topics: ["margit", "boss_strategy"],
   snippets_count: 2,
   snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
   knowledge_used_in_prompt: true
+};
+
+const unsupportedChatDebug = {
+  ...chatDebug,
+  knowledge_matched: false,
+  knowledge_game_id: "hollow_knight",
+  knowledge_game_display_name: "空洞骑士",
+  knowledge_match_source: "alias",
+  knowledge_path: null,
+  knowledge_fallback_reason: "no_supported_knowledge",
+  knowledge_confidence: 0,
+  active_game_id: "hollow_knight",
+  active_game_display_name: "空洞骑士",
+  active_source: "user_message",
+  support_status: "planned",
+  knowledge_available: false,
+  matched_topics: [],
+  snippets_count: 0,
+  snippet_titles: [],
+  knowledge_used_in_prompt: false
 };
 
 const gameSessionDebug = {
@@ -214,7 +269,9 @@ const promptPreview = {
     knowledge_matched: true,
     game_id: "elden_ring",
     active_game_id: "elden_ring",
+    active_game_display_name: "艾尔登法环",
     active_source: "session",
+    support_status: "supported",
     knowledge_available: true,
     matched_game_id: "elden_ring",
     matched_game_display_name: "艾尔登法环",
@@ -234,6 +291,31 @@ const promptPreview = {
   },
   final_context_summary: { raw_prompt_omitted: true, memory_injected_count: 2 },
   warnings: ["memory boss conflicts with fresh game state"]
+};
+
+const unsupportedPromptPreview = {
+  ...promptPreview,
+  game_context_summary: unsupportedGameContext,
+  knowledge_summary: {
+    ...promptPreview.knowledge_summary,
+    knowledge_matched: false,
+    game_id: "hollow_knight",
+    active_game_id: "hollow_knight",
+    active_game_display_name: "空洞骑士",
+    active_source: "user_message",
+    support_status: "planned",
+    knowledge_available: false,
+    matched_game_id: "hollow_knight",
+    matched_game_display_name: "空洞骑士",
+    match_source: "alias",
+    knowledge_path: null,
+    matched_topics: [],
+    snippets_count: 0,
+    snippet_titles: [],
+    knowledge_used_in_prompt: false,
+    confidence: 0,
+    fallback_reason: "no_supported_knowledge"
+  }
 };
 
 const semanticExtractionDebug = {
@@ -534,8 +616,11 @@ describe("App", () => {
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
     expect(screen.getByLabelText("自动游戏检测")).toHaveValue("on");
     expect(screen.getByLabelText("当前游戏")).toHaveValue("");
-    expect(screen.getByRole("option", { name: "艾尔登法环" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "艾尔登法环（已支持）" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "空洞骑士（暂未支持）" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "清除手动选择" })).toBeInTheDocument();
+    expect(screen.getByLabelText("已支持游戏")).toHaveTextContent("艾尔登法环");
+    expect(screen.getByLabelText("已支持游戏")).toHaveTextContent("空洞骑士");
     expect(screen.getByLabelText("主动陪伴")).toHaveValue("off");
     expect(screen.getByLabelText("主动灵敏度")).toHaveValue("low");
     expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
@@ -906,6 +991,8 @@ describe("App", () => {
     expect(screen.getAllByText("自动检测结果").length).toBeGreaterThan(0);
     expect(screen.getByText("对话识别结果")).toBeInTheDocument();
     expect(screen.getAllByText("知识库状态").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("已支持").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("使用知识库").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument();
     expect(screen.getAllByText("自动游戏检测").length).toBeGreaterThan(0);
     expect(screen.getByText("检测状态")).toBeInTheDocument();
@@ -1010,6 +1097,48 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument());
     expect(screen.getAllByText("未检测到游戏").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("未匹配").length).toBeGreaterThan(0);
+  });
+
+  it("shows unsupported catalog games as model-only knowledge context", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return debugAction;
+        const pendingResponse = pendingMemoryResponse(url, init);
+        if (pendingResponse) return pendingResponse;
+        const settings = settingsResponse(url, init);
+        if (settings) return settings;
+        if (url.endsWith("/api/game/context")) return Response.json(unsupportedGameContext);
+        if (url.endsWith("/api/game/context/manual") && init?.method === "POST") {
+          return Response.json(unsupportedGameContext);
+        }
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return proactive;
+        if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "hollow_knight", game_name: "空洞骑士" });
+        if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
+        if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
+        if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
+        if (url.endsWith("/api/debug/chat")) return Response.json(unsupportedChatDebug);
+        if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
+        if (url.endsWith("/api/debug/game-session")) return Response.json({ ...gameSessionDebug, current_game: "空洞骑士" });
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
+        if (url.includes("/api/debug/prompt-preview")) return Response.json(unsupportedPromptPreview);
+        if (url.endsWith("/api/chat") && init?.method === "POST") return Response.json(chatResponse);
+        return new Response("missing", { status: 404 });
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText("空洞骑士").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("暂未支持").length).toBeGreaterThan(0);
+    expect(screen.getByText("该游戏暂未接入本地知识库，Rei 会先根据通用模型回答。")).toBeInTheDocument();
+    expect(screen.getAllByText("仅使用模型回答").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("未支持知识库").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/恶兆妖鬼 Margit：延迟攻击/)).not.toBeInTheDocument();
   });
 
   it("falls back to game session debug data and shows empty warnings as none", async () => {

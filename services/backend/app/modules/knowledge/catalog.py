@@ -16,6 +16,9 @@ class GameCatalogEntry:
     display_name: str
     aliases: list[str] = field(default_factory=list)
     knowledge_path: str = ""
+    knowledge_game_id: str | None = None
+    knowledge_available: bool = False
+    support_status: str = "unsupported"
     enabled: bool = True
 
 
@@ -29,6 +32,8 @@ class GameMatchResult:
     enabled: bool
     supported_games_count: int
     fallback_reason: str | None = None
+    support_status: str | None = None
+    knowledge_available: bool = False
 
 
 class GameCatalog:
@@ -52,8 +57,13 @@ class GameCatalog:
             game_id = str(item.get("game_id") or "").strip()
             display_name = str(item.get("display_name") or "").strip()
             knowledge_path = str(item.get("knowledge_path") or "").strip()
-            if not game_id or not display_name or not knowledge_path:
+            if not game_id or not display_name:
                 continue
+            support_status = str(item.get("support_status") or "").strip() or _default_support_status(item)
+            if support_status not in {"supported", "detected_only", "planned", "unsupported"}:
+                support_status = "unsupported"
+            knowledge_game_id = str(item.get("knowledge_game_id") or game_id).strip() or game_id
+            knowledge_available = _declared_knowledge_available(item, support_status, knowledge_path)
             aliases = [str(alias).strip() for alias in item.get("aliases") or [] if str(alias).strip()]
             entries.append(
                 GameCatalogEntry(
@@ -61,13 +71,16 @@ class GameCatalog:
                     display_name=display_name,
                     aliases=aliases,
                     knowledge_path=knowledge_path,
+                    knowledge_game_id=knowledge_game_id,
+                    knowledge_available=knowledge_available,
+                    support_status=support_status,
                     enabled=item.get("enabled") is not False,
                 )
             )
         return entries
 
     def supported_games_count(self) -> int:
-        return sum(1 for game in self.games() if game.enabled)
+        return sum(1 for game in self.games() if self.is_knowledge_available(game))
 
     def enabled_games(self) -> list[GameCatalogEntry]:
         return [game for game in self.games() if game.enabled]
@@ -75,7 +88,24 @@ class GameCatalog:
     def get_game(self, game_id: str | None) -> GameCatalogEntry | None:
         if not game_id:
             return None
-        return next((game for game in self.games() if game.game_id == game_id), None)
+        return next(
+            (
+                game
+                for game in self.games()
+                if game.game_id == game_id or game.knowledge_game_id == game_id
+            ),
+            None,
+        )
+
+    def is_knowledge_available(self, game: GameCatalogEntry | None) -> bool:
+        return bool(
+            game
+            and game.enabled
+            and game.support_status == "supported"
+            and game.knowledge_available
+            and game.knowledge_path
+            and self.resolve_knowledge_path(game.knowledge_path).is_file()
+        )
 
     def resolve_knowledge_path(self, knowledge_path: str) -> Path:
         path = Path(knowledge_path)
@@ -93,7 +123,7 @@ class GameCatalog:
         manual_override: dict[str, Any] | None = None,
     ) -> GameMatchResult:
         games = self.games()
-        supported_count = sum(1 for game in games if game.enabled)
+        supported_count = sum(1 for game in games if self.is_knowledge_available(game))
         manual_match = self._match_manual_override(manual_override, games, supported_count)
         if manual_match:
             return manual_match
@@ -119,13 +149,13 @@ class GameCatalog:
             return _match_result(alias_match, "alias", 0.85, supported_count)
 
         if current_game_unsupported:
-            return _empty_match(supported_count, "unsupported_game")
+            return _empty_match(supported_count, "no_game_detected")
 
         content_match = self._match_by_content_alias(_content_hint_text(user_message, game_session_state), games)
         if content_match:
             return _match_result(content_match, "alias", 0.72, supported_count)
 
-        return _empty_match(supported_count, "no_knowledge_match")
+        return _empty_match(supported_count, "no_game_detected")
 
     @staticmethod
     def _match_manual_override(
@@ -149,6 +179,8 @@ class GameCatalog:
                 enabled=False,
                 supported_games_count=supported_count,
                 fallback_reason="no_supported_knowledge",
+                support_status="unsupported",
+                knowledge_available=False,
             )
         return _match_result(entry, "manual", 1.0, supported_count)
 
@@ -164,8 +196,15 @@ class GameCatalog:
         source = str(detected_game.get("match_source") or "process")
         confidence = float(detected_game.get("match_confidence") or 0)
         if not knowledge_game_id:
+            detected_game_id = str(detected_game.get("detected_game_id") or "").strip()
+            entry = next((game for game in games if game.game_id == detected_game_id), None)
+            if entry:
+                return _match_result(entry, source, confidence or 0.95, supported_count)
             return _unsupported_detected_match(detected_game, source, supported_count)
-        entry = next((game for game in games if game.game_id == knowledge_game_id), None)
+        entry = next((game for game in games if game.game_id == knowledge_game_id or game.knowledge_game_id == knowledge_game_id), None)
+        if not entry:
+            detected_game_id = str(detected_game.get("detected_game_id") or "").strip()
+            entry = next((game for game in games if game.game_id == detected_game_id), None)
         if not entry:
             return _unsupported_detected_match(detected_game, source, supported_count)
         return _match_result(entry, source, confidence or 0.95, supported_count)
@@ -218,15 +257,19 @@ def _match_result(
     confidence: float,
     supported_games_count: int,
 ) -> GameMatchResult:
+    fallback_reason = _entry_fallback_reason(entry)
+    knowledge_available = _entry_declares_supported_knowledge(entry)
     return GameMatchResult(
         matched_game_id=entry.game_id,
         matched_game_display_name=entry.display_name,
         match_source=source,
-        confidence=confidence if entry.enabled else 0.0,
-        knowledge_path=entry.knowledge_path,
+        confidence=confidence if knowledge_available else 0.0,
+        knowledge_path=entry.knowledge_path if knowledge_available else None,
         enabled=entry.enabled,
         supported_games_count=supported_games_count,
-        fallback_reason=None if entry.enabled else "knowledge_disabled",
+        fallback_reason=fallback_reason,
+        support_status=entry.support_status,
+        knowledge_available=knowledge_available,
     )
 
 
@@ -240,6 +283,8 @@ def _empty_match(supported_games_count: int, fallback_reason: str) -> GameMatchR
         enabled=False,
         supported_games_count=supported_games_count,
         fallback_reason=fallback_reason,
+        support_status=None,
+        knowledge_available=False,
     )
 
 
@@ -256,8 +301,36 @@ def _unsupported_detected_match(
         knowledge_path=None,
         enabled=False,
         supported_games_count=supported_games_count,
-        fallback_reason="unsupported_detected_game",
+        fallback_reason="no_supported_knowledge",
+        support_status="unsupported",
+        knowledge_available=False,
     )
+
+
+def _default_support_status(item: dict[str, Any]) -> str:
+    if item.get("enabled") is False:
+        return "unsupported"
+    if item.get("knowledge_available") is True or str(item.get("knowledge_path") or "").strip():
+        return "supported"
+    return "unsupported"
+
+
+def _declared_knowledge_available(item: dict[str, Any], support_status: str, knowledge_path: str) -> bool:
+    if "knowledge_available" in item:
+        return item.get("knowledge_available") is True
+    return support_status == "supported" and bool(knowledge_path)
+
+
+def _entry_declares_supported_knowledge(entry: GameCatalogEntry) -> bool:
+    return bool(entry.enabled and entry.support_status == "supported" and entry.knowledge_available and entry.knowledge_path)
+
+
+def _entry_fallback_reason(entry: GameCatalogEntry) -> str | None:
+    if not entry.enabled:
+        return "knowledge_disabled"
+    if entry.support_status != "supported" or not entry.knowledge_available or not entry.knowledge_path:
+        return "no_supported_knowledge"
+    return None
 
 
 def _content_hint_text(user_message: str, game_session_state: dict[str, Any] | None) -> str:

@@ -21,6 +21,13 @@ def _registry(tmp_path, payload=None):
                     "process_names": ["eldenring.exe", "Elden Ring"],
                     "steam_app_id": "1245620",
                     "knowledge_game_id": "elden_ring",
+                },
+                "hollow_knight": {
+                    "display_name": "空洞骑士",
+                    "aliases": ["Hollow Knight", "空洞骑士"],
+                    "process_names": ["hollow_knight.exe", "Hollow Knight"],
+                    "steam_app_id": "367520",
+                    "knowledge_game_id": "hollow_knight",
                 }
             },
             ensure_ascii=False,
@@ -53,6 +60,21 @@ def test_manual_override_selects_elden_ring(tmp_path):
     assert context.active_source == "manual"
     assert context.manual_override.enabled is True
     assert context.knowledge_available is True
+    assert context.support_status == "supported"
+
+
+def test_manual_override_can_select_planned_game_without_knowledge(tmp_path):
+    resolver = _resolver(tmp_path, process_names=[])
+
+    resolver.set_manual_override("hollow_knight", now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    context = resolver.resolve()
+
+    assert context.active_game_id == "hollow_knight"
+    assert context.active_game_display_name == "空洞骑士"
+    assert context.active_source == "manual"
+    assert context.support_status == "planned"
+    assert context.knowledge_available is False
+    assert context.fallback_reason == "no_supported_knowledge"
 
 
 def test_manual_override_takes_priority_over_detected_game(tmp_path):
@@ -92,6 +114,19 @@ def test_clearing_manual_override_returns_to_detected_game(tmp_path):
     assert resolver.game_session.load().current_game == "艾尔登法环"
 
 
+def test_detected_planned_game_is_not_unknown(tmp_path):
+    resolver = _resolver(tmp_path, process_names=["hollow_knight.exe"])
+
+    context = resolver.resolve()
+
+    assert context.active_game_id == "hollow_knight"
+    assert context.active_game_display_name == "空洞骑士"
+    assert context.active_source == "detector"
+    assert context.support_status == "planned"
+    assert context.knowledge_available is False
+    assert context.fallback_reason == "no_supported_knowledge"
+
+
 def test_manual_override_does_not_set_or_clear_current_boss(tmp_path):
     resolver = _resolver(tmp_path, process_names=[])
     state = resolver.game_session.load()
@@ -119,7 +154,7 @@ def test_manual_override_does_not_create_pending_memory(tmp_path):
     assert PendingMemoryQueue().list() == []
 
 
-def test_manual_override_rejects_unsupported_game(tmp_path):
+def test_manual_override_rejects_unknown_game(tmp_path):
     resolver = _resolver(tmp_path, process_names=[])
 
     with pytest.raises(UnknownGameOverrideError, match="no_supported_knowledge"):

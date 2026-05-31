@@ -582,6 +582,29 @@ button {
   background: rgba(10, 14, 26, 0.46);
 }
 
+.catalogSummary {
+  display: grid;
+  gap: 6px;
+  color: #9aa6bf;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.catalogSummary div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.catalogSummary strong {
+  color: #dce4f6;
+  font-weight: 650;
+}
+
+.catalogSummary span {
+  overflow-wrap: anywhere;
+}
+
 .settingRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 126px;

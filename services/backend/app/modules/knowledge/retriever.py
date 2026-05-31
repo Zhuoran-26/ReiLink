@@ -35,13 +35,16 @@ class KnowledgeRetrievalResult:
     fallback_reason: str | None = "no_knowledge_match"
     active_source: str = "none"
     knowledge_available: bool = False
+    support_status: str | None = None
 
     def as_debug_dict(self) -> dict[str, Any]:
         return {
             "knowledge_matched": self.matched,
             "game_id": self.game_id,
             "active_game_id": self.game_id,
+            "active_game_display_name": self.game_display_name,
             "active_source": self.active_source,
+            "support_status": self.support_status,
             "knowledge_available": self.knowledge_available,
             "matched_game_id": self.game_id,
             "matched_game_display_name": self.game_display_name,
@@ -84,10 +87,10 @@ class GameKnowledgeRetriever:
         game_id = game_match.matched_game_id
         if not game_id:
             return self._empty_from_match(game_match)
-        if not game_match.enabled:
-            return self._empty_from_match(game_match, "knowledge_disabled")
+        if not game_match.knowledge_available:
+            return self._empty_from_match(game_match, game_match.fallback_reason or "no_supported_knowledge")
         if not game_match.knowledge_path:
-            return self._empty_from_match(game_match, "no_knowledge_match")
+            return self._empty_from_match(game_match, "no_supported_knowledge")
 
         snippets_path = self.catalog.resolve_knowledge_path(game_match.knowledge_path)
         if not snippets_path.is_file():
@@ -122,6 +125,7 @@ class GameKnowledgeRetriever:
             fallback_reason=None if snippets else "no_knowledge_match",
             active_source=_active_source(game_match.match_source),
             knowledge_available=True,
+            support_status=game_match.support_status,
         )
 
     def search(self, query: str, intent: str = "elden_ring_general_help", limit: int = 3) -> list[KnowledgeSnippet]:
@@ -239,9 +243,8 @@ class GameKnowledgeRetriever:
             supported_games_count=game_match.supported_games_count,
             fallback_reason=fallback_reason or game_match.fallback_reason or "no_knowledge_match",
             active_source=_active_source(game_match.match_source),
-            knowledge_available=bool(
-                game_match.matched_game_id and game_match.enabled and game_match.knowledge_path
-            ),
+            knowledge_available=game_match.knowledge_available,
+            support_status=game_match.support_status,
         )
 
 

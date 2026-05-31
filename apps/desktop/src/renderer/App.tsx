@@ -77,8 +77,9 @@ const emptyGameContext: GameContextResponse = {
   session_game: null,
   user_message_game_id: null,
   user_message_game_display_name: null,
+  support_status: null,
   knowledge_available: false,
-  fallback_reason: "no_active_game",
+  fallback_reason: "no_game_detected",
   available_games: []
 };
 
@@ -138,7 +139,9 @@ const emptyChatDebug: ChatDebugResponse = {
   knowledge_fallback_reason: null,
   knowledge_confidence: 0,
   active_game_id: null,
+  active_game_display_name: null,
   active_source: null,
+  support_status: null,
   knowledge_available: false,
   matched_topics: [],
   snippets_count: 0,
@@ -353,6 +356,7 @@ const labelMap: Record<string, string> = {
   skip_reason: "跳过原因",
   snippet_titles: "命中的知识标题",
   snippets_count: "命中知识条数",
+  support_status: "支持状态",
   supported_games_count: "已支持游戏数",
   summary: "摘要"
 };
@@ -411,6 +415,7 @@ const valueMap: Record<string, string> = {
   minimal: "minimal（自然）",
   no_candidate_trigger: "暂无可触发项",
   no_active_game: "尚未确定当前游戏",
+  no_game_detected: "未检测到游戏",
   no_knowledge_match: "没有可用知识命中",
   no_supported_knowledge: "未支持知识库",
   none: "无",
@@ -445,6 +450,10 @@ const valueMap: Record<string, string> = {
   knowledge_disabled: "该游戏知识库已关闭",
   knowledge_file_missing: "知识文件不存在",
   process: "本地进程",
+  planned: "暂未支持",
+  detected_only: "暂未支持",
+  supported: "已支持",
+  unsupported: "暂未支持",
   window_title: "窗口标题",
   unknown: "未知"
 };
@@ -465,6 +474,22 @@ const debugTime = (value: string | null | undefined): string => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return debugText(value);
   return `${formatMessageTime(value)}（本地）`;
+};
+
+const knowledgeStatusText = (status: string | null | undefined, available: boolean, fallback?: string | null) => {
+  if (available && status === "supported") return "已支持";
+  if (fallback === "knowledge_disabled") return "已禁用";
+  if (!status) return "未匹配";
+  if (["planned", "detected_only", "unsupported"].includes(status)) return "暂未支持";
+  return available ? "已支持" : "未匹配";
+};
+
+const fallbackModeText = (available: boolean, used: boolean, fallback?: string | null) => {
+  if (used) return "使用知识库";
+  if (fallback === "no_game_detected" || fallback === "no_active_game") return "未检测到游戏";
+  if (available && !fallback) return "使用知识库";
+  if (!available || fallback) return "仅使用模型回答";
+  return "仅使用模型回答";
 };
 
 const formatDateKey = (date: Date) =>
@@ -805,7 +830,15 @@ export function App() {
       ? chatDebug.knowledge_game_display_name
       : null
   );
-  const gameContextKnowledgeStatus = gameContext.knowledge_available ? "可用" : "不可用";
+  const gameContextKnowledgeStatus = knowledgeStatusText(gameContext.support_status, gameContext.knowledge_available, gameContext.fallback_reason);
+  const gameContextFallbackMode = fallbackModeText(gameContext.knowledge_available, false, gameContext.fallback_reason);
+  const knowledgeFallbackMode = fallbackModeText(
+    chatDebug.knowledge_available,
+    chatDebug.knowledge_used_in_prompt,
+    chatDebug.knowledge_fallback_reason
+  );
+  const supportedCatalogGames = gameContext.available_games.filter((game) => game.support_status === "supported" && game.knowledge_available);
+  const plannedCatalogGames = gameContext.available_games.filter((game) => game.support_status !== "supported" || !game.knowledge_available);
   const companionName = "Rei";
   const companionSubtitle = "安静、冷淡的游戏陪伴";
   const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
@@ -1046,7 +1079,14 @@ export function App() {
                     <dt>{formatDebugLabel("knowledge_available")}</dt>
                     <dd>{gameContextKnowledgeStatus}</dd>
                   </div>
+                  <div>
+                    <dt>兜底方式</dt>
+                    <dd>{gameContextFallbackMode}</dd>
+                  </div>
                 </dl>
+                {!gameContext.knowledge_available && gameContext.active_game_display_name && (
+                  <p className="settingHint">该游戏暂未接入本地知识库，Rei 会先根据通用模型回答。</p>
+                )}
                 <label className="settingRow">
                   <span>当前游戏</span>
                   <select
@@ -1058,7 +1098,7 @@ export function App() {
                     <option value="">跟随自动/对话</option>
                     {gameContext.available_games.map((game) => (
                       <option key={game.game_id} value={game.game_id}>
-                        {game.display_name}
+                        {game.display_name}（{knowledgeStatusText(game.support_status, game.knowledge_available)}）
                       </option>
                     ))}
                   </select>
@@ -1080,6 +1120,16 @@ export function App() {
                   >
                     清除手动选择
                   </button>
+                </div>
+                <div className="catalogSummary" aria-label="已支持游戏">
+                  <div>
+                    <strong>已支持</strong>
+                    <span>{supportedCatalogGames.map((game) => game.display_name).join(" / ") || "无"}</span>
+                  </div>
+                  <div>
+                    <strong>暂未接入知识库</strong>
+                    <span>{plannedCatalogGames.map((game) => game.display_name).join(" / ") || "无"}</span>
+                  </div>
                 </div>
               </div>
               <label className="settingRow">
@@ -1284,6 +1334,14 @@ export function App() {
                         <dd>{gameContextKnowledgeStatus}</dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("support_status")}</dt>
+                        <dd>{debugText(gameContext.support_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>兜底方式</dt>
+                        <dd>{gameContextFallbackMode}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("fallback_reason")}</dt>
                         <dd className={gameContext.fallback_reason ? "debugError" : ""}>
                           {debugText(gameContext.fallback_reason)}
@@ -1462,8 +1520,20 @@ export function App() {
                       <div>
                         <dt>{formatDebugLabel("knowledge_available")}</dt>
                         <dd>
-                          <BooleanBadge value={chatDebug.knowledge_available} />
+                          {knowledgeStatusText(
+                            chatDebug.support_status,
+                            chatDebug.knowledge_available,
+                            chatDebug.knowledge_fallback_reason
+                          )}
                         </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("support_status")}</dt>
+                        <dd>{debugText(chatDebug.support_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>兜底方式</dt>
+                        <dd>{knowledgeFallbackMode}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("knowledge_supported_games_count")}</dt>
@@ -1602,7 +1672,9 @@ export function App() {
                             main_reply_model: chatDebug.main_reply_model,
                             knowledge_matched: chatDebug.knowledge_matched,
                             active_game_id: chatDebug.active_game_id,
+                            active_game_display_name: chatDebug.active_game_display_name,
                             active_source: chatDebug.active_source,
+                            support_status: chatDebug.support_status,
                             knowledge_available: chatDebug.knowledge_available,
                             knowledge_game_id: chatDebug.knowledge_game_id,
                             knowledge_game_display_name: chatDebug.knowledge_game_display_name,
@@ -1696,7 +1768,11 @@ export function App() {
                       <dd>
                         {debugText(promptGameContext.active_game_display_name)} /{" "}
                         {debugText(promptGameContext.active_source)} /{" "}
-                        {debugText(promptGameContext.knowledge_available)}
+                        {knowledgeStatusText(
+                          String(promptGameContext.support_status || ""),
+                          Boolean(promptGameContext.knowledge_available),
+                          String(promptGameContext.fallback_reason || "")
+                        )}
                       </dd>
                     </div>
                     <div>
@@ -1720,7 +1796,27 @@ export function App() {
                     </div>
                     <div>
                       <dt>{formatDebugLabel("knowledge_available")}</dt>
-                      <dd>{debugText(knowledgeSummary.knowledge_available)}</dd>
+                      <dd>
+                        {knowledgeStatusText(
+                          String(knowledgeSummary.support_status || ""),
+                          Boolean(knowledgeSummary.knowledge_available),
+                          String(knowledgeSummary.fallback_reason || "")
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("support_status")}</dt>
+                      <dd>{debugText(knowledgeSummary.support_status)}</dd>
+                    </div>
+                    <div>
+                      <dt>兜底方式</dt>
+                      <dd>
+                        {fallbackModeText(
+                          Boolean(knowledgeSummary.knowledge_available),
+                          Boolean(knowledgeSummary.knowledge_used_in_prompt),
+                          String(knowledgeSummary.fallback_reason || "")
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("supported_games_count")}</dt>

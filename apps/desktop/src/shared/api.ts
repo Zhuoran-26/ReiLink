@@ -35,7 +35,11 @@ export type ManualGameOverride = {
 export type GameCatalogOption = {
   game_id: string;
   display_name: string;
+  enabled: boolean;
   knowledge_available: boolean;
+  support_status: "supported" | "detected_only" | "planned" | "unsupported";
+  knowledge_game_id: string | null;
+  knowledge_path: string | null;
 };
 
 export type GameContextResponse = {
@@ -47,6 +51,7 @@ export type GameContextResponse = {
   session_game: string | null;
   user_message_game_id: string | null;
   user_message_game_display_name: string | null;
+  support_status: "supported" | "detected_only" | "planned" | "unsupported" | null;
   knowledge_available: boolean;
   fallback_reason: string | null;
   available_games: GameCatalogOption[];
@@ -183,7 +188,9 @@ export type ChatDebugResponse = {
   knowledge_fallback_reason: string | null;
   knowledge_confidence: number;
   active_game_id: string | null;
+  active_game_display_name: string | null;
   active_source: string | null;
+  support_status: "supported" | "detected_only" | "planned" | "unsupported" | null;
   knowledge_available: boolean;
   matched_topics: string[];
   snippets_count: number;

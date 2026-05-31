@@ -73,7 +73,11 @@ class GameContextResolver:
             GameCatalogOption(
                 game_id=game.game_id,
                 display_name=game.display_name,
-                knowledge_available=self._knowledge_available(game),
+                enabled=game.enabled,
+                knowledge_available=self.catalog.is_knowledge_available(game),
+                support_status=game.support_status,
+                knowledge_game_id=game.knowledge_game_id,
+                knowledge_path=game.knowledge_path or None,
             )
             for game in self.catalog.enabled_games()
         ]
@@ -82,7 +86,7 @@ class GameContextResolver:
         if not game_id:
             return self.store.clear_manual_override()
         game = self.catalog.get_game(game_id)
-        if not game or not game.enabled or not self._knowledge_available(game):
+        if not game or not game.enabled:
             raise UnknownGameOverrideError("no_supported_knowledge")
         override = ManualGameOverride(
             enabled=True,
@@ -139,8 +143,9 @@ class GameContextResolver:
                 session_game=session_state.current_game,
                 user_message_game_id=user_message_match.game_id,
                 user_message_game_display_name=user_message_match.display_name,
-                knowledge_available=self._knowledge_available(user_message_match),
-                fallback_reason=None,
+                support_status=user_message_match.support_status,
+                knowledge_available=self.catalog.is_knowledge_available(user_message_match),
+                fallback_reason=None if self.catalog.is_knowledge_available(user_message_match) else "no_supported_knowledge",
                 available_games=available_games,
             )
 
@@ -153,8 +158,9 @@ class GameContextResolver:
             session_game=session_state.current_game,
             user_message_game_id=None,
             user_message_game_display_name=None,
+            support_status=None,
             knowledge_available=False,
-            fallback_reason="no_active_game",
+            fallback_reason="no_game_detected",
             available_games=available_games,
         )
 
@@ -166,7 +172,7 @@ class GameContextResolver:
         user_message_match: GameCatalogEntry | None,
     ) -> GameContextResponse:
         game = self.catalog.get_game(manual_override.game_id)
-        knowledge_available = bool(game and game.enabled and self._knowledge_available(game))
+        knowledge_available = self.catalog.is_knowledge_available(game)
         return GameContextResponse(
             active_game_id=game.game_id if game else manual_override.game_id,
             active_game_display_name=(game.display_name if game else manual_override.display_name),
@@ -176,6 +182,7 @@ class GameContextResolver:
             session_game=session_game,
             user_message_game_id=user_message_match.game_id if user_message_match else None,
             user_message_game_display_name=user_message_match.display_name if user_message_match else None,
+            support_status=game.support_status if game else "unsupported",
             knowledge_available=knowledge_available,
             fallback_reason=None if knowledge_available else "no_supported_knowledge",
             available_games=self.available_games(),
@@ -190,8 +197,8 @@ class GameContextResolver:
     ) -> GameContextResponse | None:
         if auto_game_detection != "on" or detection.status != "running":
             return None
-        game = self.catalog.get_game(detection.knowledge_game_id)
-        if game and game.enabled and self._knowledge_available(game):
+        game = self.catalog.get_game(detection.knowledge_game_id or detection.detected_game_id)
+        if game and game.enabled and self.catalog.is_knowledge_available(game):
             return GameContextResponse(
                 active_game_id=game.game_id,
                 active_game_display_name=game.display_name,
@@ -201,8 +208,23 @@ class GameContextResolver:
                 session_game=session_game,
                 user_message_game_id=user_message_match.game_id if user_message_match else None,
                 user_message_game_display_name=user_message_match.display_name if user_message_match else None,
+                support_status=game.support_status,
                 knowledge_available=True,
                 fallback_reason=None,
+            )
+        if game and game.enabled:
+            return GameContextResponse(
+                active_game_id=game.game_id,
+                active_game_display_name=game.display_name,
+                active_source="detector",
+                manual_override=self.store.load_manual_override(),
+                detected_game=detection,
+                session_game=session_game,
+                user_message_game_id=user_message_match.game_id if user_message_match else None,
+                user_message_game_display_name=user_message_match.display_name if user_message_match else None,
+                support_status=game.support_status,
+                knowledge_available=False,
+                fallback_reason="no_supported_knowledge",
             )
         return GameContextResponse(
             active_game_id=detection.detected_game_id,
@@ -213,8 +235,9 @@ class GameContextResolver:
             session_game=session_game,
             user_message_game_id=user_message_match.game_id if user_message_match else None,
             user_message_game_display_name=user_message_match.display_name if user_message_match else None,
+            support_status="unsupported",
             knowledge_available=False,
-            fallback_reason="unsupported_detected_game",
+            fallback_reason="no_supported_knowledge",
         )
 
     def _session_context(
@@ -227,6 +250,7 @@ class GameContextResolver:
             return None
         match = self.catalog.match_game(current_game=session_game, user_message="", game_session_state={})
         if match.matched_game_id:
+            game = self.catalog.get_game(match.matched_game_id)
             return GameContextResponse(
                 active_game_id=match.matched_game_id,
                 active_game_display_name=match.matched_game_display_name,
@@ -236,8 +260,9 @@ class GameContextResolver:
                 session_game=session_game,
                 user_message_game_id=user_message_match.game_id if user_message_match else None,
                 user_message_game_display_name=user_message_match.display_name if user_message_match else None,
-                knowledge_available=bool(match.enabled and match.knowledge_path),
-                fallback_reason=None if match.enabled and match.knowledge_path else "no_supported_knowledge",
+                support_status=match.support_status,
+                knowledge_available=self.catalog.is_knowledge_available(game),
+                fallback_reason=None if self.catalog.is_knowledge_available(game) else "no_supported_knowledge",
             )
         return GameContextResponse(
             active_game_id=None,
@@ -248,6 +273,7 @@ class GameContextResolver:
             session_game=session_game,
             user_message_game_id=user_message_match.game_id if user_message_match else None,
             user_message_game_display_name=user_message_match.display_name if user_message_match else None,
+            support_status="unsupported",
             knowledge_available=False,
             fallback_reason="no_supported_knowledge",
         )
@@ -259,12 +285,6 @@ class GameContextResolver:
         if not match.matched_game_id:
             return None
         return self.catalog.get_game(match.matched_game_id)
-
-    def _knowledge_available(self, game: GameCatalogEntry | None) -> bool:
-        if not game or not game.enabled or not game.knowledge_path:
-            return False
-        return self.catalog.resolve_knowledge_path(game.knowledge_path).is_file()
-
 
 def sync_game_session_from_manual_override(
     manual_override: ManualGameOverride,

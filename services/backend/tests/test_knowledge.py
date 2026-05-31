@@ -64,6 +64,29 @@ def test_game_catalog_matches_explicit_user_game_alias():
     assert match.supported_games_count == 1
 
 
+def test_game_catalog_reports_supported_status_for_elden_ring():
+    game = GameCatalog().get_game("elden_ring")
+
+    assert game is not None
+    assert game.support_status == "supported"
+    assert game.knowledge_available is True
+    assert GameCatalog().is_knowledge_available(game) is True
+
+
+def test_game_catalog_recognizes_planned_game_without_knowledge():
+    match = GameCatalog().match_game(
+        current_game=None,
+        user_message="我在玩空洞骑士，螳螂领主怎么打",
+        game_session_state={},
+    )
+
+    assert match.matched_game_id == "hollow_knight"
+    assert match.matched_game_display_name == "空洞骑士"
+    assert match.support_status == "planned"
+    assert match.knowledge_available is False
+    assert match.fallback_reason == "no_supported_knowledge"
+
+
 def test_game_catalog_prefers_current_game_when_supported():
     match = GameCatalog().match_game(
         current_game="Elden Ring",
@@ -170,6 +193,24 @@ def test_manual_override_unknown_game_does_not_reuse_elden_ring():
     assert result.knowledge_available is False
 
 
+def test_planned_game_query_does_not_use_elden_ring_snippets():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=None,
+        user_message="我在玩空洞骑士，螳螂领主怎么打",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id == "hollow_knight"
+    assert result.game_display_name == "空洞骑士"
+    assert result.support_status == "planned"
+    assert result.knowledge_available is False
+    assert result.snippets == []
+    assert result.fallback_reason == "no_supported_knowledge"
+
+
 def test_generic_retriever_matches_waterfowl_sample():
     result = GameKnowledgeRetriever().retrieve(
         current_game="Elden Ring",
@@ -236,7 +277,7 @@ def test_generic_retriever_falls_back_for_unsupported_game():
 
     assert result.matched is False
     assert result.game_id is None
-    assert result.fallback_reason == "unsupported_game"
+    assert result.fallback_reason == "no_game_detected"
 
 
 def test_unsupported_current_game_does_not_reuse_elden_ring_content_alias():
@@ -251,7 +292,7 @@ def test_unsupported_current_game_does_not_reuse_elden_ring_content_alias():
     assert result.matched is False
     assert result.game_id is None
     assert result.snippets == []
-    assert result.fallback_reason == "unsupported_game"
+    assert result.fallback_reason == "no_game_detected"
 
 
 def test_detected_unsupported_game_blocks_elden_ring_knowledge():
@@ -275,7 +316,60 @@ def test_detected_unsupported_game_blocks_elden_ring_knowledge():
     assert result.matched is False
     assert result.game_id is None
     assert result.game_display_name == "星露谷物语"
-    assert result.fallback_reason == "unsupported_detected_game"
+    assert result.fallback_reason == "no_supported_knowledge"
+
+
+def test_unknown_game_returns_no_game_detected():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=None,
+        user_message="今天想随便聊两句",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id is None
+    assert result.fallback_reason == "no_game_detected"
+
+
+def test_knowledge_disabled_does_not_inject_snippets(tmp_path):
+    games_dir = tmp_path / "games"
+    games_dir.mkdir()
+    catalog = games_dir / "catalog.json"
+    catalog.write_text(
+        """
+{
+  "games": [
+    {
+      "game_id": "elden_ring",
+      "display_name": "艾尔登法环",
+      "aliases": ["Elden Ring", "艾尔登法环"],
+      "knowledge_game_id": "elden_ring",
+      "knowledge_path": "data/knowledge/games/elden_ring/snippets.json",
+      "knowledge_available": true,
+      "support_status": "supported",
+      "enabled": false
+    }
+  ]
+}
+""",
+        encoding="utf-8",
+    )
+
+    result = GameKnowledgeRetriever(games_dir).retrieve(
+        current_game="Elden Ring",
+        user_message="Margit 怎么打",
+        current_boss=None,
+        game_session_state={},
+        intent="elden_ring_boss_strategy",
+    )
+
+    assert result.matched is False
+    assert result.snippets == []
+    assert result.support_status == "supported"
+    assert result.knowledge_available is False
+    assert result.fallback_reason == "knowledge_disabled"
 
 
 def test_generic_retriever_returns_at_most_three_snippets():

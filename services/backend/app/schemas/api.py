@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+SupportStatus = Literal["supported", "detected_only", "planned", "unsupported"]
+
 
 class GameStatus(BaseModel):
     game_id: str | None
@@ -41,7 +43,11 @@ class ManualGameOverride(BaseModel):
 class GameCatalogOption(BaseModel):
     game_id: str
     display_name: str
+    enabled: bool = True
     knowledge_available: bool = True
+    support_status: SupportStatus = "supported"
+    knowledge_game_id: str | None = None
+    knowledge_path: str | None = None
 
 
 class GameContextResponse(BaseModel):
@@ -53,6 +59,7 @@ class GameContextResponse(BaseModel):
     session_game: str | None = None
     user_message_game_id: str | None = None
     user_message_game_display_name: str | None = None
+    support_status: SupportStatus | None = None
     knowledge_available: bool = False
     fallback_reason: str | None = None
     available_games: list[GameCatalogOption] = Field(default_factory=list)
@@ -228,7 +235,9 @@ class ChatDebugResponse(BaseModel):
     knowledge_fallback_reason: str | None = None
     knowledge_confidence: float = 0.0
     active_game_id: str | None = None
+    active_game_display_name: str | None = None
     active_source: str | None = None
+    support_status: SupportStatus | None = None
     knowledge_available: bool = False
     matched_topics: list[str] = Field(default_factory=list)
     snippets_count: int = 0

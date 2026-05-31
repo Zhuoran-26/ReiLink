@@ -100,9 +100,29 @@ test("mock backend chat flow works", async ({ page }) => {
         session_game: "Elden Ring",
         user_message_game_id: null,
         user_message_game_display_name: null,
+        support_status: "supported",
         knowledge_available: true,
         fallback_reason: null,
-        available_games: [{ game_id: "elden_ring", display_name: "艾尔登法环", knowledge_available: true }]
+        available_games: [
+          {
+            game_id: "elden_ring",
+            display_name: "艾尔登法环",
+            enabled: true,
+            knowledge_available: true,
+            support_status: "supported",
+            knowledge_game_id: "elden_ring",
+            knowledge_path: "data/knowledge/games/elden_ring/snippets.json"
+          },
+          {
+            game_id: "hollow_knight",
+            display_name: "空洞骑士",
+            enabled: true,
+            knowledge_available: false,
+            support_status: "planned",
+            knowledge_game_id: "hollow_knight",
+            knowledge_path: null
+          }
+        ]
       }
     })
   );
@@ -132,9 +152,29 @@ test("mock backend chat flow works", async ({ page }) => {
         session_game: "Elden Ring",
         user_message_game_id: null,
         user_message_game_display_name: null,
+        support_status: "supported",
         knowledge_available: true,
         fallback_reason: null,
-        available_games: [{ game_id: "elden_ring", display_name: "艾尔登法环", knowledge_available: true }]
+        available_games: [
+          {
+            game_id: "elden_ring",
+            display_name: "艾尔登法环",
+            enabled: true,
+            knowledge_available: true,
+            support_status: "supported",
+            knowledge_game_id: "elden_ring",
+            knowledge_path: "data/knowledge/games/elden_ring/snippets.json"
+          },
+          {
+            game_id: "hollow_knight",
+            display_name: "空洞骑士",
+            enabled: true,
+            knowledge_available: false,
+            support_status: "planned",
+            knowledge_game_id: "hollow_knight",
+            knowledge_path: null
+          }
+        ]
       }
     })
   );
@@ -202,7 +242,9 @@ test("mock backend chat flow works", async ({ page }) => {
         knowledge_fallback_reason: null,
         knowledge_confidence: 0.83,
         active_game_id: "elden_ring",
+        active_game_display_name: "艾尔登法环",
         active_source: "session",
+        support_status: "supported",
         knowledge_available: true,
         matched_topics: ["margit", "boss_strategy"],
         snippets_count: 2,
@@ -313,7 +355,7 @@ test("mock backend chat flow works", async ({ page }) => {
 
   await page.goto("/");
   await expect(page.getByText("已连接")).toBeVisible();
-  await expect(page.getByText("游戏：Elden Ring")).toBeVisible();
+  await expect(page.getByText("游戏：艾尔登法环")).toBeVisible();
   await page.getByLabel("聊天输入").fill("Margit 怎么打?");
   await page.getByRole("button", { name: /发送/i }).click();
   await expect(page.getByText("别急。")).toBeVisible();
