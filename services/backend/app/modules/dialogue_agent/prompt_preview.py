@@ -10,6 +10,7 @@ from app.modules.dialogue_agent.metrics import get_last_chat_metrics
 from app.modules.dialogue_agent.routing import select_model_route
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.game_session.state import GameSessionStore, _fails_current_boss
+from app.modules.knowledge.retriever import GameKnowledgeRetriever, KnowledgeRetrievalResult
 from app.modules.memory.profile import BOSS_FRESHNESS, PlayerMemory
 from app.modules.memory.store import ConversationStore
 
@@ -18,6 +19,7 @@ PROMPT_ORDER = [
     "current_session_context",
     "session_focus",
     "game_state",
+    "knowledge",
     "memory",
     "persona",
 ]
@@ -40,6 +42,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
 
     game_debug = game_session.debug_state(now=now)
     game_prompt_summary = game_session.build_prompt_summary(now=now, session_focus_boss=session_focus.boss)
+    knowledge_result = _knowledge_summary_result(current_user_message, session_focus.boss, game_debug)
     memory_context = memory.build_prompt_context_with_provenance(now=now)
     memory_debug_items = memory_context.as_debug_items()
     skipped_memory, memory_warnings = _skipped_memory_items(memory, memory_debug_items, game_debug, now)
@@ -74,6 +77,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
                 "boss_history": _brief_boss_history(game_debug.get("boss_history") or []),
                 "injected_summary": game_prompt_summary,
             },
+            "knowledge_summary": knowledge_result.as_debug_dict(),
             "memory_summary": {
                 "injected": memory_debug_items,
                 "skipped": skipped_memory,
@@ -84,6 +88,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
                 session_items=session_items,
                 session_focus_line=session_focus.as_prompt_line() if session_focus.has_boss else "",
                 game_prompt_summary=game_prompt_summary,
+                knowledge_result=knowledge_result,
                 memory_items=memory_debug_items,
             ),
             "warnings": _dedupe(warnings),
@@ -96,6 +101,7 @@ def _final_context_summary(
     session_items: list[dict[str, str]],
     session_focus_line: str,
     game_prompt_summary: str,
+    knowledge_result: KnowledgeRetrievalResult,
     memory_items: list[dict[str, str]],
 ) -> dict[str, Any]:
     blocks = [
@@ -120,6 +126,11 @@ def _final_context_summary(
             "summary": _truncate(game_prompt_summary, limit=180),
         },
         {
+            "name": "knowledge",
+            "present": knowledge_result.matched,
+            "items": [_truncate(f"{snippet.title}: {snippet.content}", limit=160) for snippet in knowledge_result.snippets],
+        },
+        {
             "name": "memory",
             "present": bool(memory_items),
             "items": [_truncate(item["text"]) for item in memory_items],
@@ -135,6 +146,26 @@ def _final_context_summary(
         "raw_prompt_omitted": True,
         "memory_injected_count": len(memory_items),
     }
+
+
+def _knowledge_summary_result(
+    current_user_message: str | None,
+    session_focus_boss: str | None,
+    game_debug: dict[str, Any],
+) -> KnowledgeRetrievalResult:
+    if not current_user_message:
+        return GameKnowledgeRetriever().empty_result()
+    intent_result = detect_intent(current_user_message)
+    if not intent_result.should_retrieve_knowledge:
+        return GameKnowledgeRetriever().empty_result()
+    current_boss = session_focus_boss or ((game_debug.get("current_boss") or {}).get("name"))
+    return GameKnowledgeRetriever().retrieve(
+        current_game=game_debug.get("current_game"),
+        user_message=current_user_message,
+        current_boss=current_boss,
+        game_session_state=game_debug,
+        intent=intent_result.intent,
+    )
 
 
 def _model_route_summary(current_user_message: str | None) -> dict[str, Any]:

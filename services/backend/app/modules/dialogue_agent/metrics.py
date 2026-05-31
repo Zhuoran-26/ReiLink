@@ -29,9 +29,18 @@ class ChatLatencyMetrics:
     semantic_extraction_model: str | None = None
     semantic_extraction_latency_ms: int = 0
     semantic_extraction_parse_error: str | None = None
+    knowledge_matched: bool = False
+    knowledge_game_id: str | None = None
+    matched_topics: list[str] | None = None
+    snippets_count: int = 0
+    snippet_titles: list[str] | None = None
+    knowledge_used_in_prompt: bool = False
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        data["matched_topics"] = data.get("matched_topics") or []
+        data["snippet_titles"] = data.get("snippet_titles") or []
+        return data
 
 
 _last_chat_metrics = ChatLatencyMetrics()

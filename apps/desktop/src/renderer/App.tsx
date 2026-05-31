@@ -95,7 +95,13 @@ const emptyChatDebug: ChatDebugResponse = {
   semantic_extraction_called: false,
   semantic_extraction_model: null,
   semantic_extraction_latency_ms: 0,
-  semantic_extraction_parse_error: null
+  semantic_extraction_parse_error: null,
+  knowledge_matched: false,
+  knowledge_game_id: null,
+  matched_topics: [],
+  snippets_count: 0,
+  snippet_titles: [],
+  knowledge_used_in_prompt: false
 };
 
 const emptyGameSessionDebug: GameSessionDebugResponse = {
@@ -121,6 +127,7 @@ const emptyPromptPreview: PromptPreviewResponse = {
   model_route_summary: {},
   session_focus_summary: {},
   game_state_summary: {},
+  knowledge_summary: {},
   memory_summary: {},
   final_context_summary: {},
   warnings: []
@@ -232,6 +239,7 @@ const labelMap: Record<string, string> = {
   frustration: "挫败次数",
   frustration_count: "挫败次数",
   game_state: "游戏状态摘要",
+  game_id: "游戏",
   idle_for_seconds: "已空闲时间",
   idle_threshold_seconds: "空闲触发阈值",
   initial_grace_remaining_seconds: "初始等待剩余",
@@ -244,6 +252,11 @@ const labelMap: Record<string, string> = {
   latency_ms: "耗时",
   latest_user: "最近用户消息",
   latest_user_message: "最近用户消息",
+  knowledge: "游戏知识",
+  knowledge_game_id: "游戏",
+  knowledge_matched: "知识匹配",
+  knowledge_summary: "游戏知识摘要",
+  knowledge_used_in_prompt: "已用于 Prompt",
   llm_called: "是否调用 LLM",
   llm_event: "LLM 游戏事件",
   llm_memory: "LLM 记忆",
@@ -252,6 +265,7 @@ const labelMap: Record<string, string> = {
   memory: "记忆摘要",
   model: "模型",
   model_route_mode: "路由模式",
+  matched_topics: "匹配主题",
   next_possible_trigger_at: "下次可能触发",
   parse_error: "解析错误",
   persona: "人格",
@@ -269,6 +283,8 @@ const labelMap: Record<string, string> = {
   session_focus: "会话焦点",
   session_focus_summary: "会话焦点",
   skip_reason: "跳过原因",
+  snippet_titles: "片段标题",
+  snippets_count: "片段数量",
   summary: "摘要"
 };
 
@@ -287,6 +303,7 @@ const valueMap: Record<string, string> = {
   disabled: "关闭",
   eligible: "可触发",
   enabled: "开启",
+  elden_ring: "Elden Ring",
   explicit_user_statement: "明确表达",
   fast: "快速",
   fresh: "新鲜",
@@ -294,6 +311,19 @@ const valueMap: Record<string, string> = {
   game_progress: "游戏进度",
   game_session: "游戏状态",
   elden_ring_boss_strategy: "Boss 攻略",
+  elden_ring_general_help: "游戏帮助",
+  elden_ring_location: "位置查询",
+  boss_strategy: "Boss 攻略",
+  delayed_attacks: "延迟攻击",
+  preparation: "战前准备",
+  summon: "召唤",
+  location: "位置",
+  stormveil: "史东薇尔",
+  malenia: "玛莲妮亚",
+  waterfowl: "水鸟乱舞",
+  dodge: "躲避",
+  combat_pacing: "战斗节奏",
+  stamina: "精力管理",
   guarded: "guarded（保守）",
   guide_preference: "攻略偏好",
   high: "高",
@@ -648,6 +678,7 @@ export function App() {
     last_cleared_boss: firstDefined(promptGameState.last_cleared_boss, gameSessionDebug.last_cleared_boss),
     boss_history: promptBossHistory.length > 0 ? promptBossHistory : gameSessionDebug.boss_history
   };
+  const knowledgeSummary = asRecord(promptPreview.knowledge_summary);
   const memorySummary = asRecord(promptPreview.memory_summary);
   const injectedMemory = asArray(memorySummary.injected);
   const skippedMemory = asArray(memorySummary.skipped);
@@ -1154,6 +1185,40 @@ export function App() {
                   </section>
 
                   <section className="debugSection">
+                    <h3>游戏知识</h3>
+                    <dl className="debugFacts">
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_matched")}</dt>
+                        <dd>
+                          <BooleanBadge value={chatDebug.knowledge_matched} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_game_id")}</dt>
+                        <dd>{debugText(chatDebug.knowledge_game_id)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("matched_topics")}</dt>
+                        <dd>{debugText(chatDebug.matched_topics)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("snippets_count")}</dt>
+                        <dd>{chatDebug.snippets_count}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("snippet_titles")}</dt>
+                        <dd>{debugText(chatDebug.snippet_titles)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_used_in_prompt")}</dt>
+                        <dd>
+                          <BooleanBadge value={chatDebug.knowledge_used_in_prompt} />
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section className="debugSection">
                     <h3>语义识别</h3>
                     <dl className="debugFacts">
                       <div>
@@ -1229,6 +1294,12 @@ export function App() {
                             provider_latency_ms: chatDebug.provider_latency_ms,
                             semantic_extraction_model: chatDebug.semantic_extraction_model,
                             main_reply_model: chatDebug.main_reply_model,
+                            knowledge_matched: chatDebug.knowledge_matched,
+                            knowledge_game_id: chatDebug.knowledge_game_id,
+                            matched_topics: chatDebug.matched_topics,
+                            snippets_count: chatDebug.snippets_count,
+                            snippet_titles: chatDebug.snippet_titles,
+                            knowledge_used_in_prompt: chatDebug.knowledge_used_in_prompt,
                             fallback_reason: chatDebug.fallback_reason,
                             last_latency_ms: chatDebug.total_latency_ms,
                             llm_latency_ms: chatDebug.llm_latency_ms,
@@ -1311,6 +1382,30 @@ export function App() {
                         {debugText(gameStateSummary.current_game)} / {bossName(gameStateSummary.current_boss)} /{" "}
                         {debugText(gameStateSummary.current_activity)} / {debugText(gameStateSummary.freshness)}
                       </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_matched")}</dt>
+                      <dd>{debugText(knowledgeSummary.knowledge_matched)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_game_id")}</dt>
+                      <dd>{debugText(knowledgeSummary.game_id)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("matched_topics")}</dt>
+                      <dd>{debugText(knowledgeSummary.matched_topics)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("snippets_count")}</dt>
+                      <dd>{debugText(knowledgeSummary.snippets_count)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("snippet_titles")}</dt>
+                      <dd>{debugText(knowledgeSummary.snippet_titles)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_used_in_prompt")}</dt>
+                      <dd>{debugText(knowledgeSummary.knowledge_used_in_prompt)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("memory")}</dt>

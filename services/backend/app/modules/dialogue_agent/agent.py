@@ -19,10 +19,10 @@ from app.modules.dialogue_agent.semantic_extraction import extract_semantics
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.dialogue_agent.style import apply_rei_style
 from app.modules.dialogue_agent.validator import validate_or_repair
-from app.modules.elden_ring_knowledge.knowledge import EldenRingKnowledge, KnowledgeError
 from app.modules.elden_ring_knowledge.terminology import normalize_terminology
 from app.modules.game_detector.detector import EldenRingDetector
 from app.modules.game_session.state import GameSessionStore
+from app.modules.knowledge.retriever import GameKnowledgeRetriever
 from app.modules.memory.pending import PendingMemoryQueue
 from app.modules.memory.profile import PlayerMemory
 from app.modules.memory.store import ConversationStore
@@ -47,7 +47,7 @@ class DialogueAgent:
     def __init__(self) -> None:
         self.detector = EldenRingDetector()
         self.persona = PersonaEngine()
-        self.knowledge = EldenRingKnowledge()
+        self.knowledge = GameKnowledgeRetriever()
         self.store = ConversationStore()
         self.memory = PlayerMemory()
         self.game_session = GameSessionStore()
@@ -78,6 +78,7 @@ class DialogueAgent:
             session_focus_boss=session_focus.boss,
             semantic_game_event=(semantic_extraction.get("final_decision") or {}).get("game_event"),
         )
+        game_session_debug = self.game_session.debug_state(now=now)
         game_session_summary = self.game_session.build_prompt_summary(now=now, session_focus_boss=session_focus.boss)
         session_context_items = [item["text"] for item in self.store.recent_context(request.session_id)]
         if session_focus.has_boss:
@@ -104,12 +105,17 @@ class DialogueAgent:
             companion_policy=companion_policy,
             repetition_guard=repetition_guard,
         )
+        knowledge_result = self.knowledge.empty_result()
         snippets = []
         if intent_result.should_retrieve_knowledge:
-            try:
-                snippets = self.knowledge.search(request.message, intent_result.intent)
-            except KnowledgeError as exc:
-                raise DialogueError(str(exc)) from exc
+            knowledge_result = self.knowledge.retrieve(
+                current_game=game_status.game_name or game_session_debug.get("current_game"),
+                user_message=request.message,
+                current_boss=session_focus.boss or ((game_session_debug.get("current_boss") or {}).get("name")),
+                game_session_state=game_session_debug,
+                intent=intent_result.intent,
+            )
+            snippets = knowledge_result.snippets
         try:
             llm_result = self.provider.generate_with_metrics(system_prompt, request.message, snippets, intent_result.intent)
         except RuntimeError as exc:
@@ -182,6 +188,12 @@ class DialogueAgent:
             semantic_extraction_model=semantic_extraction.get("semantic_extraction_model"),
             semantic_extraction_latency_ms=int(semantic_extraction.get("semantic_extraction_latency_ms") or 0),
             semantic_extraction_parse_error=semantic_extraction.get("parse_error"),
+            knowledge_matched=knowledge_result.matched if intent_result.should_retrieve_knowledge else False,
+            knowledge_game_id=knowledge_result.game_id if intent_result.should_retrieve_knowledge else None,
+            matched_topics=knowledge_result.topics if intent_result.should_retrieve_knowledge else [],
+            snippets_count=len(snippets),
+            snippet_titles=[snippet.title for snippet in snippets],
+            knowledge_used_in_prompt=bool(snippets),
         )
         set_last_chat_metrics(metrics)
         logger.info(

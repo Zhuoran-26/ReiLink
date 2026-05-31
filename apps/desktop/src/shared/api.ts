@@ -129,6 +129,12 @@ export type ChatDebugResponse = {
   semantic_extraction_model: string | null;
   semantic_extraction_latency_ms: number;
   semantic_extraction_parse_error: string | null;
+  knowledge_matched: boolean;
+  knowledge_game_id: string | null;
+  matched_topics: string[];
+  snippets_count: number;
+  snippet_titles: string[];
+  knowledge_used_in_prompt: boolean;
 };
 
 export type GameSessionDebugResponse = {
@@ -173,6 +179,7 @@ export type PromptPreviewResponse = {
   model_route_summary: Record<string, unknown>;
   session_focus_summary: Record<string, unknown>;
   game_state_summary: Record<string, unknown>;
+  knowledge_summary: Record<string, unknown>;
   memory_summary: Record<string, unknown>;
   final_context_summary: Record<string, unknown>;
   warnings: string[];

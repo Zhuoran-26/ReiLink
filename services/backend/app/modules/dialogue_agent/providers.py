@@ -12,8 +12,8 @@ from app.core.config import active_model_preference, active_persona_mode, settin
 from app.core.logging import get_logger
 from app.modules.dialogue_agent.emotion import detect_user_emotion
 from app.modules.dialogue_agent.routing import ModelRoute, select_model_route
-from app.modules.elden_ring_knowledge.knowledge import KnowledgeSnippet
 from app.modules.elden_ring_knowledge.terminology import normalize_terminology
+from app.modules.knowledge.retriever import KnowledgeSnippet
 
 logger = get_logger(__name__)
 
@@ -189,7 +189,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 {
                     "role": "system",
                     "content": (
-                        "以下艾尔登法环资料只作为内部参考。不要逐字照抄，不要输出 markdown 标题。"
+                        "以下游戏知识只作为事实参考。不要逐字照抄，不要输出 markdown 标题。"
                         f"\n{knowledge}"
                     ),
                 }
@@ -368,7 +368,7 @@ def log_provider_state(event: str) -> ProviderInfo:
 
 def _knowledge_context(snippets: list[KnowledgeSnippet]) -> str:
     return "\n".join(
-        f"- {normalize_terminology(item.title)}（{item.kind}）：{normalize_terminology(item.content)}"
+        f"- {normalize_terminology(item.title)}（{item.kind}）：{normalize_terminology(item.content)[:220]}"
         for item in snippets
     )
 

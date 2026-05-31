@@ -148,7 +148,15 @@ def test_debug_chat_returns_last_latency_fields():
         "total_latency_ms",
         "request_started_at",
         "response_latency_ms",
+        "knowledge_matched",
+        "knowledge_game_id",
+        "matched_topics",
+        "snippets_count",
+        "snippet_titles",
+        "knowledge_used_in_prompt",
     } <= data.keys()
+    assert data["knowledge_matched"] is False
+    assert data["snippets_count"] == 0
 
 
 def test_memory_profile_and_episodes_routes():
@@ -249,6 +257,7 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
         "model_route_summary",
         "session_focus_summary",
         "game_state_summary",
+        "knowledge_summary",
         "memory_summary",
         "final_context_summary",
         "warnings",
@@ -266,6 +275,22 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert "api_key" not in serialized
     assert "deepseek_api_key" not in serialized
     assert "authorization" not in serialized
+
+
+def test_prompt_preview_shows_knowledge_summary():
+    session_id = "api-prompt-preview-knowledge"
+    client.post("/api/debug/game-session/reset")
+    client.post("/api/chat", json={"message": "Margit 怎么打", "session_id": session_id})
+
+    response = client.get(f"/api/debug/prompt-preview?session_id={session_id}")
+
+    assert response.status_code == 200
+    knowledge = response.json()["knowledge_summary"]
+    assert knowledge["knowledge_matched"] is True
+    assert knowledge["game_id"] == "elden_ring"
+    assert knowledge["snippets_count"] > 0
+    assert knowledge["snippet_titles"]
+    assert knowledge["knowledge_used_in_prompt"] is True
 
 
 def test_prompt_preview_warns_on_negated_clear_phrase():

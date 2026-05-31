@@ -64,7 +64,13 @@ const chatDebug = {
   semantic_extraction_called: true,
   semantic_extraction_model: "deepseek-v4-flash",
   semantic_extraction_latency_ms: 42,
-  semantic_extraction_parse_error: null
+  semantic_extraction_parse_error: null,
+  knowledge_matched: true,
+  knowledge_game_id: "elden_ring",
+  matched_topics: ["margit", "boss_strategy"],
+  snippets_count: 2,
+  snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
+  knowledge_used_in_prompt: true
 };
 
 const gameSessionDebug = {
@@ -107,7 +113,7 @@ const gameSessionDebug = {
 const promptPreview = {
   persona_mode: "minimal",
   current_user_message: "Margit 怎么打？",
-  prompt_order: ["current_user_message", "current_session_context", "session_focus", "game_state", "memory", "persona"],
+  prompt_order: ["current_user_message", "current_session_context", "session_focus", "game_state", "knowledge", "memory", "persona"],
   model_route_summary: {
     selected_model: "deepseek-v4-flash",
     model_route_mode: "auto",
@@ -129,6 +135,14 @@ const promptPreview = {
     last_attempted_boss: "恶兆妖鬼 Margit",
     last_cleared_boss: null,
     boss_history: gameSessionDebug.boss_history
+  },
+  knowledge_summary: {
+    knowledge_matched: true,
+    game_id: "elden_ring",
+    matched_topics: ["margit", "boss_strategy"],
+    snippets_count: 2,
+    snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
+    knowledge_used_in_prompt: true
   },
   memory_summary: {
     injected: memoryDebug.items,
@@ -757,6 +771,13 @@ describe("App", () => {
     expect(screen.getByText("路由模式")).toBeInTheDocument();
     expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
     expect(screen.getByText("模型耗时")).toBeInTheDocument();
+    expect(screen.getByText("游戏知识")).toBeInTheDocument();
+    expect(screen.getAllByText("知识匹配").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("匹配主题").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("片段数量").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("片段标题").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("已用于 Prompt").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/恶兆妖鬼 Margit：延迟攻击/).length).toBeGreaterThan(0);
     expect(screen.getByText("语义识别")).toBeInTheDocument();
     expect(screen.getByText("是否调用 LLM")).toBeInTheDocument();
     expect(screen.getAllByText(/攻略偏好/).length).toBeGreaterThan(0);
@@ -770,6 +791,9 @@ describe("App", () => {
     expect(screen.getByText("当前用户消息")).toBeInTheDocument();
     expect(screen.getByText("会话焦点")).toBeInTheDocument();
     expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
+    expect(screen.getAllByText("知识匹配").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Boss 攻略").length).toBeGreaterThan(0);
     expect(screen.getByText("记忆摘要")).toBeInTheDocument();
     expect(screen.getByText("注入记忆")).toBeInTheDocument();
     expect(screen.getByText("跳过记忆")).toBeInTheDocument();

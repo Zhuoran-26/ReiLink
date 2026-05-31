@@ -168,6 +168,12 @@ class ChatDebugResponse(BaseModel):
     semantic_extraction_model: str | None = None
     semantic_extraction_latency_ms: int = 0
     semantic_extraction_parse_error: str | None = None
+    knowledge_matched: bool = False
+    knowledge_game_id: str | None = None
+    matched_topics: list[str] = Field(default_factory=list)
+    snippets_count: int = 0
+    snippet_titles: list[str] = Field(default_factory=list)
+    knowledge_used_in_prompt: bool = False
 
 
 class PromptPreviewResponse(BaseModel):
@@ -177,6 +183,7 @@ class PromptPreviewResponse(BaseModel):
     model_route_summary: dict[str, Any] = Field(default_factory=dict)
     session_focus_summary: dict[str, Any] = Field(default_factory=dict)
     game_state_summary: dict[str, Any] = Field(default_factory=dict)
+    knowledge_summary: dict[str, Any] = Field(default_factory=dict)
     memory_summary: dict[str, Any] = Field(default_factory=dict)
     final_context_summary: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
