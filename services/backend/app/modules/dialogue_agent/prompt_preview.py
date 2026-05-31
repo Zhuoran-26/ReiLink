@@ -54,6 +54,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
     session_items = store.recent_context(session_id)
 
     warnings = [
+        *(game_context.warnings or []),
         *memory_warnings,
         *_game_state_warnings(game_debug),
         *_message_warnings(current_user_message),

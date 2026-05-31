@@ -36,6 +36,13 @@ class GameMatchResult:
     knowledge_available: bool = False
 
 
+@dataclass(frozen=True)
+class GameSwitchDetection:
+    game: GameCatalogEntry | None
+    display_name: str | None
+    confidence: float = 0.9
+
+
 class GameCatalog:
     def __init__(self, catalog_path: Path | None = None) -> None:
         self.catalog_path = catalog_path or (settings.knowledge_games_dir / "catalog.json")
@@ -127,6 +134,11 @@ class GameCatalog:
         manual_match = self._match_manual_override(manual_override, games, supported_count)
         if manual_match:
             return manual_match
+        switch_match = self.detect_explicit_game_switch(user_message)
+        if switch_match:
+            if switch_match.game:
+                return _match_result(switch_match.game, "user_switch", switch_match.confidence, supported_count)
+            return _unknown_game_match(switch_match.display_name, "user_switch", supported_count)
         detector_match = self._match_detected_game(detected_game, games, supported_count)
         if detector_match:
             return detector_match
@@ -149,13 +161,22 @@ class GameCatalog:
             return _match_result(alias_match, "alias", 0.85, supported_count)
 
         if current_game_unsupported:
-            return _empty_match(supported_count, "no_game_detected")
+            return _unknown_game_match(current_game_text, "current_game", supported_count)
 
         content_match = self._match_by_content_alias(_content_hint_text(user_message, game_session_state), games)
         if content_match:
             return _match_result(content_match, "alias", 0.72, supported_count)
 
         return _empty_match(supported_count, "no_game_detected")
+
+    def detect_explicit_game_switch(self, user_message: str) -> GameSwitchDetection | None:
+        target = _extract_explicit_switch_target(user_message)
+        if not target:
+            return None
+        game = self._match_by_any_catalog_name(target, self.games())
+        if game:
+            return GameSwitchDetection(game=game, display_name=game.display_name)
+        return GameSwitchDetection(game=None, display_name=target, confidence=0.75)
 
     @staticmethod
     def _match_manual_override(
@@ -288,6 +309,25 @@ def _empty_match(supported_games_count: int, fallback_reason: str) -> GameMatchR
     )
 
 
+def _unknown_game_match(
+    display_name: str | None,
+    source: str,
+    supported_games_count: int,
+) -> GameMatchResult:
+    return GameMatchResult(
+        matched_game_id=None,
+        matched_game_display_name=display_name,
+        match_source=source,
+        confidence=0.0,
+        knowledge_path=None,
+        enabled=False,
+        supported_games_count=supported_games_count,
+        fallback_reason="unknown_game",
+        support_status="unsupported",
+        knowledge_available=False,
+    )
+
+
 def _unsupported_detected_match(
     detected_game: dict[str, Any],
     source: str,
@@ -362,6 +402,40 @@ def _first_text(*values: str | None) -> str | None:
         if value and value.strip():
             return value.strip()
     return None
+
+
+_SWITCH_TARGET_PATTERNS = (
+    re.compile(r"(?:不是|不在|没在|沒有在|没有在)玩[^，,。！？?]+.*?(?:是|改成|换成|換成)(?:在)?玩(?P<game>[^，,。！？?]+)", re.IGNORECASE),
+    re.compile(r"(?:换个游戏|換個遊戲|换游戏|換遊戲|不聊[^，,。！？?]*了).*?(?:我)?(?:现在|現在|目前)?(?:在)?玩(?!过|過)(?P<game>[^，,。！？?]+)", re.IGNORECASE),
+    re.compile(r"(?:我|俺|咱|现在|現在|目前|今天|今晚|这会儿|這會兒).{0,6}玩(?:一个|一個)?叫(?P<game>[^，,。！？?]+?)的游戏", re.IGNORECASE),
+    re.compile(r"(?:我|俺|咱|现在|現在|目前|今天|今晚|这会儿|這會兒).{0,6}(?:在玩|玩(?!过|過)|开了|開了|打开了|打開了|去玩|改玩)(?P<game>[^，,。！？?]+)", re.IGNORECASE),
+)
+
+
+def _extract_explicit_switch_target(text: str) -> str | None:
+    if not text.strip():
+        return None
+    for pattern in _SWITCH_TARGET_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        target = _clean_switch_target(match.group("game"))
+        if target:
+            return target
+    return None
+
+
+def _clean_switch_target(value: str) -> str | None:
+    text = re.sub(r"\s+", "", value).strip("「」『』“”\"' ")
+    if not text:
+        return None
+    text = re.split(r"(?:怎么|怎麼|咋|如何|攻略|打法|吗|嗎|么|嘛|呢|吧)", text, maxsplit=1)[0]
+    text = re.sub(r"(?:这个|這個)?游戏$", "", text)
+    text = re.sub(r"(?:了|啦|啊|呀)$", "", text)
+    text = text.strip("「」『』“”\"' ")
+    if len(text) < 2:
+        return None
+    return text
 
 
 def _value_in_text(text: str | None, value: str | None) -> bool:

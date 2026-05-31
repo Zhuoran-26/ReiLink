@@ -59,7 +59,7 @@ def test_game_catalog_matches_explicit_user_game_alias():
 
     assert match.matched_game_id == "elden_ring"
     assert match.matched_game_display_name == "艾尔登法环"
-    assert match.match_source == "alias"
+    assert match.match_source == "user_switch"
     assert match.knowledge_path == "data/knowledge/games/elden_ring/snippets.json"
     assert match.supported_games_count == 1
 
@@ -211,6 +211,114 @@ def test_planned_game_query_does_not_use_elden_ring_snippets():
     assert result.fallback_reason == "no_supported_knowledge"
 
 
+def test_explicit_user_switch_overrides_session_and_detector_game():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="艾尔登法环",
+        user_message="我在玩空洞骑士，螳螂领主怎么打",
+        current_boss="女武神",
+        game_session_state={"current_game": "艾尔登法环", "current_boss": {"name": "女武神"}},
+        detected_game={
+            "status": "running",
+            "detected_game_id": "elden_ring",
+            "display_name": "艾尔登法环",
+            "process_name": "eldenring.exe",
+            "match_confidence": 1.0,
+            "match_source": "process",
+            "knowledge_game_id": "elden_ring",
+        },
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id == "hollow_knight"
+    assert result.game_display_name == "空洞骑士"
+    assert result.match_source == "user_switch"
+    assert result.active_source == "user_switch"
+    assert result.knowledge_available is False
+    assert result.snippets == []
+    assert result.fallback_reason == "no_supported_knowledge"
+
+
+def test_explicit_user_switch_phrase_with_old_game_uses_new_game():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="艾尔登法环",
+        user_message="先不聊艾尔登法环了，我在玩空洞骑士",
+        current_boss=None,
+        game_session_state={"current_game": "艾尔登法环"},
+        intent="casual_chat",
+    )
+
+    assert result.game_id == "hollow_knight"
+    assert result.game_display_name == "空洞骑士"
+    assert result.match_source == "user_switch"
+    assert result.knowledge_available is False
+
+
+def test_explicit_user_switch_negating_old_game_uses_new_game():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="艾尔登法环",
+        user_message="我现在不是玩艾尔登法环，是在玩只狼",
+        current_boss=None,
+        game_session_state={"current_game": "艾尔登法环"},
+        intent="casual_chat",
+    )
+
+    assert result.game_id == "sekiro"
+    assert result.game_display_name == "只狼"
+    assert result.support_status == "planned"
+    assert result.knowledge_available is False
+    assert result.fallback_reason == "no_supported_knowledge"
+
+
+def test_explicit_user_switch_with_change_game_phrase_matches_catalog_alias():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="艾尔登法环",
+        user_message="换个游戏，我玩赛博朋克",
+        current_boss=None,
+        game_session_state={"current_game": "艾尔登法环"},
+        intent="casual_chat",
+    )
+
+    assert result.game_id == "cyberpunk_2077"
+    assert result.game_display_name == "赛博朋克2077"
+    assert result.support_status == "detected_only"
+    assert result.knowledge_available is False
+
+
+def test_explicit_unknown_game_switch_blocks_old_game_knowledge():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="艾尔登法环",
+        user_message="我在玩星之门遗迹",
+        current_boss="恶兆妖鬼 Margit",
+        game_session_state={"current_game": "艾尔登法环"},
+        intent="elden_ring_boss_strategy",
+    )
+
+    assert result.matched is False
+    assert result.game_id is None
+    assert result.game_display_name == "星之门遗迹"
+    assert result.active_source == "user_switch"
+    assert result.support_status == "unsupported"
+    assert result.knowledge_available is False
+    assert result.snippets == []
+    assert result.fallback_reason == "unknown_game"
+
+
+def test_explicit_unknown_named_game_switch_extracts_display_name():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="艾尔登法环",
+        user_message="我现在玩一个叫星之门遗迹的游戏",
+        current_boss=None,
+        game_session_state={"current_game": "艾尔登法环"},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id is None
+    assert result.game_display_name == "星之门遗迹"
+    assert result.fallback_reason == "unknown_game"
+
+
 def test_generic_retriever_matches_waterfowl_sample():
     result = GameKnowledgeRetriever().retrieve(
         current_game="Elden Ring",
@@ -277,7 +385,8 @@ def test_generic_retriever_falls_back_for_unsupported_game():
 
     assert result.matched is False
     assert result.game_id is None
-    assert result.fallback_reason == "no_game_detected"
+    assert result.game_display_name == "Stardew Valley"
+    assert result.fallback_reason == "unknown_game"
 
 
 def test_unsupported_current_game_does_not_reuse_elden_ring_content_alias():
@@ -292,7 +401,8 @@ def test_unsupported_current_game_does_not_reuse_elden_ring_content_alias():
     assert result.matched is False
     assert result.game_id is None
     assert result.snippets == []
-    assert result.fallback_reason == "no_game_detected"
+    assert result.game_display_name == "Stardew Valley"
+    assert result.fallback_reason == "unknown_game"
 
 
 def test_detected_unsupported_game_blocks_elden_ring_knowledge():

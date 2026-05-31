@@ -53,15 +53,18 @@ class GameCatalogOption(BaseModel):
 class GameContextResponse(BaseModel):
     active_game_id: str | None = None
     active_game_display_name: str | None = None
-    active_source: Literal["manual", "detector", "session", "user_message", "none"] = "none"
+    active_source: Literal["manual", "user_switch", "detector", "session", "user_message", "none"] = "none"
     manual_override: ManualGameOverride = Field(default_factory=ManualGameOverride)
     detected_game: GameDetectionResponse
     session_game: str | None = None
+    previous_game: str | None = None
+    game_switched: bool = False
     user_message_game_id: str | None = None
     user_message_game_display_name: str | None = None
     support_status: SupportStatus | None = None
     knowledge_available: bool = False
     fallback_reason: str | None = None
+    warnings: list[str] = Field(default_factory=list)
     available_games: list[GameCatalogOption] = Field(default_factory=list)
 
 

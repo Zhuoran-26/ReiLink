@@ -64,13 +64,18 @@ def test_game_context_schema():
         "manual_override",
         "detected_game",
         "session_game",
+        "previous_game",
+        "game_switched",
         "support_status",
         "knowledge_available",
         "fallback_reason",
+        "warnings",
         "available_games",
     } <= data.keys()
-    assert data["active_source"] in {"manual", "detector", "session", "user_message", "none"}
+    assert data["active_source"] in {"manual", "user_switch", "detector", "session", "user_message", "none"}
     assert isinstance(data["knowledge_available"], bool)
+    assert isinstance(data["game_switched"], bool)
+    assert isinstance(data["warnings"], list)
     assert any(game["game_id"] == "elden_ring" for game in data["available_games"])
     assert any(game["game_id"] == "hollow_knight" and game["support_status"] == "planned" for game in data["available_games"])
 
@@ -374,7 +379,7 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert {"selected_model", "route_reason"} <= data["model_route_summary"].keys()
     assert data["current_user_message"] == "我现在卡在女武神"
     assert data["game_state_summary"]["current_game"] == "艾尔登法环"
-    assert data["game_context_summary"]["active_source"] in {"manual", "detector", "session", "user_message", "none"}
+    assert data["game_context_summary"]["active_source"] in {"manual", "user_switch", "detector", "session", "user_message", "none"}
     assert {"support_status", "knowledge_available", "fallback_reason"} <= data["game_context_summary"].keys()
     assert data["game_state_summary"]["current_boss"]["name"] == "女武神"
     assert data["game_state_summary"]["freshness"] == "fresh"
@@ -424,11 +429,13 @@ def test_prompt_preview_shows_unsupported_game_fallback():
     knowledge = data["knowledge_summary"]
     assert game_context["active_game_id"] == "hollow_knight"
     assert game_context["active_game_display_name"] == "空洞骑士"
+    assert game_context["active_source"] == "user_switch"
     assert game_context["support_status"] == "planned"
     assert game_context["knowledge_available"] is False
     assert game_context["fallback_reason"] == "no_supported_knowledge"
     assert knowledge["active_game_id"] == "hollow_knight"
     assert knowledge["active_game_display_name"] == "空洞骑士"
+    assert knowledge["active_source"] == "user_switch"
     assert knowledge["support_status"] == "planned"
     assert knowledge["knowledge_available"] is False
     assert knowledge["knowledge_used_in_prompt"] is False

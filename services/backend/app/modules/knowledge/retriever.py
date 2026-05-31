@@ -277,6 +277,8 @@ def _dedupe(items: Any) -> list[str]:
 def _active_source(match_source: str | None) -> str:
     if match_source == "manual":
         return "manual"
+    if match_source == "user_switch":
+        return "user_switch"
     if match_source in {"process", "window_title"}:
         return "detector"
     if match_source == "current_game":

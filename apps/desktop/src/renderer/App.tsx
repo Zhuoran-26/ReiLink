@@ -75,11 +75,14 @@ const emptyGameContext: GameContextResponse = {
   },
   detected_game: emptyGameDetection,
   session_game: null,
+  previous_game: null,
+  game_switched: false,
   user_message_game_id: null,
   user_message_game_display_name: null,
   support_status: null,
   knowledge_available: false,
   fallback_reason: "no_game_detected",
+  warnings: [],
   available_games: []
 };
 
@@ -295,6 +298,7 @@ const labelMap: Record<string, string> = {
   frustration_count: "挫败次数",
   game_state: "游戏状态摘要",
   game_id: "游戏 ID",
+  game_switched: "发生游戏切换",
   idle_for_seconds: "已空闲时间",
   idle_threshold_seconds: "空闲触发阈值",
   initial_grace_remaining_seconds: "初始等待剩余",
@@ -339,6 +343,7 @@ const labelMap: Record<string, string> = {
   parse_error: "解析错误",
   persona: "人格",
   persona_mode: "人格模式",
+  previous_game: "上一个游戏",
   prompt_order: "上下文顺序",
   process_name: "进程名",
   provider_latency_ms: "模型耗时",
@@ -408,6 +413,7 @@ const valueMap: Record<string, string> = {
   late_night: "深夜提醒",
   low: "低",
   manual: "手动选择",
+  user_switch: "用户切换",
   detector: "自动检测",
   session: "对话状态",
   medium: "中",
@@ -418,6 +424,7 @@ const valueMap: Record<string, string> = {
   no_game_detected: "未检测到游戏",
   no_knowledge_match: "没有可用知识命中",
   no_supported_knowledge: "未支持知识库",
+  unknown_game: "未接入知识库",
   none: "无",
   normal: "普通",
   not_connected: "未连接",
@@ -447,6 +454,7 @@ const valueMap: Record<string, string> = {
   alias: "游戏名或内容别名",
   unsupported_game: "暂不支持这个游戏",
   unsupported_detected_game: "检测到的游戏暂未接入知识库",
+  user_message_game_conflicts_with_manual_override: "用户消息疑似切换游戏，但手动选择优先",
   knowledge_disabled: "该游戏知识库已关闭",
   knowledge_file_missing: "知识文件不存在",
   process: "本地进程",
@@ -478,6 +486,7 @@ const debugTime = (value: string | null | undefined): string => {
 
 const knowledgeStatusText = (status: string | null | undefined, available: boolean, fallback?: string | null) => {
   if (available && status === "supported") return "已支持";
+  if (fallback === "unknown_game") return "未接入知识库";
   if (fallback === "knowledge_disabled") return "已禁用";
   if (!status) return "未匹配";
   if (["planned", "detected_only", "unsupported"].includes(status)) return "暂未支持";
@@ -1318,6 +1327,16 @@ export function App() {
                         <dd>{debugText(gameContext.active_source)}</dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("previous_game")}</dt>
+                        <dd>{debugText(gameContext.previous_game)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("game_switched")}</dt>
+                        <dd>
+                          <BooleanBadge value={gameContext.game_switched} />
+                        </dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("manual_override")}</dt>
                         <dd>{debugText(gameContext.manual_override.enabled ? gameContext.manual_override.display_name : null)}</dd>
                       </div>
@@ -1345,6 +1364,12 @@ export function App() {
                         <dt>{formatDebugLabel("fallback_reason")}</dt>
                         <dd className={gameContext.fallback_reason ? "debugError" : ""}>
                           {debugText(gameContext.fallback_reason)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>提示</dt>
+                        <dd className={gameContext.warnings.length ? "debugError" : ""}>
+                          {debugText(gameContext.warnings)}
                         </dd>
                       </div>
                     </dl>
@@ -1774,6 +1799,14 @@ export function App() {
                           String(promptGameContext.fallback_reason || "")
                         )}
                       </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("previous_game")}</dt>
+                      <dd>{debugText(promptGameContext.previous_game)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("game_switched")}</dt>
+                      <dd>{debugText(promptGameContext.game_switched)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("game_state")}</dt>

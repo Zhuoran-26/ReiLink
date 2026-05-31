@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.modules.app_settings.store import AppSettingsStore
 from app.modules.game_detector.detector import LocalGameDetector, sync_game_session_from_detection
 from app.modules.game_session.state import GameSessionStore
-from app.modules.knowledge.catalog import GameCatalog, GameCatalogEntry
+from app.modules.knowledge.catalog import GameCatalog, GameCatalogEntry, GameSwitchDetection
 from app.schemas.api import (
     GameCatalogOption,
     GameContextResponse,
@@ -113,12 +113,24 @@ class GameContextResolver:
         manual_override = self.store.load_manual_override()
         session_state = self.game_session.load()
         available_games = self.available_games()
+        user_switch = self.catalog.detect_explicit_game_switch(user_message or "")
         user_message_match = self._user_message_match(user_message or "")
 
         if manual_override.enabled and manual_override.game_id:
-            response = self._manual_context(manual_override, detection, session_state.current_game, user_message_match)
+            response = self._manual_context(manual_override, detection, session_state.current_game, user_message_match, user_switch)
             if sync_session:
                 sync_game_session_from_manual_override(manual_override, game_session=self.game_session)
+            return response
+
+        if user_switch:
+            response = self._user_switch_context(user_switch, detection, session_state.current_game, manual_override, available_games)
+            if sync_session:
+                sync_game_session_from_user_switch(
+                    response.active_game_display_name,
+                    previous_game=session_state.current_game,
+                    game_session=self.game_session,
+                    timestamp=resolved_at,
+                )
             return response
 
         detected_response = self._detected_context(detection, session_state.current_game, user_message_match, app_settings.auto_game_detection)
@@ -141,6 +153,7 @@ class GameContextResolver:
                 manual_override=manual_override,
                 detected_game=detection,
                 session_game=session_state.current_game,
+                previous_game=session_state.current_game,
                 user_message_game_id=user_message_match.game_id,
                 user_message_game_display_name=user_message_match.display_name,
                 support_status=user_message_match.support_status,
@@ -156,6 +169,7 @@ class GameContextResolver:
             manual_override=manual_override,
             detected_game=detection,
             session_game=session_state.current_game,
+            previous_game=session_state.current_game,
             user_message_game_id=None,
             user_message_game_display_name=None,
             support_status=None,
@@ -170,9 +184,19 @@ class GameContextResolver:
         detection: GameDetectionResponse,
         session_game: str | None,
         user_message_match: GameCatalogEntry | None,
+        user_switch: GameSwitchDetection | None,
     ) -> GameContextResponse:
         game = self.catalog.get_game(manual_override.game_id)
         knowledge_available = self.catalog.is_knowledge_available(game)
+        manual_display_name = manual_override.display_name or (game.display_name if game else None)
+        switch_game = user_switch.game if user_switch else None
+        user_message_game_id = switch_game.game_id if switch_game else user_message_match.game_id if user_message_match else None
+        user_message_game_display_name = (
+            user_switch.display_name if user_switch else user_message_match.display_name if user_message_match else None
+        )
+        warnings = []
+        if user_switch and _is_different_game(manual_display_name, user_switch.display_name):
+            warnings.append("user_message_game_conflicts_with_manual_override")
         return GameContextResponse(
             active_game_id=game.game_id if game else manual_override.game_id,
             active_game_display_name=(game.display_name if game else manual_override.display_name),
@@ -180,12 +204,43 @@ class GameContextResolver:
             manual_override=manual_override,
             detected_game=detection,
             session_game=session_game,
-            user_message_game_id=user_message_match.game_id if user_message_match else None,
-            user_message_game_display_name=user_message_match.display_name if user_message_match else None,
+            previous_game=session_game,
+            user_message_game_id=user_message_game_id,
+            user_message_game_display_name=user_message_game_display_name,
             support_status=game.support_status if game else "unsupported",
             knowledge_available=knowledge_available,
             fallback_reason=None if knowledge_available else "no_supported_knowledge",
+            warnings=warnings,
             available_games=self.available_games(),
+        )
+
+    def _user_switch_context(
+        self,
+        user_switch: GameSwitchDetection,
+        detection: GameDetectionResponse,
+        session_game: str | None,
+        manual_override: ManualGameOverride,
+        available_games: list[GameCatalogOption],
+    ) -> GameContextResponse:
+        game = user_switch.game
+        knowledge_available = self.catalog.is_knowledge_available(game)
+        display_name = game.display_name if game else user_switch.display_name
+        fallback_reason = None if knowledge_available else "no_supported_knowledge" if game else "unknown_game"
+        return GameContextResponse(
+            active_game_id=game.game_id if game else None,
+            active_game_display_name=display_name,
+            active_source="user_switch",
+            manual_override=manual_override,
+            detected_game=detection,
+            session_game=session_game,
+            previous_game=session_game,
+            game_switched=_is_different_game(session_game, display_name),
+            user_message_game_id=game.game_id if game else None,
+            user_message_game_display_name=display_name,
+            support_status=game.support_status if game else "unsupported",
+            knowledge_available=knowledge_available,
+            fallback_reason=fallback_reason,
+            available_games=available_games,
         )
 
     def _detected_context(
@@ -206,6 +261,7 @@ class GameContextResolver:
                 manual_override=self.store.load_manual_override(),
                 detected_game=detection,
                 session_game=session_game,
+                previous_game=session_game,
                 user_message_game_id=user_message_match.game_id if user_message_match else None,
                 user_message_game_display_name=user_message_match.display_name if user_message_match else None,
                 support_status=game.support_status,
@@ -220,6 +276,7 @@ class GameContextResolver:
                 manual_override=self.store.load_manual_override(),
                 detected_game=detection,
                 session_game=session_game,
+                previous_game=session_game,
                 user_message_game_id=user_message_match.game_id if user_message_match else None,
                 user_message_game_display_name=user_message_match.display_name if user_message_match else None,
                 support_status=game.support_status,
@@ -233,6 +290,7 @@ class GameContextResolver:
             manual_override=self.store.load_manual_override(),
             detected_game=detection,
             session_game=session_game,
+            previous_game=session_game,
             user_message_game_id=user_message_match.game_id if user_message_match else None,
             user_message_game_display_name=user_message_match.display_name if user_message_match else None,
             support_status="unsupported",
@@ -258,6 +316,7 @@ class GameContextResolver:
                 manual_override=self.store.load_manual_override(),
                 detected_game=detection,
                 session_game=session_game,
+                previous_game=session_game,
                 user_message_game_id=user_message_match.game_id if user_message_match else None,
                 user_message_game_display_name=user_message_match.display_name if user_message_match else None,
                 support_status=match.support_status,
@@ -271,6 +330,7 @@ class GameContextResolver:
             manual_override=self.store.load_manual_override(),
             detected_game=detection,
             session_game=session_game,
+            previous_game=session_game,
             user_message_game_id=user_message_match.game_id if user_message_match else None,
             user_message_game_display_name=user_message_match.display_name if user_message_match else None,
             support_status="unsupported",
@@ -299,6 +359,39 @@ def sync_game_session_from_manual_override(
     state.last_updated_at = (manual_override.set_at or datetime.now(timezone.utc)).isoformat()
     store.save(state)
     return True
+
+
+def sync_game_session_from_user_switch(
+    display_name: str | None,
+    *,
+    previous_game: str | None,
+    game_session: GameSessionStore | None = None,
+    timestamp: datetime | None = None,
+) -> bool:
+    if not display_name:
+        return False
+    store = game_session or GameSessionStore()
+    state = store.load()
+    now = timestamp or datetime.now(timezone.utc)
+    changed = _is_different_game(previous_game or state.current_game, display_name)
+    state.current_game = display_name
+    state.last_updated_at = now.isoformat()
+    if changed:
+        state.current_boss = None
+        state.last_boss = None
+        state.last_attempted_boss = None
+        state.last_failed_boss = None
+        state.last_cleared_boss = None
+        state.current_activity = "game_switch"
+        state.recent_game_topics = [display_name]
+    store.save(state)
+    return changed
+
+
+def _is_different_game(previous_game: str | None, next_game: str | None) -> bool:
+    if not previous_game or not next_game:
+        return bool(next_game)
+    return previous_game.strip().casefold() != next_game.strip().casefold()
 
 
 def game_status_from_context(context: GameContextResponse) -> GameStatus:

@@ -45,15 +45,18 @@ export type GameCatalogOption = {
 export type GameContextResponse = {
   active_game_id: string | null;
   active_game_display_name: string | null;
-  active_source: "manual" | "detector" | "session" | "user_message" | "none";
+  active_source: "manual" | "user_switch" | "detector" | "session" | "user_message" | "none";
   manual_override: ManualGameOverride;
   detected_game: GameDetectionResponse;
   session_game: string | null;
+  previous_game: string | null;
+  game_switched: boolean;
   user_message_game_id: string | null;
   user_message_game_display_name: string | null;
   support_status: "supported" | "detected_only" | "planned" | "unsupported" | null;
   knowledge_available: boolean;
   fallback_reason: string | null;
+  warnings: string[];
   available_games: GameCatalogOption[];
 };
 

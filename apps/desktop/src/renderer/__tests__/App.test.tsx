@@ -61,11 +61,14 @@ const gameContext: GameContextResponse = {
   },
   detected_game: gameDetection,
   session_game: "Elden Ring",
+  previous_game: null,
+  game_switched: false,
   user_message_game_id: null,
   user_message_game_display_name: null,
   support_status: "supported",
   knowledge_available: true,
   fallback_reason: null,
+  warnings: [],
   available_games: [
     {
       game_id: "elden_ring",
@@ -104,12 +107,47 @@ const unsupportedGameContext: GameContextResponse = {
   ...gameContext,
   active_game_id: "hollow_knight",
   active_game_display_name: "空洞骑士",
-  active_source: "user_message",
+  active_source: "user_switch",
+  previous_game: "艾尔登法环",
+  game_switched: true,
   user_message_game_id: "hollow_knight",
   user_message_game_display_name: "空洞骑士",
   support_status: "planned",
   knowledge_available: false,
   fallback_reason: "no_supported_knowledge"
+};
+
+const unknownGameContext: GameContextResponse = {
+  ...gameContext,
+  active_game_id: null,
+  active_game_display_name: "星之门遗迹",
+  active_source: "user_switch",
+  previous_game: "艾尔登法环",
+  game_switched: true,
+  user_message_game_id: null,
+  user_message_game_display_name: "星之门遗迹",
+  support_status: "unsupported",
+  knowledge_available: false,
+  fallback_reason: "unknown_game"
+};
+
+const manualConflictGameContext: GameContextResponse = {
+  ...gameContext,
+  active_game_id: "elden_ring",
+  active_game_display_name: "艾尔登法环",
+  active_source: "manual",
+  previous_game: "艾尔登法环",
+  game_switched: false,
+  manual_override: {
+    enabled: true,
+    game_id: "elden_ring",
+    display_name: "艾尔登法环",
+    set_at: new Date().toISOString(),
+    source: "user"
+  },
+  user_message_game_id: "hollow_knight",
+  user_message_game_display_name: "空洞骑士",
+  warnings: ["user_message_game_conflicts_with_manual_override"]
 };
 
 const memoryProfile = {
@@ -192,13 +230,23 @@ const unsupportedChatDebug = {
   knowledge_confidence: 0,
   active_game_id: "hollow_knight",
   active_game_display_name: "空洞骑士",
-  active_source: "user_message",
+  active_source: "user_switch",
   support_status: "planned",
   knowledge_available: false,
   matched_topics: [],
   snippets_count: 0,
   snippet_titles: [],
   knowledge_used_in_prompt: false
+};
+
+const unknownChatDebug = {
+  ...unsupportedChatDebug,
+  knowledge_game_id: null,
+  knowledge_game_display_name: "星之门遗迹",
+  knowledge_fallback_reason: "unknown_game",
+  active_game_id: null,
+  active_game_display_name: "星之门遗迹",
+  support_status: "unsupported"
 };
 
 const gameSessionDebug = {
@@ -302,7 +350,7 @@ const unsupportedPromptPreview = {
     game_id: "hollow_knight",
     active_game_id: "hollow_knight",
     active_game_display_name: "空洞骑士",
-    active_source: "user_message",
+    active_source: "user_switch",
     support_status: "planned",
     knowledge_available: false,
     matched_game_id: "hollow_knight",
@@ -315,6 +363,21 @@ const unsupportedPromptPreview = {
     knowledge_used_in_prompt: false,
     confidence: 0,
     fallback_reason: "no_supported_knowledge"
+  }
+};
+
+const unknownPromptPreview = {
+  ...unsupportedPromptPreview,
+  game_context_summary: unknownGameContext,
+  knowledge_summary: {
+    ...unsupportedPromptPreview.knowledge_summary,
+    game_id: null,
+    active_game_id: null,
+    active_game_display_name: "星之门遗迹",
+    matched_game_id: null,
+    matched_game_display_name: "星之门遗迹",
+    support_status: "unsupported",
+    fallback_reason: "unknown_game"
   }
 };
 
@@ -987,6 +1050,8 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("语义识别")).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "游戏上下文" })).toBeInTheDocument();
     expect(screen.getAllByText("当前来源").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("上一个游戏").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("发生游戏切换").length).toBeGreaterThan(0);
     expect(screen.getAllByText("手动选择").length).toBeGreaterThan(0);
     expect(screen.getAllByText("自动检测结果").length).toBeGreaterThan(0);
     expect(screen.getByText("对话识别结果")).toBeInTheDocument();
@@ -1138,7 +1203,91 @@ describe("App", () => {
     expect(screen.getByText("该游戏暂未接入本地知识库，Rei 会先根据通用模型回答。")).toBeInTheDocument();
     expect(screen.getAllByText("仅使用模型回答").length).toBeGreaterThan(0);
     expect(screen.getAllByText("未支持知识库").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("用户切换").length).toBeGreaterThan(0);
     expect(screen.queryByText(/恶兆妖鬼 Margit：延迟攻击/)).not.toBeInTheDocument();
+  });
+
+  it("shows manual override conflict warning from game context", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return debugAction;
+        const pendingResponse = pendingMemoryResponse(url, init);
+        if (pendingResponse) return pendingResponse;
+        const settings = settingsResponse(url, init);
+        if (settings) return settings;
+        if (url.endsWith("/api/game/context")) return Response.json(manualConflictGameContext);
+        if (url.endsWith("/api/game/context/manual") && init?.method === "POST") {
+          return Response.json(manualConflictGameContext);
+        }
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return proactive;
+        if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
+        if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
+        if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
+        if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
+        if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+        if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
+        if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
+        if (url.includes("/api/debug/prompt-preview")) {
+          return Response.json({
+            ...promptPreview,
+            game_context_summary: manualConflictGameContext,
+            warnings: ["user_message_game_conflicts_with_manual_override"]
+          });
+        }
+        if (url.endsWith("/api/chat") && init?.method === "POST") return Response.json(chatResponse);
+        return new Response("missing", { status: 404 });
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getAllByText("用户消息疑似切换游戏，但手动选择优先").length).toBeGreaterThan(0)
+    );
+    expect(screen.getAllByText("手动选择").length).toBeGreaterThan(0);
+  });
+
+  it("shows unknown switched game as not connected to knowledge", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const debugAction = debugActionResponse(url, init);
+        if (debugAction) return debugAction;
+        const pendingResponse = pendingMemoryResponse(url, init);
+        if (pendingResponse) return pendingResponse;
+        const settings = settingsResponse(url, init);
+        if (settings) return settings;
+        if (url.endsWith("/api/game/context")) return Response.json(unknownGameContext);
+        if (url.endsWith("/api/game/context/manual") && init?.method === "POST") {
+          return Response.json(unknownGameContext);
+        }
+        const proactive = proactiveResponse(url, init);
+        if (proactive) return proactive;
+        if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: null, game_name: "星之门遗迹" });
+        if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
+        if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
+        if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
+        if (url.endsWith("/api/debug/chat")) return Response.json(unknownChatDebug);
+        if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
+        if (url.endsWith("/api/debug/game-session")) return Response.json({ ...gameSessionDebug, current_game: "星之门遗迹" });
+        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
+        if (url.includes("/api/debug/prompt-preview")) return Response.json(unknownPromptPreview);
+        if (url.endsWith("/api/chat") && init?.method === "POST") return Response.json(chatResponse);
+        return new Response("missing", { status: 404 });
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText("星之门遗迹").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("未接入知识库").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("仅使用模型回答").length).toBeGreaterThan(0);
   });
 
   it("falls back to game session debug data and shows empty warnings as none", async () => {

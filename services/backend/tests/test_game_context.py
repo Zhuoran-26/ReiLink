@@ -127,6 +127,100 @@ def test_detected_planned_game_is_not_unknown(tmp_path):
     assert context.fallback_reason == "no_supported_knowledge"
 
 
+def test_explicit_user_switch_overrides_session_game_and_clears_old_boss(tmp_path):
+    resolver = _resolver(tmp_path, process_names=[])
+    state = resolver.game_session.load()
+    state.current_game = "艾尔登法环"
+    state.current_boss = CurrentBoss(
+        name="女武神",
+        updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat(),
+        confidence=0.95,
+        source="test",
+    )
+    state.last_attempted_boss = "女武神"
+    resolver.game_session.save(state)
+
+    context = resolver.resolve(user_message="我在玩空洞骑士，螳螂领主怎么打", sync_session=True)
+    updated = resolver.game_session.load()
+
+    assert context.active_game_id == "hollow_knight"
+    assert context.active_game_display_name == "空洞骑士"
+    assert context.active_source == "user_switch"
+    assert context.previous_game == "艾尔登法环"
+    assert context.game_switched is True
+    assert context.support_status == "planned"
+    assert context.knowledge_available is False
+    assert context.fallback_reason == "no_supported_knowledge"
+    assert updated.current_game == "空洞骑士"
+    assert updated.current_boss is None
+    assert updated.last_attempted_boss is None
+    assert PendingMemoryQueue().list() == []
+
+
+def test_explicit_user_switch_with_negated_old_game_uses_new_game(tmp_path):
+    resolver = _resolver(tmp_path, process_names=[])
+    state = resolver.game_session.load()
+    state.current_game = "艾尔登法环"
+    resolver.game_session.save(state)
+
+    context = resolver.resolve(user_message="我现在不是玩艾尔登法环，是在玩只狼", sync_session=True)
+
+    assert context.active_game_id == "sekiro"
+    assert context.active_game_display_name == "只狼"
+    assert context.active_source == "user_switch"
+    assert context.support_status == "planned"
+    assert context.knowledge_available is False
+    assert context.fallback_reason == "no_supported_knowledge"
+    assert resolver.game_session.load().current_game == "只狼"
+
+
+def test_explicit_unknown_game_switch_overrides_old_session_game(tmp_path):
+    resolver = _resolver(tmp_path, process_names=[])
+    state = resolver.game_session.load()
+    state.current_game = "艾尔登法环"
+    resolver.game_session.save(state)
+
+    context = resolver.resolve(user_message="我在玩星之门遗迹", sync_session=True)
+
+    assert context.active_game_id is None
+    assert context.active_game_display_name == "星之门遗迹"
+    assert context.active_source == "user_switch"
+    assert context.support_status == "unsupported"
+    assert context.knowledge_available is False
+    assert context.fallback_reason == "unknown_game"
+    assert resolver.game_session.load().current_game == "星之门遗迹"
+
+
+def test_manual_override_blocks_explicit_user_switch_and_reports_warning(tmp_path):
+    resolver = _resolver(tmp_path, process_names=[])
+
+    resolver.set_manual_override("elden_ring", now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    context = resolver.resolve(user_message="我在玩空洞骑士")
+
+    assert context.active_game_id == "elden_ring"
+    assert context.active_game_display_name == "艾尔登法环"
+    assert context.active_source == "manual"
+    assert context.user_message_game_id == "hollow_knight"
+    assert context.user_message_game_display_name == "空洞骑士"
+    assert context.warnings == ["user_message_game_conflicts_with_manual_override"]
+
+
+def test_weak_user_message_mention_does_not_override_session_game(tmp_path):
+    resolver = _resolver(tmp_path, process_names=[])
+    state = resolver.game_session.load()
+    state.current_game = "艾尔登法环"
+    resolver.game_session.save(state)
+
+    context = resolver.resolve(user_message="空洞骑士也挺好玩")
+
+    assert context.active_game_id == "elden_ring"
+    assert context.active_game_display_name == "艾尔登法环"
+    assert context.active_source == "session"
+    assert context.user_message_game_id == "hollow_knight"
+    assert context.user_message_game_display_name == "空洞骑士"
+    assert context.game_switched is False
+
+
 def test_manual_override_does_not_set_or_clear_current_boss(tmp_path):
     resolver = _resolver(tmp_path, process_names=[])
     state = resolver.game_session.load()

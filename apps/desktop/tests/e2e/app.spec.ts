@@ -98,11 +98,14 @@ test("mock backend chat flow works", async ({ page }) => {
           detected_at: new Date().toISOString()
         },
         session_game: "Elden Ring",
+        previous_game: null,
+        game_switched: false,
         user_message_game_id: null,
         user_message_game_display_name: null,
         support_status: "supported",
         knowledge_available: true,
         fallback_reason: null,
+        warnings: [],
         available_games: [
           {
             game_id: "elden_ring",
@@ -150,11 +153,14 @@ test("mock backend chat flow works", async ({ page }) => {
           detected_at: new Date().toISOString()
         },
         session_game: "Elden Ring",
+        previous_game: null,
+        game_switched: false,
         user_message_game_id: null,
         user_message_game_display_name: null,
         support_status: "supported",
         knowledge_available: true,
         fallback_reason: null,
+        warnings: [],
         available_games: [
           {
             game_id: "elden_ring",
