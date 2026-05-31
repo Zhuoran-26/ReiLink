@@ -16,7 +16,7 @@ import {
   Sparkles,
   X
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   api,
@@ -283,6 +283,7 @@ const defaultAppSettings: AppSettings = {
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 const PROACTIVE_CHECK_INTERVAL_MS = 30000;
+const AUTO_SCROLL_THRESHOLD_PX = 120;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -693,6 +694,34 @@ export function App() {
   const [lastRawError, setLastRawError] = useState("");
   const [lastInterimPlaceholderShown, setLastInterimPlaceholderShown] = useState(false);
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const forceNextScrollRef = useRef(true);
+
+  const isMessagesNearBottom = useCallback(() => {
+    const element = messagesRef.current;
+    if (!element) return true;
+    return element.scrollHeight - element.scrollTop - element.clientHeight <= AUTO_SCROLL_THRESHOLD_PX;
+  }, []);
+
+  const queueMessageAutoScroll = useCallback((force = false) => {
+    if (force) {
+      forceNextScrollRef.current = true;
+      shouldAutoScrollRef.current = true;
+      return;
+    }
+    shouldAutoScrollRef.current = isMessagesNearBottom();
+  }, [isMessagesNearBottom]);
+
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const element = messagesRef.current;
+    if (!element) return;
+    element.scrollTo({ top: element.scrollHeight, behavior });
+  }, []);
+
+  const handleMessagesScroll = useCallback(() => {
+    shouldAutoScrollRef.current = isMessagesNearBottom();
+  }, [isMessagesNearBottom]);
 
   const refreshStatus = async () => {
     try {
@@ -764,6 +793,7 @@ export function App() {
   };
 
   const completeOnboarding = async () => {
+    queueMessageAutoScroll(true);
     setOnboardingDismissedThisSession(true);
     setOnboardingReopened(false);
     setDemoDocHintOpen(false);
@@ -792,6 +822,7 @@ export function App() {
     try {
       const response = await api.checkProactive("default", Boolean(input.trim()), backendStatus === "connected");
       if (response.should_send && response.message) {
+        queueMessageAutoScroll();
         setMessages((current) => [
           ...current,
           {
@@ -809,7 +840,7 @@ export function App() {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "主动陪伴检查失败"));
     }
-  }, [appSettings.proactive_companion, backendStatus, input, sending]);
+  }, [appSettings.proactive_companion, backendStatus, input, queueMessageAutoScroll, sending]);
 
   useEffect(() => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on") return undefined;
@@ -828,12 +859,14 @@ export function App() {
     setLastInterimPlaceholderShown(false);
     setLastError("");
     setLastRawError("");
+    queueMessageAutoScroll(true);
     setMessages((current) => [...current, userMessage]);
     setInput("");
     setSending(true);
     const placeholderTimer = window.setTimeout(() => {
       placeholderShown = true;
       setLastInterimPlaceholderShown(true);
+      queueMessageAutoScroll();
       setMessages((current) => [
         ...current,
         { id: placeholderId, role: "assistant", text: pickPlaceholder(), createdAt: new Date().toISOString(), pending: true }
@@ -843,12 +876,14 @@ export function App() {
       const response = await api.chat(trimmed);
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
+      queueMessageAutoScroll();
       setMessages((current) => current.filter((message) => message.id !== placeholderId));
       const segments = response.reply_segments.length > 0 ? response.reply_segments : [response.reply];
       for (const [index, segment] of segments.entries()) {
         if (index > 0) {
           await sleep(nextSegmentDelay());
         }
+        queueMessageAutoScroll();
         setMessages((current) => [
           ...current,
           { id: crypto.randomUUID(), role: "assistant", text: segment, createdAt: new Date().toISOString(), pending: false }
@@ -862,6 +897,7 @@ export function App() {
       const reply = productErrorText(error, "模型服务返回错误，请检查配置");
       setLastRawError(errorRawText(error));
       setLastError(reply);
+      queueMessageAutoScroll();
       setMessages((current) => [
         ...current.filter((message) => message.id !== placeholderId),
         { id: crypto.randomUUID(), role: "assistant", text: reply, createdAt: new Date().toISOString(), pending: false }
@@ -972,6 +1008,14 @@ export function App() {
   const onboardingApiKeyText = setupStatus.api_key_loaded
     ? "当前 DeepSeek API Key 已加载。"
     : "当前 API Key 未配置，请先完成模型配置。";
+
+  useEffect(() => {
+    if (forceNextScrollRef.current || shouldAutoScrollRef.current) {
+      scrollMessagesToBottom();
+      forceNextScrollRef.current = false;
+    }
+  }, [messages, onboardingVisible, scrollMessagesToBottom]);
+
   const openSettingsPanel = () => {
     const panel = document.getElementById("settings-panel");
     if (typeof panel?.scrollIntoView === "function") {
@@ -1070,7 +1114,7 @@ export function App() {
             <div className="timelineMarker">今天</div>
 
           <section className="chatPanel" aria-label="聊天面板">
-            <div className="messages">
+            <div className="messages" role="log" aria-label="聊天消息列表" ref={messagesRef} onScroll={handleMessagesScroll}>
               {setupNeedsAttention && (
                 <section className="setupNotice" role="status" aria-label="模型配置提示">
                   <div className="setupNoticeHeader">

@@ -637,6 +637,17 @@ const appSettings: AppSettings = {
 let appSettingsStore = { ...appSettings };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
+let scrollToMock: ReturnType<typeof vi.fn>;
+
+const setChatScroll = (
+  element: HTMLElement,
+  values: { scrollHeight: number; clientHeight: number; scrollTop: number }
+) => {
+  Object.defineProperty(element, "scrollHeight", { configurable: true, value: values.scrollHeight });
+  Object.defineProperty(element, "clientHeight", { configurable: true, value: values.clientHeight });
+  Object.defineProperty(element, "scrollTop", { configurable: true, writable: true, value: values.scrollTop });
+  fireEvent.scroll(element);
+};
 
 const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
@@ -747,6 +758,17 @@ describe("App", () => {
   beforeEach(() => {
     let uuid = 0;
     resetSettingsResponse();
+    scrollToMock = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      const top = typeof options === "number" ? options : options?.top;
+      if (typeof top === "number") {
+        Object.defineProperty(this, "scrollTop", { configurable: true, writable: true, value: top });
+      }
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      writable: true,
+      value: scrollToMock
+    });
     vi.stubGlobal("crypto", { randomUUID: () => `test-id-${uuid++}` });
     vi.stubGlobal(
       "fetch",
@@ -1050,6 +1072,103 @@ describe("App", () => {
       expect.stringContaining("/api/chat"),
       expect.objectContaining({ method: "POST" })
     );
+  });
+
+  it("forces chat scroll to bottom when the user sends a message", async () => {
+    render(<App />);
+    const messageLog = await screen.findByRole("log", { name: "聊天消息列表" });
+    setChatScroll(messageLog, { scrollHeight: 1400, clientHeight: 400, scrollTop: 120 });
+    scrollToMock.mockClear();
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    await waitFor(() => expect(scrollToMock).toHaveBeenCalled());
+    expect(scrollToMock).toHaveBeenCalledWith(expect.objectContaining({ top: 1400, behavior: "smooth" }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    expect(screen.getByLabelText("聊天输入")).not.toBeDisabled();
+  });
+
+  it("does not force scroll when a proactive message arrives while reading history", async () => {
+    vi.useFakeTimers();
+    appSettingsStore = { ...appSettings, proactive_companion: "on" };
+    proactiveStatusStore = {
+      ...proactiveStatus,
+      enabled: true,
+      active_candidate_triggers: ["repeated_death"]
+    };
+    proactiveCheckStore = {
+      should_send: true,
+      trigger_type: "repeated_death",
+      message: "你开始急了。",
+      reason: "death_delta=2",
+      cooldown_remaining_seconds: 0,
+      idle_for_seconds: 120,
+      idle_threshold_seconds: 600,
+      initial_grace_remaining_seconds: 0,
+      next_possible_trigger_at: null,
+      enabled_at: new Date().toISOString(),
+      last_user_activity_at: new Date().toISOString(),
+      requires_user_activity_after_proactive: false,
+      block_reason: "eligible",
+      active_candidate_triggers: ["repeated_death"]
+    };
+
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const messageLog = screen.getByRole("log", { name: "聊天消息列表" });
+    setChatScroll(messageLog, { scrollHeight: 1400, clientHeight: 400, scrollTop: 200 });
+    scrollToMock.mockClear();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+
+    expect(screen.getByText("你开始急了。")).toBeInTheDocument();
+    expect(scrollToMock).not.toHaveBeenCalled();
+  });
+
+  it("scrolls to bottom when a proactive message arrives near the bottom", async () => {
+    vi.useFakeTimers();
+    appSettingsStore = { ...appSettings, proactive_companion: "on" };
+    proactiveStatusStore = {
+      ...proactiveStatus,
+      enabled: true,
+      active_candidate_triggers: ["repeated_death"]
+    };
+    proactiveCheckStore = {
+      should_send: true,
+      trigger_type: "repeated_death",
+      message: "你开始急了。",
+      reason: "death_delta=2",
+      cooldown_remaining_seconds: 0,
+      idle_for_seconds: 120,
+      idle_threshold_seconds: 600,
+      initial_grace_remaining_seconds: 0,
+      next_possible_trigger_at: null,
+      enabled_at: new Date().toISOString(),
+      last_user_activity_at: new Date().toISOString(),
+      requires_user_activity_after_proactive: false,
+      block_reason: "eligible",
+      active_candidate_triggers: ["repeated_death"]
+    };
+
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const messageLog = screen.getByRole("log", { name: "聊天消息列表" });
+    setChatScroll(messageLog, { scrollHeight: 1400, clientHeight: 400, scrollTop: 920 });
+    scrollToMock.mockClear();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+
+    expect(screen.getByText("你开始急了。")).toBeInTheDocument();
+    expect(scrollToMock).toHaveBeenCalledWith(expect.objectContaining({ top: 1400, behavior: "smooth" }));
   });
 
   it("shows localized model errors without raw exception text in chat", async () => {
