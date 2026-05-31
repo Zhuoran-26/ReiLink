@@ -454,7 +454,7 @@ export function App() {
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [debugOpen, setDebugOpen] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(true);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [lastError, setLastError] = useState("");
   const [lastInterimPlaceholderShown, setLastInterimPlaceholderShown] = useState(false);
@@ -492,6 +492,8 @@ export function App() {
       if (patch.debug_panel === "hide") {
         setDebugOpen(false);
         setPromptPreviewOpen(false);
+      } else if (patch.debug_panel === "show") {
+        setDebugOpen(true);
       }
       await refreshStatus();
     } catch (error) {

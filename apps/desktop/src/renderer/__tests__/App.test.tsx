@@ -384,7 +384,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "游戏状态" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /调试面板/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Prompt 预览/i })).toBeInTheDocument();
-    expect(screen.queryByText("语义识别")).not.toBeInTheDocument();
+    expect(screen.getByText("语义识别")).toBeInTheDocument();
   });
 
   it("shows running game status", async () => {
@@ -455,6 +455,20 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.queryByRole("button", { name: /调试面板/i })).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /Prompt 预览/i })).not.toBeInTheDocument();
+  });
+
+  it("shows and expands debug panel when settings switch from hidden to visible", async () => {
+    appSettingsStore = { ...appSettingsStore, debug_panel: "hide" };
+    render(<App />);
+
+    await screen.findByRole("combobox", { name: "调试面板" });
+    expect(screen.queryByRole("button", { name: /调试面板/i })).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "调试面板" }), "show");
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /调试面板/i })).toHaveAttribute("aria-expanded", "true"));
+    expect(screen.getByText("语义识别")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Prompt 预览/i })).toBeInTheDocument();
   });
 
   it("sends chat and renders user plus assistant messages", async () => {
@@ -721,9 +735,7 @@ describe("App", () => {
     expect(screen.getByText("状态新鲜度")).toBeInTheDocument();
     expect(screen.getByText("最近挑战")).toBeInTheDocument();
     expect(screen.getByText("最近通过")).toBeInTheDocument();
-    expect(screen.queryByText("语义识别")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /调试面板/i }));
     await waitFor(() => expect(screen.getByText("语义识别")).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "主动陪伴" })).toBeInTheDocument();
     expect(screen.getAllByText("是否开启").length).toBeGreaterThan(0);
@@ -859,7 +871,7 @@ describe("App", () => {
 
   it("calls debug reset and clear endpoints", async () => {
     render(<App />);
-    await userEvent.click(await screen.findByRole("button", { name: /调试面板/i }));
+    await screen.findByRole("button", { name: /调试面板/i });
 
     await userEvent.click(await screen.findByRole("button", { name: "重置游戏状态" }));
     await waitFor(() =>

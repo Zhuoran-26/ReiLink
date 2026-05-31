@@ -492,15 +492,37 @@ button {
 
 .infoRail {
   min-width: 0;
+  height: calc(100vh - 152px);
   max-height: calc(100vh - 152px);
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   overflow: auto;
   padding-right: 2px;
 }
 
+#settings-panel {
+  order: 1;
+}
+
+#debug-panel {
+  order: 2;
+}
+
+#prompt-preview-panel {
+  order: 3;
+}
+
+#pending-memory-panel {
+  order: 4;
+}
+
+#game-session-panel {
+  order: 5;
+}
+
 .infoCard {
+  flex: 0 0 auto;
   border: 1px solid rgba(145, 164, 213, 0.15);
   border-radius: 17px;
   padding: 16px;
@@ -780,6 +802,7 @@ button {
   }
 
   .infoRail {
+    height: auto;
     max-height: none;
   }
 
