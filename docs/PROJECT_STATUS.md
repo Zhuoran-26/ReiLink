@@ -6,7 +6,9 @@ Updated: 2026-06-01
 
 ### 当前阶段
 
-ReiLink 处于 MVP v0.1 收口阶段。当前重点不再是新增大功能，而是保证本地演示稳定、项目能力讲得清楚、文档和调试面板能支撑 GitHub / portfolio / interview 展示。
+ReiLink 已完成 MVP v0.1，并已发布 pre-release tag。当前 `dev/codex-reilink` 正在进行 v0.2 productization（产品化补齐）阶段。
+
+v0.2 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示和 release readiness 更清晰、更稳定，方便 GitHub / portfolio / interview 展示。
 
 产品方向：
 
@@ -25,7 +27,7 @@ dev/codex-reilink
 
 `PROJECT_STATUS.md` 不维护实时 latest commit hash。需要确认最新提交、稳定基线或发布点时，以 `git log --oneline`、release tag 和当前 git history 为准。
 
-本文件只记录阶段性状态：MVP 文档收口开始时，知识包 manifest、Elden Ring / Hollow Knight sample packs、多游戏目录、手动游戏上下文和本地检测能力已经完成并通过对应任务验证。
+本文件只记录阶段性状态：MVP v0.1 已完成并发布 pre-release tag；当前开发继续在 `dev/codex-reilink` 上推进 v0.2 productization。
 
 ### 已完成主要能力
 
@@ -48,6 +50,15 @@ dev/codex-reilink
 - Prompt Preview。
 - Debug Dashboard。
 - UI polish。
+- First Run / Provider Setup。
+- Dev Startup / Health Check。
+- Public Readiness / Release Polish。
+
+### 后续重点
+
+- Public readiness final check。
+- Screenshots / demo assets。
+- Optional public release。
 
 ### 当前数据范围
 
@@ -86,7 +97,9 @@ Updated: 2026-06-01
 
 ### Current Stage
 
-ReiLink is in the MVP v0.1 wrap-up stage. The current focus is no longer adding major product features, but making the local demo stable, the project easy to explain, and the documentation / debug surfaces strong enough for GitHub, portfolio, and interview presentation.
+ReiLink has completed MVP v0.1 and has been released with a pre-release tag. The current `dev/codex-reilink` branch is now in the v0.2 productization stage.
+
+The v0.2 focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, and release readiness clearer and more stable for GitHub, portfolio, and interview presentation.
 
 Product direction:
 
@@ -105,7 +118,7 @@ dev/codex-reilink
 
 `PROJECT_STATUS.md` does not maintain a real-time latest commit hash. To confirm the latest commit, stable baseline, or release point, use `git log --oneline`, release tags, and the current git history.
 
-This file records stage-level status only: when MVP documentation wrap-up began, knowledge pack manifests, Elden Ring / Hollow Knight sample packs, the multi-game catalog, manual game context, and local detection had already been completed and verified by their respective tasks.
+This file records stage-level status only: MVP v0.1 has been completed and released with a pre-release tag; active development continues on `dev/codex-reilink` for v0.2 productization.
 
 ### Completed Major Capabilities
 
@@ -128,6 +141,15 @@ This file records stage-level status only: when MVP documentation wrap-up began,
 - Prompt Preview.
 - Debug Dashboard.
 - UI polish.
+- First Run / Provider Setup.
+- Dev Startup / Health Check.
+- Public Readiness / Release Polish.
+
+### Upcoming Focus
+
+- Public readiness final check.
+- Screenshots / demo assets.
+- Optional public release.
 
 ### Current Data Scope
 

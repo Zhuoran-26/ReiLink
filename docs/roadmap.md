@@ -2,9 +2,11 @@
 
 ## 中文
 
-### 当前阶段：MVP v0.1 收口
+### 当前阶段：v0.2 产品化补齐
 
-当前重点是稳定本地演示、完善文档、整理人工评估用例，并确保 ReiLink 的核心能力可以被清楚展示：
+MVP v0.1 已完成并发布 pre-release tag。当前 `dev/codex-reilink` 正在进行 v0.2 productization，重点是让本地启动、首次配置、公开展示和 release readiness 更清晰。
+
+MVP v0.1 已完成的核心能力：
 
 - 中文 AI companion chat。
 - Game Session State。
@@ -16,7 +18,19 @@
 - Elden Ring 与 Hollow Knight sample knowledge packs。
 - Debug Dashboard 与 Prompt Preview。
 
-### 下一阶段候选方向
+v0.2 已完成的产品化补齐：
+
+- First Run / Provider Setup。
+- Dev Startup / Health Check。
+- Public Readiness / Release Polish。
+
+### 下一阶段重点
+
+- Public readiness final check。
+- Screenshots / demo assets。
+- Optional public release。
+
+### 后续候选方向
 
 - RAG / vector search：让知识检索从样例 snippets 扩展为更强的检索层。
 - Steam library integration：识别用户本地游戏库，但不涉及 Steam 登录前应先明确隐私边界。
@@ -35,9 +49,11 @@
 
 ## English
 
-### Current Stage: MVP v0.1 Wrap-up
+### Current Stage: v0.2 Productization
 
-The current focus is stabilizing the local demo, improving documentation, preparing manual evaluation cases, and making ReiLink's core capabilities easy to present:
+MVP v0.1 has been completed and released with a pre-release tag. The current `dev/codex-reilink` branch is in v0.2 productization, focused on making local startup, first-run setup, public presentation, and release readiness clearer.
+
+Core capabilities completed in MVP v0.1:
 
 - Chinese AI companion chat.
 - Game Session State.
@@ -49,7 +65,19 @@ The current focus is stabilizing the local demo, improving documentation, prepar
 - Elden Ring and Hollow Knight sample knowledge packs.
 - Debug Dashboard and Prompt Preview.
 
-### Candidate Next Steps
+Productization work completed in v0.2:
+
+- First Run / Provider Setup.
+- Dev Startup / Health Check.
+- Public Readiness / Release Polish.
+
+### Next Focus
+
+- Public readiness final check.
+- Screenshots / demo assets.
+- Optional public release.
+
+### Candidate Future Directions
 
 - RAG / vector search: evolve beyond sample snippets into a stronger retrieval layer.
 - Steam library integration: detect the user's local game library, with clear privacy boundaries before any Steam login work.
