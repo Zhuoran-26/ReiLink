@@ -35,6 +35,8 @@ await rm(resourcesApp, { recursive: true, force: true });
 await mkdir(resourcesApp, { recursive: true });
 await cp(rendererDist, path.join(resourcesApp, "dist"), { recursive: true });
 await cp(electronDist, path.join(resourcesApp, "dist-electron"), { recursive: true });
+await preparePackagedRendererIndex(path.join(resourcesApp, "dist", "index.html"));
+await validateRendererIndex(path.join(resourcesApp, "dist", "index.html"));
 
 const sourcePackage = JSON.parse(await readFile(path.join(desktopRoot, "package.json"), "utf8"));
 const packagedPackage = {
@@ -78,4 +80,26 @@ function setPlistString(plistText, key, value) {
     return plistText.replace("</dict>", `\t<key>${key}</key>\n\t<string>${value}</string>\n</dict>`);
   }
   return plistText.replace(pattern, `$1${value}$3`);
+}
+
+async function validateRendererIndex(indexPath) {
+  await requirePath(indexPath, "Packaged renderer index.html is missing.");
+  const html = await readFile(indexPath, "utf8");
+  if (!html.includes("./assets/")) {
+    console.error("Packaged renderer assets must use relative ./assets/ paths for file:// loading.");
+    process.exit(1);
+  }
+  if (/src="\/assets\//.test(html) || /href="\/assets\//.test(html)) {
+    console.error("Packaged renderer index.html still contains absolute /assets/ paths.");
+    process.exit(1);
+  }
+  if (/\s+crossorigin(?:=(?:"[^"]*"|'[^']*'))?/.test(html)) {
+    console.error("Packaged renderer index.html still contains crossorigin attributes.");
+    process.exit(1);
+  }
+}
+
+async function preparePackagedRendererIndex(indexPath) {
+  const html = await readFile(indexPath, "utf8");
+  await writeFile(indexPath, html.replace(/\s+crossorigin(?:=(?:"[^"]*"|'[^']*'))?/g, ""), "utf8");
 }

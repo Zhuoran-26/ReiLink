@@ -1,9 +1,47 @@
-import { app, BrowserWindow } from "electron";
-import { fileURLToPath } from "node:url";
+import { app, BrowserWindow, net, protocol } from "electron";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const APP_PROTOCOL = "app";
+const isDevRenderer = () => Boolean(process.env.VITE_DEV_SERVER_URL);
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: APP_PROTOCOL,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true
+    }
+  }
+]);
+
+process.on("uncaughtException", (error) => {
+  console.error("[ReiLink] uncaught exception", error);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[ReiLink] unhandled rejection", reason);
+});
+
+const registerPackagedRendererProtocol = () => {
+  if (isDevRenderer()) return;
+  const rendererRoot = path.resolve(__dirname, "../dist");
+  protocol.handle(APP_PROTOCOL, (request) => {
+    const requestUrl = new URL(request.url);
+    const requestedPath = decodeURIComponent(requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname);
+    const filePath = path.normalize(path.join(rendererRoot, requestedPath));
+    const relativePath = path.relative(rendererRoot, filePath);
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+      console.error("[ReiLink] blocked packaged renderer path", request.url);
+      return new Response("Not found", { status: 404 });
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+};
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -11,21 +49,36 @@ const createWindow = () => {
     height: 780,
     minWidth: 900,
     minHeight: 640,
-    backgroundColor: "#111318",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js")
-    }
+    backgroundColor: "#111318"
+  });
+
+  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+    console.error("[ReiLink] renderer failed to load", {
+      errorCode,
+      errorDescription,
+      validatedURL
+    });
+  });
+
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.error("[ReiLink] renderer process gone", details);
   });
 
   const devUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:5173";
-  if (!app.isPackaged) {
+  if (isDevRenderer()) {
+    console.log("[ReiLink] loading dev renderer", devUrl);
     win.loadURL(devUrl);
   } else {
-    win.loadFile(path.join(__dirname, "../dist/index.html"));
+    const rendererUrl = `${APP_PROTOCOL}://./index.html`;
+    console.log("[ReiLink] loading packaged renderer", rendererUrl);
+    win.loadURL(rendererUrl);
   }
 };
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  registerPackagedRendererProtocol();
+  createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -34,4 +87,3 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
-
