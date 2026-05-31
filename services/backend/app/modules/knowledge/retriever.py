@@ -188,6 +188,7 @@ class GameKnowledgeRetriever:
 
     @staticmethod
     def _score_entry(entry: dict[str, Any], terms: set[str], intent: str, game_id: str) -> int:
+        specific_terms = {term for term in terms if not _is_generic_strategy_term(term)}
         searchable = " ".join(
             str(part)
             for part in (
@@ -200,12 +201,12 @@ class GameKnowledgeRetriever:
             )
         ).lower()
         aliases = [str(item).lower() for item in entry.get("aliases") or []]
-        score = sum(1 for term in terms if term.lower() in searchable)
+        score = sum(1 for term in specific_terms if term.lower() in searchable)
         score += sum(5 for alias in aliases if alias and alias in " ".join(terms).lower())
         intent_tags = {str(item) for item in entry.get("intent_tags") or []}
-        if intent in intent_tags:
+        if score > 0 and intent in intent_tags:
             score += 3
-        if intent.startswith(f"{game_id}_") and any(str(topic).startswith("boss") for topic in entry.get("topics") or []):
+        if score > 0 and intent.startswith(f"{game_id}_") and any(str(topic).startswith("boss") for topic in entry.get("topics") or []):
             score += 1
         return score
 
@@ -316,3 +317,17 @@ def _should_include_session_terms(user_message: str, intent: str) -> bool:
         "boss",
     )
     return any(signal in compact for signal in signals)
+
+
+def _is_generic_strategy_term(term: str) -> bool:
+    return term.lower() in {
+        "strategy",
+        "boss_strategy",
+        "打法",
+        "怎么打",
+        "怎麼打",
+        "打不过",
+        "打不過",
+        "怎么躲",
+        "怎麼躲",
+    }

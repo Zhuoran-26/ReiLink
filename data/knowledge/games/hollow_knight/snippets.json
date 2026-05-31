@@ -1,0 +1,65 @@
+[
+  {
+    "id": "mantis_lords_rhythm",
+    "title": "螳螂领主：节奏观察",
+    "kind": "boss_strategy",
+    "topics": ["hollow_knight", "螳螂领主", "boss_strategy"],
+    "aliases": ["螳螂领主", "Mantis Lords", "螳螂"],
+    "intent_tags": ["hollow_knight_boss_strategy", "hollow_knight_general_help"],
+    "summary": "螳螂领主的威胁主要来自连续冲刺和下劈。先站在中间看落点，少追击，等横冲或落地后的短停顿再补一刀。"
+  },
+  {
+    "id": "false_knight_openings",
+    "title": "假骑士：安全窗口",
+    "kind": "boss_strategy",
+    "topics": ["hollow_knight", "假骑士", "boss_strategy"],
+    "aliases": ["假骑士", "False Knight"],
+    "intent_tags": ["hollow_knight_boss_strategy"],
+    "summary": "假骑士动作前摇明显。优先躲开跳砸和冲击波，等锤子砸地后的硬直靠近输出；血量低时也不要贪连续攻击。"
+  },
+  {
+    "id": "hornet_spacing",
+    "title": "大黄蜂：保持距离",
+    "kind": "boss_strategy",
+    "topics": ["hollow_knight", "大黄蜂", "boss_strategy"],
+    "aliases": ["大黄蜂", "Hornet"],
+    "intent_tags": ["hollow_knight_boss_strategy"],
+    "summary": "大黄蜂会快速突刺、跳跃和投针。保持能反应的距离，看到她落地或收招后再近身，回血通常要等她拉开距离或收招。"
+  },
+  {
+    "id": "soul_master_patience",
+    "title": "灵魂大师：耐心追击",
+    "kind": "boss_strategy",
+    "topics": ["hollow_knight", "灵魂大师", "boss_strategy"],
+    "aliases": ["灵魂大师", "Soul Master"],
+    "intent_tags": ["hollow_knight_boss_strategy"],
+    "summary": "灵魂大师会频繁传送。不要一直追着空挥，先躲过下砸和飞行法球，等他出现在低位或连招结束时再打。"
+  },
+  {
+    "id": "early_exploration_map",
+    "title": "新手探索：先找地图",
+    "kind": "exploration",
+    "topics": ["hollow_knight", "地图", "探索"],
+    "aliases": ["地图", "制图师", "Cornifer", "探索"],
+    "intent_tags": ["hollow_knight_general_help"],
+    "summary": "进入新区域后优先听纸张声找制图师，买地图后再配合羽毛笔补全路线。迷路时先回长椅整理方向。"
+  },
+  {
+    "id": "charms_early_survival",
+    "title": "护符：先保证容错",
+    "kind": "build",
+    "topics": ["hollow_knight", "护符", "survival"],
+    "aliases": ["护符", "搭配", "护符槽", "Charm"],
+    "intent_tags": ["hollow_knight_general_help"],
+    "summary": "早期护符搭配可以优先考虑生存和稳定输出。觉得手短就带增加攻击距离的护符，容易掉血就保留更安全的回血节奏。"
+  },
+  {
+    "id": "movement_heal_pacing",
+    "title": "移动与回血：别急着蓄力",
+    "kind": "general",
+    "topics": ["hollow_knight", "回血", "移动"],
+    "aliases": ["回血", "冲刺", "跳跃", "移动", "Focus"],
+    "intent_tags": ["hollow_knight_general_help", "hollow_knight_boss_strategy"],
+    "summary": "回血需要完整蓄力，不能把每个空档都当安全窗口。先确认敌人收招或距离足够，再决定回血、跳跃还是冲刺拉开。"
+  }
+]

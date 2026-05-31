@@ -77,7 +77,12 @@ def test_game_context_schema():
     assert isinstance(data["game_switched"], bool)
     assert isinstance(data["warnings"], list)
     assert any(game["game_id"] == "elden_ring" for game in data["available_games"])
-    assert any(game["game_id"] == "hollow_knight" and game["support_status"] == "planned" for game in data["available_games"])
+    assert any(
+        game["game_id"] == "hollow_knight"
+        and game["support_status"] == "supported"
+        and game["knowledge_available"] is True
+        for game in data["available_games"]
+    )
 
 
 def test_manual_game_context_api_sets_and_clears_override():
@@ -98,12 +103,12 @@ def test_manual_game_context_api_sets_and_clears_override():
 
 
 def test_manual_game_context_api_allows_planned_game_without_knowledge():
-    selected = client.post("/api/game/context/manual", json={"game_id": "hollow_knight"})
+    selected = client.post("/api/game/context/manual", json={"game_id": "sekiro"})
 
     assert selected.status_code == 200
     data = selected.json()
-    assert data["active_game_id"] == "hollow_knight"
-    assert data["active_game_display_name"] == "空洞骑士"
+    assert data["active_game_id"] == "sekiro"
+    assert data["active_game_display_name"] == "只狼"
     assert data["active_source"] == "manual"
     assert data["support_status"] == "planned"
     assert data["knowledge_available"] is False
@@ -409,15 +414,15 @@ def test_prompt_preview_shows_knowledge_summary():
     assert knowledge["knowledge_available"] is True
     assert knowledge["match_source"] in {"alias", "current_game", "user_message"}
     assert knowledge["knowledge_path"] == "data/knowledge/games/elden_ring/snippets.json"
-    assert knowledge["supported_games_count"] == 1
+    assert knowledge["supported_games_count"] == 2
     assert knowledge["snippets_count"] > 0
     assert knowledge["snippet_titles"]
     assert knowledge["knowledge_used_in_prompt"] is True
     assert knowledge["fallback_reason"] is None
 
 
-def test_prompt_preview_shows_unsupported_game_fallback():
-    session_id = "api-prompt-preview-unsupported-game"
+def test_prompt_preview_shows_hollow_knight_knowledge_summary():
+    session_id = "api-prompt-preview-hollow-knight"
     client.post("/api/debug/game-session/reset")
     client.post("/api/chat", json={"message": "我在玩空洞骑士，螳螂领主怎么打？", "session_id": session_id})
 
@@ -430,17 +435,19 @@ def test_prompt_preview_shows_unsupported_game_fallback():
     assert game_context["active_game_id"] == "hollow_knight"
     assert game_context["active_game_display_name"] == "空洞骑士"
     assert game_context["active_source"] == "user_switch"
-    assert game_context["support_status"] == "planned"
-    assert game_context["knowledge_available"] is False
-    assert game_context["fallback_reason"] == "no_supported_knowledge"
+    assert game_context["support_status"] == "supported"
+    assert game_context["knowledge_available"] is True
+    assert game_context["fallback_reason"] is None
     assert knowledge["active_game_id"] == "hollow_knight"
     assert knowledge["active_game_display_name"] == "空洞骑士"
     assert knowledge["active_source"] == "user_switch"
-    assert knowledge["support_status"] == "planned"
-    assert knowledge["knowledge_available"] is False
-    assert knowledge["knowledge_used_in_prompt"] is False
-    assert knowledge["snippets_count"] == 0
-    assert knowledge["fallback_reason"] == "no_supported_knowledge"
+    assert knowledge["support_status"] == "supported"
+    assert knowledge["knowledge_available"] is True
+    assert knowledge["knowledge_used_in_prompt"] is True
+    assert knowledge["snippets_count"] > 0
+    assert any("螳螂领主" in title for title in knowledge["snippet_titles"])
+    assert "螳螂领主" in knowledge["matched_topics"]
+    assert knowledge["fallback_reason"] is None
 
 
 def test_prompt_preview_warns_on_negated_clear_phrase():

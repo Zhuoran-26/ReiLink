@@ -28,6 +28,13 @@ def _registry(tmp_path, payload=None):
                     "process_names": ["hollow_knight.exe", "Hollow Knight"],
                     "steam_app_id": "367520",
                     "knowledge_game_id": "hollow_knight",
+                },
+                "sekiro": {
+                    "display_name": "只狼",
+                    "aliases": ["Sekiro", "只狼"],
+                    "process_names": ["sekiro.exe", "Sekiro"],
+                    "steam_app_id": "814380",
+                    "knowledge_game_id": "sekiro",
                 }
             },
             ensure_ascii=False,
@@ -66,11 +73,11 @@ def test_manual_override_selects_elden_ring(tmp_path):
 def test_manual_override_can_select_planned_game_without_knowledge(tmp_path):
     resolver = _resolver(tmp_path, process_names=[])
 
-    resolver.set_manual_override("hollow_knight", now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    resolver.set_manual_override("sekiro", now=datetime(2026, 1, 1, tzinfo=timezone.utc))
     context = resolver.resolve()
 
-    assert context.active_game_id == "hollow_knight"
-    assert context.active_game_display_name == "空洞骑士"
+    assert context.active_game_id == "sekiro"
+    assert context.active_game_display_name == "只狼"
     assert context.active_source == "manual"
     assert context.support_status == "planned"
     assert context.knowledge_available is False
@@ -115,12 +122,12 @@ def test_clearing_manual_override_returns_to_detected_game(tmp_path):
 
 
 def test_detected_planned_game_is_not_unknown(tmp_path):
-    resolver = _resolver(tmp_path, process_names=["hollow_knight.exe"])
+    resolver = _resolver(tmp_path, process_names=["sekiro.exe"])
 
     context = resolver.resolve()
 
-    assert context.active_game_id == "hollow_knight"
-    assert context.active_game_display_name == "空洞骑士"
+    assert context.active_game_id == "sekiro"
+    assert context.active_game_display_name == "只狼"
     assert context.active_source == "detector"
     assert context.support_status == "planned"
     assert context.knowledge_available is False
@@ -148,9 +155,9 @@ def test_explicit_user_switch_overrides_session_game_and_clears_old_boss(tmp_pat
     assert context.active_source == "user_switch"
     assert context.previous_game == "艾尔登法环"
     assert context.game_switched is True
-    assert context.support_status == "planned"
-    assert context.knowledge_available is False
-    assert context.fallback_reason == "no_supported_knowledge"
+    assert context.support_status == "supported"
+    assert context.knowledge_available is True
+    assert context.fallback_reason is None
     assert updated.current_game == "空洞骑士"
     assert updated.current_boss is None
     assert updated.last_attempted_boss is None

@@ -120,10 +120,10 @@ test("mock backend chat flow works", async ({ page }) => {
             game_id: "hollow_knight",
             display_name: "空洞骑士",
             enabled: true,
-            knowledge_available: false,
-            support_status: "planned",
+            knowledge_available: true,
+            support_status: "supported",
             knowledge_game_id: "hollow_knight",
-            knowledge_path: null
+            knowledge_path: "data/knowledge/games/hollow_knight/snippets.json"
           }
         ]
       }
@@ -175,10 +175,10 @@ test("mock backend chat flow works", async ({ page }) => {
             game_id: "hollow_knight",
             display_name: "空洞骑士",
             enabled: true,
-            knowledge_available: false,
-            support_status: "planned",
+            knowledge_available: true,
+            support_status: "supported",
             knowledge_game_id: "hollow_knight",
-            knowledge_path: null
+            knowledge_path: "data/knowledge/games/hollow_knight/snippets.json"
           }
         ]
       }
@@ -244,7 +244,7 @@ test("mock backend chat flow works", async ({ page }) => {
         knowledge_game_display_name: "艾尔登法环",
         knowledge_match_source: "current_game",
         knowledge_path: "data/knowledge/games/elden_ring/snippets.json",
-        knowledge_supported_games_count: 1,
+        knowledge_supported_games_count: 2,
         knowledge_fallback_reason: null,
         knowledge_confidence: 0.83,
         active_game_id: "elden_ring",

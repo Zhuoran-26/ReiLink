@@ -15,9 +15,9 @@
       "display_name": "空洞骑士",
       "aliases": ["Hollow Knight", "空洞骑士", "空洞騎士", "空洞"],
       "knowledge_game_id": "hollow_knight",
-      "knowledge_path": "",
-      "knowledge_available": false,
-      "support_status": "planned",
+      "knowledge_path": "data/knowledge/games/hollow_knight/snippets.json",
+      "knowledge_available": true,
+      "support_status": "supported",
       "enabled": true
     },
     {

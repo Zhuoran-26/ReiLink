@@ -47,7 +47,7 @@ def test_generic_retriever_matches_margit_for_current_game():
     assert result.snippets[0].source_id
     assert result.snippets[0].source.endswith("data/knowledge/games/elden_ring/snippets.json")
     assert result.knowledge_path == "data/knowledge/games/elden_ring/snippets.json"
-    assert result.supported_games_count == 1
+    assert result.supported_games_count == 2
 
 
 def test_game_catalog_matches_explicit_user_game_alias():
@@ -61,7 +61,7 @@ def test_game_catalog_matches_explicit_user_game_alias():
     assert match.matched_game_display_name == "艾尔登法环"
     assert match.match_source == "user_switch"
     assert match.knowledge_path == "data/knowledge/games/elden_ring/snippets.json"
-    assert match.supported_games_count == 1
+    assert match.supported_games_count == 2
 
 
 def test_game_catalog_reports_supported_status_for_elden_ring():
@@ -73,7 +73,18 @@ def test_game_catalog_reports_supported_status_for_elden_ring():
     assert GameCatalog().is_knowledge_available(game) is True
 
 
-def test_game_catalog_recognizes_planned_game_without_knowledge():
+def test_game_catalog_loads_hollow_knight_as_supported():
+    game = GameCatalog().get_game("hollow_knight")
+
+    assert game is not None
+    assert game.display_name == "空洞骑士"
+    assert game.support_status == "supported"
+    assert game.knowledge_available is True
+    assert game.knowledge_path == "data/knowledge/games/hollow_knight/snippets.json"
+    assert GameCatalog().is_knowledge_available(game) is True
+
+
+def test_game_catalog_matches_hollow_knight_chinese_alias():
     match = GameCatalog().match_game(
         current_game=None,
         user_message="我在玩空洞骑士，螳螂领主怎么打",
@@ -82,6 +93,33 @@ def test_game_catalog_recognizes_planned_game_without_knowledge():
 
     assert match.matched_game_id == "hollow_knight"
     assert match.matched_game_display_name == "空洞骑士"
+    assert match.support_status == "supported"
+    assert match.knowledge_available is True
+    assert match.knowledge_path == "data/knowledge/games/hollow_knight/snippets.json"
+
+
+def test_game_catalog_matches_hollow_knight_english_alias():
+    match = GameCatalog().match_game(
+        current_game=None,
+        user_message="我在玩 Hollow Knight",
+        game_session_state={},
+    )
+
+    assert match.matched_game_id == "hollow_knight"
+    assert match.matched_game_display_name == "空洞骑士"
+    assert match.support_status == "supported"
+    assert match.knowledge_available is True
+
+
+def test_game_catalog_recognizes_planned_game_without_knowledge():
+    match = GameCatalog().match_game(
+        current_game=None,
+        user_message="我在玩只狼，弦一郎怎么打",
+        game_session_state={},
+    )
+
+    assert match.matched_game_id == "sekiro"
+    assert match.matched_game_display_name == "只狼"
     assert match.support_status == "planned"
     assert match.knowledge_available is False
     assert match.fallback_reason == "no_supported_knowledge"
@@ -171,6 +209,30 @@ def test_manual_override_takes_priority_over_detected_game():
     assert result.knowledge_available is True
 
 
+def test_manual_override_hollow_knight_uses_hollow_knight_snippets():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="艾尔登法环",
+        user_message="螳螂领主怎么打",
+        current_boss=None,
+        game_session_state={"current_game": "艾尔登法环"},
+        manual_override={
+            "enabled": True,
+            "game_id": "hollow_knight",
+            "display_name": "空洞骑士",
+            "source": "user",
+        },
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert result.game_id == "hollow_knight"
+    assert result.game_display_name == "空洞骑士"
+    assert result.match_source == "manual"
+    assert result.knowledge_available is True
+    assert any("螳螂领主" in snippet.title for snippet in result.snippets)
+    assert all("hollow_knight" in snippet.source for snippet in result.snippets)
+
+
 def test_manual_override_unknown_game_does_not_reuse_elden_ring():
     result = GameKnowledgeRetriever().retrieve(
         current_game="Elden Ring",
@@ -193,7 +255,7 @@ def test_manual_override_unknown_game_does_not_reuse_elden_ring():
     assert result.knowledge_available is False
 
 
-def test_planned_game_query_does_not_use_elden_ring_snippets():
+def test_hollow_knight_query_uses_hollow_knight_snippets():
     result = GameKnowledgeRetriever().retrieve(
         current_game=None,
         user_message="我在玩空洞骑士，螳螂领主怎么打",
@@ -202,9 +264,101 @@ def test_planned_game_query_does_not_use_elden_ring_snippets():
         intent="casual_chat",
     )
 
-    assert result.matched is False
     assert result.game_id == "hollow_knight"
     assert result.game_display_name == "空洞骑士"
+    assert result.matched is True
+    assert result.support_status == "supported"
+    assert result.knowledge_available is True
+    assert result.knowledge_path == "data/knowledge/games/hollow_knight/snippets.json"
+    assert result.snippets
+    assert any("螳螂领主" in snippet.title for snippet in result.snippets)
+    assert all("hollow_knight" in snippet.source for snippet in result.snippets)
+    assert result.fallback_reason is None
+
+
+def test_hollow_knight_content_alias_matches_without_game_name():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=None,
+        user_message="螳螂领主怎么打",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert result.game_id == "hollow_knight"
+    assert result.game_display_name == "空洞骑士"
+    assert result.match_source == "alias"
+    assert any("螳螂领主" in snippet.title for snippet in result.snippets)
+    assert all("hollow_knight" in snippet.source for snippet in result.snippets)
+
+
+def test_hollow_knight_current_game_does_not_match_unrelated_boss():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="空洞骑士",
+        user_message="大树守卫怎么打",
+        current_boss=None,
+        game_session_state={"current_game": "空洞骑士"},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id == "hollow_knight"
+    assert result.knowledge_available is True
+    assert result.snippets == []
+    assert result.fallback_reason == "no_knowledge_match"
+
+
+def test_manual_override_elden_ring_does_not_use_hollow_knight_snippets():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="空洞骑士",
+        user_message="螳螂领主怎么打",
+        current_boss=None,
+        game_session_state={"current_game": "空洞骑士"},
+        manual_override={
+            "enabled": True,
+            "game_id": "elden_ring",
+            "display_name": "艾尔登法环",
+            "source": "user",
+        },
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id == "elden_ring"
+    assert result.game_display_name == "艾尔登法环"
+    assert result.snippets == []
+    assert result.fallback_reason == "no_knowledge_match"
+
+
+def test_hollow_knight_retriever_returns_at_most_three_snippets():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="空洞骑士",
+        user_message="螳螂领主 大黄蜂 假骑士 灵魂大师 地图 护符 回血",
+        current_boss=None,
+        game_session_state={"current_game": "空洞骑士"},
+        intent="hollow_knight_general_help",
+        limit=10,
+    )
+
+    assert result.matched is True
+    assert result.game_id == "hollow_knight"
+    assert len(result.snippets) <= 3
+    assert all("hollow_knight" in snippet.source for snippet in result.snippets)
+
+
+def test_planned_game_query_does_not_use_elden_ring_snippets():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=None,
+        user_message="我在玩只狼，弦一郎怎么打",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id == "sekiro"
+    assert result.game_display_name == "只狼"
     assert result.support_status == "planned"
     assert result.knowledge_available is False
     assert result.snippets == []
@@ -229,14 +383,15 @@ def test_explicit_user_switch_overrides_session_and_detector_game():
         intent="casual_chat",
     )
 
-    assert result.matched is False
+    assert result.matched is True
     assert result.game_id == "hollow_knight"
     assert result.game_display_name == "空洞骑士"
     assert result.match_source == "user_switch"
     assert result.active_source == "user_switch"
-    assert result.knowledge_available is False
-    assert result.snippets == []
-    assert result.fallback_reason == "no_supported_knowledge"
+    assert result.knowledge_available is True
+    assert any("螳螂领主" in snippet.title for snippet in result.snippets)
+    assert all("hollow_knight" in snippet.source for snippet in result.snippets)
+    assert result.fallback_reason is None
 
 
 def test_explicit_user_switch_phrase_with_old_game_uses_new_game():
@@ -251,7 +406,8 @@ def test_explicit_user_switch_phrase_with_old_game_uses_new_game():
     assert result.game_id == "hollow_knight"
     assert result.game_display_name == "空洞骑士"
     assert result.match_source == "user_switch"
-    assert result.knowledge_available is False
+    assert result.knowledge_available is True
+    assert result.fallback_reason == "no_knowledge_match"
 
 
 def test_explicit_user_switch_negating_old_game_uses_new_game():
