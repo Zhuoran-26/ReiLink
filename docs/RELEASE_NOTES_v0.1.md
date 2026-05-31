@@ -6,6 +6,8 @@
 
 ReiLink v0.1 是 MVP / pre-release。它用于公开展示、作品集说明和本地演示，不是完整商业发布版本。
 
+当前公开展示材料已补齐：LICENSE、README 截图区、release notes 与 public readiness checklist。仓库 visibility 仍需发布前手动决定。
+
 ### MVP 功能
 
 - FastAPI backend 与 Electron / React desktop shell。
@@ -85,6 +87,8 @@ curl http://127.0.0.1:8000/api/setup/status
 ### Status
 
 ReiLink v0.1 is an MVP / pre-release. It is intended for public presentation, portfolio review, and local demos, not as a full commercial release.
+
+The public showcase materials are now prepared: LICENSE, README screenshots, release notes, and the public readiness checklist. Repository visibility still needs to be decided manually before release.
 
 ### MVP Features
 
