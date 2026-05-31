@@ -47,6 +47,7 @@ class Settings:
     proactive_companion: str = os.getenv("PROACTIVE_COMPANION", "off").lower().strip() or "off"
     proactive_sensitivity: str = os.getenv("PROACTIVE_SENSITIVITY", "low").lower().strip() or "low"
     proactive_idle_seconds: float = float(os.getenv("PROACTIVE_IDLE_SECONDS", "600"))
+    proactive_initial_grace_seconds: float = float(os.getenv("PROACTIVE_INITIAL_GRACE_SECONDS", "0"))
     proactive_type_cooldown_seconds: float = float(os.getenv("PROACTIVE_TYPE_COOLDOWN_SECONDS", "600"))
     proactive_global_cooldown_seconds: float = float(os.getenv("PROACTIVE_GLOBAL_COOLDOWN_SECONDS", "300"))
     proactive_user_grace_seconds: float = float(os.getenv("PROACTIVE_USER_GRACE_SECONDS", "30"))

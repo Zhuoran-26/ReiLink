@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App, INTERIM_PLACEHOLDERS } from "../App";
+import type { ProactiveCheckResponse, ProactiveStatusResponse } from "../../shared/api";
 
 const runningStatus = {
   game_id: "elden_ring",
@@ -181,9 +182,14 @@ const providerDebug = {
   fallback_reason: null
 };
 
-const proactiveStatus = {
+const proactiveStatus: ProactiveStatusResponse = {
   enabled: false,
   sensitivity: "low",
+  enabled_at: null,
+  last_user_activity_at: null,
+  idle_for_seconds: 0,
+  idle_threshold_seconds: 600,
+  initial_grace_remaining_seconds: 0,
   last_triggered_at: null,
   last_triggered_type: "none",
   next_possible_trigger_at: null,
@@ -192,13 +198,20 @@ const proactiveStatus = {
   last_trigger_reason: null
 };
 
-let proactiveStatusStore = { ...proactiveStatus };
-let proactiveCheckStore = {
+let proactiveStatusStore: ProactiveStatusResponse = { ...proactiveStatus };
+let proactiveCheckStore: ProactiveCheckResponse = {
   should_send: false,
   trigger_type: "none",
   message: "",
   reason: "disabled",
-  cooldown_remaining_seconds: 0
+  cooldown_remaining_seconds: 0,
+  idle_for_seconds: 0,
+  idle_threshold_seconds: 600,
+  initial_grace_remaining_seconds: 0,
+  next_possible_trigger_at: null,
+  enabled_at: null,
+  last_user_activity_at: null,
+  active_candidate_triggers: [] as string[]
 };
 
 const pendingMemories = [
@@ -239,7 +252,14 @@ const resetSettingsResponse = () => {
     trigger_type: "none",
     message: "",
     reason: "disabled",
-    cooldown_remaining_seconds: 0
+    cooldown_remaining_seconds: 0,
+    idle_for_seconds: 0,
+    idle_threshold_seconds: 600,
+    initial_grace_remaining_seconds: 0,
+    next_possible_trigger_at: null,
+    enabled_at: null,
+    last_user_activity_at: null,
+    active_candidate_triggers: [] as string[]
   };
 };
 
@@ -453,7 +473,14 @@ describe("App", () => {
       trigger_type: "repeated_death",
       message: "你开始急了。",
       reason: "death_delta=2",
-      cooldown_remaining_seconds: 0
+      cooldown_remaining_seconds: 0,
+      idle_for_seconds: 120,
+      idle_threshold_seconds: 600,
+      initial_grace_remaining_seconds: 0,
+      next_possible_trigger_at: null,
+      enabled_at: new Date().toISOString(),
+      last_user_activity_at: new Date().toISOString(),
+      active_candidate_triggers: ["repeated_death"]
     };
 
     render(<App />);
@@ -687,8 +714,17 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("Semantic Extraction")).toBeInTheDocument());
     expect(screen.getByText("Proactive")).toBeInTheDocument();
     expect(screen.getAllByText("enabled").length).toBeGreaterThan(0);
-    expect(screen.getByText("last_type")).toBeInTheDocument();
-    expect(screen.getByText("candidates")).toBeInTheDocument();
+    expect(screen.getByText("enabled_at")).toBeInTheDocument();
+    expect(screen.getByText("last_user_activity_at")).toBeInTheDocument();
+    expect(screen.getByText("idle_for_seconds")).toBeInTheDocument();
+    expect(screen.getByText("idle_threshold_seconds")).toBeInTheDocument();
+    expect(screen.getByText("initial_grace_remaining_seconds")).toBeInTheDocument();
+    expect(screen.getByText("next_possible_trigger_at")).toBeInTheDocument();
+    expect(screen.getByText("cooldown_remaining_seconds")).toBeInTheDocument();
+    expect(screen.getByText("last_triggered_type")).toBeInTheDocument();
+    expect(screen.getByText("last_triggered_at")).toBeInTheDocument();
+    expect(screen.getByText("active_candidate_triggers")).toBeInTheDocument();
+    expect(screen.getByText("last_trigger_reason")).toBeInTheDocument();
     expect(screen.getByText("Model Routing")).toBeInTheDocument();
     expect(screen.getAllByText("selected_model").length).toBeGreaterThan(0);
     expect(screen.getByText("model_route_mode")).toBeInTheDocument();

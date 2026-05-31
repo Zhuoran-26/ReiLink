@@ -188,6 +188,11 @@ ProactiveTriggerType = Literal["idle_silence", "repeated_death", "late_night", "
 class ProactiveStatusResponse(BaseModel):
     enabled: bool
     sensitivity: Literal["low", "normal", "high"]
+    enabled_at: str | None = None
+    last_user_activity_at: str | None = None
+    idle_for_seconds: int = 0
+    idle_threshold_seconds: int = 0
+    initial_grace_remaining_seconds: int = 0
     last_triggered_at: str | None = None
     last_triggered_type: ProactiveTriggerType = "none"
     next_possible_trigger_at: str | None = None
@@ -208,6 +213,13 @@ class ProactiveCheckResponse(BaseModel):
     message: str = ""
     reason: str = ""
     cooldown_remaining_seconds: int = 0
+    idle_for_seconds: int = 0
+    idle_threshold_seconds: int = 0
+    initial_grace_remaining_seconds: int = 0
+    next_possible_trigger_at: str | None = None
+    enabled_at: str | None = None
+    last_user_activity_at: str | None = None
+    active_candidate_triggers: list[str] = Field(default_factory=list)
 
 
 class ProactiveSettingsRequest(BaseModel):

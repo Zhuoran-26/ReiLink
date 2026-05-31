@@ -27,6 +27,11 @@ export type ProactiveTriggerType = "idle_silence" | "repeated_death" | "late_nig
 export type ProactiveStatusResponse = {
   enabled: boolean;
   sensitivity: "low" | "normal" | "high";
+  enabled_at: string | null;
+  last_user_activity_at: string | null;
+  idle_for_seconds: number;
+  idle_threshold_seconds: number;
+  initial_grace_remaining_seconds: number;
   last_triggered_at: string | null;
   last_triggered_type: ProactiveTriggerType;
   next_possible_trigger_at: string | null;
@@ -41,6 +46,13 @@ export type ProactiveCheckResponse = {
   message: string;
   reason: string;
   cooldown_remaining_seconds: number;
+  idle_for_seconds: number;
+  idle_threshold_seconds: number;
+  initial_grace_remaining_seconds: number;
+  next_possible_trigger_at: string | null;
+  enabled_at: string | null;
+  last_user_activity_at: string | null;
+  active_candidate_triggers: string[];
 };
 
 export type UserProfileMemory = {

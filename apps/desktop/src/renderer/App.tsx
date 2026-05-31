@@ -166,6 +166,11 @@ const emptyProviderDebug: ProviderDebugResponse = {
 const emptyProactiveStatus: ProactiveStatusResponse = {
   enabled: false,
   sensitivity: "low",
+  enabled_at: null,
+  last_user_activity_at: null,
+  idle_for_seconds: 0,
+  idle_threshold_seconds: 0,
+  initial_grace_remaining_seconds: 0,
   last_triggered_at: null,
   last_triggered_type: "none",
   next_possible_trigger_at: null,
@@ -861,23 +866,47 @@ export function App() {
                         <dd>{debugText(proactiveStatus.sensitivity)}</dd>
                       </div>
                       <div>
-                        <dt>last_type</dt>
-                        <dd>{debugText(proactiveStatus.last_triggered_type)}</dd>
+                        <dt>enabled_at</dt>
+                        <dd>{debugText(proactiveStatus.enabled_at)}</dd>
                       </div>
                       <div>
-                        <dt>last_at</dt>
-                        <dd>{debugText(proactiveStatus.last_triggered_at)}</dd>
+                        <dt>last_user_activity_at</dt>
+                        <dd>{debugText(proactiveStatus.last_user_activity_at)}</dd>
                       </div>
                       <div>
-                        <dt>cooldown</dt>
+                        <dt>idle_for_seconds</dt>
+                        <dd>{Number(proactiveStatus.idle_for_seconds ?? 0).toFixed(0)}</dd>
+                      </div>
+                      <div>
+                        <dt>idle_threshold_seconds</dt>
+                        <dd>{Number(proactiveStatus.idle_threshold_seconds ?? 0).toFixed(0)}</dd>
+                      </div>
+                      <div>
+                        <dt>initial_grace_remaining_seconds</dt>
+                        <dd>{Number(proactiveStatus.initial_grace_remaining_seconds ?? 0).toFixed(0)}</dd>
+                      </div>
+                      <div>
+                        <dt>next_possible_trigger_at</dt>
+                        <dd>{debugText(proactiveStatus.next_possible_trigger_at)}</dd>
+                      </div>
+                      <div>
+                        <dt>cooldown_remaining_seconds</dt>
                         <dd>{Number(proactiveStatus.cooldown_remaining_seconds ?? 0).toFixed(0)}</dd>
                       </div>
                       <div>
-                        <dt>candidates</dt>
+                        <dt>last_triggered_type</dt>
+                        <dd>{debugText(proactiveStatus.last_triggered_type)}</dd>
+                      </div>
+                      <div>
+                        <dt>last_triggered_at</dt>
+                        <dd>{debugText(proactiveStatus.last_triggered_at)}</dd>
+                      </div>
+                      <div>
+                        <dt>active_candidate_triggers</dt>
                         <dd>{proactiveStatus.active_candidate_triggers.join(", ") || "无"}</dd>
                       </div>
                       <div>
-                        <dt>last_reason</dt>
+                        <dt>last_trigger_reason</dt>
                         <dd>{debugText(proactiveStatus.last_trigger_reason)}</dd>
                       </div>
                     </dl>
