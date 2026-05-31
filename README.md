@@ -149,6 +149,30 @@ AUTO_GAME_DETECTION=on
 
 不要在仓库中提交真实 API key。`LLM_PROVIDER=mock` 可用于无 key 的本地演示。
 
+### 首次启动 / 模型配置
+
+第一次启动时，desktop 会读取 backend setup status。如果 DeepSeek API Key 未加载，聊天区会显示“需要完成模型配置”，设置中只显示 API Key 状态，不显示真实 key。
+
+确认 setup status：
+
+```bash
+curl http://127.0.0.1:8000/api/setup/status
+```
+
+正常配置后应看到：
+
+```json
+{
+  "provider": "deepseek",
+  "provider_configured": true,
+  "api_key_loaded": true,
+  "needs_setup": false,
+  "missing_items": []
+}
+```
+
+如果 `DEEPSEEK_API_KEY` 缺失，`needs_setup` 会是 `true`，`missing_items` 会包含 `DEEPSEEK_API_KEY`。响应不会返回真实 API key。
+
 ### 隐私与本地数据
 
 - `.env`、`*.env` 和 `services/backend/.env` 不应提交。
@@ -343,6 +367,30 @@ AUTO_GAME_DETECTION=on
 ```
 
 Never commit real API keys. `LLM_PROVIDER=mock` can be used for local demos without a key.
+
+### First Run / Provider Setup
+
+On first launch, the desktop app reads the backend setup status. If the DeepSeek API key is not loaded, the chat area shows a lightweight setup prompt, and Settings only shows the API key status without revealing the key value.
+
+Check setup status:
+
+```bash
+curl http://127.0.0.1:8000/api/setup/status
+```
+
+After a valid local configuration, the response should include:
+
+```json
+{
+  "provider": "deepseek",
+  "provider_configured": true,
+  "api_key_loaded": true,
+  "needs_setup": false,
+  "missing_items": []
+}
+```
+
+If `DEEPSEEK_API_KEY` is missing, `needs_setup` is `true` and `missing_items` includes `DEEPSEEK_API_KEY`. The response never returns the real API key.
 
 ### Privacy / Local Data
 

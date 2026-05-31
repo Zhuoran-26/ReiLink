@@ -8,6 +8,7 @@ from app.api.routes_health import router as health_router
 from app.api.routes_memory import router as memory_router
 from app.api.routes_persona import router as persona_router
 from app.api.routes_proactive import router as proactive_router
+from app.api.routes_setup import router as setup_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_voice import router as voice_router
 from app.core.config import settings
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router, prefix="/api")
     app.include_router(memory_router, prefix="/api")
     app.include_router(proactive_router, prefix="/api")
+    app.include_router(setup_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
     app.include_router(voice_router, prefix="/api")
     return app

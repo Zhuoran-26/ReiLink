@@ -180,6 +180,49 @@ def test_debug_provider_returns_current_provider():
     assert "bearer" not in serialized
 
 
+def test_setup_status_reports_missing_deepseek_key(monkeypatch):
+    monkeypatch.setattr("app.api.routes_setup.settings.llm_provider", "deepseek")
+    monkeypatch.setattr("app.api.routes_setup.settings.deepseek_api_key", "")
+
+    response = client.get("/api/setup/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["backend_ready"] is True
+    assert data["provider"] == "deepseek"
+    assert data["provider_configured"] is False
+    assert data["api_key_loaded"] is False
+    assert data["needs_setup"] is True
+    assert data["missing_items"] == ["DEEPSEEK_API_KEY"]
+
+
+def test_setup_status_reports_configured_provider_without_secret(monkeypatch):
+    monkeypatch.setattr("app.api.routes_setup.settings.llm_provider", "deepseek")
+    monkeypatch.setattr("app.api.routes_setup.settings.deepseek_api_key", "test-secret-key")
+    monkeypatch.setattr("app.api.routes_setup.settings.model_preference", "fast")
+    monkeypatch.setattr("app.api.routes_setup.settings.persona_mode", "minimal")
+
+    response = client.get("/api/setup/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider_configured"] is True
+    assert data["api_key_loaded"] is True
+    assert data["needs_setup"] is False
+    assert data["missing_items"] == []
+    assert data["model_preference"] == "fast"
+    assert data["persona_mode"] == "minimal"
+    assert data["memory_ready"] is True
+    assert data["knowledge_ready"] is True
+    assert data["base_url"] == "https://api.deepseek.com"
+    assert data["fast_model"] == "deepseek-v4-flash"
+    assert data["pro_model"] == "deepseek-v4-pro"
+    serialized = json.dumps(data, ensure_ascii=False)
+    assert "test-secret-key" not in serialized
+    assert "authorization" not in serialized.lower()
+    assert "bearer" not in serialized.lower()
+
+
 def test_settings_routes_persist_safe_values():
     response = client.get("/api/settings")
     assert response.status_code == 200

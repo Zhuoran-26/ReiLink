@@ -32,6 +32,7 @@ make dev-desktop
 处理：
 
 - 在 `services/backend/.env` 中配置 `DEEPSEEK_API_KEY`。
+- 确认 `LLM_PROVIDER=deepseek`。
 - 不要把真实 key 提交到 git。
 - 无 key 演示时使用 `LLM_PROVIDER=mock`。
 
@@ -42,6 +43,36 @@ LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
+
+确认 setup status：
+
+```bash
+curl http://127.0.0.1:8000/api/setup/status
+```
+
+如果配置缺失，响应会包含：
+
+```json
+{
+  "provider_configured": false,
+  "api_key_loaded": false,
+  "needs_setup": true,
+  "missing_items": ["DEEPSEEK_API_KEY"]
+}
+```
+
+响应只显示是否已配置，不会返回真实 API key。
+
+### 模型请求错误（Model request errors）
+
+常见前端文案：
+
+- “模型 API Key 未配置”：检查 `DEEPSEEK_API_KEY`。
+- “模型服务连接失败”：检查网络、`DEEPSEEK_BASE_URL` 和本机代理设置。
+- “模型响应超时”：稍后重试，或检查 `LLM_TIMEOUT_SECONDS`。
+- “模型服务返回错误，请检查配置”：检查模型名、额度、权限和 provider 返回的详细错误。
+
+Raw error 默认只放在 Debug 的“原始 JSON”中，默认折叠。
 
 ### SSL certificate issue on macOS（macOS 证书问题）
 
@@ -181,6 +212,7 @@ Symptoms:
 Fix:
 
 - Configure `DEEPSEEK_API_KEY` in `services/backend/.env`.
+- Confirm `LLM_PROVIDER=deepseek`.
 - Never commit real keys.
 - Use `LLM_PROVIDER=mock` for demos without a key.
 
@@ -191,6 +223,36 @@ LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
+
+Check setup status:
+
+```bash
+curl http://127.0.0.1:8000/api/setup/status
+```
+
+If setup is incomplete, the response includes:
+
+```json
+{
+  "provider_configured": false,
+  "api_key_loaded": false,
+  "needs_setup": true,
+  "missing_items": ["DEEPSEEK_API_KEY"]
+}
+```
+
+The response only reports configuration state and never returns the real API key.
+
+### Model Request Errors
+
+Common frontend messages:
+
+- "模型 API Key 未配置": check `DEEPSEEK_API_KEY`.
+- "模型服务连接失败": check network access, `DEEPSEEK_BASE_URL`, and local proxy settings.
+- "模型响应超时": retry later or check `LLM_TIMEOUT_SECONDS`.
+- "模型服务返回错误，请检查配置": check model names, quota, permissions, and the provider's detailed error.
+
+Raw errors are kept in Debug "原始 JSON" and are collapsed by default.
 
 ### SSL Certificate Issue on macOS
 

@@ -404,6 +404,88 @@ button {
   white-space: pre-wrap;
 }
 
+.setupNotice {
+  width: min(620px, 100%);
+  display: grid;
+  gap: 11px;
+  align-self: flex-start;
+  border: 1px solid rgba(226, 185, 116, 0.28);
+  border-radius: 14px;
+  padding: 15px 16px;
+  color: #eef2fb;
+  background:
+    linear-gradient(145deg, rgba(77, 64, 36, 0.58), rgba(25, 31, 49, 0.72)),
+    rgba(21, 27, 45, 0.74);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.setupNoticeHeader,
+.providerStatusTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setupNoticeHeader {
+  color: #f2c783;
+}
+
+.setupNoticeHeader h2 {
+  margin: 0;
+  color: #fff3d6;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.setupNotice p,
+.setupHelp p {
+  margin: 0;
+  color: #cbd3e4;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.setupNoticeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setupNoticeActions .smallButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.setupHelp {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(226, 185, 116, 0.18);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(8, 11, 20, 0.42);
+}
+
+.setupHelp pre {
+  margin: 0;
+  color: #dce4f6;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.errorNotice {
+  margin: 0 18px 10px;
+  border: 1px solid rgba(231, 132, 132, 0.24);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #f3aaa8;
+  background: rgba(72, 30, 36, 0.32);
+  font-size: 13px;
+}
+
 .composer {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) auto;
@@ -580,6 +662,24 @@ button {
   border-radius: 13px;
   padding: 11px;
   background: rgba(10, 14, 26, 0.46);
+}
+
+.providerStatusPanel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(145, 164, 213, 0.14);
+  border-radius: 13px;
+  padding: 11px;
+  background: rgba(10, 14, 26, 0.46);
+}
+
+.providerStatusTitle {
+  color: #b9aaff;
+}
+
+.providerStatusTitle strong {
+  color: #dce4f6;
+  font-size: 12px;
 }
 
 .catalogSummary {
