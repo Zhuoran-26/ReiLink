@@ -34,6 +34,7 @@ type Message = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  createdAt: string;
   pending?: boolean;
   messageType?: "chat" | "proactive";
   triggerType?: string;
@@ -207,17 +208,168 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 
 const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
-const debugText = (value: unknown, fallback = "无") => {
+const labelMap: Record<string, string> = {
+  activity: "当前活动",
+  active_candidate_triggers: "候选触发器",
+  block_reason: "阻断原因",
+  boss_history: "Boss 记录",
+  complexity: "复杂度",
+  confidence: "规则置信度",
+  cooldown_remaining_seconds: "冷却剩余",
+  current_boss: "当前 Boss",
+  current_game: "当前游戏",
+  current_session: "当前会话",
+  current_session_context: "当前会话",
+  current_user_message: "当前用户消息",
+  death_count: "死亡次数",
+  enabled: "是否开启",
+  enabled_at: "开启时间",
+  fallback_reason: "兜底原因",
+  final_decision: "最终判断",
+  final_event: "最终游戏事件",
+  final_memory: "最终记忆",
+  freshness: "状态新鲜度",
+  frustration: "挫败次数",
+  frustration_count: "挫败次数",
+  game_state: "游戏状态摘要",
+  idle_for_seconds: "已空闲时间",
+  idle_threshold_seconds: "空闲触发阈值",
+  initial_grace_remaining_seconds: "初始等待剩余",
+  last_attempted: "最近挑战",
+  last_cleared: "最近通过",
+  last_trigger_reason: "上次触发原因",
+  last_triggered_at: "上次触发时间",
+  last_triggered_type: "上次触发类型",
+  last_user_activity_at: "最近用户活动",
+  latency_ms: "耗时",
+  latest_user: "最近用户消息",
+  latest_user_message: "最近用户消息",
+  llm_called: "是否调用 LLM",
+  llm_event: "LLM 游戏事件",
+  llm_memory: "LLM 记忆",
+  llm_result: "LLM 判断",
+  main_reply_model: "回复模型",
+  memory: "记忆摘要",
+  model: "模型",
+  model_route_mode: "路由模式",
+  next_possible_trigger_at: "下次可能触发",
+  parse_error: "解析错误",
+  persona: "人格",
+  persona_mode: "人格模式",
+  prompt_order: "注入顺序",
+  provider_latency_ms: "模型耗时",
+  requires_user_activity_after_proactive: "等待用户回应",
+  response_latency_ms: "回复耗时",
+  route_intent: "意图类型",
+  route_reason: "路由原因",
+  rule_result: "规则判断",
+  semantic_model: "语义识别模型",
+  selected_model: "选用模型",
+  sensitivity: "主动灵敏度",
+  session_focus: "会话焦点",
+  session_focus_summary: "会话焦点",
+  skip_reason: "跳过原因",
+  summary: "摘要"
+};
+
+const valueMap: Record<string, string> = {
+  accepted: "已保存",
+  auto: "自动",
+  boss_attempt: "挑战中",
+  boss_cleared: "已通过",
+  boss_failed: "挑战失败",
+  casual_chat: "闲聊",
+  casual_or_short_reply: "日常短回复",
+  conflict_with_fresh_game_state: "与当前游戏状态冲突",
+  conversation: "对话",
+  cooldown: "冷却中",
+  current: "当前",
+  disabled: "关闭",
+  eligible: "可触发",
+  enabled: "开启",
+  explicit_user_statement: "明确表达",
+  fast: "快速",
+  fresh: "新鲜",
+  frustration_loop: "挫败循环",
+  game_progress: "游戏进度",
+  game_session: "游戏状态",
+  elden_ring_boss_strategy: "Boss 攻略",
+  guarded: "guarded（保守）",
+  guide_preference: "攻略偏好",
+  high: "高",
+  hide: "隐藏",
+  idle: "空闲",
+  idle_silence: "空闲沉默",
+  ignored: "已忽略",
+  initial_grace: "初始等待中",
+  late_night: "深夜提醒",
+  low: "低",
+  manual: "手动",
+  medium: "中",
+  "memory boss conflicts with fresh game state": "记忆里的 Boss 与当前游戏状态冲突",
+  minimal: "minimal（自然）",
+  no_candidate_trigger: "暂无可触发项",
+  none: "无",
+  normal: "普通",
+  not_connected: "未连接",
+  off: "关闭",
+  on: "开启",
+  pending: "待确认",
+  persona: "人格",
+  persona_preference: "互动偏好",
+  playstyle: "玩法",
+  playstyle_preference: "玩法偏好",
+  pro: "高质量",
+  profile: "长期记忆",
+  recent_user_message: "刚刚发言",
+  relationship_preference: "互动偏好",
+  repeated_death: "反复死亡",
+  short: "简短",
+  simple_game_reminder: "简单游戏提醒",
+  show: "显示",
+  stale: "已过期",
+  user_is_typing: "正在输入",
+  user_preference: "用户偏好",
+  waiting_for_user_activity_after_proactive: "等待用户回应",
+  weak: "较弱"
+};
+
+const formatDebugLabel = (key: string) => labelMap[key] ?? key;
+
+const debugText = (value: unknown, fallback = "无"): string => {
   if (value === null || value === undefined || value === "") return fallback;
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "boolean") return value ? "是" : "否";
+  if (typeof value === "string") return valueMap[value] ?? value;
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) return value.map((item) => debugText(item)).join("、") || fallback;
   return JSON.stringify(value);
 };
 
-const debugTime = (value: string | null | undefined) => {
+const debugTime = (value: string | null | undefined): string => {
   if (!value) return "无";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return debugText(value);
-  return `${date.toLocaleString()} local`;
+  return `${formatMessageTime(value)}（本地）`;
+};
+
+const formatDateKey = (date: Date) =>
+  `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+
+const formatMessageTime = (value: string | number | Date) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const time = date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (formatDateKey(date) === formatDateKey(now)) return `今天 ${time}`;
+  if (formatDateKey(date) === formatDateKey(yesterday)) return `昨天 ${time}`;
+  const day = date.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).replace(/\//g, "-");
+  return `${day} ${time}`;
 };
 
 const bossName = (value: unknown) => {
@@ -225,10 +377,10 @@ const bossName = (value: unknown) => {
   return debugText(boss.name ?? value);
 };
 
-const debugListText = (item: unknown) => {
+const debugListText = (item: unknown): string => {
   const record = asRecord(item);
   const source = debugText(record.source, "");
-  const field = debugText(record.field, "");
+  const field = record.field ? formatDebugLabel(String(record.field)) : "";
   const reason = debugText(record.reason, "");
   const text = debugText(record.text ?? record.summary ?? record.name ?? item);
   const meta = [source, field, reason].filter(Boolean).join(" / ");
@@ -240,8 +392,8 @@ const pendingEvidenceSummary = (memory: PendingMemory) => {
   const userMessage = debugText(evidence.user_message, "");
   const gameState = debugText(evidence.game_state_summary, "");
   const parts = [
-    userMessage ? `user: ${userMessage}` : "",
-    gameState ? `game: ${gameState}` : ""
+    userMessage ? `用户：${userMessage}` : "",
+    gameState ? `游戏：${gameState}` : ""
   ].filter(Boolean);
   return parts.join(" / ") || "无";
 };
@@ -249,8 +401,37 @@ const pendingEvidenceSummary = (memory: PendingMemory) => {
 const firstDefined = (...values: unknown[]) => values.find((value) => value !== null && value !== undefined && value !== "");
 
 function BooleanBadge({ value }: { value: boolean }) {
-  return <span className={`boolBadge ${value ? "true" : "false"}`}>{value ? "true" : "false"}</span>;
+  return <span className={`boolBadge ${value ? "true" : "false"}`}>{value ? "是" : "否"}</span>;
 }
+
+const formatSeconds = (value: number | null | undefined) => {
+  const seconds = Math.max(0, Math.round(Number(value ?? 0)));
+  if (seconds >= 3600) return `${Math.floor(seconds / 3600)} 小时 ${Math.floor((seconds % 3600) / 60)} 分钟`;
+  if (seconds >= 60) return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+  return `${seconds} 秒`;
+};
+
+const formatPromptOrder = (order: string[]) =>
+  order.map((item) => formatDebugLabel(item)).join(" → ") || "无";
+
+const semanticSummary = (value: unknown) => {
+  const record = asRecord(value);
+  const gameEvent = asRecord(record.game_event);
+  const memoryCandidate = asRecord(record.memory_candidate);
+  const parts = [
+    gameEvent.type ? `游戏：${debugText(gameEvent.type)}` : "",
+    memoryCandidate.type ? `记忆：${debugText(memoryCandidate.type)}` : ""
+  ].filter(Boolean);
+  return parts.join(" / ") || debugText(value);
+};
+
+const messageMetaText = (message: Message) => {
+  const time = formatMessageTime(message.createdAt);
+  if (message.messageType === "proactive") {
+    return `${time} · 主动 · ${debugText(message.triggerType)}`;
+  }
+  return time;
+};
 
 export function App() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
@@ -269,7 +450,7 @@ export function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [settingsBusy, setSettingsBusy] = useState("");
   const [messages, setMessages] = useState<Message[]>([
-    { id: "hello", role: "assistant", text: "我在。想问的时候就说。" }
+    { id: "hello", role: "assistant", text: "我在。想问的时候就说。", createdAt: new Date().toISOString() }
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -314,7 +495,7 @@ export function App() {
       }
       await refreshStatus();
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : "settings update failed");
+      setLastError(error instanceof Error ? error.message : "设置更新失败");
     } finally {
       setSettingsBusy("");
     }
@@ -335,6 +516,7 @@ export function App() {
             id: crypto.randomUUID(),
             role: "assistant",
             text: response.message,
+            createdAt: new Date().toISOString(),
             messageType: "proactive",
             triggerType: response.trigger_type
           }
@@ -342,7 +524,7 @@ export function App() {
       }
       setProactiveStatus(await api.proactiveStatus());
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : "proactive check failed");
+      setLastError(error instanceof Error ? error.message : "主动陪伴检查失败");
     }
   };
 
@@ -356,7 +538,7 @@ export function App() {
     event.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || sending) return;
-    const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed };
+    const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed, createdAt: new Date().toISOString() };
     const placeholderId = crypto.randomUUID();
     let placeholderShown = false;
     const requestStartedAt = Date.now();
@@ -369,7 +551,7 @@ export function App() {
       setLastInterimPlaceholderShown(true);
       setMessages((current) => [
         ...current,
-        { id: placeholderId, role: "assistant", text: pickPlaceholder(), pending: true }
+        { id: placeholderId, role: "assistant", text: pickPlaceholder(), createdAt: new Date().toISOString(), pending: true }
       ]);
     }, PLACEHOLDER_DELAY_MS);
     try {
@@ -384,7 +566,7 @@ export function App() {
         }
         setMessages((current) => [
           ...current,
-          { id: crypto.randomUUID(), role: "assistant", text: segment, pending: false }
+          { id: crypto.randomUUID(), role: "assistant", text: segment, createdAt: new Date().toISOString(), pending: false }
         ]);
       }
       setLastInterimPlaceholderShown(placeholderShown);
@@ -399,7 +581,7 @@ export function App() {
         : "线路有点安静。先检查后端。";
       setMessages((current) => [
         ...current.filter((message) => message.id !== placeholderId),
-        { id: crypto.randomUUID(), role: "assistant", text: reply, pending: false }
+        { id: crypto.randomUUID(), role: "assistant", text: reply, createdAt: new Date().toISOString(), pending: false }
       ]);
       setLastInterimPlaceholderShown(placeholderShown);
     } finally {
@@ -417,7 +599,7 @@ export function App() {
       }
       await refreshStatus();
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : "pending memory update failed");
+      setLastError(error instanceof Error ? error.message : "待确认记忆更新失败");
     } finally {
       setPendingMemoryBusyId("");
     }
@@ -438,7 +620,7 @@ export function App() {
       }
       await refreshStatus();
     } catch (error) {
-      setLastError(error instanceof Error ? error.message : "debug action failed");
+      setLastError(error instanceof Error ? error.message : "调试操作失败");
     } finally {
       setDebugActionBusy("");
     }
@@ -467,18 +649,10 @@ export function App() {
   const memorySummary = asRecord(promptPreview.memory_summary);
   const injectedMemory = asArray(memorySummary.injected);
   const skippedMemory = asArray(memorySummary.skipped);
-  const semanticRuleResult = asRecord(semanticDebug.rule_result);
-  const semanticLlmResult = asRecord(semanticDebug.llm_result);
-  const semanticLlmGameEvent = asRecord(semanticLlmResult.game_event);
-  const semanticLlmMemoryCandidate = asRecord(semanticLlmResult.memory_candidate);
-  const semanticFinalDecision = asRecord(semanticDebug.final_decision);
-  const semanticFinalGameEvent = asRecord(semanticFinalDecision.game_event);
-  const semanticFinalMemoryCandidate = asRecord(semanticFinalDecision.memory_candidate);
   const recentBossHistory = gameSessionDebug.boss_history.slice(0, 5);
   const debugPanelVisible = appSettings.debug_panel === "show";
   const displayGame = gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
   const displayBoss = gameSessionDebug.current_boss?.name ?? null;
-  const displayActivity = gameSessionDebug.current_activity ?? "idle";
   const companionName = "Rei";
   const companionSubtitle = "安静、冷淡的游戏陪伴";
   const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
@@ -494,23 +668,23 @@ export function App() {
         <nav className="navMenu" aria-label="应用导航">
           <a className="navItem active" href="#chat-panel">
             <MessageSquare size={18} />
-            <span>Chat</span>
+            <span>聊天</span>
           </a>
           <a className="navItem" href="#pending-memory-panel">
             <Database size={18} />
-            <span>Memory</span>
+            <span>记忆</span>
           </a>
           <a className="navItem" href="#game-session-panel">
             <Gamepad2 size={18} />
-            <span>Game</span>
+            <span>游戏</span>
           </a>
           <a className="navItem" href="#settings-panel">
             <Settings size={18} />
-            <span>Settings</span>
+            <span>设置</span>
           </a>
           <a className="navItem" href="#debug-panel">
             <Bug size={18} />
-            <span>Debug</span>
+            <span>调试</span>
           </a>
         </nav>
 
@@ -519,7 +693,7 @@ export function App() {
             {companionName.slice(0, 1)}
           </div>
           <div>
-            <span>当前 Companion</span>
+            <span>当前角色</span>
             <strong>{companionName}</strong>
             <p>
               <span className={`statusDot ${backendStatus}`} />
@@ -536,7 +710,7 @@ export function App() {
               {companionName.slice(0, 1)}
             </div>
             <div>
-              <p className="eyebrow">Companion</p>
+              <p className="eyebrow">陪伴角色</p>
               <h1>
                 {companionName}
                 <span className={`statusDot ${backendStatus}`} />
@@ -548,18 +722,18 @@ export function App() {
           <div className="statusStrip" aria-label="当前状态">
             <span className="topChip">
               <Brain size={15} />
-              Persona: {appSettings.persona_mode}
+              人格：{debugText(appSettings.persona_mode)}
             </span>
             <span className="topChip">
               <Bot size={15} />
-              Model: {appSettings.model_preference}
+              模型：{debugText(appSettings.model_preference)}
             </span>
-            <span className="topChip">Proactive: {appSettings.proactive_companion}</span>
+            <span className="topChip">主动：{debugText(appSettings.proactive_companion)}</span>
             <span className="topChip">
               <Gamepad2 size={15} />
-              Game: {displayGame}
+              游戏：{debugText(displayGame)}
             </span>
-            <span className="topChip">Boss: {displayBoss ?? "idle"}</span>
+            <span className="topChip">Boss：{displayBoss ?? "空闲"}</span>
             <span className={`connection ${backendStatus}`}>{statusLabel}</span>
             <button aria-label="刷新状态" className="iconButton soft" onClick={refreshStatus}>
               <RefreshCw size={17} />
@@ -578,12 +752,10 @@ export function App() {
                   className={`messageBubble ${message.role}${message.pending ? " pending" : ""}${message.messageType === "proactive" ? " proactive" : ""}`}
                   key={message.id}
                 >
-                  <span>
-                    {message.role === "user" ? "你" : "Rei"}
-                    {message.messageType === "proactive" && (
-                      <small className="messageMeta">proactive · {message.triggerType}</small>
-                    )}
-                  </span>
+                  <div className="messageHeader">
+                    <span className="messageSpeaker">{message.role === "user" ? "你" : "Rei"}</span>
+                    <small className="messageTime">{messageMetaText(message)}</small>
+                  </div>
                   <p>{message.text}</p>
                 </article>
               ))}
@@ -608,124 +780,124 @@ export function App() {
         </section>
 
         <aside className="infoRail" aria-label="信息侧栏">
-          <section className="infoCard settingsPanel" aria-label="Settings" id="settings-panel">
+          <section className="infoCard settingsPanel" aria-label="设置" id="settings-panel">
             <div className="cardHeader">
               <Settings size={17} />
-              <h2>Settings</h2>
+              <h2>设置</h2>
             </div>
             <div className="settingRows">
               <label className="settingRow">
-                <span>Persona Mode</span>
+                <span>人格模式</span>
                 <select
-                  aria-label="Persona Mode"
+                  aria-label="人格模式"
                   disabled={settingsBusy !== ""}
                   value={appSettings.persona_mode}
                   onChange={(event) =>
                     void updateAppSettings({ persona_mode: event.target.value as AppSettings["persona_mode"] })
                   }
                 >
-                  <option value="minimal">minimal</option>
-                  <option value="guarded">guarded</option>
+                  <option value="minimal">minimal（自然）</option>
+                  <option value="guarded">guarded（保守）</option>
                 </select>
               </label>
               <label className="settingRow">
-                <span>Debug Panel</span>
+                <span>调试面板</span>
                 <select
-                  aria-label="Debug Panel"
+                  aria-label="调试面板"
                   disabled={settingsBusy !== ""}
                   value={appSettings.debug_panel}
                   onChange={(event) =>
                     void updateAppSettings({ debug_panel: event.target.value as AppSettings["debug_panel"] })
                   }
                 >
-                  <option value="show">show</option>
-                  <option value="hide">hide</option>
+                  <option value="show">显示</option>
+                  <option value="hide">隐藏</option>
                 </select>
               </label>
               <label className="settingRow">
-                <span>Memory</span>
+                <span>记忆</span>
                 <select
-                  aria-label="Memory"
+                  aria-label="记忆"
                   disabled={settingsBusy !== ""}
                   value={appSettings.memory_enabled ? "enabled" : "disabled"}
                   onChange={(event) => void updateAppSettings({ memory_enabled: event.target.value === "enabled" })}
                 >
-                  <option value="enabled">enabled</option>
-                  <option value="disabled">disabled</option>
+                  <option value="enabled">开启</option>
+                  <option value="disabled">关闭</option>
                 </select>
               </label>
               <label className="settingRow">
-                <span>Pending Memory Mode</span>
-                <select aria-label="Pending Memory Mode" disabled value={appSettings.pending_memory_mode}>
-                  <option value="manual">manual</option>
+                <span>待确认记忆模式</span>
+                <select aria-label="待确认记忆模式" disabled value={appSettings.pending_memory_mode}>
+                  <option value="manual">手动</option>
                 </select>
               </label>
               <label className="settingRow">
-                <span>Response Length</span>
+                <span>回复长度</span>
                 <select
-                  aria-label="Response Length"
+                  aria-label="回复长度"
                   disabled={settingsBusy !== ""}
                   value={appSettings.response_length}
                   onChange={(event) =>
                     void updateAppSettings({ response_length: event.target.value as AppSettings["response_length"] })
                   }
                 >
-                  <option value="short">short</option>
-                  <option value="normal">normal</option>
+                  <option value="short">简短</option>
+                  <option value="normal">普通</option>
                 </select>
               </label>
               <label className="settingRow">
-                <span>Model Preference</span>
+                <span>模型偏好</span>
                 <select
-                  aria-label="Model Preference"
+                  aria-label="模型偏好"
                   disabled={settingsBusy !== ""}
                   value={appSettings.model_preference}
                   onChange={(event) =>
                     void updateAppSettings({ model_preference: event.target.value as AppSettings["model_preference"] })
                   }
                 >
-                  <option value="auto">auto</option>
-                  <option value="fast">fast</option>
-                  <option value="pro">pro</option>
+                  <option value="auto">自动</option>
+                  <option value="fast">快速</option>
+                  <option value="pro">高质量</option>
                 </select>
               </label>
               <label className="settingRow">
-                <span>Proactive Companion</span>
+                <span>主动陪伴</span>
                 <select
-                  aria-label="Proactive Companion"
+                  aria-label="主动陪伴"
                   disabled={settingsBusy !== ""}
                   value={appSettings.proactive_companion}
                   onChange={(event) =>
                     void updateAppSettings({ proactive_companion: event.target.value as AppSettings["proactive_companion"] })
                   }
                 >
-                  <option value="off">off</option>
-                  <option value="on">on</option>
+                  <option value="off">关闭</option>
+                  <option value="on">开启</option>
                 </select>
               </label>
               <label className="settingRow">
-                <span>Proactive Sensitivity</span>
+                <span>主动灵敏度</span>
                 <select
-                  aria-label="Proactive Sensitivity"
+                  aria-label="主动灵敏度"
                   disabled={settingsBusy !== "" || appSettings.proactive_companion === "off"}
                   value={appSettings.proactive_sensitivity}
                   onChange={(event) =>
                     void updateAppSettings({ proactive_sensitivity: event.target.value as AppSettings["proactive_sensitivity"] })
                   }
                 >
-                  <option value="low">low</option>
-                  <option value="normal">normal</option>
-                  <option value="high">high</option>
+                  <option value="low">低</option>
+                  <option value="normal">普通</option>
+                  <option value="high">高</option>
                 </select>
               </label>
             </div>
-            <p className="settingHint">本地保存到 settings.json，不包含密钥。Proactive 当前为 {appSettings.proactive_companion}。</p>
+            <p className="settingHint">本地保存到 settings.json，不包含密钥。主动陪伴当前为{debugText(appSettings.proactive_companion)}。</p>
           </section>
 
-          <section className="infoCard pendingPanel" aria-label="Pending Memory" id="pending-memory-panel">
+          <section className="infoCard pendingPanel" aria-label="待确认记忆" id="pending-memory-panel">
             <div className="cardHeader">
               <Database size={17} />
-              <h2>Pending Memory</h2>
+              <h2>待确认记忆</h2>
               <span className="countPill">{pendingMemories.length}</span>
             </div>
             <div className="pendingMemoryList">
@@ -733,8 +905,8 @@ export function App() {
                 <article className="pendingMemoryItem" key={memory.id}>
                   <p>{memory.text}</p>
                   <div className="pendingMemoryMeta">
-                    <span>{memory.type}</span>
-                    <span>{memory.source}</span>
+                    <span>{debugText(memory.type)}</span>
+                    <span>{debugText(memory.source)}</span>
                     <span>{memory.confidence.toFixed(2)}</span>
                   </div>
                   <p className="pendingMemoryEvidence">{pendingEvidenceSummary(memory)}</p>
@@ -745,7 +917,7 @@ export function App() {
                       disabled={pendingMemoryBusyId === memory.id}
                       onClick={() => void handlePendingMemory(memory.id, "accept")}
                     >
-                      Accept
+                      保存
                     </button>
                     <button
                       className="smallButton quiet"
@@ -753,7 +925,7 @@ export function App() {
                       disabled={pendingMemoryBusyId === memory.id}
                       onClick={() => void handlePendingMemory(memory.id, "ignore")}
                     >
-                      Ignore
+                      忽略
                     </button>
                   </div>
                 </article>
@@ -762,49 +934,49 @@ export function App() {
             </div>
           </section>
 
-          <section className="infoCard gameSessionPanel" aria-label="Game Session" id="game-session-panel">
+          <section className="infoCard gameSessionPanel" aria-label="游戏状态" id="game-session-panel">
             <div className="cardHeader">
               <Gamepad2 size={17} />
-              <h2>Game Session</h2>
+              <h2>游戏状态</h2>
             </div>
             <dl className="debugFacts">
               <div>
-                <dt>current_game</dt>
+                <dt>{formatDebugLabel("current_game")}</dt>
                 <dd>{debugText(gameSessionDebug.current_game)}</dd>
               </div>
               <div>
-                <dt>current_boss</dt>
+                <dt>{formatDebugLabel("current_boss")}</dt>
                 <dd>{debugText(gameSessionDebug.current_boss?.name)}</dd>
               </div>
               <div>
-                <dt>freshness</dt>
+                <dt>{formatDebugLabel("freshness")}</dt>
                 <dd>{debugText(gameSessionDebug.current_boss?.freshness)}</dd>
               </div>
               <div>
-                <dt>activity</dt>
+                <dt>{formatDebugLabel("activity")}</dt>
                 <dd>{debugText(gameSessionDebug.current_activity)}</dd>
               </div>
               <div>
-                <dt>last_attempted</dt>
+                <dt>{formatDebugLabel("last_attempted")}</dt>
                 <dd>{debugText(gameSessionDebug.last_attempted_boss)}</dd>
               </div>
               <div>
-                <dt>last_cleared</dt>
+                <dt>{formatDebugLabel("last_cleared")}</dt>
                 <dd>{debugText(gameSessionDebug.last_cleared_boss)}</dd>
               </div>
               <div>
-                <dt>death_count</dt>
+                <dt>{formatDebugLabel("death_count")}</dt>
                 <dd>{gameSessionDebug.death_count}</dd>
               </div>
               <div>
-                <dt>frustration</dt>
+                <dt>{formatDebugLabel("frustration")}</dt>
                 <dd>{gameSessionDebug.frustration_count}</dd>
               </div>
             </dl>
-            <ul className="debugList compact" aria-label="Recent boss history">
+            <ul className="debugList compact" aria-label="Boss 记录">
               {recentBossHistory.map((boss, index) => (
                 <li key={`${boss.name}-${boss.status}-${index}`}>
-                  {boss.name} / {boss.status} / {boss.freshness}
+                  {boss.name} / {debugText(boss.status)} / {debugText(boss.freshness)}
                 </li>
               ))}
               {recentBossHistory.length === 0 && <li>无</li>}
@@ -812,19 +984,19 @@ export function App() {
           </section>
 
           {debugPanelVisible && (
-            <section className="infoCard foldPanel" aria-label="Debug Panel" id="debug-panel">
+            <section className="infoCard foldPanel" aria-label="调试面板" id="debug-panel">
               <button
                 className="foldHeader"
                 aria-expanded={debugOpen}
                 onClick={() => setDebugOpen((open) => !open)}
               >
-                <span>Debug Panel</span>
+                <span>调试面板</span>
                 {debugOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
               {debugOpen && (
                 <div className="debugPanel">
                   <section className="debugSection">
-                    <h3>Debug Actions</h3>
+                    <h3>调试操作</h3>
                     <div className="debugActions">
                       <button
                         className="smallButton"
@@ -832,7 +1004,7 @@ export function App() {
                         disabled={debugActionBusy !== ""}
                         onClick={() => void handleDebugAction("refresh")}
                       >
-                        Refresh Debug
+                        刷新调试
                       </button>
                       <button
                         className="smallButton"
@@ -840,7 +1012,7 @@ export function App() {
                         disabled={debugActionBusy !== ""}
                         onClick={() => void handleDebugAction("reset-game-session")}
                       >
-                        Reset Game Session
+                        重置游戏状态
                       </button>
                       <button
                         className="smallButton"
@@ -848,7 +1020,7 @@ export function App() {
                         disabled={debugActionBusy !== ""}
                         onClick={() => void handleDebugAction("reset-memory")}
                       >
-                        Reset Memory
+                        重置记忆
                       </button>
                       <button
                         className="smallButton"
@@ -856,191 +1028,183 @@ export function App() {
                         disabled={debugActionBusy !== ""}
                         onClick={() => void handleDebugAction("clear-pending")}
                       >
-                        Clear Pending Memory
+                        清空待确认记忆
                       </button>
                     </div>
                   </section>
 
                   <section className="debugSection">
-                    <h3>Proactive</h3>
+                    <h3>主动陪伴</h3>
                     <dl className="debugFacts">
                       <div>
-                        <dt>enabled</dt>
+                        <dt>{formatDebugLabel("enabled")}</dt>
                         <dd>
                           <BooleanBadge value={proactiveStatus.enabled} />
                         </dd>
                       </div>
                       <div>
-                        <dt>sensitivity</dt>
+                        <dt>{formatDebugLabel("sensitivity")}</dt>
                         <dd>{debugText(proactiveStatus.sensitivity)}</dd>
                       </div>
                       <div>
-                        <dt>enabled_at</dt>
+                        <dt>{formatDebugLabel("enabled_at")}</dt>
                         <dd>{debugTime(proactiveStatus.enabled_at)}</dd>
                       </div>
                       <div>
-                        <dt>last_user_activity_at</dt>
+                        <dt>{formatDebugLabel("last_user_activity_at")}</dt>
                         <dd>{debugTime(proactiveStatus.last_user_activity_at)}</dd>
                       </div>
                       <div>
-                        <dt>idle_for_seconds</dt>
-                        <dd>{Number(proactiveStatus.idle_for_seconds ?? 0).toFixed(0)}</dd>
+                        <dt>{formatDebugLabel("idle_for_seconds")}</dt>
+                        <dd>{formatSeconds(proactiveStatus.idle_for_seconds)}</dd>
                       </div>
                       <div>
-                        <dt>idle_threshold_seconds</dt>
-                        <dd>{Number(proactiveStatus.idle_threshold_seconds ?? 0).toFixed(0)}</dd>
+                        <dt>{formatDebugLabel("idle_threshold_seconds")}</dt>
+                        <dd>{formatSeconds(proactiveStatus.idle_threshold_seconds)}</dd>
                       </div>
                       <div>
-                        <dt>initial_grace_remaining_seconds</dt>
-                        <dd>{Number(proactiveStatus.initial_grace_remaining_seconds ?? 0).toFixed(0)}</dd>
+                        <dt>{formatDebugLabel("initial_grace_remaining_seconds")}</dt>
+                        <dd>{formatSeconds(proactiveStatus.initial_grace_remaining_seconds)}</dd>
                       </div>
                       <div>
-                        <dt>cooldown_remaining_seconds</dt>
-                        <dd>{Number(proactiveStatus.cooldown_remaining_seconds ?? 0).toFixed(0)}</dd>
+                        <dt>{formatDebugLabel("cooldown_remaining_seconds")}</dt>
+                        <dd>{formatSeconds(proactiveStatus.cooldown_remaining_seconds)}</dd>
                       </div>
                       <div>
-                        <dt>requires_user_activity_after_proactive</dt>
+                        <dt>{formatDebugLabel("requires_user_activity_after_proactive")}</dt>
                         <dd>
                           <BooleanBadge value={proactiveStatus.requires_user_activity_after_proactive} />
                         </dd>
                       </div>
                       <div>
-                        <dt>next_possible_trigger_at</dt>
+                        <dt>{formatDebugLabel("next_possible_trigger_at")}</dt>
                         <dd>{debugTime(proactiveStatus.next_possible_trigger_at)}</dd>
                       </div>
                       <div>
-                        <dt>block_reason</dt>
+                        <dt>{formatDebugLabel("block_reason")}</dt>
                         <dd>{debugText(proactiveStatus.block_reason)}</dd>
                       </div>
                       <div>
-                        <dt>last_triggered_type</dt>
+                        <dt>{formatDebugLabel("last_triggered_type")}</dt>
                         <dd>{debugText(proactiveStatus.last_triggered_type)}</dd>
                       </div>
                       <div>
-                        <dt>last_triggered_at</dt>
+                        <dt>{formatDebugLabel("last_triggered_at")}</dt>
                         <dd>{debugTime(proactiveStatus.last_triggered_at)}</dd>
                       </div>
                       <div>
-                        <dt>active_candidate_triggers</dt>
-                        <dd>{proactiveStatus.active_candidate_triggers.join(", ") || "无"}</dd>
+                        <dt>{formatDebugLabel("active_candidate_triggers")}</dt>
+                        <dd>{debugText(proactiveStatus.active_candidate_triggers)}</dd>
                       </div>
                       <div>
-                        <dt>last_trigger_reason</dt>
+                        <dt>{formatDebugLabel("last_trigger_reason")}</dt>
                         <dd>{debugText(proactiveStatus.last_trigger_reason)}</dd>
                       </div>
                     </dl>
                   </section>
 
                   <section className="debugSection">
-                    <h3>Model Routing</h3>
+                    <h3>模型路由</h3>
                     <dl className="debugFacts">
                       <div>
-                        <dt>selected_model</dt>
+                        <dt>{formatDebugLabel("selected_model")}</dt>
                         <dd>{debugText(chatDebug.selected_model ?? providerDebug.selected_model)}</dd>
                       </div>
                       <div>
-                        <dt>model_route_mode</dt>
+                        <dt>{formatDebugLabel("model_route_mode")}</dt>
                         <dd>{debugText(chatDebug.model_route_mode ?? providerDebug.model_route_mode)}</dd>
                       </div>
                       <div>
-                        <dt>route_reason</dt>
+                        <dt>{formatDebugLabel("route_reason")}</dt>
                         <dd>{debugText(chatDebug.route_reason ?? providerDebug.route_reason)}</dd>
                       </div>
                       <div>
-                        <dt>route_intent</dt>
+                        <dt>{formatDebugLabel("route_intent")}</dt>
                         <dd>{debugText(chatDebug.route_intent ?? providerDebug.route_intent ?? chatDebug.intent)}</dd>
                       </div>
                       <div>
-                        <dt>complexity</dt>
+                        <dt>{formatDebugLabel("complexity")}</dt>
                         <dd>{debugText(chatDebug.estimated_complexity ?? providerDebug.estimated_complexity)}</dd>
                       </div>
                       <div>
-                        <dt>provider_latency_ms</dt>
+                        <dt>{formatDebugLabel("provider_latency_ms")}</dt>
                         <dd>{Number(chatDebug.provider_latency_ms ?? providerDebug.provider_latency_ms ?? 0).toFixed(0)}</dd>
                       </div>
                       <div>
-                        <dt>main_reply_model</dt>
+                        <dt>{formatDebugLabel("main_reply_model")}</dt>
                         <dd>{debugText(chatDebug.main_reply_model ?? providerDebug.main_reply_model)}</dd>
                       </div>
                       <div>
-                        <dt>semantic_model</dt>
+                        <dt>{formatDebugLabel("semantic_model")}</dt>
                         <dd>{debugText(chatDebug.semantic_extraction_model ?? providerDebug.semantic_extraction_model)}</dd>
                       </div>
                       <div>
-                        <dt>fallback_reason</dt>
+                        <dt>{formatDebugLabel("fallback_reason")}</dt>
                         <dd className={chatDebug.fallback_reason || providerDebug.fallback_reason ? "debugError" : ""}>
                           {debugText(chatDebug.fallback_reason ?? providerDebug.fallback_reason)}
                         </dd>
                       </div>
                       <div>
-                        <dt>response_latency_ms</dt>
+                        <dt>{formatDebugLabel("response_latency_ms")}</dt>
                         <dd>{Number(chatDebug.response_latency_ms || chatDebug.total_latency_ms || lastResponseLatencyMs || 0).toFixed(0)}</dd>
                       </div>
                     </dl>
                   </section>
 
                   <section className="debugSection">
-                    <h3>Semantic Extraction</h3>
+                    <h3>语义识别</h3>
                     <dl className="debugFacts">
                       <div>
-                        <dt>latest_user</dt>
+                        <dt>{formatDebugLabel("latest_user_message")}</dt>
                         <dd>{debugText(semanticDebug.latest_user_message)}</dd>
                       </div>
                       <div>
-                        <dt>rule_result</dt>
+                        <dt>{formatDebugLabel("rule_result")}</dt>
                         <dd>
-                          {debugText(semanticRuleResult.type ?? semanticRuleResult.event ?? semanticDebug.rule_result)}
+                          {semanticSummary(semanticDebug.rule_result)}
                         </dd>
                       </div>
                       <div>
-                        <dt>confidence</dt>
+                        <dt>{formatDebugLabel("confidence")}</dt>
                         <dd>{Number(semanticDebug.rule_confidence ?? 0).toFixed(2)}</dd>
                       </div>
                       <div>
-                        <dt>llm_called</dt>
+                        <dt>{formatDebugLabel("llm_called")}</dt>
                         <dd>
                           <BooleanBadge value={semanticDebug.llm_called} />
                         </dd>
                       </div>
                       <div>
-                        <dt>model</dt>
+                        <dt>{formatDebugLabel("model")}</dt>
                         <dd>{debugText(semanticDebug.semantic_extraction_model)}</dd>
                       </div>
                       <div>
-                        <dt>llm_event</dt>
-                        <dd>{debugText(semanticLlmGameEvent.type)}</dd>
+                        <dt>{formatDebugLabel("llm_result")}</dt>
+                        <dd>{semanticSummary(semanticDebug.llm_result)}</dd>
                       </div>
                       <div>
-                        <dt>llm_memory</dt>
-                        <dd>{debugText(semanticLlmMemoryCandidate.type)}</dd>
+                        <dt>{formatDebugLabel("final_decision")}</dt>
+                        <dd>{semanticSummary(semanticDebug.final_decision)}</dd>
                       </div>
                       <div>
-                        <dt>final_event</dt>
-                        <dd>{debugText(semanticFinalGameEvent.type)}</dd>
-                      </div>
-                      <div>
-                        <dt>final_memory</dt>
-                        <dd>{debugText(semanticFinalMemoryCandidate.type)}</dd>
-                      </div>
-                      <div>
-                        <dt>skip_reason</dt>
+                        <dt>{formatDebugLabel("skip_reason")}</dt>
                         <dd>{debugText(semanticDebug.skip_reason)}</dd>
                       </div>
                       <div>
-                        <dt>parse_error</dt>
+                        <dt>{formatDebugLabel("parse_error")}</dt>
                         <dd className={semanticDebug.parse_error ? "debugError" : ""}>
                           {debugText(semanticDebug.parse_error)}
                         </dd>
                       </div>
                       <div>
-                        <dt>latency_ms</dt>
+                        <dt>{formatDebugLabel("latency_ms")}</dt>
                         <dd>{Number(semanticDebug.semantic_extraction_latency_ms || semanticDebug.latency_ms || 0).toFixed(0)}</dd>
                       </div>
                     </dl>
                   </section>
 
                   <details className="rawJsonDetails">
-                    <summary>Raw JSON</summary>
+                    <summary>原始 JSON</summary>
                     <pre className="debugJson">
                       {JSON.stringify(
                         {
@@ -1087,74 +1251,74 @@ export function App() {
           )}
 
           {debugPanelVisible && (
-            <section className="infoCard foldPanel" aria-label="Prompt Preview" id="prompt-preview-panel">
+            <section className="infoCard foldPanel" aria-label="Prompt 预览" id="prompt-preview-panel">
               <button
                 className="foldHeader"
                 aria-expanded={promptPreviewOpen}
                 onClick={() => setPromptPreviewOpen((open) => !open)}
               >
-                <span>Prompt Preview</span>
+                <span>Prompt 预览</span>
                 {promptPreviewOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
               {promptPreviewOpen && (
                 <div className="debugPanel">
                   <dl className="debugFacts">
                     <div>
-                      <dt>persona_mode</dt>
-                      <dd>{promptPreview.persona_mode}</dd>
+                      <dt>{formatDebugLabel("persona_mode")}</dt>
+                      <dd>{debugText(promptPreview.persona_mode)}</dd>
                     </div>
                     <div>
-                      <dt>current_user_message</dt>
+                      <dt>{formatDebugLabel("current_user_message")}</dt>
                       <dd>{debugText(promptPreview.current_user_message)}</dd>
                     </div>
                     <div>
-                      <dt>prompt_order</dt>
-                      <dd>{promptPreview.prompt_order.join(" -> ") || "无"}</dd>
+                      <dt>{formatDebugLabel("prompt_order")}</dt>
+                      <dd>{formatPromptOrder(promptPreview.prompt_order)}</dd>
                     </div>
                     <div>
-                      <dt>selected_model</dt>
+                      <dt>{formatDebugLabel("selected_model")}</dt>
                       <dd>{debugText(promptModelRoute.selected_model)}</dd>
                     </div>
                     <div>
-                      <dt>route_reason</dt>
+                      <dt>{formatDebugLabel("route_reason")}</dt>
                       <dd>{debugText(promptModelRoute.route_reason)}</dd>
                     </div>
                     <div>
-                      <dt>route_intent</dt>
+                      <dt>{formatDebugLabel("route_intent")}</dt>
                       <dd>{debugText(promptModelRoute.route_intent)}</dd>
                     </div>
                     <div>
-                      <dt>complexity</dt>
+                      <dt>{formatDebugLabel("complexity")}</dt>
                       <dd>{debugText(promptModelRoute.estimated_complexity)}</dd>
                     </div>
                     <div>
-                      <dt>main_reply_model</dt>
+                      <dt>{formatDebugLabel("main_reply_model")}</dt>
                       <dd>{debugText(promptModelRoute.main_reply_model)}</dd>
                     </div>
                     <div>
-                      <dt>provider_latency_ms</dt>
+                      <dt>{formatDebugLabel("provider_latency_ms")}</dt>
                       <dd>{debugText(promptModelRoute.provider_latency_ms)}</dd>
                     </div>
                     <div>
-                      <dt>session_focus</dt>
+                      <dt>{formatDebugLabel("session_focus")}</dt>
                       <dd>{debugText(sessionFocusSummary.prompt_line ?? sessionFocusSummary.boss)}</dd>
                     </div>
                     <div>
-                      <dt>game_state</dt>
+                      <dt>{formatDebugLabel("game_state")}</dt>
                       <dd>
                         {debugText(gameStateSummary.current_game)} / {bossName(gameStateSummary.current_boss)} /{" "}
                         {debugText(gameStateSummary.current_activity)} / {debugText(gameStateSummary.freshness)}
                       </dd>
                     </div>
                     <div>
-                      <dt>memory</dt>
+                      <dt>{formatDebugLabel("memory")}</dt>
                       <dd>
-                        injected {injectedMemory.length} / skipped {skippedMemory.length}
+                        已注入 {injectedMemory.length} / 已跳过 {skippedMemory.length}
                       </dd>
                     </div>
                   </dl>
                   <div className="debugSubgroup">
-                    <h4>Memory injected</h4>
+                    <h4>注入记忆</h4>
                     <ul className="debugList">
                       {injectedMemory.map((item, index) => (
                         <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
@@ -1163,7 +1327,7 @@ export function App() {
                     </ul>
                   </div>
                   <div className="debugSubgroup">
-                    <h4>Memory skipped</h4>
+                    <h4>跳过记忆</h4>
                     <ul className="debugList">
                       {skippedMemory.map((item, index) => (
                         <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
@@ -1172,10 +1336,10 @@ export function App() {
                     </ul>
                   </div>
                   <div className="debugSubgroup">
-                    <h4>Warnings</h4>
+                    <h4>警告</h4>
                     <ul className="debugList">
                       {promptPreview.warnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
+                        <li key={warning}>{debugText(warning)}</li>
                       ))}
                       {promptPreview.warnings.length === 0 && <li>无</li>}
                     </ul>

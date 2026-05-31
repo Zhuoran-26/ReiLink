@@ -373,23 +373,27 @@ button {
   box-shadow: none;
 }
 
-.messageBubble span {
-  display: block;
+.messageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+.messageSpeaker {
   color: #b7a8ff;
   font-size: 13px;
   font-weight: 640;
 }
 
-.messageMeta {
-  display: inline;
-  margin-left: 8px;
+.messageTime {
   color: #7f8aa3;
   font-size: 11px;
   font-weight: 560;
 }
 
-.messageBubble.user span {
+.messageBubble.user .messageSpeaker {
   color: #c8c7e8;
 }
 

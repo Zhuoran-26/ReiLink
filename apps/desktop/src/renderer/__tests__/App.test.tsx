@@ -376,41 +376,45 @@ describe("App", () => {
     expect(navigation).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主聊天界面" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "信息侧栏" })).toBeInTheDocument();
-    expect(within(navigation).getByText("Chat")).toBeInTheDocument();
-    expect(within(navigation).getByText("Memory")).toBeInTheDocument();
-    expect(within(navigation).getByText("Game")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Pending Memory" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Game Session" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Debug Panel/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Prompt Preview/i })).toBeInTheDocument();
-    expect(screen.queryByText("Semantic Extraction")).not.toBeInTheDocument();
+    expect(within(navigation).getByText("聊天")).toBeInTheDocument();
+    expect(within(navigation).getByText("记忆")).toBeInTheDocument();
+    expect(within(navigation).getByText("游戏")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "设置" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "游戏状态" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /调试面板/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Prompt 预览/i })).toBeInTheDocument();
+    expect(screen.queryByText("语义识别")).not.toBeInTheDocument();
   });
 
   it("shows running game status", async () => {
     render(<App />);
     await waitFor(() => expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0));
     expect(screen.getAllByText("恶兆妖鬼 Margit").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("boss_attempt").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("挑战中").length).toBeGreaterThan(0);
+    expect(screen.getByText("当前游戏")).toBeInTheDocument();
+    expect(screen.getByText("当前 Boss")).toBeInTheDocument();
+    expect(screen.getByText("死亡次数")).toBeInTheDocument();
   });
 
   it("renders settings panel values", async () => {
     render(<App />);
 
-    expect(await screen.findByLabelText("Persona Mode")).toHaveValue("minimal");
-    expect(screen.getByRole("combobox", { name: "Debug Panel" })).toHaveValue("show");
-    expect(screen.getByLabelText("Memory")).toHaveValue("enabled");
-    expect(screen.getByLabelText("Pending Memory Mode")).toHaveValue("manual");
-    expect(screen.getByLabelText("Response Length")).toHaveValue("normal");
-    expect(screen.getByLabelText("Model Preference")).toHaveValue("auto");
-    expect(screen.getByLabelText("Proactive Companion")).toHaveValue("off");
-    expect(screen.getByLabelText("Proactive Sensitivity")).toHaveValue("low");
+    expect(await screen.findByLabelText("人格模式")).toHaveValue("minimal");
+    expect(screen.getByRole("combobox", { name: "调试面板" })).toHaveValue("show");
+    expect(screen.getByLabelText("记忆")).toHaveValue("enabled");
+    expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
+    expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
+    expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
+    expect(screen.getByLabelText("主动陪伴")).toHaveValue("off");
+    expect(screen.getByLabelText("主动灵敏度")).toHaveValue("low");
+    expect(screen.getByText(/主动陪伴当前为关闭/)).toBeInTheDocument();
   });
 
   it("updates settings through the API", async () => {
     render(<App />);
 
-    await userEvent.selectOptions(await screen.findByLabelText("Persona Mode"), "guarded");
+    await userEvent.selectOptions(await screen.findByLabelText("人格模式"), "guarded");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),
@@ -418,7 +422,7 @@ describe("App", () => {
       )
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Memory"), "disabled");
+    await userEvent.selectOptions(screen.getByLabelText("记忆"), "disabled");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),
@@ -426,7 +430,7 @@ describe("App", () => {
       )
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Model Preference"), "pro");
+    await userEvent.selectOptions(screen.getByLabelText("模型偏好"), "pro");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),
@@ -434,7 +438,7 @@ describe("App", () => {
       )
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Proactive Companion"), "on");
+    await userEvent.selectOptions(screen.getByLabelText("主动陪伴"), "on");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),
@@ -446,11 +450,11 @@ describe("App", () => {
   it("hides debug panel through settings", async () => {
     render(<App />);
 
-    await screen.findByRole("button", { name: /Debug Panel/i });
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Debug Panel" }), "hide");
+    await screen.findByRole("button", { name: /调试面板/i });
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "调试面板" }), "hide");
 
-    await waitFor(() => expect(screen.queryByRole("button", { name: /Debug Panel/i })).not.toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /Prompt Preview/i })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: /调试面板/i })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Prompt 预览/i })).not.toBeInTheDocument();
   });
 
   it("sends chat and renders user plus assistant messages", async () => {
@@ -459,6 +463,7 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     expect(screen.getByText("Margit 怎么打？")).toBeInTheDocument();
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    expect(screen.getAllByText(/今天 \d{2}:\d{2}/).length).toBeGreaterThan(0);
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/chat"),
       expect.objectContaining({ method: "POST" })
@@ -502,7 +507,7 @@ describe("App", () => {
 
     const proactiveMessage = screen.getByText("你开始急了。");
     const bubble = proactiveMessage.closest("article");
-    expect(screen.getByText("proactive · repeated_death")).toBeInTheDocument();
+    expect(screen.getByText(/主动 · 反复死亡/)).toBeInTheDocument();
     expect(bubble).toHaveClass("messageBubble", "assistant", "proactive");
     expect(bubble).not.toHaveClass("system");
   });
@@ -710,61 +715,61 @@ describe("App", () => {
   it("toggles debug panel", async () => {
     render(<App />);
 
-    await screen.findByText("Game Session");
-    expect(screen.getByText("current_game")).toBeInTheDocument();
-    expect(screen.getByText("current_boss")).toBeInTheDocument();
-    expect(screen.getByText("freshness")).toBeInTheDocument();
-    expect(screen.getByText("last_attempted")).toBeInTheDocument();
-    expect(screen.getByText("last_cleared")).toBeInTheDocument();
-    expect(screen.queryByText("Semantic Extraction")).not.toBeInTheDocument();
+    await screen.findByText("游戏状态");
+    expect(screen.getByText("当前游戏")).toBeInTheDocument();
+    expect(screen.getByText("当前 Boss")).toBeInTheDocument();
+    expect(screen.getByText("状态新鲜度")).toBeInTheDocument();
+    expect(screen.getByText("最近挑战")).toBeInTheDocument();
+    expect(screen.getByText("最近通过")).toBeInTheDocument();
+    expect(screen.queryByText("语义识别")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Debug Panel/i }));
-    await waitFor(() => expect(screen.getByText("Semantic Extraction")).toBeInTheDocument());
-    expect(screen.getByText("Proactive")).toBeInTheDocument();
-    expect(screen.getAllByText("enabled").length).toBeGreaterThan(0);
-    expect(screen.getByText("enabled_at")).toBeInTheDocument();
-    expect(screen.getByText("last_user_activity_at")).toBeInTheDocument();
-    expect(screen.getByText("idle_for_seconds")).toBeInTheDocument();
-    expect(screen.getByText("idle_threshold_seconds")).toBeInTheDocument();
-    expect(screen.getByText("initial_grace_remaining_seconds")).toBeInTheDocument();
-    expect(screen.getByText("requires_user_activity_after_proactive")).toBeInTheDocument();
-    expect(screen.getByText("next_possible_trigger_at")).toBeInTheDocument();
-    expect(screen.getByText("block_reason")).toBeInTheDocument();
-    expect(screen.getByText("cooldown_remaining_seconds")).toBeInTheDocument();
-    expect(screen.getByText("last_triggered_type")).toBeInTheDocument();
-    expect(screen.getByText("last_triggered_at")).toBeInTheDocument();
-    expect(screen.getByText("active_candidate_triggers")).toBeInTheDocument();
-    expect(screen.getByText("last_trigger_reason")).toBeInTheDocument();
-    expect(screen.getByText("Model Routing")).toBeInTheDocument();
-    expect(screen.getAllByText("selected_model").length).toBeGreaterThan(0);
-    expect(screen.getByText("model_route_mode")).toBeInTheDocument();
-    expect(screen.getAllByText("route_reason").length).toBeGreaterThan(0);
-    expect(screen.getByText("provider_latency_ms")).toBeInTheDocument();
-    expect(screen.getByText("Semantic Extraction")).toBeInTheDocument();
-    expect(screen.getByText("llm_called")).toBeInTheDocument();
-    expect(screen.getAllByText("guide_preference").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /Prompt Preview/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /调试面板/i }));
+    await waitFor(() => expect(screen.getByText("语义识别")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "主动陪伴" })).toBeInTheDocument();
+    expect(screen.getAllByText("是否开启").length).toBeGreaterThan(0);
+    expect(screen.getByText("开启时间")).toBeInTheDocument();
+    expect(screen.getByText("最近用户活动")).toBeInTheDocument();
+    expect(screen.getByText("已空闲时间")).toBeInTheDocument();
+    expect(screen.getByText("空闲触发阈值")).toBeInTheDocument();
+    expect(screen.getByText("初始等待剩余")).toBeInTheDocument();
+    expect(screen.getByText("等待用户回应")).toBeInTheDocument();
+    expect(screen.getByText("下次可能触发")).toBeInTheDocument();
+    expect(screen.getByText("阻断原因")).toBeInTheDocument();
+    expect(screen.getByText("冷却剩余")).toBeInTheDocument();
+    expect(screen.getByText("上次触发类型")).toBeInTheDocument();
+    expect(screen.getByText("上次触发时间")).toBeInTheDocument();
+    expect(screen.getByText("候选触发器")).toBeInTheDocument();
+    expect(screen.getByText("上次触发原因")).toBeInTheDocument();
+    expect(screen.getByText("模型路由")).toBeInTheDocument();
+    expect(screen.getAllByText("选用模型").length).toBeGreaterThan(0);
+    expect(screen.getByText("路由模式")).toBeInTheDocument();
+    expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
+    expect(screen.getByText("模型耗时")).toBeInTheDocument();
+    expect(screen.getByText("语义识别")).toBeInTheDocument();
+    expect(screen.getByText("是否调用 LLM")).toBeInTheDocument();
+    expect(screen.getAllByText(/攻略偏好/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Prompt 预览/i })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Prompt Preview/i }));
-    await waitFor(() => expect(screen.getByText("persona_mode")).toBeInTheDocument());
-    expect(screen.getByText("persona_mode")).toBeInTheDocument();
-    expect(screen.getByText("prompt_order")).toBeInTheDocument();
-    expect(screen.getAllByText("selected_model").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("route_reason").length).toBeGreaterThan(0);
-    expect(screen.getByText("current_user_message")).toBeInTheDocument();
-    expect(screen.getByText("session_focus")).toBeInTheDocument();
-    expect(screen.getByText("game_state")).toBeInTheDocument();
-    expect(screen.getByText("Memory injected")).toBeInTheDocument();
-    expect(screen.getByText("Memory skipped")).toBeInTheDocument();
-    expect(screen.getByText("Pending Memory")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Prompt 预览/i }));
+    await waitFor(() => expect(screen.getAllByText("人格模式").length).toBeGreaterThan(1));
+    expect(screen.getByText("注入顺序")).toBeInTheDocument();
+    expect(screen.getAllByText("选用模型").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
+    expect(screen.getByText("当前用户消息")).toBeInTheDocument();
+    expect(screen.getByText("会话焦点")).toBeInTheDocument();
+    expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
+    expect(screen.getByText("记忆摘要")).toBeInTheDocument();
+    expect(screen.getByText("注入记忆")).toBeInTheDocument();
+    expect(screen.getByText("跳过记忆")).toBeInTheDocument();
+    expect(screen.getByText("待确认记忆")).toBeInTheDocument();
     expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ignore" })).toBeInTheDocument();
-    expect(screen.getByText("Warnings")).toBeInTheDocument();
-    expect(screen.getByText("Raw JSON")).toBeInTheDocument();
-    expect(screen.getByText("Raw JSON").closest("details")).not.toHaveAttribute("open");
-    await userEvent.click(screen.getByRole("button", { name: /Debug Panel/i }));
-    await waitFor(() => expect(screen.queryByText("Semantic Extraction")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "忽略" })).toBeInTheDocument();
+    expect(screen.getByText("警告")).toBeInTheDocument();
+    expect(screen.getByText("原始 JSON")).toBeInTheDocument();
+    expect(screen.getByText("原始 JSON").closest("details")).not.toHaveAttribute("open");
+    await userEvent.click(screen.getByRole("button", { name: /调试面板/i }));
+    await waitFor(() => expect(screen.queryByText("语义识别")).not.toBeInTheDocument());
   });
 
   it("falls back to game session debug data and shows empty warnings as none", async () => {
@@ -800,21 +805,21 @@ describe("App", () => {
     );
 
     render(<App />);
-    await userEvent.click(await screen.findByRole("button", { name: /Prompt Preview/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Prompt 预览/i }));
 
-    const gameStateSection = screen.getByText("game_state").closest("section");
+    const gameStateSection = screen.getByText("游戏状态摘要").closest("section");
     expect(gameStateSection).not.toBeNull();
     expect(gameStateSection?.textContent).toContain("恶兆妖鬼 Margit");
-    expect(gameStateSection?.textContent).toContain("boss_attempt");
+    expect(gameStateSection?.textContent).toContain("挑战中");
 
-    const warningsSection = screen.getByText("Warnings").closest(".debugSubgroup");
+    const warningsSection = screen.getByText("警告").closest(".debugSubgroup");
     expect(warningsSection).not.toBeNull();
     expect(within(warningsSection as HTMLElement).getByText("无")).toBeInTheDocument();
   });
 
   it("accepts pending memory from the debug panel", async () => {
     render(<App />);
-    await userEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    await userEvent.click(await screen.findByRole("button", { name: "保存" }));
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -854,9 +859,9 @@ describe("App", () => {
 
   it("calls debug reset and clear endpoints", async () => {
     render(<App />);
-    await userEvent.click(await screen.findByRole("button", { name: /Debug Panel/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /调试面板/i }));
 
-    await userEvent.click(await screen.findByRole("button", { name: "Reset Game Session" }));
+    await userEvent.click(await screen.findByRole("button", { name: "重置游戏状态" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/debug/game-session/reset"),
@@ -864,7 +869,7 @@ describe("App", () => {
       )
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Reset Memory" }));
+    await userEvent.click(screen.getByRole("button", { name: "重置记忆" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/memory/reset"),
@@ -872,7 +877,7 @@ describe("App", () => {
       )
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Clear Pending Memory" }));
+    await userEvent.click(screen.getByRole("button", { name: "清空待确认记忆" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/memory/pending/clear"),
