@@ -170,6 +170,22 @@ npm run dev
 
 `make dev` 不做复杂进程管理，只会提示分别运行 `make dev-backend` 和 `make dev-desktop`。
 
+### 本地打包 / Local Packaging
+
+生成本地未签名的 macOS Electron app：
+
+```bash
+make package-desktop
+```
+
+当前打包是本地开发构建，用于展示、截图、录屏或 release artifact 预演；不是正式签名安装器，也没有 notarization。产物默认生成在 `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`。macOS 可能提示应用未签名，需要在本机允许打开。
+
+注意：当前 desktop 包不内置 FastAPI backend。运行打包 app 前仍需要单独启动 backend：
+
+```bash
+make dev-backend
+```
+
 7. 后端健康检查：
 
 ```bash
@@ -188,6 +204,7 @@ make test-desktop
 make test
 make lint
 make typecheck
+make package-desktop
 ```
 
 说明：
@@ -198,6 +215,7 @@ make typecheck
 - `make test`：运行 backend + desktop tests。
 - `make lint`：运行 desktop lint 和 `git diff --check`。
 - `make typecheck`：当前等同于 desktop build。
+- `make package-desktop`：生成本地未签名的 macOS Electron app。
 
 常见启动问题见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
 
@@ -442,6 +460,22 @@ npm run dev
 
 `make dev` does not manage long-running processes. It prints the two commands to run in separate terminals: `make dev-backend` and `make dev-desktop`.
 
+### Local Packaging
+
+Build an unsigned local macOS Electron app:
+
+```bash
+make package-desktop
+```
+
+This is a local development build for demos, screenshots, recordings, or release artifact dry runs. It is not a signed installer and does not include notarization. The default output is `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`. macOS may warn that the app is unsigned, so you may need to allow it locally.
+
+Note: the packaged desktop app does not bundle the FastAPI backend yet. Start the backend separately before opening the packaged app:
+
+```bash
+make dev-backend
+```
+
 7. Backend health checks:
 
 ```bash
@@ -460,6 +494,7 @@ make test-desktop
 make test
 make lint
 make typecheck
+make package-desktop
 ```
 
 Notes:
@@ -470,6 +505,7 @@ Notes:
 - `make test`: runs backend + desktop tests.
 - `make lint`: runs desktop lint and `git diff --check`.
 - `make typecheck`: currently runs the desktop build.
+- `make package-desktop`: builds an unsigned local macOS Electron app.
 
 For common startup issues, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 

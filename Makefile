@@ -1,4 +1,4 @@
-.PHONY: install-backend install-desktop dev-backend dev-desktop dev dev-renderer doctor validate-knowledge test test-backend test-desktop test-e2e lint typecheck
+.PHONY: install-backend install-desktop dev-backend dev-desktop dev dev-renderer doctor validate-knowledge package-desktop test test-backend test-desktop test-e2e lint typecheck
 
 PYTHON ?= python3
 
@@ -26,6 +26,9 @@ doctor:
 
 validate-knowledge:
 	@$(PYTHON) scripts/validate_knowledge.py
+
+package-desktop:
+	cd apps/desktop && npm run package
 
 dev-renderer:
 	cd apps/desktop && npm run dev

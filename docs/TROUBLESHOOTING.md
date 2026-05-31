@@ -164,6 +164,70 @@ ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
 
 说明：这足够运行 renderer lint、unit tests 和 build。若要运行 Electron shell，仍需要 Electron binary。
 
+### Electron packaging failed（Electron 本地打包失败）
+
+现象：
+
+- `make package-desktop` 失败。
+- 提示找不到 Electron runtime、`dist`、`dist-electron` 或 `main.js`。
+
+处理：
+
+```bash
+make install-desktop
+make typecheck
+make package-desktop
+```
+
+说明：Packaging v1 只支持本地 macOS 开发打包，复用 `apps/desktop/node_modules/electron/dist/Electron.app`。如果曾使用 `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`，需要重新安装 Electron binary 后才能打包或启动 Electron shell。
+
+### macOS unsigned app warning（macOS 未签名应用提示）
+
+现象：
+
+- 打开的 `ReiLink.app` 提示来自未认证开发者或无法验证。
+
+处理：
+
+- 当前产物是本地未签名开发构建，不包含 code signing 或 notarization。
+- 可在 Finder 中 Control-click / 右键点击 `ReiLink.app` 后选择 Open，或在 macOS Privacy & Security 中允许打开。
+- 不要把这个行为描述为正式 installer。
+
+### dist / release output not found（找不到打包产物）
+
+现象：
+
+- 找不到 `.app` 产物。
+- `apps/desktop/release/` 不存在。
+
+处理：
+
+```bash
+make package-desktop
+```
+
+默认输出路径：
+
+```text
+apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app
+```
+
+`release/`、`dist/` 和 `dist-electron/` 属于本地构建产物，不要提交到 git。
+
+### Packaged desktop still needs backend（打包桌面端仍需单独启动 backend）
+
+现象：
+
+- 打包后的桌面 app 可以打开，但显示后端未连接或聊天请求失败。
+
+处理：
+
+```bash
+make dev-backend
+```
+
+说明：Packaging v1 只打包 Electron desktop，不内置 FastAPI backend。桌面端仍默认访问 `http://127.0.0.1:8000`。
+
 ### GitHub push HTTP/1.1 workaround（GitHub push HTTP/1.1 兼容处理）
 
 现象：
@@ -403,6 +467,70 @@ ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
 ```
 
 This is enough for renderer lint, unit tests, and build. Running the Electron shell still requires the Electron binary.
+
+### Electron Packaging Failed
+
+Symptoms:
+
+- `make package-desktop` fails.
+- The error mentions a missing Electron runtime, `dist`, `dist-electron`, or `main.js`.
+
+Fix:
+
+```bash
+make install-desktop
+make typecheck
+make package-desktop
+```
+
+Packaging v1 supports local macOS packaging only and reuses `apps/desktop/node_modules/electron/dist/Electron.app`. If you previously installed with `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`, reinstall the Electron binary before packaging or running the Electron shell.
+
+### macOS Unsigned App Warning
+
+Symptoms:
+
+- Opening `ReiLink.app` shows an unidentified developer or verification warning.
+
+Fix:
+
+- The current output is an unsigned local development build. It does not include code signing or notarization.
+- Control-click / right-click `ReiLink.app` in Finder and choose Open, or allow it in macOS Privacy & Security.
+- Do not describe this as a formal installer.
+
+### dist / release Output Not Found
+
+Symptoms:
+
+- The `.app` output is missing.
+- `apps/desktop/release/` does not exist.
+
+Fix:
+
+```bash
+make package-desktop
+```
+
+Default output path:
+
+```text
+apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app
+```
+
+`release/`, `dist/`, and `dist-electron/` are local build outputs and should not be committed.
+
+### Packaged Desktop Still Needs Backend
+
+Symptoms:
+
+- The packaged desktop app opens, but shows the backend disconnected or chat requests fail.
+
+Fix:
+
+```bash
+make dev-backend
+```
+
+Packaging v1 only packages the Electron desktop app. It does not bundle the FastAPI backend. The desktop app still talks to `http://127.0.0.1:8000` by default.
 
 ### GitHub Push HTTP/1.1 Workaround
 
