@@ -13,7 +13,7 @@ import {
   Settings,
   Sparkles
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   api,
@@ -507,7 +507,7 @@ export function App() {
     void refreshStatus();
   }, []);
 
-  const checkProactive = async () => {
+  const checkProactive = useCallback(async () => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on" || sending) return;
     try {
       const response = await api.checkProactive("default", Boolean(input.trim()), backendStatus === "connected");
@@ -528,13 +528,13 @@ export function App() {
     } catch (error) {
       setLastError(error instanceof Error ? error.message : "主动陪伴检查失败");
     }
-  };
+  }, [appSettings.proactive_companion, backendStatus, input, sending]);
 
   useEffect(() => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on") return undefined;
     const interval = window.setInterval(() => void checkProactive(), PROACTIVE_CHECK_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [backendStatus, appSettings.proactive_companion, input, sending]);
+  }, [appSettings.proactive_companion, backendStatus, checkProactive]);
 
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault();
