@@ -18,9 +18,41 @@ Status: MVP / Pre-release。
 
 Rei 是原创 companion persona。项目不隶属于 Evangelion、FromSoftware、Team Cherry 或相关权利方。Elden Ring / Hollow Knight 仅作为本地 sample knowledge context 展示多游戏知识接口；相关名称与商标归各自权利方所有。
 
-### 截图 / Demo
+### 截图展示 / Screenshots
 
-公开展示时建议在 `docs/assets/screenshots/` 放置 demo 截图，或在 release / portfolio 页面附上短视频。当前 README 保留截图占位说明，避免在未确认素材前提交临时截图。
+#### 主聊天界面 / Main Companion Chat
+
+![Main Chat](docs/assets/reilink-main-chat.jpeg)
+
+![Companion Chat](docs/assets/reilink-companion-chat.jpeg)
+
+#### 可确认记忆 / Confirmable Memory
+
+![Pending Memory](docs/assets/reilink-pending-memory.jpeg)
+
+#### 游戏状态 / Game Session State
+
+![Game Session](docs/assets/reilink-game-session.jpeg)
+
+#### 多游戏知识库 / Multi-game Knowledge
+
+![Elden Ring Knowledge](docs/assets/reilink-knowledge-elden-ring.jpeg)
+
+![Hollow Knight Knowledge](docs/assets/reilink-knowledge-hollow-knight.jpeg)
+
+#### 未支持游戏兜底 / Unsupported Game Fallback
+
+![Knowledge Fallback](docs/assets/reilink-knowledge-fallback.jpeg)
+
+#### 主动陪伴 / Proactive Companion
+
+![Proactive Companion](docs/assets/reilink-proactive.jpeg)
+
+#### 回复上下文与调试 / Context Preview and Debug
+
+![Context Preview](docs/assets/reilink-context-preview.jpeg)
+
+![Debug Panel](docs/assets/reilink-debug-panel.jpeg)
 
 ### 功能介绍
 
@@ -276,9 +308,9 @@ The current version is suitable for local demos, portfolio presentation, and cod
 
 Rei is an original companion persona. This project is not affiliated with Evangelion, FromSoftware, Team Cherry, or their rights holders. Elden Ring / Hollow Knight are used only as local sample knowledge contexts to demonstrate the multi-game knowledge interface; related names and trademarks belong to their respective owners.
 
-### Screenshots / Demo
+### Screenshots
 
-For public presentation, place demo screenshots under `docs/assets/screenshots/`, or attach a short video on the release / portfolio page. This README keeps a screenshot placeholder note so temporary screenshots are not committed before the assets are ready.
+The bilingual screenshot showcase above uses repository assets under `docs/assets/` for GitHub, portfolio, and interview presentation.
 
 ### Key Features
 

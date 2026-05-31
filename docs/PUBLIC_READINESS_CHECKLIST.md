@@ -20,7 +20,9 @@
 
 - [ ] MIT License 已添加。
 - [ ] README 包含 status、quick start、health check、privacy、disclaimer、license。
-- [ ] Demo screenshots 或 demo video 路径已准备。
+- [x] Demo screenshots 已整理到 `docs/assets/`。
+- [x] README screenshot section 已更新。
+- [x] Release notes screenshot links 已添加。
 - [ ] `docs/RELEASE_NOTES_v0.1.md` 已准备。
 - [ ] `docs/TROUBLESHOOTING.md` 已覆盖常见启动问题。
 
@@ -52,7 +54,9 @@
 
 - [ ] MIT License is added.
 - [ ] README includes status, quick start, health check, privacy, disclaimer, and license.
-- [ ] Demo screenshots or demo video path is ready.
+- [x] Demo screenshots are organized under `docs/assets/`.
+- [x] README screenshot section is updated.
+- [x] Release notes screenshot links are added.
 - [ ] `docs/RELEASE_NOTES_v0.1.md` is ready.
 - [ ] `docs/TROUBLESHOOTING.md` covers common startup issues.
 
