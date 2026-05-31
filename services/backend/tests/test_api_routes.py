@@ -284,6 +284,16 @@ def test_settings_routes_persist_safe_values():
     assert "api_key" not in saved_serialized
     assert "secret" not in saved_serialized
 
+    reset_onboarding = client.post(
+        "/api/settings",
+        json={"onboarding_completed": False, "onboarding_last_seen_at": None},
+    )
+    assert reset_onboarding.status_code == 200
+    reset_saved = reset_onboarding.json()
+    assert reset_saved["onboarding_completed"] is False
+    assert reset_saved["onboarding_last_seen_at"] is None
+    assert client.get("/api/settings").json()["onboarding_last_seen_at"] is None
+
 
 def test_debug_chat_returns_last_latency_fields():
     client.post("/api/chat", json={"message": "你好", "session_id": "api-debug-chat"})

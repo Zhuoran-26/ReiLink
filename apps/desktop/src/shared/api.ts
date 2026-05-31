@@ -112,6 +112,10 @@ export type ProactiveStatusResponse = {
   last_trigger_reason: string | null;
 };
 
+export type ProactiveResetResponse = ProactiveStatusResponse & {
+  status: "reset";
+};
+
 export type ProactiveCheckResponse = {
   should_send: boolean;
   trigger_type: ProactiveTriggerType;
@@ -410,6 +414,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ enabled, sensitivity })
     }),
+  resetProactive: () => request<ProactiveResetResponse>("/api/proactive/reset", { method: "POST" }),
   gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
   semanticExtractionDebug: () => request<SemanticExtractionDebugResponse>("/api/debug/semantic-extraction/latest"),
   promptPreview: (sessionId = "default") => request<PromptPreviewResponse>(`/api/debug/prompt-preview?session_id=${encodeURIComponent(sessionId)}`),

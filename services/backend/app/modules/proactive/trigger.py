@@ -226,6 +226,18 @@ class ProactiveCompanion:
             state.requires_user_activity_after_proactive = False
         self.save(state)
 
+    def reset_runtime_state(self, now: datetime | None = None) -> dict[str, Any]:
+        now = _ensure_aware(now or datetime.now().astimezone())
+        current = self.load()
+        self.save(
+            ProactiveState(
+                enabled=current.enabled,
+                sensitivity=current.sensitivity,
+                enabled_at=now.isoformat() if current.enabled else None,
+            )
+        )
+        return {"status": "reset", **self.status(now=now)}
+
     def load(self) -> ProactiveState:
         raw: dict[str, Any] = {}
         if self.state_path.exists():

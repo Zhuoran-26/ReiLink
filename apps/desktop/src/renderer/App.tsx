@@ -47,6 +47,15 @@ type Message = {
   triggerType?: string;
 };
 
+type DemoResetAction =
+  | "reset-onboarding"
+  | "clear-chat"
+  | "reset-game-session"
+  | "clear-pending"
+  | "reset-memory"
+  | "reset-proactive"
+  | "reset-demo";
+
 const idleStatus: GameStatus = {
   game_id: null,
   game_name: null,
@@ -688,6 +697,7 @@ export function App() {
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [setupHelpOpen, setSetupHelpOpen] = useState(false);
   const [demoDocHintOpen, setDemoDocHintOpen] = useState(false);
+  const [demoResetFeedback, setDemoResetFeedback] = useState("");
   const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
   const [onboardingReopened, setOnboardingReopened] = useState(false);
   const [lastError, setLastError] = useState("");
@@ -928,6 +938,9 @@ export function App() {
   const handleDebugAction = async (
     action: "refresh" | "reset-game-session" | "reset-memory" | "clear-pending"
   ) => {
+    if (action === "reset-memory" && !window.confirm("这会清空本地记忆，无法撤销。确定继续吗？")) {
+      return;
+    }
     setDebugActionBusy(action);
     try {
       setLastError("");
@@ -943,6 +956,88 @@ export function App() {
     } catch (error) {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "调试操作失败"));
+    } finally {
+      setDebugActionBusy("");
+    }
+  };
+
+  const resetOnboardingForDemo = async () => {
+    const updated = await api.updateSettings({
+      onboarding_completed: false,
+      onboarding_last_seen_at: null
+    });
+    setAppSettings(updated);
+    setOnboardingDismissedThisSession(false);
+    setOnboardingReopened(true);
+    setDemoDocHintOpen(false);
+  };
+
+  const clearCurrentChat = () => {
+    queueMessageAutoScroll(true);
+    setMessages([]);
+  };
+
+  const handleDemoResetAction = async (action: DemoResetAction) => {
+    if (
+      action === "clear-chat" &&
+      !window.confirm("这会清空当前聊天记录，无法撤销。确定继续吗？")
+    ) {
+      return;
+    }
+    if (
+      action === "reset-memory" &&
+      !window.confirm("这会清空本地记忆，无法撤销。确定继续吗？")
+    ) {
+      return;
+    }
+    if (
+      action === "reset-demo" &&
+      !window.confirm("这会清空当前聊天并重置演示状态，但不会清空长期记忆。确定继续吗？")
+    ) {
+      return;
+    }
+
+    setDebugActionBusy(`demo-${action}`);
+    setDemoResetFeedback("");
+    try {
+      setLastError("");
+      setLastRawError("");
+      if (action === "reset-onboarding") {
+        await resetOnboardingForDemo();
+        await refreshStatus();
+        setDemoResetFeedback("已恢复新手引导");
+      } else if (action === "clear-chat") {
+        clearCurrentChat();
+        setDemoResetFeedback("已清空当前聊天记录");
+      } else if (action === "reset-game-session") {
+        await api.resetGameSession();
+        await refreshStatus();
+        setDemoResetFeedback("已重置游戏状态");
+      } else if (action === "clear-pending") {
+        await api.clearPendingMemories();
+        await refreshStatus();
+        setDemoResetFeedback("已清空待确认记忆");
+      } else if (action === "reset-memory") {
+        await api.resetMemory();
+        await refreshStatus();
+        setDemoResetFeedback("已重置长期记忆");
+      } else if (action === "reset-proactive") {
+        await api.resetProactive();
+        await refreshStatus();
+        setDemoResetFeedback("已重置主动陪伴状态");
+      } else if (action === "reset-demo") {
+        clearCurrentChat();
+        await api.resetGameSession();
+        await api.clearPendingMemories();
+        await api.resetProactive();
+        await resetOnboardingForDemo();
+        await refreshStatus();
+        setDemoResetFeedback("已重置演示状态（未清空长期记忆）");
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "演示重置操作失败"));
+      setDemoResetFeedback("操作失败，请查看错误提示");
     } finally {
       setDebugActionBusy("");
     }
@@ -1238,7 +1333,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
         </section>
 
         <aside className="infoRail" aria-label="信息侧栏">
-          <section className="infoCard settingsPanel" aria-label="设置" id="settings-panel">
+          <section className="infoCard settingsPanel" aria-label="设置" id="settings-panel" style={{ order: 1 }}>
             <div className="cardHeader">
               <Settings size={17} />
               <h2>设置</h2>
@@ -1360,6 +1455,92 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   重新查看
                 </button>
               </div>
+              <div className="demoResetPanel" role="group" aria-label="演示与重置">
+                <div className="demoResetHeader">
+                  <div>
+                    <span>演示与重置</span>
+                    <strong>Demo & Reset</strong>
+                  </div>
+                </div>
+                <div className="demoResetActions">
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    title="Reset onboarding"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-onboarding")}
+                  >
+                    <RefreshCw size={14} />
+                    重置新手引导
+                  </button>
+                  <button
+                    className="smallButton quiet danger"
+                    type="button"
+                    title="Clear current chat session"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("clear-chat")}
+                  >
+                    <MessageSquare size={14} />
+                    清空聊天记录
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    title="Reset game session"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-game-session")}
+                  >
+                    <Gamepad2 size={14} />
+                    重置游戏状态
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    title="Clear pending memories"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("clear-pending")}
+                  >
+                    <Database size={14} />
+                    清空待确认记忆
+                  </button>
+                  <button
+                    className="smallButton quiet danger"
+                    type="button"
+                    title="Reset long-term memory"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-memory")}
+                  >
+                    <Database size={14} />
+                    重置长期记忆
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    title="Reset proactive runtime state"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-proactive")}
+                  >
+                    <Sparkles size={14} />
+                    重置主动陪伴状态
+                  </button>
+                  <button
+                    className="smallButton demoResetPrimary"
+                    type="button"
+                    title="Reset demo state without clearing long-term memory"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-demo")}
+                  >
+                    <RefreshCw size={14} />
+                    一键重置演示状态
+                  </button>
+                </div>
+                <p className="settingHint">一键重置不会清空长期记忆。危险操作会先确认。</p>
+                {demoResetFeedback && (
+                  <p className="demoResetFeedback" role="status">
+                    {demoResetFeedback}
+                  </p>
+                )}
+              </div>
               <label className="settingRow">
                 <span>自动游戏检测</span>
                 <select
@@ -1480,7 +1661,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             </p>
           </section>
 
-          <section className="infoCard pendingPanel" aria-label="待确认记忆" id="pending-memory-panel">
+          <section className="infoCard pendingPanel" aria-label="待确认记忆" id="pending-memory-panel" style={{ order: 2 }}>
             <div className="cardHeader">
               <Database size={17} />
               <h2>待确认记忆</h2>
@@ -1520,7 +1701,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             </div>
           </section>
 
-          <section className="infoCard gameSessionPanel" aria-label="游戏状态" id="game-session-panel">
+          <section className="infoCard gameSessionPanel" aria-label="游戏状态" id="game-session-panel" style={{ order: 3 }}>
             <div className="cardHeader">
               <Gamepad2 size={17} />
               <h2>游戏状态</h2>
@@ -1570,7 +1751,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
           </section>
 
           {debugPanelVisible && (
-            <section className="infoCard foldPanel" aria-label="调试面板" id="debug-panel">
+            <section className="infoCard foldPanel" aria-label="调试面板" id="debug-panel" style={{ order: 5 }}>
               <button
                 className="foldHeader"
                 aria-expanded={debugOpen}
@@ -2085,7 +2266,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
           )}
 
           {debugPanelVisible && (
-            <section className="infoCard foldPanel" aria-label="回复上下文预览" id="prompt-preview-panel">
+            <section className="infoCard foldPanel" aria-label="回复上下文预览" id="prompt-preview-panel" style={{ order: 4 }}>
               <button
                 className="foldHeader"
                 aria-expanded={promptPreviewOpen}

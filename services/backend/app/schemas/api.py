@@ -339,6 +339,10 @@ class ProactiveSettingsRequest(BaseModel):
     sensitivity: Literal["low", "normal", "high"] | None = None
 
 
+class ProactiveResetResponse(ProactiveStatusResponse):
+    status: Literal["reset"]
+
+
 class VoiceTranscribeResponse(BaseModel):
     text: str
     provider: str

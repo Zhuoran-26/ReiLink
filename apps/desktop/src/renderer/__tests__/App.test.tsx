@@ -717,6 +717,17 @@ const proactiveResponse = (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/proactive/settings") && init?.method === "POST") {
     return Response.json(proactiveStatusStore);
   }
+  if (url.endsWith("/api/proactive/reset") && init?.method === "POST") {
+    proactiveStatusStore = {
+      ...proactiveStatusStore,
+      last_triggered_at: null,
+      last_triggered_type: "none",
+      requires_user_activity_after_proactive: false,
+      cooldown_remaining_seconds: 0,
+      last_trigger_reason: null
+    };
+    return Response.json({ status: "reset", ...proactiveStatusStore });
+  }
   return null;
 };
 
@@ -877,7 +888,28 @@ describe("App", () => {
     const onboardingSettings = screen.getByRole("group", { name: "新手引导设置" });
     expect(within(onboardingSettings).getByText("已完成")).toBeInTheDocument();
     expect(within(onboardingSettings).getByRole("button", { name: "新手引导：重新查看" })).toBeInTheDocument();
+    const demoResetPanel = screen.getByRole("group", { name: "演示与重置" });
+    expect(within(demoResetPanel).getByText("Demo & Reset")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "重置新手引导" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "清空聊天记录" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "重置游戏状态" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "清空待确认记忆" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "重置主动陪伴状态" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "一键重置演示状态" })).toBeInTheDocument();
     expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
+  });
+
+  it("keeps the debug panel last in the right rail", async () => {
+    render(<App />);
+
+    await screen.findByRole("complementary", { name: "信息侧栏" });
+    const orderOf = (id: string) => Number(window.getComputedStyle(document.getElementById(id) as HTMLElement).order);
+    expect(orderOf("settings-panel")).toBe(1);
+    expect(orderOf("pending-memory-panel")).toBe(2);
+    expect(orderOf("game-session-panel")).toBe(3);
+    expect(orderOf("prompt-preview-panel")).toBe(4);
+    expect(orderOf("debug-panel")).toBe(5);
   });
 
   it("shows onboarding card when onboarding is incomplete", async () => {
@@ -934,6 +966,151 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "新手引导" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "查看 Demo 文档" }));
     expect(screen.getByText("Demo 文档在本地仓库：docs/DEMO_SCRIPT.md")).toBeInTheDocument();
+  });
+
+  it("resets onboarding from demo reset controls", async () => {
+    render(<App />);
+
+    const demoResetPanel = await screen.findByRole("group", { name: "演示与重置" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置新手引导" }));
+
+    await waitFor(() => expect(appSettingsStore.onboarding_completed).toBe(false));
+    expect(appSettingsStore.onboarding_last_seen_at).toBeNull();
+    expect(screen.getByRole("region", { name: "新手引导" })).toBeInTheDocument();
+    expect(screen.getByText("已恢复新手引导")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/settings"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ onboarding_completed: false, onboarding_last_seen_at: null })
+      })
+    );
+  });
+
+  it("runs demo reset actions with confirmation where needed", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+
+    const demoResetPanel = await screen.findByRole("group", { name: "演示与重置" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置游戏状态" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/debug/game-session/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(screen.getByText("已重置游戏状态")).toBeInTheDocument();
+
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空待确认记忆" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/memory/pending/clear"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置主动陪伴状态" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/proactive/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" }));
+    expect(confirm).toHaveBeenCalledWith("这会清空本地记忆，无法撤销。确定继续吗？");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/memory/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+  });
+
+  it("clears the current chat session without touching memory", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("Margit 怎么打？");
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    const demoResetPanel = screen.getByRole("group", { name: "演示与重置" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空聊天记录" }));
+
+    await waitFor(() => expect(screen.queryByText("Margit 怎么打？")).not.toBeInTheDocument());
+    expect(screen.queryByText("我在。想问的时候就说。")).not.toBeInTheDocument();
+    expect(screen.getByText("已清空当前聊天记录")).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    await userEvent.type(screen.getByLabelText("聊天输入"), "还能用吗");
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("还能用吗");
+  });
+
+  it("cancels dangerous demo reset actions when confirmation is rejected", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+
+    const demoResetPanel = await screen.findByRole("group", { name: "演示与重置" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" }));
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "一键重置演示状态" }));
+
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/debug/game-session/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/proactive/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("one-click reset prepares demo state without clearing long-term memory", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("Margit 怎么打？");
+
+    const demoResetPanel = screen.getByRole("group", { name: "演示与重置" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "一键重置演示状态" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/debug/game-session/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/pending/clear"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/proactive/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/settings"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ onboarding_completed: false, onboarding_last_seen_at: null })
+      })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(screen.queryByText("Margit 怎么打？")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "新手引导" })).toBeInTheDocument();
+    expect(screen.getByText("已重置演示状态（未清空长期记忆）")).toBeInTheDocument();
   });
 
   it("shows first-run provider setup prompt when the API key is missing", async () => {
@@ -1859,10 +2036,13 @@ describe("App", () => {
   });
 
   it("calls debug reset and clear endpoints", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
     await screen.findByRole("button", { name: /调试面板/i });
+    const debugActions = screen.getByRole("heading", { name: "调试操作" }).closest("section");
+    expect(debugActions).not.toBeNull();
 
-    await userEvent.click(await screen.findByRole("button", { name: "重置游戏状态" }));
+    await userEvent.click(within(debugActions as HTMLElement).getByRole("button", { name: "重置游戏状态" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/debug/game-session/reset"),
@@ -1870,7 +2050,7 @@ describe("App", () => {
       )
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "重置记忆" }));
+    await userEvent.click(within(debugActions as HTMLElement).getByRole("button", { name: "重置记忆" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/memory/reset"),
@@ -1878,7 +2058,7 @@ describe("App", () => {
       )
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "清空待确认记忆" }));
+    await userEvent.click(within(debugActions as HTMLElement).getByRole("button", { name: "清空待确认记忆" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/memory/pending/clear"),
