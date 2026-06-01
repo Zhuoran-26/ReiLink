@@ -169,7 +169,7 @@ ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
 现象：
 
 - `make package-desktop` 失败。
-- 提示找不到 Electron runtime、`dist`、`dist-electron`、`main.js`、backend binary 或 bundled knowledge。
+- 提示找不到 Electron runtime、`dist`、`dist-electron`、`main.js`、backend binary、bundled knowledge 或 runtime resources。
 
 处理：
 
@@ -180,7 +180,7 @@ make package-backend
 make package-desktop
 ```
 
-说明：Packaging v1 只支持本地 macOS 开发打包，复用 `apps/desktop/node_modules/electron/dist/Electron.app`，并要求先生成 backend binary。`make package-desktop` 会把 backend binary 和 bundled knowledge resources 打进 `.app`。如果曾使用 `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`，需要重新安装 Electron binary 后才能打包或启动 Electron shell。
+说明：Packaging v1 只支持本地 macOS 开发打包，复用 `apps/desktop/node_modules/electron/dist/Electron.app`，并要求先生成 backend binary。`make package-desktop` 会把 backend binary、bundled knowledge 和只读 runtime resources 打进 `.app`。如果曾使用 `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`，需要重新安装 Electron binary 后才能打包或启动 Electron shell。
 
 ### macOS unsigned app warning（macOS 未签名应用提示）
 
@@ -256,7 +256,7 @@ ReiLink.app/Contents/Resources/backend/reilink-backend
 
 - 在 Settings 的“本地数据 / Local Data”中可以查看并打开本地数据目录。
 - memory / session / settings / logs 写入用户数据目录，不在 `.app/Contents/Resources` 内。
-- `.app` resources 只保存只读资源，例如 bundled knowledge 和 backend binary。
+- `.app` resources 只保存只读资源，例如 bundled knowledge、persona runtime resources 和 backend binary。
 - 如果需要清理演示状态，可使用 Settings 中的 Demo & Reset / Local Data controls。
 
 ### 后端进程残留（Backend process residue）
@@ -536,7 +536,7 @@ This is enough for renderer lint, unit tests, and build. Running the Electron sh
 Symptoms:
 
 - `make package-desktop` fails.
-- The error mentions a missing Electron runtime, `dist`, `dist-electron`, `main.js`, backend binary, or bundled knowledge.
+- The error mentions a missing Electron runtime, `dist`, `dist-electron`, `main.js`, backend binary, bundled knowledge, or runtime resources.
 
 Fix:
 
@@ -547,7 +547,7 @@ make package-backend
 make package-desktop
 ```
 
-Packaging v1 supports local macOS packaging only, reuses `apps/desktop/node_modules/electron/dist/Electron.app`, and expects the backend binary to be generated first. `make package-desktop` bundles the backend binary and bundled knowledge resources into the `.app`. If you previously installed with `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`, reinstall the Electron binary before packaging or running the Electron shell.
+Packaging v1 supports local macOS packaging only, reuses `apps/desktop/node_modules/electron/dist/Electron.app`, and expects the backend binary to be generated first. `make package-desktop` bundles the backend binary, bundled knowledge, and read-only runtime resources into the `.app`. If you previously installed with `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`, reinstall the Electron binary before packaging or running the Electron shell.
 
 ### macOS Unsigned App Warning
 
@@ -623,7 +623,7 @@ Fix:
 
 - Settings "本地数据 / Local Data" shows and opens the local data directory.
 - Memory, session, settings, and logs are written to the user data directory, not inside `.app/Contents/Resources`.
-- `.app` resources only hold read-only resources such as bundled knowledge and the backend binary.
+- `.app` resources only hold read-only resources such as bundled knowledge, persona runtime resources, and the backend binary.
 - To clean demo state, use the Settings Demo & Reset / Local Data controls.
 
 ### Backend Process Residue

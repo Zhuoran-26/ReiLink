@@ -182,7 +182,7 @@ make package-backend
 make package-desktop
 ```
 
-`make package-backend` 会用 PyInstaller 生成 backend binary。`make package-desktop` 会构建 Electron app，并把 backend binary 与 `data/knowledge/games` 知识资源复制进 `.app` 的只读 resources。
+`make package-backend` 会用 PyInstaller 生成 backend binary。`make package-desktop` 会构建 Electron app，并把 backend binary、`data/knowledge/games` 知识资源，以及 persona / game registry 等只读 runtime resources 复制进 `.app` 的只读 resources。
 
 packaged app 会按以下优先级连接或启动后端：
 
@@ -285,7 +285,7 @@ curl http://127.0.0.1:8000/api/setup/status
 - API key 通过本地环境变量或 `services/backend/.env` 配置，不会内置进 `.app`。
 - packaged app 的用户数据目录是 `~/Library/Application Support/ReiLink/data`。
 - memory / session / settings / logs 写入用户数据目录，不写入 `.app/Contents/Resources`。
-- `.app` resources 只保存只读资源，例如 bundled knowledge 和 backend binary。
+- `.app` resources 只保存只读资源，例如 bundled knowledge、persona runtime resources 和 backend binary。
 - Settings 中的“本地数据 / Local Data”可以查看并打开本地数据目录，也可以执行安全的演示状态重置操作。
 - repo dev 模式下，未显式设置 `REILINK_DATA_DIR` 时会使用 repo-local `data` 目录。
 - `data/memory/*` 保存本地长期记忆数据，不应提交。
@@ -500,7 +500,7 @@ make package-backend
 make package-desktop
 ```
 
-`make package-backend` builds the backend binary with PyInstaller. `make package-desktop` builds the Electron app and copies the backend binary plus `data/knowledge/games` knowledge resources into the app's read-only resources.
+`make package-backend` builds the backend binary with PyInstaller. `make package-desktop` builds the Electron app and copies the backend binary, `data/knowledge/games` knowledge resources, and read-only runtime resources such as persona data and the game registry into the app's read-only resources.
 
 The packaged app connects to or starts the backend in this order:
 
@@ -603,7 +603,7 @@ If `DEEPSEEK_API_KEY` is missing, `needs_setup` is `true` and `missing_items` in
 - API keys are configured through local environment variables or `services/backend/.env`; they are not bundled into the `.app`.
 - The packaged app user data directory is `~/Library/Application Support/ReiLink/data`.
 - Memory, session, settings, and logs are written to the user data directory, not to `.app/Contents/Resources`.
-- `.app` resources only hold read-only resources such as bundled knowledge and the backend binary.
+- `.app` resources only hold read-only resources such as bundled knowledge, persona runtime resources, and the backend binary.
 - Settings includes "本地数据 / Local Data" for viewing and opening the local data directory and for safe demo reset controls.
 - In repo dev mode, ReiLink uses the repo-local `data` directory unless `REILINK_DATA_DIR` is set.
 - `data/memory/*` stores local long-term memory data and should not be committed.

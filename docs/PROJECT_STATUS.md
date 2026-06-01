@@ -70,6 +70,7 @@ dev/codex-reilink
 - Standalone App Packaging v1。
 - Bundled backend binary。
 - Bundled knowledge resources。
+- Bundled runtime resources：persona、persona style 和 game registry 等只读资源随 packaged app 分发。
 - Backend runtime priority：external backend、configured binary、bundled binary、repo fallback。
 - User data dir：packaged app 使用 `~/Library/Application Support/ReiLink/data`。
 - Local Data Controls：Settings 中查看 / 打开本地数据目录，并复用 Demo Reset / reset controls。
@@ -190,6 +191,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Standalone App Packaging v1.
 - Bundled backend binary.
 - Bundled knowledge resources.
+- Bundled runtime resources: read-only resources such as persona data, persona style, and the game registry are distributed with the packaged app.
 - Backend runtime priority: external backend, configured binary, bundled binary, repo fallback.
 - User data dir: the packaged app uses `~/Library/Application Support/ReiLink/data`.
 - Local Data Controls: Settings can show / open the local data directory and reuse Demo Reset / reset controls.

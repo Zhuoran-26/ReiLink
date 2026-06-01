@@ -18,13 +18,16 @@ class FakeBackendProcess extends EventEmitter {
 
 const okResponse = { ok: true, status: 200 } as Response;
 const failedResponse = { ok: false, status: 500 } as Response;
+const closedPortCheck = () => vi.fn(async () => false);
 
 const createRepoRoot = async (withVenv = true) => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), "reilink-runtime-"));
   await mkdir(path.join(repoRoot, "services", "backend", "app"), { recursive: true });
   await mkdir(path.join(repoRoot, "data", "knowledge", "games"), { recursive: true });
+  await mkdir(path.join(repoRoot, "data", "personas"), { recursive: true });
   await writeFile(path.join(repoRoot, "services", "backend", "app", "main.py"), "", "utf8");
   await writeFile(path.join(repoRoot, "data", "knowledge", "games", "catalog.json"), "{\"games\":[]}\n", "utf8");
+  await writeFile(path.join(repoRoot, "data", "personas", "rei_like.json"), "{}\n", "utf8");
   if (withVenv) {
     await mkdir(path.join(repoRoot, "services", "backend", ".venv", "bin"), { recursive: true });
     await writeFile(path.join(repoRoot, "services", "backend", ".venv", "bin", "python"), "", "utf8");
@@ -36,12 +39,15 @@ const createBundledResources = async () => {
   const resourcesPath = await mkdtemp(path.join(os.tmpdir(), "reilink-resources-"));
   const backendBinary = path.join(resourcesPath, "backend", "reilink-backend");
   const knowledgeDir = path.join(resourcesPath, "knowledge", "games");
+  const personasDir = path.join(resourcesPath, "personas");
   await mkdir(path.dirname(backendBinary), { recursive: true });
   await writeFile(backendBinary, "", "utf8");
   await chmod(backendBinary, 0o755);
   await mkdir(path.join(knowledgeDir, "elden_ring"), { recursive: true });
   await writeFile(path.join(knowledgeDir, "catalog.json"), "{\"games\":[]}\n", "utf8");
   await writeFile(path.join(knowledgeDir, "elden_ring", "snippets.json"), "[]\n", "utf8");
+  await mkdir(personasDir, { recursive: true });
+  await writeFile(path.join(personasDir, "rei_like.json"), "{}\n", "utf8");
   return { backendBinary, knowledgeDir, resourcesPath };
 };
 
@@ -59,6 +65,7 @@ const createManager = async (
     startupAttempts: 2,
     startupIntervalMs: 1,
     logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() },
+    portOpenCheck: closedPortCheck(),
     ...options
   });
   return { manager, repoRoot };
@@ -86,7 +93,8 @@ describe("BackendRuntimeManager", () => {
       spawnBackend,
       startupAttempts: 2,
       startupIntervalMs: 1,
-      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() },
+      portOpenCheck: closedPortCheck()
     });
 
     const status = await manager.ensureBackend();
@@ -136,7 +144,8 @@ describe("BackendRuntimeManager", () => {
       spawnBackend,
       startupAttempts: 2,
       startupIntervalMs: 1,
-      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() },
+      portOpenCheck: closedPortCheck()
     });
 
     const status = await manager.ensureBackend();
@@ -176,7 +185,8 @@ describe("BackendRuntimeManager", () => {
       spawnBackend,
       startupAttempts: 2,
       startupIntervalMs: 1,
-      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() },
+      portOpenCheck: closedPortCheck()
     });
 
     const status = await manager.ensureBackend();
@@ -192,6 +202,7 @@ describe("BackendRuntimeManager", () => {
         cwd: expect.stringContaining(path.join("services", "backend")),
         env: expect.objectContaining({
           REILINK_DATA_DIR: expect.stringContaining("reilink-runtime-user-"),
+          REILINK_RESOURCE_DIR: path.join(repoRoot, "data"),
           REILINK_KNOWLEDGE_DIR: path.join(repoRoot, "data", "knowledge", "games")
         })
       })
@@ -219,7 +230,8 @@ describe("BackendRuntimeManager", () => {
       spawnBackend,
       startupAttempts: 2,
       startupIntervalMs: 1,
-      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() },
+      portOpenCheck: closedPortCheck()
     });
 
     const status = await manager.ensureBackend();
@@ -249,7 +261,8 @@ describe("BackendRuntimeManager", () => {
       spawnBackend,
       startupAttempts: 2,
       startupIntervalMs: 1,
-      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() },
+      portOpenCheck: closedPortCheck()
     });
 
     const status = await manager.ensureBackend();
@@ -273,7 +286,8 @@ describe("BackendRuntimeManager", () => {
         env: expect.objectContaining({
           REILINK_DATA_DIR: path.join(appUserDataPath, "data"),
           REILINK_KNOWLEDGE_DIR: knowledgeDir,
-          REILINK_PROJECT_ROOT: repoRoot
+          REILINK_PROJECT_ROOT: repoRoot,
+          REILINK_RESOURCE_DIR: resourcesPath
         })
       })
     );
@@ -303,7 +317,8 @@ describe("BackendRuntimeManager", () => {
       spawnBackend,
       startupAttempts: 2,
       startupIntervalMs: 1,
-      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() },
+      portOpenCheck: closedPortCheck()
     });
 
     const status = await manager.ensureBackend();
@@ -369,7 +384,8 @@ describe("BackendRuntimeManager", () => {
       spawnBackend,
       startupAttempts: 1,
       startupIntervalMs: 1,
-      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() },
+      portOpenCheck: closedPortCheck()
     });
 
     const status = await manager.ensureBackend();

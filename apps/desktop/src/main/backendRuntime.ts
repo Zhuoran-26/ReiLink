@@ -49,6 +49,7 @@ type BackendStartRuntime = {
   knowledgeSource: KnowledgeSource;
   projectRoot: string | null;
   pythonPath: string | null;
+  resourceDir: string | null;
   source: Exclude<BackendStartedFrom, "external" | "none">;
   userDataDir: string;
 };
@@ -484,7 +485,8 @@ export class BackendRuntimeManager {
       if (!(await pathExists(candidate.path, constants.X_OK))) continue;
       const projectRoot = await this.resolveProjectRoot();
       const knowledge = await this.resolveKnowledgeRuntime(projectRoot);
-      this.logRuntime("resolved backend binary", { binaryPath: candidate.path, projectRoot, source: candidate.source });
+      const resourceDir = await this.resolveResourceRuntime(projectRoot);
+      this.logRuntime("resolved backend binary", { binaryPath: candidate.path, projectRoot, resourceDir, source: candidate.source });
       return {
         args: [],
         backendDir: null,
@@ -495,6 +497,7 @@ export class BackendRuntimeManager {
         knowledgeSource: knowledge.source,
         projectRoot,
         pythonPath: null,
+        resourceDir,
         source: candidate.source,
         userDataDir: this.userDataDir,
         status: "ready"
@@ -537,6 +540,7 @@ export class BackendRuntimeManager {
       };
     }
     const knowledge = await this.resolveKnowledgeRuntime(projectRoot);
+    const resourceDir = await this.resolveResourceRuntime(projectRoot);
     return {
       args: ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
       backendDir,
@@ -547,6 +551,7 @@ export class BackendRuntimeManager {
       knowledgeSource: knowledge.source,
       projectRoot,
       pythonPath,
+      resourceDir,
       source: "repo",
       userDataDir: this.userDataDir,
       status: "ready"
@@ -584,6 +589,9 @@ export class BackendRuntimeManager {
       env.REILINK_DATA_DIR = runtime.userDataDir;
       if (runtime.knowledgeDir) {
         env.REILINK_KNOWLEDGE_DIR = runtime.knowledgeDir;
+      }
+      if (runtime.resourceDir) {
+        env.REILINK_RESOURCE_DIR = runtime.resourceDir;
       }
       this.child = this.spawnBackend(runtime.command, runtime.args, {
         cwd: runtime.cwd,
@@ -696,6 +704,19 @@ export class BackendRuntimeManager {
       }
     }
     return { dir: null, source: "missing" };
+  }
+
+  private async resolveResourceRuntime(projectRoot: string | null): Promise<string | null> {
+    if (this.resourcesPath && (await pathExists(path.join(this.resourcesPath, "personas", "rei_like.json")))) {
+      return this.resourcesPath;
+    }
+    if (projectRoot) {
+      const repoData = path.join(projectRoot, "data");
+      if (await pathExists(path.join(repoData, "personas", "rei_like.json"))) {
+        return repoData;
+      }
+    }
+    return null;
   }
 
   private async ensureWritableDataDirs(userDataDir: string): Promise<void> {

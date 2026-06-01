@@ -32,6 +32,7 @@ v0.2-pre 已完成的产品化补齐：
 - Standalone App Packaging v1。
 - Bundled backend binary。
 - Bundled knowledge resources。
+- Bundled runtime resources。
 - Backend runtime priority 与自动启动 / 退出清理。
 - 用户数据目录：`~/Library/Application Support/ReiLink/data`。
 - Local Data Controls：Settings 中查看、打开和安全重置本地数据。
@@ -96,6 +97,7 @@ Productization work completed in v0.2-pre:
 - Standalone App Packaging v1.
 - Bundled backend binary.
 - Bundled knowledge resources.
+- Bundled runtime resources.
 - Backend runtime priority plus auto-start / quit cleanup.
 - User data directory: `~/Library/Application Support/ReiLink/data`.
 - Local Data Controls for showing, opening, and safely resetting local data.

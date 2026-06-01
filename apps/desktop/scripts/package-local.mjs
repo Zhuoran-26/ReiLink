@@ -71,7 +71,8 @@ export async function packageLocal(options = {}) {
   return {
     backendBinaryPath: path.join(resourcesRoot, "backend", backendBinaryNameForPlatform(currentPlatform)),
     knowledgeGamesPath: path.join(resourcesRoot, "knowledge", "games"),
-    outputApp
+    outputApp,
+    runtimeResourcesPath: resourcesRoot
   };
 }
 
@@ -79,6 +80,12 @@ export async function bundleStandaloneResources({ repoRoot: sourceRepoRoot, reso
   const binaryName = backendBinaryNameForPlatform(targetPlatform);
   const backendBinarySource = path.join(sourceRepoRoot, "services", "backend", "dist", binaryName);
   const knowledgeGamesSource = path.join(sourceRepoRoot, "data", "knowledge", "games");
+  const readOnlyResourceSources = [
+    { name: "personas", source: path.join(sourceRepoRoot, "data", "personas") },
+    { name: "persona", source: path.join(sourceRepoRoot, "data", "persona") },
+    { name: "games", source: path.join(sourceRepoRoot, "data", "games") },
+    { name: "elden_ring", source: path.join(sourceRepoRoot, "data", "elden_ring") }
+  ];
   const backendResourcesDir = path.join(resourcesRoot, "backend");
   const backendBinaryDest = path.join(backendResourcesDir, binaryName);
   const knowledgeDest = path.join(resourcesRoot, "knowledge", "games");
@@ -101,8 +108,14 @@ export async function bundleStandaloneResources({ repoRoot: sourceRepoRoot, reso
   await mkdir(path.dirname(knowledgeDest), { recursive: true });
   await cp(knowledgeGamesSource, knowledgeDest, { recursive: true });
 
+  for (const item of readOnlyResourceSources) {
+    await requirePath(item.source, `Required runtime resource not found at ${item.source}.`);
+    await rm(path.join(resourcesRoot, item.name), { recursive: true, force: true });
+    await cp(item.source, path.join(resourcesRoot, item.name), { recursive: true });
+  }
+
   await validateStandaloneResources({ resourcesRoot, platform: targetPlatform });
-  return { backendBinaryPath: backendBinaryDest, knowledgeGamesPath: knowledgeDest };
+  return { backendBinaryPath: backendBinaryDest, knowledgeGamesPath: knowledgeDest, runtimeResourcesPath: resourcesRoot };
 }
 
 export async function validateStandaloneResources({ resourcesRoot, platform: targetPlatform = platform }) {
@@ -111,7 +124,10 @@ export async function validateStandaloneResources({ resourcesRoot, platform: tar
     path.join(resourcesRoot, "backend", binaryName),
     path.join(resourcesRoot, "knowledge", "games", "catalog.json"),
     path.join(resourcesRoot, "knowledge", "games", "elden_ring", "snippets.json"),
-    path.join(resourcesRoot, "knowledge", "games", "hollow_knight", "snippets.json")
+    path.join(resourcesRoot, "knowledge", "games", "hollow_knight", "snippets.json"),
+    path.join(resourcesRoot, "personas", "rei_like.json"),
+    path.join(resourcesRoot, "persona", "rei_minimal_prompt.json"),
+    path.join(resourcesRoot, "games", "game_registry.json")
   ];
   for (const requiredPath of requiredPaths) {
     await requirePath(requiredPath, `Packaged standalone resource is missing: ${requiredPath}`);
@@ -188,6 +204,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       console.log("Note: this is an unsigned local development build.");
       console.log(`Bundled backend: ${path.relative(process.cwd(), backendBinaryPath)}`);
       console.log(`Bundled knowledge: ${path.relative(process.cwd(), knowledgeGamesPath)}`);
+      console.log(`Bundled runtime resources: ${path.relative(process.cwd(), packagedApp)}/Contents/Resources`);
       console.log("Backend auto-start uses external, configured, bundled, then repo-local fallback.");
     })
     .catch((error) => {

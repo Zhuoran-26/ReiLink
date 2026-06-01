@@ -9,6 +9,24 @@ def test_reilink_data_dir_overrides_writable_data_path(tmp_path, monkeypatch):
     assert config._resolve_data_dir(tmp_path / "repo") == data_dir
 
 
+def test_reilink_resource_dir_overrides_read_only_resource_path(tmp_path, monkeypatch):
+    data_dir = tmp_path / "user-data"
+    resource_dir = tmp_path / "resources"
+    monkeypatch.setenv("REILINK_RESOURCE_DIR", str(resource_dir))
+
+    assert config._resolve_resource_dir(tmp_path / "repo", data_dir) == resource_dir
+
+
+def test_resource_dir_prefers_repo_data_when_data_dir_is_user_writable(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    data_dir = tmp_path / "user-data"
+    (repo_root / "data" / "personas").mkdir(parents=True)
+    (repo_root / "data" / "personas" / "rei_like.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.delenv("REILINK_RESOURCE_DIR", raising=False)
+
+    assert config._resolve_resource_dir(repo_root, data_dir) == repo_root / "data"
+
+
 def test_reilink_knowledge_dir_overrides_repo_knowledge_path(tmp_path, monkeypatch):
     knowledge_dir = tmp_path / "resources" / "knowledge" / "games"
     knowledge_dir.mkdir(parents=True)
