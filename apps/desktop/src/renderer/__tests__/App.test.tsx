@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { App, INTERIM_PLACEHOLDERS } from "../App";
+import { App, EventStreamPanel, INTERIM_PLACEHOLDERS } from "../App";
 import { eventBus } from "../eventBus";
 import type {
   AppSettings,
@@ -1465,6 +1465,7 @@ describe("App", () => {
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     expect(eventStream).not.toBeNull();
     expect(eventStream).not.toHaveAttribute("open");
+    expect(screen.getByText("原始 JSON")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
@@ -1472,12 +1473,76 @@ describe("App", () => {
     await waitFor(() =>
       expect(within(eventStream as HTMLElement).getByRole("list", { name: "事件流列表" })).toBeInTheDocument()
     );
-    expect(eventStream).toHaveTextContent("user_message_sent");
-    expect(eventStream).toHaveTextContent("assistant_reply_segment_shown");
+    expect(eventStream).toHaveTextContent("用户发送消息");
+    expect(eventStream).toHaveTextContent("Rei 显示回复片段");
+    expect(eventStream).not.toHaveTextContent("user_message_sent");
+    expect(eventStream).not.toHaveTextContent("assistant_reply_segment_shown");
     expect(eventStream).toHaveTextContent("Margit 怎么打？");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("services/backend/.env");
+  });
+
+  it("shows an empty Event Stream state when there are no events", () => {
+    render(<EventStreamPanel events={[]} open onOpenChange={() => undefined} />);
+
+    expect(screen.getByText("事件流 / Event Stream")).toBeInTheDocument();
+    expect(screen.getByText("暂无事件")).toBeInTheDocument();
+  });
+
+  it("updates Event Stream when interaction events are emitted", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    act(() => {
+      eventBus.emit({
+        type: "user_message_sent",
+        timestamp: new Date().toISOString(),
+        text: "我现在卡在女武神"
+      });
+      eventBus.emit({
+        type: "assistant_reply_segment_shown",
+        timestamp: new Date().toISOString(),
+        segment_index: 0,
+        text: "先别贪刀。"
+      });
+    });
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("用户发送消息"));
+    expect(eventStream).toHaveTextContent("Rei 显示回复片段");
+    expect(eventStream).toHaveTextContent("我现在卡在女武神");
+    expect(eventStream).toHaveTextContent("先别贪刀。");
+  });
+
+  it("shows only the latest 20 Event Stream rows", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+
+    act(() => {
+      for (let index = 0; index < 25; index += 1) {
+        eventBus.emit({
+          type: "user_message_sent",
+          timestamp: new Date(Date.UTC(2026, 5, 1, 9, index)).toISOString(),
+          text: `event-${index}`
+        });
+      }
+    });
+
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() =>
+      expect(within(eventStream as HTMLElement).getAllByRole("listitem")).toHaveLength(20)
+    );
+    const rows = within(eventStream as HTMLElement).getAllByRole("listitem");
+    expect(rows).toHaveLength(20);
+    expect(eventStream).not.toHaveTextContent("event-4");
+    expect(eventStream).toHaveTextContent("event-5");
+    expect(eventStream).toHaveTextContent("event-24");
   });
 
   it("forces chat scroll to bottom when the user sends a message", async () => {

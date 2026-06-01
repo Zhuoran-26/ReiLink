@@ -472,6 +472,8 @@ const valueMap: Record<string, string> = {
   conflict_with_fresh_game_state: "与当前游戏状态冲突",
   conversation: "对话",
   cooldown: "冷却中",
+  checking: "检查中",
+  connected: "已连接",
   current: "当前",
   disabled: "关闭",
   eligible: "可触发",
@@ -526,6 +528,10 @@ const valueMap: Record<string, string> = {
   none: "无",
   normal: "普通",
   not_connected: "未连接",
+  disconnected: "未连接",
+  external_backend_detected: "已检测到外部后端",
+  mock: "模拟模型",
+  mock_provider: "模拟模型回复",
   off: "关闭",
   on: "开启",
   pending: "待确认",
@@ -646,11 +652,11 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "user_message_sent":
       return truncateEventText(event.text);
     case "assistant_reply_started":
-      return event.message_id ? `message ${event.message_id}` : "reply started";
+      return "开始生成回复";
     case "assistant_reply_segment_shown":
       return truncateEventText(event.text);
     case "assistant_reply_completed":
-      return event.message_id ? `message ${event.message_id}` : "reply completed";
+      return "回复显示完成";
     case "proactive_message_shown":
       return `${debugText(event.trigger_type)}: ${truncateEventText(event.text)}`;
     case "pending_memory_created":
@@ -666,7 +672,7 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "knowledge_used":
       return [debugText(event.game), debugText(event.topics)].join(" / ");
     case "model_routed":
-      return [debugText(event.model), debugText(event.route_reason)].join(" / ");
+      return `模型：${debugText(event.model)} / 原因：${debugText(event.route_reason)}`;
     case "backend_status_changed":
       return debugText(event.status);
     case "runtime_status_changed":
@@ -676,11 +682,66 @@ const eventSummary = (event: ReiLinkEvent) => {
   }
 };
 
+const eventTypeText = (type: ReiLinkEvent["type"]) => {
+  const labels: Record<ReiLinkEvent["type"], string> = {
+    user_message_sent: "用户发送消息",
+    assistant_reply_started: "Rei 开始回复",
+    assistant_reply_segment_shown: "Rei 显示回复片段",
+    assistant_reply_completed: "Rei 回复完成",
+    proactive_message_shown: "主动消息显示",
+    pending_memory_created: "发现待确认记忆",
+    pending_memory_accepted: "记忆已保存",
+    pending_memory_ignored: "记忆已忽略",
+    game_context_changed: "游戏上下文变化",
+    game_session_changed: "游戏状态变化",
+    knowledge_used: "使用游戏知识",
+    model_routed: "模型路由完成",
+    backend_status_changed: "后端状态变化",
+    runtime_status_changed: "运行来源变化"
+  };
+  return labels[type];
+};
+
 const eventStreamTime = (timestamp: string) => {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return "时间未知";
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
 };
+
+export function EventStreamPanel({
+  events,
+  open,
+  onOpenChange
+}: {
+  events: ReiLinkEvent[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <details
+      className="debugSection eventStreamSection"
+      onToggle={(event) => onOpenChange(event.currentTarget.open)}
+      open={open}
+    >
+      <summary>
+        <span>事件流 / Event Stream</span>
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </summary>
+      {open && (
+        <ol className="eventStreamList" aria-label="事件流列表">
+          {events.map((event, index) => (
+            <li key={`${event.timestamp}-${event.type}-${index}`}>
+              <span className="eventStreamTime">{eventStreamTime(event.timestamp)}</span>
+              <span className="eventStreamType" title={event.type}>{eventTypeText(event.type)}</span>
+              <span className="eventStreamSummary">{eventSummary(event)}</span>
+            </li>
+          ))}
+          {events.length === 0 && <li className="emptyDebugText eventStreamEmpty">暂无事件</li>}
+        </ol>
+      )}
+    </details>
+  );
+}
 
 const pendingEvidenceSummary = (memory: PendingMemory) => {
   const evidence = asRecord(memory.evidence);
@@ -2315,6 +2376,12 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </div>
                   </section>
 
+                  <EventStreamPanel
+                    events={recentEvents}
+                    open={eventStreamOpen}
+                    onOpenChange={setEventStreamOpen}
+                  />
+
                   <section className="debugSection">
                     <h3>游戏上下文</h3>
                     <dl className="debugFacts">
@@ -2694,26 +2761,6 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       </div>
 	                    </dl>
 	                  </section>
-
-	                  <details
-	                    className="rawJsonDetails eventStreamDetails"
-	                    onToggle={(event) => setEventStreamOpen(event.currentTarget.open)}
-	                    open={eventStreamOpen}
-	                  >
-	                    <summary>事件流 / Event Stream</summary>
-	                    {eventStreamOpen && (
-	                      <ol className="eventStreamList" aria-label="事件流列表">
-	                        {recentEvents.map((event, index) => (
-	                          <li key={`${event.timestamp}-${event.type}-${index}`}>
-	                            <span className="eventStreamTime">{eventStreamTime(event.timestamp)}</span>
-	                            <span className="eventStreamType">{event.type}</span>
-	                            <span className="eventStreamSummary">{eventSummary(event)}</span>
-	                          </li>
-	                        ))}
-	                        {recentEvents.length === 0 && <li className="emptyDebugText">暂无事件</li>}
-	                      </ol>
-	                    )}
-	                  </details>
 
 	                  <details className="rawJsonDetails">
 	                    <summary>原始 JSON</summary>

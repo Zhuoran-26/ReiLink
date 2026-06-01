@@ -1113,6 +1113,25 @@ button {
   color: #dce4f6;
 }
 
+.eventStreamSection {
+  padding: 0;
+}
+
+.eventStreamSection summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 0 10px;
+  color: #dce4f6;
+  font-weight: 680;
+}
+
+.eventStreamSection summary::marker {
+  color: #78849e;
+}
+
 .eventStreamList {
   display: grid;
   gap: 7px;
@@ -1143,6 +1162,10 @@ button {
 .eventStreamSummary {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.eventStreamEmpty {
+  grid-column: 1 / -1;
 }
 
 .debugJson {
