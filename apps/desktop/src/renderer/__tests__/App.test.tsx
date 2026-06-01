@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App, INTERIM_PLACEHOLDERS } from "../App";
+import { eventBus } from "../eventBus";
 import type {
   AppSettings,
   GameContextResponse,
@@ -839,10 +840,42 @@ const chatResponse = {
   timestamp: new Date().toISOString()
 };
 
+const defaultFetchResponse = async (url: string, init?: RequestInit) => {
+  const debugAction = debugActionResponse(url, init);
+  if (debugAction) return debugAction;
+  const pendingResponse = pendingMemoryResponse(url, init);
+  if (pendingResponse) return pendingResponse;
+  const settings = settingsResponse(url, init);
+  if (settings) return settings;
+  const gameContextResponseValue = gameContextResponse(url, init);
+  if (gameContextResponseValue) return gameContextResponseValue;
+  const proactive = proactiveResponse(url, init);
+  if (proactive) return proactive;
+  const setup = setupStatusResponse(url);
+  if (setup) return setup;
+  if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+  if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+  if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
+  if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
+  if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
+  if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
+  if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+  if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
+  if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
+  if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
+  if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
+  if (url.endsWith("/api/chat") && init?.method === "POST") {
+    if (chatFailureResponse) return chatFailureResponse();
+    return Response.json(chatResponse);
+  }
+  return new Response("missing", { status: 404 });
+};
+
 describe("App", () => {
   beforeEach(() => {
     let uuid = 0;
     resetSettingsResponse();
+    eventBus.clear();
     scrollToMock = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
       const top = typeof options === "number" ? options : options?.top;
       if (typeof top === "number") {
@@ -855,39 +888,7 @@ describe("App", () => {
       value: scrollToMock
     });
     vi.stubGlobal("crypto", { randomUUID: () => `test-id-${uuid++}` });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string, init?: RequestInit) => {
-        const debugAction = debugActionResponse(url, init);
-        if (debugAction) return debugAction;
-        const pendingResponse = pendingMemoryResponse(url, init);
-        if (pendingResponse) return pendingResponse;
-        const settings = settingsResponse(url, init);
-        if (settings) return settings;
-        const gameContextResponseValue = gameContextResponse(url, init);
-        if (gameContextResponseValue) return gameContextResponseValue;
-        const proactive = proactiveResponse(url, init);
-        if (proactive) return proactive;
-        const setup = setupStatusResponse(url);
-        if (setup) return setup;
-        if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
-        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
-        if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
-        if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
-        if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
-        if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
-        if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
-        if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
-        if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
-        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
-        if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
-        if (url.endsWith("/api/chat") && init?.method === "POST") {
-          if (chatFailureResponse) return chatFailureResponse();
-          return Response.json(chatResponse);
-        }
-        return new Response("missing", { status: 404 });
-      })
-    );
+    vi.stubGlobal("fetch", vi.fn(defaultFetchResponse));
   });
 
   afterEach(() => {
@@ -895,6 +896,7 @@ describe("App", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     Reflect.deleteProperty(window, "reilinkRuntime");
+    eventBus.clear();
   });
 
   it("renders the app", async () => {
@@ -1398,6 +1400,86 @@ describe("App", () => {
     );
   });
 
+  it("emits interaction events for sent messages and shown assistant segments", async () => {
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    const events = eventBus.getRecentEvents(20);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "user_message_sent", text: "Margit 怎么打？" }),
+        expect.objectContaining({ type: "assistant_reply_started" }),
+        expect.objectContaining({
+          type: "assistant_reply_segment_shown",
+          segment_index: 0,
+          text: "别急着翻滚。先看动作。再试一次。"
+        }),
+        expect.objectContaining({ type: "assistant_reply_completed" })
+      ])
+    );
+  });
+
+  it("emits pending memory creation only after a chat operation discovers new pending memory", async () => {
+    let chatCompleted = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/api/memory/pending")) {
+          return Response.json(chatCompleted ? pendingMemories : []);
+        }
+        if (url.endsWith("/api/chat") && init?.method === "POST") {
+          chatCompleted = true;
+          return Response.json(chatResponse);
+        }
+        return defaultFetchResponse(url, init);
+      })
+    );
+
+    render(<App />);
+    await screen.findByText("已连接");
+    expect(eventBus.getRecentEvents(20).some((event) => event.type === "pending_memory_created")).toBe(false);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "我不喜欢长篇攻略");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("玩家不喜欢长篇攻略");
+
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "pending_memory_created",
+          memory_type: "user_preference",
+          text: "玩家不喜欢长篇攻略"
+        })
+      ])
+    );
+  });
+
+  it("renders Event Stream collapsed by default and shows sanitized recent events", async () => {
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    expect(eventStream).not.toHaveAttribute("open");
+
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    expect(eventStream).toHaveAttribute("open");
+    await waitFor(() =>
+      expect(within(eventStream as HTMLElement).getByRole("list", { name: "事件流列表" })).toBeInTheDocument()
+    );
+    expect(eventStream).toHaveTextContent("user_message_sent");
+    expect(eventStream).toHaveTextContent("assistant_reply_segment_shown");
+    expect(eventStream).toHaveTextContent("Margit 怎么打？");
+    expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
+    expect(eventStream).not.toHaveTextContent("raw_prompt");
+    expect(eventStream).not.toHaveTextContent("services/backend/.env");
+  });
+
   it("forces chat scroll to bottom when the user sends a message", async () => {
     render(<App />);
     const messageLog = await screen.findByRole("log", { name: "聊天消息列表" });
@@ -1552,6 +1634,15 @@ describe("App", () => {
     expect(screen.getByText(/主动 · 反复死亡/)).toBeInTheDocument();
     expect(bubble).toHaveClass("messageBubble", "assistant", "proactive");
     expect(bubble).not.toHaveClass("system");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "proactive_message_shown",
+          trigger_type: "repeated_death",
+          text: "你开始急了。"
+        })
+      ])
+    );
   });
 
   it("does not poll proactive check while proactive companion is off", async () => {
@@ -2146,7 +2237,7 @@ describe("App", () => {
     expect(within(warningsSection as HTMLElement).getByText("无")).toBeInTheDocument();
   });
 
-  it("accepts pending memory from the debug panel", async () => {
+  it("emits pending memory accept and ignore events from the memory panel", async () => {
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: "保存" }));
 
@@ -2155,6 +2246,20 @@ describe("App", () => {
         expect.stringContaining("/api/memory/pending/pending-1/accept"),
         expect.objectContaining({ method: "POST" })
       )
+    );
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "pending_memory_accepted", memory_id: "pending-1" })])
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "忽略" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/memory/pending/pending-1/ignore"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "pending_memory_ignored", memory_id: "pending-1" })])
     );
   });
 

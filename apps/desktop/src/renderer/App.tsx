@@ -38,7 +38,9 @@ import {
   SetupStatus,
   UserProfileMemory
 } from "../shared/api";
+import type { ReiLinkEvent } from "../shared/events";
 import type { BackendRuntimeStatus } from "../shared/runtime";
+import { eventBus } from "./eventBus";
 
 type Message = {
   id: string;
@@ -334,12 +336,17 @@ export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 const PROACTIVE_CHECK_INTERVAL_MS = 30000;
 const AUTO_SCROLL_THRESHOLD_PX = 120;
+const EVENT_STREAM_LIMIT = 20;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const nextSegmentDelay = () => 500 + Math.floor(Math.random() * 401);
 
 const pickPlaceholder = () => INTERIM_PLACEHOLDERS[Math.floor(Math.random() * INTERIM_PLACEHOLDERS.length)];
+
+const eventTimestamp = () => new Date().toISOString();
+
+const eventSignature = (...parts: unknown[]) => JSON.stringify(parts);
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -631,6 +638,50 @@ const debugListText = (item: unknown): string => {
   return meta ? `${meta}: ${text}` : text;
 };
 
+const truncateEventText = (value: string, maxLength = 64) =>
+  value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+
+const eventSummary = (event: ReiLinkEvent) => {
+  switch (event.type) {
+    case "user_message_sent":
+      return truncateEventText(event.text);
+    case "assistant_reply_started":
+      return event.message_id ? `message ${event.message_id}` : "reply started";
+    case "assistant_reply_segment_shown":
+      return truncateEventText(event.text);
+    case "assistant_reply_completed":
+      return event.message_id ? `message ${event.message_id}` : "reply completed";
+    case "proactive_message_shown":
+      return `${debugText(event.trigger_type)}: ${truncateEventText(event.text)}`;
+    case "pending_memory_created":
+      return `${debugText(event.memory_type)}: ${truncateEventText(event.text)}`;
+    case "pending_memory_accepted":
+      return event.memory_id;
+    case "pending_memory_ignored":
+      return event.memory_id;
+    case "game_context_changed":
+      return [debugText(event.game), debugText(event.source)].join(" / ");
+    case "game_session_changed":
+      return [debugText(event.game), debugText(event.current_boss), debugText(event.activity)].join(" / ");
+    case "knowledge_used":
+      return [debugText(event.game), debugText(event.topics)].join(" / ");
+    case "model_routed":
+      return [debugText(event.model), debugText(event.route_reason)].join(" / ");
+    case "backend_status_changed":
+      return debugText(event.status);
+    case "runtime_status_changed":
+      return [debugText(event.backend_source), knowledgeSourceText(event.knowledge_source as BackendRuntimeStatus["knowledge_source"])].join(" / ");
+    default:
+      return "event";
+  }
+};
+
+const eventStreamTime = (timestamp: string) => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+};
+
 const pendingEvidenceSummary = (memory: PendingMemory) => {
   const evidence = asRecord(memory.evidence);
   const userMessage = debugText(evidence.user_message, "");
@@ -771,6 +822,8 @@ export function App() {
   const [sending, setSending] = useState(false);
   const [debugOpen, setDebugOpen] = useState(true);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
+  const [eventStreamOpen, setEventStreamOpen] = useState(false);
+  const [recentEvents, setRecentEvents] = useState<ReiLinkEvent[]>(() => eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
   const [setupHelpOpen, setSetupHelpOpen] = useState(false);
   const [demoDocHintOpen, setDemoDocHintOpen] = useState(false);
   const [demoResetFeedback, setDemoResetFeedback] = useState("");
@@ -783,6 +836,13 @@ export function App() {
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const forceNextScrollRef = useRef(true);
+  const knownPendingMemoryIdsRef = useRef<Set<string>>(new Set());
+  const lastBackendStatusEventRef = useRef<string | null>(null);
+  const lastRuntimeStatusEventRef = useRef<string | null>(null);
+  const lastGameContextEventRef = useRef<string | null>(null);
+  const lastGameSessionEventRef = useRef<string | null>(null);
+  const lastKnowledgeEventRef = useRef<string | null>(null);
+  const lastModelRouteEventRef = useRef<string | null>(null);
 
   const isMessagesNearBottom = useCallback(() => {
     const element = messagesRef.current;
@@ -809,13 +869,142 @@ export function App() {
     shouldAutoScrollRef.current = isMessagesNearBottom();
   }, [isMessagesNearBottom]);
 
-  const refreshStatus = useCallback(async () => {
+  const emitBackendStatusChanged = useCallback((status: string) => {
+    if (lastBackendStatusEventRef.current === status) return;
+    lastBackendStatusEventRef.current = status;
+    eventBus.emit({ type: "backend_status_changed", timestamp: eventTimestamp(), status });
+  }, []);
+
+  const emitRuntimeStatusChanged = useCallback((status: BackendRuntimeStatus) => {
+    const signature = eventSignature(status.backend_started_from, status.knowledge_source);
+    if (lastRuntimeStatusEventRef.current === signature) return;
+    lastRuntimeStatusEventRef.current = signature;
+    eventBus.emit({
+      type: "runtime_status_changed",
+      timestamp: eventTimestamp(),
+      backend_source: status.backend_started_from,
+      knowledge_source: status.knowledge_source
+    });
+  }, []);
+
+  const emitGameContextChanged = useCallback((currentGameContext: GameContextResponse) => {
+    const game = currentGameContext.active_game_display_name ?? currentGameContext.active_game_id ?? undefined;
+    const signature = eventSignature(
+      game,
+      currentGameContext.active_source,
+      currentGameContext.support_status,
+      currentGameContext.knowledge_available,
+      currentGameContext.fallback_reason
+    );
+    if (lastGameContextEventRef.current === signature) return;
+    lastGameContextEventRef.current = signature;
+    eventBus.emit({
+      type: "game_context_changed",
+      timestamp: eventTimestamp(),
+      game,
+      source: currentGameContext.active_source
+    });
+  }, []);
+
+  const emitGameSessionChanged = useCallback((currentGameSession: GameSessionDebugResponse) => {
+    const currentBoss = currentGameSession.current_boss?.name;
+    const signature = eventSignature(currentGameSession.current_game, currentBoss, currentGameSession.current_activity);
+    if (lastGameSessionEventRef.current === signature) return;
+    lastGameSessionEventRef.current = signature;
+    eventBus.emit({
+      type: "game_session_changed",
+      timestamp: eventTimestamp(),
+      game: currentGameSession.current_game ?? undefined,
+      current_boss: currentBoss,
+      activity: currentGameSession.current_activity ?? undefined
+    });
+  }, []);
+
+  const emitKnowledgeUsed = useCallback((currentChatDebug: ChatDebugResponse) => {
+    const topics = currentChatDebug.matched_topics.length > 0
+      ? currentChatDebug.matched_topics
+      : currentChatDebug.snippet_titles;
+    const hasKnowledgeResult = currentChatDebug.knowledge_used_in_prompt ||
+      currentChatDebug.knowledge_matched ||
+      topics.length > 0;
+    if (!hasKnowledgeResult) return;
+
+    const game = currentChatDebug.knowledge_game_display_name ??
+      currentChatDebug.knowledge_game_id ??
+      currentChatDebug.active_game_display_name ??
+      currentChatDebug.active_game_id ??
+      undefined;
+    const signature = eventSignature(
+      currentChatDebug.request_started_at,
+      game,
+      topics,
+      currentChatDebug.knowledge_used_in_prompt,
+      currentChatDebug.knowledge_matched
+    );
+    if (lastKnowledgeEventRef.current === signature) return;
+    lastKnowledgeEventRef.current = signature;
+    eventBus.emit({ type: "knowledge_used", timestamp: eventTimestamp(), game, topics });
+  }, []);
+
+  const emitModelRouted = useCallback((
+    model: string | null | undefined,
+    routeReason: string | null | undefined,
+    requestKey?: string | null
+  ) => {
+    if (!model && !routeReason) return;
+    const signature = eventSignature(requestKey ?? "", model, routeReason);
+    if (lastModelRouteEventRef.current === signature) return;
+    lastModelRouteEventRef.current = signature;
+    eventBus.emit({
+      type: "model_routed",
+      timestamp: eventTimestamp(),
+      model: model ?? undefined,
+      route_reason: routeReason ?? undefined
+    });
+  }, []);
+
+  const emitDebugSnapshotEvents = useCallback((
+    currentGameContext: GameContextResponse,
+    currentGameSession: GameSessionDebugResponse,
+    currentChatDebug: ChatDebugResponse,
+    currentProviderDebug: ProviderDebugResponse
+  ) => {
+    emitGameContextChanged(currentGameContext);
+    emitGameSessionChanged(currentGameSession);
+    emitKnowledgeUsed(currentChatDebug);
+    emitModelRouted(
+      currentChatDebug.main_reply_model ?? currentChatDebug.model_used ?? currentChatDebug.selected_model ?? currentProviderDebug.main_reply_model ?? currentProviderDebug.model ?? currentProviderDebug.selected_model,
+      currentChatDebug.route_reason ?? currentProviderDebug.route_reason ?? currentChatDebug.fallback_reason ?? currentProviderDebug.fallback_reason,
+      currentChatDebug.request_started_at
+    );
+  }, [emitGameContextChanged, emitGameSessionChanged, emitKnowledgeUsed, emitModelRouted]);
+
+  const recordPendingMemories = useCallback((memories: PendingMemory[], emitCreated: boolean) => {
+    const previousIds = knownPendingMemoryIdsRef.current;
+    if (emitCreated) {
+      for (const memory of memories) {
+        if (!previousIds.has(memory.id)) {
+          eventBus.emit({
+            type: "pending_memory_created",
+            timestamp: eventTimestamp(),
+            memory_type: memory.type,
+            text: memory.text
+          });
+        }
+      }
+    }
+    knownPendingMemoryIdsRef.current = new Set(memories.map((memory) => memory.id));
+    setPendingMemories(memories);
+  }, []);
+
+  const refreshStatus = useCallback(async (options: { emitPendingMemoryCreated?: boolean } = {}) => {
     try {
       setLastError("");
       setLastRawError("");
       await api.health();
       const currentSetupStatus = await api.setupStatus();
       setBackendStatus("connected");
+      emitBackendStatusChanged("connected");
       setSetupStatus(currentSetupStatus);
       setAppSettings(await api.settings());
       setLocalDataStatus(await api.localDataStatus());
@@ -825,19 +1014,24 @@ export function App() {
       setGameDetection(currentGameContext.detected_game);
       setMemoryProfile(await api.memoryProfile());
       setMemoryDebug(await api.memoryDebug());
-      setChatDebug(await api.chatDebug());
-      setProviderDebug(await api.providerDebug());
+      const currentChatDebug = await api.chatDebug();
+      setChatDebug(currentChatDebug);
+      const currentProviderDebug = await api.providerDebug();
+      setProviderDebug(currentProviderDebug);
       setProactiveStatus(await api.proactiveStatus());
-      setGameSessionDebug(await api.gameSessionDebug());
+      const currentGameSessionDebug = await api.gameSessionDebug();
+      setGameSessionDebug(currentGameSessionDebug);
       setSemanticDebug(await api.semanticExtractionDebug());
       setPromptPreview(await api.promptPreview());
-      setPendingMemories(await api.pendingMemories());
+      recordPendingMemories(await api.pendingMemories(), Boolean(options.emitPendingMemoryCreated));
+      emitDebugSnapshotEvents(currentGameContext, currentGameSessionDebug, currentChatDebug, currentProviderDebug);
     } catch (error) {
       setBackendStatus("disconnected");
+      emitBackendStatusChanged("disconnected");
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "后端未连接"));
     }
-  }, []);
+  }, [emitBackendStatusChanged, emitDebugSnapshotEvents, recordPendingMemories]);
 
   const updateAppSettings = async (patch: Partial<AppSettings>) => {
     const busyKey = Object.keys(patch)[0] ?? "settings";
@@ -869,7 +1063,10 @@ export function App() {
     try {
       setLastError("");
       setLastRawError("");
-      setBackendRuntimeStatus(await runtime.setBackendAutoStart(enabled));
+      const updated = await runtime.setBackendAutoStart(enabled);
+      setBackendRuntimeStatus(updated);
+      emitRuntimeStatusChanged(updated);
+      emitBackendStatusChanged(updated.backend_status);
     } catch (error) {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "本地后端自动启动设置失败"));
@@ -941,6 +1138,12 @@ export function App() {
   };
 
   useEffect(() => {
+    return eventBus.subscribe(() => {
+      setRecentEvents(eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
+    });
+  }, []);
+
+  useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
 
@@ -953,17 +1156,22 @@ export function App() {
     const applyStatus = (status: BackendRuntimeStatus) => {
       if (!active) return;
       setBackendRuntimeStatus(status);
+      emitRuntimeStatusChanged(status);
+      emitBackendStatusChanged(status.backend_status);
       if (status.backend_status === "connected") {
         void refreshStatus();
       }
     };
     void runtime.getBackendStatus().then(applyStatus).catch(() => {
       if (active) {
-        setBackendRuntimeStatus({
+        const failedStatus: BackendRuntimeStatus = {
           ...emptyBackendRuntimeStatus,
           backend_start_error: "无法读取本地后端运行状态。",
           backend_status: "failed"
-        });
+        };
+        setBackendRuntimeStatus(failedStatus);
+        emitRuntimeStatusChanged(failedStatus);
+        emitBackendStatusChanged(failedStatus.backend_status);
       }
     });
     const unsubscribe = runtime.onBackendStatus(applyStatus);
@@ -971,13 +1179,14 @@ export function App() {
       active = false;
       unsubscribe();
     };
-  }, [refreshStatus]);
+  }, [emitBackendStatusChanged, emitRuntimeStatusChanged, refreshStatus]);
 
   const checkProactive = useCallback(async () => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on" || sending) return;
     try {
       const response = await api.checkProactive("default", Boolean(input.trim()), backendStatus === "connected");
       if (response.should_send && response.message) {
+        const createdAt = new Date().toISOString();
         queueMessageAutoScroll();
         setMessages((current) => [
           ...current,
@@ -985,11 +1194,17 @@ export function App() {
             id: crypto.randomUUID(),
             role: "assistant",
             text: response.message,
-            createdAt: new Date().toISOString(),
+            createdAt,
             messageType: "proactive",
             triggerType: response.trigger_type
           }
         ]);
+        eventBus.emit({
+          type: "proactive_message_shown",
+          timestamp: createdAt,
+          trigger_type: response.trigger_type,
+          text: response.message
+        });
       }
       setProactiveStatus(await api.proactiveStatus());
     } catch (error) {
@@ -1010,6 +1225,7 @@ export function App() {
     if (!trimmed || sending) return;
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed, createdAt: new Date().toISOString() };
     const placeholderId = crypto.randomUUID();
+    const replyMessageId = crypto.randomUUID();
     let placeholderShown = false;
     const requestStartedAt = Date.now();
     setLastInterimPlaceholderShown(false);
@@ -1017,8 +1233,10 @@ export function App() {
     setLastRawError("");
     queueMessageAutoScroll(true);
     setMessages((current) => [...current, userMessage]);
+    eventBus.emit({ type: "user_message_sent", timestamp: userMessage.createdAt, text: trimmed });
     setInput("");
     setSending(true);
+    eventBus.emit({ type: "assistant_reply_started", timestamp: eventTimestamp(), message_id: replyMessageId });
     const placeholderTimer = window.setTimeout(() => {
       placeholderShown = true;
       setLastInterimPlaceholderShown(true);
@@ -1032,6 +1250,7 @@ export function App() {
       const response = await api.chat(trimmed);
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
+      emitModelRouted(response.model_used, response.route_reason, response.request_started_at ?? String(requestStartedAt));
       queueMessageAutoScroll();
       setMessages((current) => current.filter((message) => message.id !== placeholderId));
       const segments = response.reply_segments.length > 0 ? response.reply_segments : [response.reply];
@@ -1039,14 +1258,22 @@ export function App() {
         if (index > 0) {
           await sleep(nextSegmentDelay());
         }
+        const segmentCreatedAt = new Date().toISOString();
         queueMessageAutoScroll();
         setMessages((current) => [
           ...current,
-          { id: crypto.randomUUID(), role: "assistant", text: segment, createdAt: new Date().toISOString(), pending: false }
+          { id: crypto.randomUUID(), role: "assistant", text: segment, createdAt: segmentCreatedAt, pending: false }
         ]);
+        eventBus.emit({
+          type: "assistant_reply_segment_shown",
+          timestamp: segmentCreatedAt,
+          segment_index: index,
+          text: segment
+        });
       }
+      eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
       setLastInterimPlaceholderShown(placeholderShown);
-      await refreshStatus();
+      await refreshStatus({ emitPendingMemoryCreated: true });
     } catch (error) {
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
@@ -1058,6 +1285,7 @@ export function App() {
         ...current.filter((message) => message.id !== placeholderId),
         { id: crypto.randomUUID(), role: "assistant", text: reply, createdAt: new Date().toISOString(), pending: false }
       ]);
+      eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
       setLastInterimPlaceholderShown(placeholderShown);
     } finally {
       setSending(false);
@@ -1069,8 +1297,10 @@ export function App() {
     try {
       if (action === "accept") {
         await api.acceptPendingMemory(id);
+        eventBus.emit({ type: "pending_memory_accepted", timestamp: eventTimestamp(), memory_id: id });
       } else {
         await api.ignorePendingMemory(id);
+        eventBus.emit({ type: "pending_memory_ignored", timestamp: eventTimestamp(), memory_id: id });
       }
       await refreshStatus();
     } catch (error) {
@@ -1370,7 +1600,7 @@ export function App() {
             </span>
             <span className="topChip">Boss：{displayBoss ?? "空闲"}</span>
             <span className={`connection ${backendStatus}`}>{runtimeStatusLabel}</span>
-            <button aria-label="刷新状态" className="iconButton soft" onClick={refreshStatus}>
+	            <button aria-label="刷新状态" className="iconButton soft" onClick={() => void refreshStatus()}>
               <RefreshCw size={17} />
             </button>
           </div>
@@ -2413,9 +2643,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </dl>
                   </section>
 
-                  <section className="debugSection">
-                    <h3>语义识别</h3>
-                    <dl className="debugFacts">
+	                  <section className="debugSection">
+	                    <h3>语义识别</h3>
+	                    <dl className="debugFacts">
                       <div>
                         <dt>{formatDebugLabel("latest_user_message")}</dt>
                         <dd>{debugText(semanticDebug.latest_user_message)}</dd>
@@ -2462,12 +2692,32 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dt>{formatDebugLabel("latency_ms")}</dt>
                         <dd>{Number(semanticDebug.semantic_extraction_latency_ms || semanticDebug.latency_ms || 0).toFixed(0)}</dd>
                       </div>
-                    </dl>
-                  </section>
+	                    </dl>
+	                  </section>
 
-                  <details className="rawJsonDetails">
-                    <summary>原始 JSON</summary>
-                    <pre className="debugJson">
+	                  <details
+	                    className="rawJsonDetails eventStreamDetails"
+	                    onToggle={(event) => setEventStreamOpen(event.currentTarget.open)}
+	                    open={eventStreamOpen}
+	                  >
+	                    <summary>事件流 / Event Stream</summary>
+	                    {eventStreamOpen && (
+	                      <ol className="eventStreamList" aria-label="事件流列表">
+	                        {recentEvents.map((event, index) => (
+	                          <li key={`${event.timestamp}-${event.type}-${index}`}>
+	                            <span className="eventStreamTime">{eventStreamTime(event.timestamp)}</span>
+	                            <span className="eventStreamType">{event.type}</span>
+	                            <span className="eventStreamSummary">{eventSummary(event)}</span>
+	                          </li>
+	                        ))}
+	                        {recentEvents.length === 0 && <li className="emptyDebugText">暂无事件</li>}
+	                      </ol>
+	                    )}
+	                  </details>
+
+	                  <details className="rawJsonDetails">
+	                    <summary>原始 JSON</summary>
+	                    <pre className="debugJson">
                       {JSON.stringify(
                         {
                           provider_debug: providerDebug,

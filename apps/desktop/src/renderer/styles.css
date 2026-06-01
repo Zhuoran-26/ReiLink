@@ -1113,6 +1113,38 @@ button {
   color: #dce4f6;
 }
 
+.eventStreamList {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0 10px 10px;
+  list-style: none;
+}
+
+.eventStreamList li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 150px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  color: #b8c2d8;
+}
+
+.eventStreamTime {
+  color: #78849e;
+  font-variant-numeric: tabular-nums;
+}
+
+.eventStreamType {
+  color: #dce4f6;
+  overflow-wrap: anywhere;
+}
+
+.eventStreamSummary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .debugJson {
   max-height: 240px;
   overflow: auto;
