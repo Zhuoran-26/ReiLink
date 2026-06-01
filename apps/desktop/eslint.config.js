@@ -18,6 +18,16 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules
     }
+  },
+  {
+    files: ["src/main/preload.cjs"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.node,
+      sourceType: "commonjs"
+    },
+    rules: {
+      "@typescript-eslint/no-require-imports": "off"
+    }
   }
 );
-

@@ -1,11 +1,77 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-REPO_ROOT = BACKEND_DIR.parents[1]
-ENV_FILE = BACKEND_DIR / ".env"
+SOURCE_BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def _walk_for_repo_root(start: Path) -> Path | None:
+    current = start.resolve()
+    if current.is_file():
+        current = current.parent
+    while True:
+        if (current / "data" / "knowledge" / "games" / "catalog.json").is_file():
+            return current
+        parent = current.parent
+        if parent == current:
+            return None
+        current = parent
+
+
+def _resolve_repo_root() -> Path:
+    candidates: list[Path] = []
+    for env_key in ("REILINK_PROJECT_ROOT", "REILINK_REPO_ROOT"):
+        value = os.getenv(env_key)
+        if value:
+            candidates.append(Path(value))
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable))
+    candidates.extend([Path.cwd(), SOURCE_BACKEND_DIR])
+    for candidate in candidates:
+        repo_root = _walk_for_repo_root(candidate)
+        if repo_root:
+            return repo_root
+    return SOURCE_BACKEND_DIR.parents[1]
+
+
+def _resolve_backend_dir(repo_root: Path) -> Path:
+    source_backend = repo_root / "services" / "backend"
+    if (source_backend / "app").is_dir():
+        return source_backend
+    return SOURCE_BACKEND_DIR
+
+
+def _resolve_data_dir(repo_root: Path) -> Path:
+    return Path(os.getenv("REILINK_DATA_DIR", repo_root / "data"))
+
+
+def _resolve_resource_dir(repo_root: Path, data_dir: Path) -> Path:
+    configured = os.getenv("REILINK_RESOURCE_DIR")
+    if configured:
+        return Path(configured)
+    repo_data_dir = repo_root / "data"
+    if (repo_data_dir / "personas" / "rei_like.json").is_file():
+        return repo_data_dir
+    return data_dir
+
+
+def _resolve_knowledge_games_dir(data_dir: Path) -> Path:
+    configured = os.getenv("REILINK_KNOWLEDGE_DIR")
+    if not configured:
+        return data_dir / "knowledge" / "games"
+    path = Path(configured)
+    if path.name == "games" or (path / "catalog.json").is_file():
+        return path
+    return path / "games"
+
+
+REPO_ROOT = _resolve_repo_root()
+BACKEND_DIR = _resolve_backend_dir(REPO_ROOT)
+ENV_FILE = Path(os.getenv("REILINK_BACKEND_ENV", BACKEND_DIR / ".env"))
+DATA_DIR = _resolve_data_dir(REPO_ROOT)
+KNOWLEDGE_GAMES_DIR = _resolve_knowledge_games_dir(DATA_DIR)
 
 
 def _load_env_file(path: Path) -> bool:
@@ -24,6 +90,7 @@ def _load_env_file(path: Path) -> bool:
 
 
 ENV_FILE_LOADED = _load_env_file(ENV_FILE)
+RESOURCE_DIR = _resolve_resource_dir(REPO_ROOT, DATA_DIR)
 
 
 class Settings:
@@ -62,11 +129,12 @@ class Settings:
     repo_root: Path = REPO_ROOT
     env_file_path: Path = ENV_FILE
     env_file_loaded: bool = ENV_FILE_LOADED
-    data_dir: Path = Path(os.getenv("REILINK_DATA_DIR", repo_root / "data"))
-    personas_dir: Path = data_dir / "personas"
-    persona_style_examples_path: Path = data_dir / "persona" / "rei_style_examples.json"
-    persona_golden_style_path: Path = data_dir / "persona" / "rei_golden_style.json"
-    persona_minimal_prompt_path: Path = data_dir / "persona" / "rei_minimal_prompt.json"
+    data_dir: Path = DATA_DIR
+    resource_dir: Path = RESOURCE_DIR
+    personas_dir: Path = resource_dir / "personas"
+    persona_style_examples_path: Path = resource_dir / "persona" / "rei_style_examples.json"
+    persona_golden_style_path: Path = resource_dir / "persona" / "rei_golden_style.json"
+    persona_minimal_prompt_path: Path = resource_dir / "persona" / "rei_minimal_prompt.json"
     memory_dir: Path = data_dir / "memory"
     user_profile_path: Path = memory_dir / "user_profile.json"
     episodes_path: Path = memory_dir / "episodes.jsonl"
@@ -76,9 +144,9 @@ class Settings:
     game_context_state_path: Path = session_dir / "game_context_state.json"
     proactive_state_path: Path = session_dir / "proactive_state.json"
     conversations_dir: Path = data_dir / "conversations"
-    elden_ring_dir: Path = data_dir / "elden_ring"
-    game_registry_path: Path = data_dir / "games" / "game_registry.json"
-    knowledge_games_dir: Path = data_dir / "knowledge" / "games"
+    elden_ring_dir: Path = resource_dir / "elden_ring"
+    game_registry_path: Path = resource_dir / "games" / "game_registry.json"
+    knowledge_games_dir: Path = KNOWLEDGE_GAMES_DIR
     settings_path: Path = data_dir / "settings.json"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "app://."]
 

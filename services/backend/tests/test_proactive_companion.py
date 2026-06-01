@@ -354,3 +354,52 @@ def test_next_possible_is_null_while_waiting_for_user_after_proactive(monkeypatc
     assert status["requires_user_activity_after_proactive"] is True
     assert status["block_reason"] == "waiting_for_user_activity_after_proactive"
     assert status["next_possible_trigger_at"] is None
+
+
+def test_proactive_reset_route_clears_runtime_state_and_keeps_settings():
+    client = TestClient(app)
+    now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    client.post("/api/settings", json={"proactive_companion": "on", "proactive_sensitivity": "high"})
+    state = ProactiveCompanion().load()
+    state.enabled_at = (now - timedelta(hours=1)).isoformat()
+    state.last_user_activity_at = (now - timedelta(minutes=20)).isoformat()
+    state.requires_user_activity_after_proactive = True
+    state.last_triggered_at = (now - timedelta(minutes=1)).isoformat()
+    state.last_triggered_type = "idle_silence"
+    state.trigger_cooldowns["idle_silence"] = (now - timedelta(minutes=1)).isoformat()
+    state.recent_proactive_messages.append(
+        {
+            "trigger_type": "idle_silence",
+            "message": "……还在？",
+            "timestamp": state.last_triggered_at,
+            "reason": "idle_for_600s",
+        }
+    )
+    state.last_trigger_reason = "idle_for_600s"
+    state.last_observed_death_count = 2
+    state.last_observed_frustration_count = 1
+    ProactiveCompanion().save(state)
+
+    response = client.post("/api/proactive/reset")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "reset"
+    assert data["enabled"] is True
+    assert data["sensitivity"] == "high"
+    assert data["enabled_at"]
+    assert data["last_triggered_at"] is None
+    assert data["last_triggered_type"] == "none"
+    assert data["requires_user_activity_after_proactive"] is False
+    assert data["cooldown_remaining_seconds"] == 0
+    assert data["last_trigger_reason"] is None
+    persisted = ProactiveCompanion().load()
+    assert persisted.recent_proactive_messages == []
+    assert persisted.trigger_cooldowns == {}
+    settings_data = client.get("/api/settings").json()
+    assert settings_data["proactive_companion"] == "on"
+    assert settings_data["proactive_sensitivity"] == "high"
+    serialized = response.text.lower()
+    assert "api_key" not in serialized
+    assert "authorization" not in serialized
+    assert "bearer" not in serialized

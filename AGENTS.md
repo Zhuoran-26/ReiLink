@@ -77,6 +77,37 @@ For documentation-only changes, `git diff --check` is sufficient unless the user
 
 If any verification is skipped, explain why.
 
+## Frontend Visual Smoke Test
+
+When a task touches any of the following areas:
+
+- Desktop UI
+- Electron main process
+- packaging / packaged app
+- onboarding
+- settings
+- chat behavior
+- message scrolling
+- proactive UI
+- debug panel
+- user-visible error states
+
+After automated tests pass, also run one frontend visual smoke test:
+
+1. Start the backend or confirm backend status.
+2. Open the desktop dev app or packaged app.
+3. Confirm the interface is not a black screen.
+4. Confirm the main chat area, input, settings area, and right-side panels render normally.
+5. If the task changed a specific UI, click or inspect the relevant entry point.
+6. In the completion report, state what the visual smoke test checked.
+7. If the visual smoke test cannot be run, explain why.
+
+This does not apply to pure backend, pure documentation, pure test-only, or pure knowledge validator tasks.
+
+Do not use the visual smoke test as a replacement for automated tests; it is an extra check.
+
+Do not commit screenshots unless the task explicitly asks for them.
+
 ## Product Principles
 
 - Chinese-first AI companion for single-player game players.

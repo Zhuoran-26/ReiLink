@@ -141,16 +141,10 @@ class GameCatalog:
         )
 
     def resolve_knowledge_path(self, knowledge_path: str) -> Path:
-        path = Path(knowledge_path)
-        if path.is_absolute():
-            return path
-        return settings.repo_root / path
+        return _resolve_knowledge_resource_path(knowledge_path)
 
     def resolve_manifest_path(self, manifest_path: str) -> Path:
-        path = Path(manifest_path)
-        if path.is_absolute():
-            return path
-        return settings.repo_root / path
+        return _resolve_knowledge_resource_path(manifest_path)
 
     def load_manifest(self, game: GameCatalogEntry | None) -> KnowledgePackManifest:
         if not game or not game.manifest_path:
@@ -437,6 +431,19 @@ def _declared_knowledge_available(item: dict[str, Any], support_status: str, kno
 
 def _entry_declares_supported_knowledge(entry: GameCatalogEntry) -> bool:
     return bool(entry.enabled and entry.support_status == "supported" and entry.knowledge_available and entry.knowledge_path)
+
+
+def _resolve_knowledge_resource_path(resource_path: str) -> Path:
+    path = Path(resource_path)
+    if path.is_absolute():
+        return path
+    parts = path.parts
+    for index in range(len(parts) - 2):
+        if parts[index : index + 3] == ("data", "knowledge", "games"):
+            return settings.knowledge_games_dir.joinpath(*parts[index + 3 :])
+        if parts[index : index + 2] == ("knowledge", "games"):
+            return settings.knowledge_games_dir.joinpath(*parts[index + 2 :])
+    return settings.repo_root / path
 
 
 def _entry_fallback_reason(entry: GameCatalogEntry) -> str | None:

@@ -15,17 +15,18 @@
 - [x] GitHub Actions workflow 已配置 desktop lint / test / build。
 - [x] E2E 已作为 `workflow_dispatch` 手动检查准备好。
 - [ ] GitHub Actions 最新远端运行结果需在 GitHub 上确认。
-- [ ] 本地 `make doctor`、`make lint`、`make test`、`make typecheck` 需在代码改动发布前重新确认。本轮只做文档与静态发布检查。
+- [x] 本地 stabilization pass 已重新确认 `make doctor`、`make validate-knowledge`、`make lint`、`make test-backend`、`make test-desktop`、`make typecheck`、`make package-backend`、`make package-desktop` 和 packaged app smoke test。
 
 ### v0.2-pre Release Sync
 
-- [ ] 创建 `reilink-v0.2-pre` tag 前重新运行 `make doctor`。
+- [x] `reilink-v0.2-pre` tag / pre-release 已存在；精确发布点以 git tag / history 为准。
 - [x] `make validate-knowledge` 已加入本地 release readiness 检查。
+- [x] Standalone runtime stabilization check 已记录：`docs/V0.2_PRE_STABILIZATION_CHECK.md`。
 - [x] Screenshot showcase assets 已存在于 `docs/assets/`。
 - [x] Knowledge Pack Authoring Guide 已存在：`docs/KNOWLEDGE_PACK_AUTHORING.md`。
 - [x] v0.2-pre release notes 已存在：`docs/RELEASE_NOTES_v0.2-pre.md`。
 - [x] CI 不依赖真实 DeepSeek API key。
-- [x] v0.1.1 public repository / showcase status 已确认；v0.2-pre tag / release 仍需手动创建。
+- [x] v0.1.1 public repository / showcase status 已确认；v0.2-pre 已公开为 pre-release。后续 runtime stabilization tag 仍需手动创建。
 
 ### 公开材料
 
@@ -60,17 +61,18 @@
 - [x] GitHub Actions workflow configures desktop lint / test / build.
 - [x] E2E is prepared as a manual `workflow_dispatch` check.
 - [ ] The latest remote GitHub Actions run still needs to be confirmed on GitHub.
-- [ ] Local `make doctor`, `make lint`, `make test`, and `make typecheck` should be re-confirmed before a code-changing release. This pass only covers documentation and static release checks.
+- [x] The local stabilization pass re-confirmed `make doctor`, `make validate-knowledge`, `make lint`, `make test-backend`, `make test-desktop`, `make typecheck`, `make package-backend`, `make package-desktop`, and the packaged app smoke test.
 
 ### v0.2-pre Release Sync
 
-- [ ] Re-run `make doctor` before creating the `reilink-v0.2-pre` tag.
+- [x] The `reilink-v0.2-pre` tag / pre-release exists; the exact release point should be read from git tags / history.
 - [x] `make validate-knowledge` is included in local release readiness checks.
+- [x] Standalone runtime stabilization check is recorded in `docs/V0.2_PRE_STABILIZATION_CHECK.md`.
 - [x] Screenshot showcase assets are present under `docs/assets/`.
 - [x] Knowledge Pack Authoring Guide is present: `docs/KNOWLEDGE_PACK_AUTHORING.md`.
 - [x] v0.2-pre release notes are present: `docs/RELEASE_NOTES_v0.2-pre.md`.
 - [x] CI does not require a real DeepSeek API key.
-- [x] v0.1.1 public repository / showcase status is confirmed; v0.2-pre tag / release creation remains manual.
+- [x] v0.1.1 public repository / showcase status is confirmed; v0.2-pre is public as a pre-release. Any later runtime stabilization tag remains manual.
 
 ### Public Materials
 

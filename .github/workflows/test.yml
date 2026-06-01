@@ -26,13 +26,21 @@ jobs:
     env:
       LLM_PROVIDER: mock
       DEEPSEEK_API_KEY: ""
+      PYTHONPATH: ".:services/backend"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - run: pip install -r services/backend/requirements.txt
-      - run: PYTHONPATH=services/backend pytest services/backend/tests
+      - name: Install backend dependencies
+        run: |
+          cd services/backend
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Run backend tests
+        run: make test-backend
 
   desktop:
     runs-on: ubuntu-latest

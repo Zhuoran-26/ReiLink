@@ -4,6 +4,7 @@ from app.modules.proactive.trigger import ProactiveCompanion
 from app.schemas.api import (
     ProactiveCheckRequest,
     ProactiveCheckResponse,
+    ProactiveResetResponse,
     ProactiveSettingsRequest,
     ProactiveStatusResponse,
 )
@@ -28,3 +29,8 @@ def proactive_check(payload: ProactiveCheckRequest) -> dict:
 @router.post("/proactive/settings", response_model=ProactiveStatusResponse)
 def proactive_settings(payload: ProactiveSettingsRequest) -> dict:
     return ProactiveCompanion().update_settings(enabled=payload.enabled, sensitivity=payload.sensitivity)
+
+
+@router.post("/proactive/reset", response_model=ProactiveResetResponse)
+def proactive_reset() -> dict:
+    return ProactiveCompanion().reset_runtime_state()

@@ -40,9 +40,12 @@ class AppSettingsStore:
         return AppSettings(**{**defaults, **persisted})
 
     def save(self, update: AppSettingsUpdate) -> AppSettings:
+        patch = update.model_dump(exclude_unset=True, exclude_none=True)
+        if "onboarding_last_seen_at" in update.model_fields_set:
+            patch["onboarding_last_seen_at"] = update.onboarding_last_seen_at
         merged = {
             **self.load().model_dump(),
-            **update.model_dump(exclude_unset=True, exclude_none=True),
+            **patch,
         }
         saved = AppSettings(**merged)
         self.path.parent.mkdir(parents=True, exist_ok=True)

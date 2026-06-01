@@ -5,12 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App, INTERIM_PLACEHOLDERS } from "../App";
 import type {
+  AppSettings,
   GameContextResponse,
   GameDetectionResponse,
   ProactiveCheckResponse,
   ProactiveStatusResponse,
   SetupStatus
 } from "../../shared/api";
+import type { BackendRuntimeStatus, ReilinkRuntimeBridge } from "../../shared/runtime";
 
 const runningStatus = {
   game_id: "elden_ring",
@@ -619,7 +621,7 @@ const pendingMemories = [
   }
 ];
 
-const appSettings = {
+const appSettings: AppSettings = {
   persona_mode: "minimal",
   debug_panel: "show",
   memory_enabled: true,
@@ -628,12 +630,98 @@ const appSettings = {
   model_preference: "auto",
   proactive_companion: "off",
   proactive_sensitivity: "low",
-  auto_game_detection: "on"
+  auto_game_detection: "on",
+  onboarding_completed: true,
+  onboarding_last_seen_at: "2026-06-01T12:00:00.000Z"
 };
+
+const backendRuntimeStatus: BackendRuntimeStatus = {
+  backend_auto_start_enabled: true,
+  backend_app_mode: "packaged",
+  backend_binary_exists: false,
+  backend_binary_path: null,
+  bundled_backend_binary_path: "/Applications/ReiLink.app/Contents/Resources/backend/reilink-backend",
+  bundled_backend_exists: true,
+  backend_started_by_app: false,
+  backend_started_from: "external",
+  backend_start_error: null,
+  backend_status: "external_backend_detected",
+  backend_runtime_mode: "auto",
+  backend_project_root: "/Users/aragoto/Desktop/ReiLink",
+  backend_root: "/Users/aragoto/Desktop/ReiLink/services/backend",
+  backend_python_path: "/Users/aragoto/Desktop/ReiLink/services/backend/.venv/bin/python",
+  backend_health_url: "http://127.0.0.1:8000/api/health",
+  backend_retry_count: 0,
+  knowledge_path: "/Applications/ReiLink.app/Contents/Resources/knowledge/games",
+  knowledge_source: "bundled",
+  user_data_dir: "/Users/aragoto/Library/Application Support/ReiLink/data"
+};
+
+const localDataStatus = {
+  data_dir: "/Users/aragoto/Library/Application Support/ReiLink/data",
+  memory_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/memory",
+  session_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/session",
+  settings_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/settings",
+  logs_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/logs",
+  knowledge_dir: "/Applications/ReiLink.app/Contents/Resources/knowledge/games",
+  knowledge_source: "bundled",
+  data_dir_exists: true,
+  memory_files_count: 2,
+  session_files_count: 3,
+  pending_memory_count: 1,
+  using_bundled_knowledge: true,
+  writable: true
+} as const;
 
 let appSettingsStore = { ...appSettings };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
+let scrollToMock: ReturnType<typeof vi.fn>;
+
+const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
+  let status = { ...initialStatus };
+  const listeners = new Set<(nextStatus: BackendRuntimeStatus) => void>();
+  const bridge: ReilinkRuntimeBridge = {
+    getBackendStatus: vi.fn(async () => status),
+    setBackendAutoStart: vi.fn(async (enabled: boolean) => {
+      status = {
+        ...status,
+        backend_auto_start_enabled: enabled,
+        backend_start_error: enabled ? null : "自动启动已关闭，请手动运行 make dev-backend。",
+        backend_started_from: enabled ? status.backend_started_from : "none",
+        backend_status: enabled ? status.backend_status : "disabled"
+      };
+      for (const listener of listeners) listener(status);
+      return status;
+    }),
+    openLocalDataDir: vi.fn(async () => ({ ok: true, path: status.user_data_dir, error: null })),
+    onBackendStatus: vi.fn((callback: (nextStatus: BackendRuntimeStatus) => void) => {
+      listeners.add(callback);
+      return () => listeners.delete(callback);
+    })
+  };
+  Object.defineProperty(window, "reilinkRuntime", {
+    configurable: true,
+    value: bridge
+  });
+  return {
+    bridge,
+    emit: (nextStatus: BackendRuntimeStatus) => {
+      status = nextStatus;
+      for (const listener of listeners) listener(status);
+    }
+  };
+};
+
+const setChatScroll = (
+  element: HTMLElement,
+  values: { scrollHeight: number; clientHeight: number; scrollTop: number }
+) => {
+  Object.defineProperty(element, "scrollHeight", { configurable: true, value: values.scrollHeight });
+  Object.defineProperty(element, "clientHeight", { configurable: true, value: values.clientHeight });
+  Object.defineProperty(element, "scrollTop", { configurable: true, writable: true, value: values.scrollTop });
+  fireEvent.scroll(element);
+};
 
 const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
@@ -703,6 +791,17 @@ const proactiveResponse = (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/proactive/settings") && init?.method === "POST") {
     return Response.json(proactiveStatusStore);
   }
+  if (url.endsWith("/api/proactive/reset") && init?.method === "POST") {
+    proactiveStatusStore = {
+      ...proactiveStatusStore,
+      last_triggered_at: null,
+      last_triggered_type: "none",
+      requires_user_activity_after_proactive: false,
+      cooldown_remaining_seconds: 0,
+      last_trigger_reason: null
+    };
+    return Response.json({ status: "reset", ...proactiveStatusStore });
+  }
   return null;
 };
 
@@ -744,6 +843,17 @@ describe("App", () => {
   beforeEach(() => {
     let uuid = 0;
     resetSettingsResponse();
+    scrollToMock = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      const top = typeof options === "number" ? options : options?.top;
+      if (typeof top === "number") {
+        Object.defineProperty(this, "scrollTop", { configurable: true, writable: true, value: top });
+      }
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      writable: true,
+      value: scrollToMock
+    });
     vi.stubGlobal("crypto", { randomUUID: () => `test-id-${uuid++}` });
     vi.stubGlobal(
       "fetch",
@@ -761,6 +871,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -783,6 +894,7 @@ describe("App", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    Reflect.deleteProperty(window, "reilinkRuntime");
   });
 
   it("renders the app", async () => {
@@ -829,6 +941,8 @@ describe("App", () => {
     expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
+    expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("on");
+    expect(screen.getByLabelText("自动启动本地后端")).toBeDisabled();
     expect(screen.getByLabelText("自动游戏检测")).toHaveValue("on");
     expect(screen.getByLabelText("当前游戏")).toHaveValue("");
     expect(screen.getByRole("option", { name: "艾尔登法环（已支持）" })).toBeInTheDocument();
@@ -842,6 +956,8 @@ describe("App", () => {
     const providerStatusPanel = screen.getByRole("group", { name: "模型服务状态" });
     expect(within(providerStatusPanel).getByText("模型服务")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("DeepSeek")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("本地后端")).toBeInTheDocument();
+    expect(within(providerStatusPanel).getByText("后端已连接")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("API Key")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("已加载")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("Base URL")).toBeInTheDocument();
@@ -849,7 +965,299 @@ describe("App", () => {
     expect(within(providerStatusPanel).getByText("auto")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("deepseek-v4-flash")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("deepseek-v4-pro")).toBeInTheDocument();
+    const onboardingSettings = screen.getByRole("group", { name: "新手引导设置" });
+    expect(within(onboardingSettings).getByText("已完成")).toBeInTheDocument();
+    expect(within(onboardingSettings).getByRole("button", { name: "新手引导：重新查看" })).toBeInTheDocument();
+    const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
+    expect(within(demoResetPanel).getByText("Local Data")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("用户数据目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getAllByText("/Users/aragoto/Library/Application Support/ReiLink/data").length).toBeGreaterThan(0);
+    expect(within(demoResetPanel).getByText("记忆目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("会话目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("设置目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("日志目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("内置知识资源")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("可写")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("待确认记忆数")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("记忆文件数")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("会话文件数")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "打开本地数据目录" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "重置新手引导" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "清空聊天记录" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "清空会话状态" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "清空待确认记忆" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "重置主动陪伴状态" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "重置演示状态" })).toBeInTheDocument();
     expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
+  });
+
+  it("shows backend runtime startup status from Electron", async () => {
+    installRuntimeBridge({
+      ...backendRuntimeStatus,
+      backend_started_by_app: true,
+      backend_started_from: "repo",
+      backend_status: "starting"
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 500 })));
+
+    render(<App />);
+
+    expect(await screen.findByRole("status", { name: "后端状态提示" })).toHaveTextContent("正在启动本地后端");
+    expect(screen.getByText("ReiLink 正在尝试启动本地 FastAPI backend。")).toBeInTheDocument();
+  });
+
+  it("shows a clear Chinese error when backend auto-start fails", async () => {
+    installRuntimeBridge({
+      ...backendRuntimeStatus,
+      backend_start_error: "本地后端启动失败，请在项目目录运行 make dev-backend。",
+      backend_status: "failed"
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 500 })));
+
+    render(<App />);
+
+    const notice = await screen.findByRole("status", { name: "后端状态提示" });
+    expect(notice).toHaveTextContent("后端启动失败");
+    expect(notice).toHaveTextContent("本地后端启动失败，请在项目目录运行 make dev-backend。");
+  });
+
+  it("lets settings disable backend auto-start", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    const select = await screen.findByLabelText("自动启动本地后端");
+    expect(select).toBeEnabled();
+    await userEvent.selectOptions(select, "off");
+
+    await waitFor(() => expect(runtime.bridge.setBackendAutoStart).toHaveBeenCalledWith(false));
+    expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("off");
+  });
+
+  it("opens the local data directory through the runtime bridge", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    const localDataPanel = await screen.findByRole("group", { name: "本地数据" });
+    const openButton = within(localDataPanel).getByRole("button", { name: "打开本地数据目录" });
+    await waitFor(() => expect(openButton).toBeEnabled());
+    await userEvent.click(openButton);
+
+    await waitFor(() => expect(runtime.bridge.openLocalDataDir).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("已打开本地数据目录")).toBeInTheDocument();
+  });
+
+  it("keeps the debug panel last in the right rail", async () => {
+    render(<App />);
+
+    await screen.findByRole("complementary", { name: "信息侧栏" });
+    const orderOf = (id: string) => Number(window.getComputedStyle(document.getElementById(id) as HTMLElement).order);
+    expect(orderOf("settings-panel")).toBe(1);
+    expect(orderOf("pending-memory-panel")).toBe(2);
+    expect(orderOf("game-session-panel")).toBe(3);
+    expect(orderOf("prompt-preview-panel")).toBe(4);
+    expect(orderOf("debug-panel")).toBe(5);
+  });
+
+  it("shows onboarding card when onboarding is incomplete", async () => {
+    appSettingsStore = { ...appSettings, onboarding_completed: false, onboarding_last_seen_at: null };
+
+    render(<App />);
+
+    expect(await screen.findByRole("region", { name: "新手引导" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "快速开始 ReiLink" })).toBeInTheDocument();
+    expect(screen.getByText("当前 DeepSeek API Key 已加载。")).toBeInTheDocument();
+    expect(screen.getByText("可以让 ReiLink 自动检测，也可以手动选择当前游戏。")).toBeInTheDocument();
+    expect(screen.getByText("ReiLink 不会直接写入长期记忆，需要你手动保存。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开始使用" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开设置" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 Demo 文档" })).toBeInTheDocument();
+  });
+
+  it("hides onboarding after start and only persists app settings", async () => {
+    appSettingsStore = { ...appSettings, onboarding_completed: false, onboarding_last_seen_at: null };
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始使用" }));
+
+    await waitFor(() => expect(screen.queryByRole("region", { name: "新手引导" })).not.toBeInTheDocument());
+    expect(appSettingsStore.onboarding_completed).toBe(true);
+    expect(appSettingsStore.onboarding_last_seen_at).toEqual(expect.any(String));
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/settings"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("\"onboarding_completed\":true")
+      })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/pending"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/game/context/manual"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/debug/game-session/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("reopens onboarding from settings", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "新手引导：重新查看" }));
+
+    expect(screen.getByRole("region", { name: "新手引导" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "查看 Demo 文档" }));
+    expect(screen.getByText("Demo 文档在本地仓库：docs/DEMO_SCRIPT.md")).toBeInTheDocument();
+  });
+
+  it("resets onboarding from demo reset controls", async () => {
+    render(<App />);
+
+    const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置新手引导" }));
+
+    await waitFor(() => expect(appSettingsStore.onboarding_completed).toBe(false));
+    expect(appSettingsStore.onboarding_last_seen_at).toBeNull();
+    expect(screen.getByRole("region", { name: "新手引导" })).toBeInTheDocument();
+    expect(screen.getByText("已恢复新手引导")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/settings"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ onboarding_completed: false, onboarding_last_seen_at: null })
+      })
+    );
+  });
+
+  it("runs demo reset actions with confirmation where needed", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+
+    const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空会话状态" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/debug/game-session/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(screen.getByText("已清空会话状态")).toBeInTheDocument();
+
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空待确认记忆" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/memory/pending/clear"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置主动陪伴状态" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/proactive/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" }));
+    expect(confirm).toHaveBeenCalledWith("这会清空本地记忆，无法撤销。确定继续吗？");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/memory/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+  });
+
+  it("clears the current chat session without touching memory", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("Margit 怎么打？");
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空聊天记录" }));
+
+    await waitFor(() => expect(screen.queryByText("Margit 怎么打？")).not.toBeInTheDocument());
+    expect(screen.queryByText("我在。想问的时候就说。")).not.toBeInTheDocument();
+    expect(screen.getByText("已清空当前聊天记录")).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    await userEvent.type(screen.getByLabelText("聊天输入"), "还能用吗");
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("还能用吗");
+  });
+
+  it("cancels dangerous demo reset actions when confirmation is rejected", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+
+    const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" }));
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置演示状态" }));
+
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/debug/game-session/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/proactive/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("one-click reset prepares demo state without clearing long-term memory", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("Margit 怎么打？");
+
+    const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置演示状态" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/debug/game-session/reset"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/pending/clear"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/proactive/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/settings"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ onboarding_completed: false, onboarding_last_seen_at: null })
+      })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/reset"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(screen.queryByText("Margit 怎么打？")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "新手引导" })).toBeInTheDocument();
+    expect(screen.getByText("已重置演示状态（未清空长期记忆）")).toBeInTheDocument();
   });
 
   it("shows first-run provider setup prompt when the API key is missing", async () => {
@@ -873,6 +1281,24 @@ describe("App", () => {
     expect(screen.getByText(/DEEPSEEK_API_KEY=/)).toBeInTheDocument();
     const providerStatusPanel = screen.getByRole("group", { name: "模型服务状态" });
     expect(within(providerStatusPanel).getByText("未配置")).toBeInTheDocument();
+  });
+
+  it("keeps provider setup before onboarding when the API key is missing", async () => {
+    appSettingsStore = { ...appSettings, onboarding_completed: false, onboarding_last_seen_at: null };
+    setupStatusStore = {
+      ...setupStatus,
+      provider_configured: false,
+      api_key_loaded: false,
+      needs_setup: true,
+      missing_items: ["DEEPSEEK_API_KEY"]
+    };
+
+    render(<App />);
+
+    const setupPrompt = await screen.findByLabelText("模型配置提示");
+    const onboarding = screen.getByLabelText("新手引导");
+    expect(setupPrompt.compareDocumentPosition(onboarding) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("当前 API Key 未配置，请先完成模型配置。")).toBeInTheDocument();
   });
 
   it("updates settings through the API", async () => {
@@ -972,6 +1398,103 @@ describe("App", () => {
     );
   });
 
+  it("forces chat scroll to bottom when the user sends a message", async () => {
+    render(<App />);
+    const messageLog = await screen.findByRole("log", { name: "聊天消息列表" });
+    setChatScroll(messageLog, { scrollHeight: 1400, clientHeight: 400, scrollTop: 120 });
+    scrollToMock.mockClear();
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    await waitFor(() => expect(scrollToMock).toHaveBeenCalled());
+    expect(scrollToMock).toHaveBeenCalledWith(expect.objectContaining({ top: 1400, behavior: "smooth" }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    expect(screen.getByLabelText("聊天输入")).not.toBeDisabled();
+  });
+
+  it("does not force scroll when a proactive message arrives while reading history", async () => {
+    vi.useFakeTimers();
+    appSettingsStore = { ...appSettings, proactive_companion: "on" };
+    proactiveStatusStore = {
+      ...proactiveStatus,
+      enabled: true,
+      active_candidate_triggers: ["repeated_death"]
+    };
+    proactiveCheckStore = {
+      should_send: true,
+      trigger_type: "repeated_death",
+      message: "你开始急了。",
+      reason: "death_delta=2",
+      cooldown_remaining_seconds: 0,
+      idle_for_seconds: 120,
+      idle_threshold_seconds: 600,
+      initial_grace_remaining_seconds: 0,
+      next_possible_trigger_at: null,
+      enabled_at: new Date().toISOString(),
+      last_user_activity_at: new Date().toISOString(),
+      requires_user_activity_after_proactive: false,
+      block_reason: "eligible",
+      active_candidate_triggers: ["repeated_death"]
+    };
+
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const messageLog = screen.getByRole("log", { name: "聊天消息列表" });
+    setChatScroll(messageLog, { scrollHeight: 1400, clientHeight: 400, scrollTop: 200 });
+    scrollToMock.mockClear();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+
+    expect(screen.getByText("你开始急了。")).toBeInTheDocument();
+    expect(scrollToMock).not.toHaveBeenCalled();
+  });
+
+  it("scrolls to bottom when a proactive message arrives near the bottom", async () => {
+    vi.useFakeTimers();
+    appSettingsStore = { ...appSettings, proactive_companion: "on" };
+    proactiveStatusStore = {
+      ...proactiveStatus,
+      enabled: true,
+      active_candidate_triggers: ["repeated_death"]
+    };
+    proactiveCheckStore = {
+      should_send: true,
+      trigger_type: "repeated_death",
+      message: "你开始急了。",
+      reason: "death_delta=2",
+      cooldown_remaining_seconds: 0,
+      idle_for_seconds: 120,
+      idle_threshold_seconds: 600,
+      initial_grace_remaining_seconds: 0,
+      next_possible_trigger_at: null,
+      enabled_at: new Date().toISOString(),
+      last_user_activity_at: new Date().toISOString(),
+      requires_user_activity_after_proactive: false,
+      block_reason: "eligible",
+      active_candidate_triggers: ["repeated_death"]
+    };
+
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const messageLog = screen.getByRole("log", { name: "聊天消息列表" });
+    setChatScroll(messageLog, { scrollHeight: 1400, clientHeight: 400, scrollTop: 920 });
+    scrollToMock.mockClear();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+
+    expect(screen.getByText("你开始急了。")).toBeInTheDocument();
+    expect(scrollToMock).toHaveBeenCalledWith(expect.objectContaining({ top: 1400, behavior: "smooth" }));
+  });
+
   it("shows localized model errors without raw exception text in chat", async () => {
     chatFailureResponse = () =>
       new Response(JSON.stringify({ detail: "DeepSeek API key missing. Set DEEPSEEK_API_KEY." }), {
@@ -1068,6 +1591,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
+        if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -1129,6 +1653,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
+        if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -1197,6 +1722,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
+        if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -1244,7 +1770,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 500 })));
     render(<App />);
     await screen.findByText("未连接");
-    expect(screen.getByText("后端未连接")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "后端状态提示" })).toHaveTextContent("后端未连接");
   });
 
   it("toggles debug panel", async () => {
@@ -1337,7 +1863,7 @@ describe("App", () => {
     expect(screen.getByText("记忆摘要")).toBeInTheDocument();
     expect(screen.getByText("注入记忆")).toBeInTheDocument();
     expect(screen.getByText("跳过记忆")).toBeInTheDocument();
-    expect(screen.getByText("待确认记忆")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
     expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "忽略" })).toBeInTheDocument();
@@ -1365,6 +1891,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, status: "idle", game_id: null, game_name: null });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1405,6 +1932,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "sekiro", game_name: "只狼" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1450,6 +1978,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "hollow_knight", game_name: "空洞骑士" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1496,6 +2025,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1543,6 +2073,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: null, game_name: "星之门遗迹" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1581,6 +2112,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1642,6 +2174,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1660,10 +2193,13 @@ describe("App", () => {
   });
 
   it("calls debug reset and clear endpoints", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
     await screen.findByRole("button", { name: /调试面板/i });
+    const debugActions = screen.getByRole("heading", { name: "调试操作" }).closest("section");
+    expect(debugActions).not.toBeNull();
 
-    await userEvent.click(await screen.findByRole("button", { name: "重置游戏状态" }));
+    await userEvent.click(within(debugActions as HTMLElement).getByRole("button", { name: "重置游戏状态" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/debug/game-session/reset"),
@@ -1671,7 +2207,7 @@ describe("App", () => {
       )
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "重置记忆" }));
+    await userEvent.click(within(debugActions as HTMLElement).getByRole("button", { name: "重置记忆" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/memory/reset"),
@@ -1679,7 +2215,7 @@ describe("App", () => {
       )
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "清空待确认记忆" }));
+    await userEvent.click(within(debugActions as HTMLElement).getByRole("button", { name: "清空待确认记忆" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/memory/pending/clear"),

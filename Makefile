@@ -1,4 +1,4 @@
-.PHONY: install-backend install-desktop dev-backend dev-desktop dev dev-renderer doctor validate-knowledge test test-backend test-desktop test-e2e lint typecheck
+.PHONY: install-backend install-desktop dev-backend dev-desktop dev dev-renderer doctor validate-knowledge package-backend package-desktop test test-backend test-desktop test-e2e lint typecheck
 
 PYTHON ?= python3
 
@@ -27,13 +27,19 @@ doctor:
 validate-knowledge:
 	@$(PYTHON) scripts/validate_knowledge.py
 
+package-desktop:
+	cd apps/desktop && npm run package
+
+package-backend:
+	cd services/backend && .venv/bin/python -m pip install -r requirements-bundle.txt && .venv/bin/python -m PyInstaller reilink_backend.spec --clean --noconfirm
+
 dev-renderer:
 	cd apps/desktop && npm run dev
 
 test: test-backend test-desktop
 
 test-backend:
-	services/backend/.venv/bin/python -m pytest services/backend/tests
+	PYTHONPATH=.:services/backend LLM_PROVIDER=mock DEEPSEEK_API_KEY= services/backend/.venv/bin/python -m pytest services/backend/tests
 
 test-desktop:
 	cd apps/desktop && npm test

@@ -6,6 +6,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 services/backend/.venv/
+services/backend/build/
+services/backend/dist/
 
 # Node
 node_modules/
@@ -13,11 +15,22 @@ npm-debug.log*
 
 # Desktop build and test output
 dist/
+dist-electron/
 build/
+release/
+out/
 apps/desktop/dist/
 apps/desktop/dist-electron/
+apps/desktop/release/
+apps/desktop/out/
 apps/desktop/test-results/
 apps/desktop/playwright-report/
+*.dmg
+*.zip
+*.AppImage
+*.exe
+*.msi
+*.pkg
 
 # Local conversation logs
 data/conversations/*.jsonl

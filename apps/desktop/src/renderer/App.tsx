@@ -6,6 +6,7 @@ import {
   ChevronUp,
   Database,
   FileText,
+  FolderOpen,
   Gamepad2,
   KeyRound,
   MessageSquare,
@@ -13,9 +14,10 @@ import {
   RefreshCw,
   Send,
   Settings,
-  Sparkles
+  Sparkles,
+  X
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   api,
@@ -26,6 +28,7 @@ import {
   GameDetectionResponse,
   GameSessionDebugResponse,
   GameStatus,
+  LocalDataStatus,
   MemoryDebugResponse,
   PendingMemory,
   PromptPreviewResponse,
@@ -35,6 +38,7 @@ import {
   SetupStatus,
   UserProfileMemory
 } from "../shared/api";
+import type { BackendRuntimeStatus } from "../shared/runtime";
 
 type Message = {
   id: string;
@@ -45,6 +49,15 @@ type Message = {
   messageType?: "chat" | "proactive";
   triggerType?: string;
 };
+
+type DemoResetAction =
+  | "reset-onboarding"
+  | "clear-chat"
+  | "reset-game-session"
+  | "clear-pending"
+  | "reset-memory"
+  | "reset-proactive"
+  | "reset-demo";
 
 const idleStatus: GameStatus = {
   game_id: null,
@@ -247,6 +260,44 @@ const emptySetupStatus: SetupStatus = {
   pro_model: "deepseek-v4-pro"
 };
 
+const emptyLocalDataStatus: LocalDataStatus = {
+  data_dir: "",
+  memory_dir: "",
+  session_dir: "",
+  settings_dir: "",
+  logs_dir: "",
+  knowledge_dir: null,
+  knowledge_source: "missing",
+  data_dir_exists: false,
+  memory_files_count: 0,
+  session_files_count: 0,
+  pending_memory_count: 0,
+  using_bundled_knowledge: false,
+  writable: false
+};
+
+const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
+  backend_auto_start_enabled: true,
+  backend_app_mode: "dev",
+  backend_binary_exists: false,
+  backend_binary_path: null,
+  bundled_backend_binary_path: null,
+  bundled_backend_exists: false,
+  backend_started_by_app: false,
+  backend_started_from: "none",
+  backend_start_error: null,
+  backend_status: "checking",
+  backend_runtime_mode: "auto",
+  backend_project_root: null,
+  backend_root: null,
+  backend_python_path: null,
+  backend_health_url: "http://127.0.0.1:8000/api/health",
+  backend_retry_count: 0,
+  knowledge_path: null,
+  knowledge_source: "missing",
+  user_data_dir: ""
+};
+
 const emptyProactiveStatus: ProactiveStatusResponse = {
   enabled: false,
   sensitivity: "low",
@@ -274,12 +325,15 @@ const defaultAppSettings: AppSettings = {
   model_preference: "auto",
   proactive_companion: "off",
   proactive_sensitivity: "low",
-  auto_game_detection: "on"
+  auto_game_detection: "on",
+  onboarding_completed: false,
+  onboarding_last_seen_at: null
 };
 
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 const PROACTIVE_CHECK_INTERVAL_MS = 30000;
+const AUTO_SCROLL_THRESHOLD_PX = 120;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -601,6 +655,36 @@ const formatSeconds = (value: number | null | undefined) => {
   return `${seconds} 秒`;
 };
 
+const backendRuntimeStatusText = (status: BackendRuntimeStatus) => {
+  if (status.backend_status === "connected") return "后端已连接";
+  if (status.backend_status === "external_backend_detected") return "已检测到外部后端";
+  if (status.backend_status === "starting") return "正在启动本地后端";
+  if (status.backend_status === "checking") return "后端连接中";
+  if (status.backend_status === "missing_project_root") return "未找到本地后端目录";
+  if (status.backend_status === "missing_venv") return "未找到 backend venv";
+  if (status.backend_status === "spawn_failed") return "后端启动失败";
+  if (status.backend_status === "health_timeout") return "后端启动超时";
+  if (status.backend_status === "port_occupied") return "端口 8000 已被占用";
+  if (status.backend_status === "failed") return "后端启动失败";
+  if (status.backend_status === "not_found") return "未找到后端运行环境";
+  if (status.backend_status === "disabled") return "自动启动已关闭，请手动运行 make dev-backend";
+  return "后端未连接";
+};
+
+const backendRuntimeSourceText = (status: BackendRuntimeStatus) => {
+  if (status.backend_started_from === "external") return "外部后端";
+  if (status.backend_started_from === "configured_binary") return "指定 backend binary";
+  if (status.backend_started_from === "bundled_binary") return "内置后端";
+  if (status.backend_started_from === "repo") return "本地源码后端";
+  return status.backend_started_by_app ? "桌面端启动" : "外部或未启动";
+};
+
+const knowledgeSourceText = (source: BackendRuntimeStatus["knowledge_source"]) => {
+  if (source === "bundled") return "内置知识资源";
+  if (source === "repo") return "本地源码知识";
+  return "缺失";
+};
+
 const formatPromptOrder = (order: string[]) =>
   order.map((item) => formatDebugLabel(item)).join(" → ") || "无";
 
@@ -669,11 +753,16 @@ export function App() {
   const [semanticDebug, setSemanticDebug] = useState<SemanticExtractionDebugResponse>(emptySemanticExtractionDebug);
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
   const [setupStatus, setSetupStatus] = useState<SetupStatus>(emptySetupStatus);
+  const [localDataStatus, setLocalDataStatus] = useState<LocalDataStatus>(emptyLocalDataStatus);
+  const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
+  const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
   const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
   const [debugActionBusy, setDebugActionBusy] = useState("");
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [settingsBusy, setSettingsBusy] = useState("");
+  const [backendRuntimeBusy, setBackendRuntimeBusy] = useState(false);
+  const [localDataBusy, setLocalDataBusy] = useState("");
   const [gameContextBusy, setGameContextBusy] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。", createdAt: new Date().toISOString() }
@@ -683,12 +772,44 @@ export function App() {
   const [debugOpen, setDebugOpen] = useState(true);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [setupHelpOpen, setSetupHelpOpen] = useState(false);
+  const [demoDocHintOpen, setDemoDocHintOpen] = useState(false);
+  const [demoResetFeedback, setDemoResetFeedback] = useState("");
+  const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
+  const [onboardingReopened, setOnboardingReopened] = useState(false);
   const [lastError, setLastError] = useState("");
   const [lastRawError, setLastRawError] = useState("");
   const [lastInterimPlaceholderShown, setLastInterimPlaceholderShown] = useState(false);
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const forceNextScrollRef = useRef(true);
 
-  const refreshStatus = async () => {
+  const isMessagesNearBottom = useCallback(() => {
+    const element = messagesRef.current;
+    if (!element) return true;
+    return element.scrollHeight - element.scrollTop - element.clientHeight <= AUTO_SCROLL_THRESHOLD_PX;
+  }, []);
+
+  const queueMessageAutoScroll = useCallback((force = false) => {
+    if (force) {
+      forceNextScrollRef.current = true;
+      shouldAutoScrollRef.current = true;
+      return;
+    }
+    shouldAutoScrollRef.current = isMessagesNearBottom();
+  }, [isMessagesNearBottom]);
+
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const element = messagesRef.current;
+    if (!element) return;
+    element.scrollTo({ top: element.scrollHeight, behavior });
+  }, []);
+
+  const handleMessagesScroll = useCallback(() => {
+    shouldAutoScrollRef.current = isMessagesNearBottom();
+  }, [isMessagesNearBottom]);
+
+  const refreshStatus = useCallback(async () => {
     try {
       setLastError("");
       setLastRawError("");
@@ -697,6 +818,7 @@ export function App() {
       setBackendStatus("connected");
       setSetupStatus(currentSetupStatus);
       setAppSettings(await api.settings());
+      setLocalDataStatus(await api.localDataStatus());
       setGameStatus(await api.gameStatus());
       const currentGameContext = await api.gameContext();
       setGameContext(currentGameContext);
@@ -715,7 +837,7 @@ export function App() {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "后端未连接"));
     }
-  };
+  }, []);
 
   const updateAppSettings = async (patch: Partial<AppSettings>) => {
     const busyKey = Object.keys(patch)[0] ?? "settings";
@@ -740,6 +862,46 @@ export function App() {
     }
   };
 
+  const updateBackendAutoStart = async (enabled: boolean) => {
+    const runtime = window.reilinkRuntime;
+    if (!runtime) return;
+    setBackendRuntimeBusy(true);
+    try {
+      setLastError("");
+      setLastRawError("");
+      setBackendRuntimeStatus(await runtime.setBackendAutoStart(enabled));
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "本地后端自动启动设置失败"));
+    } finally {
+      setBackendRuntimeBusy(false);
+    }
+  };
+
+  const openLocalDataDirectory = async () => {
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.openLocalDataDir) {
+      setLastError("当前桌面端不支持打开本地数据目录");
+      return;
+    }
+    setLocalDataBusy("open-dir");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const result = await runtime.openLocalDataDir();
+      if (!result.ok) {
+        throw new Error(result.error || "打开本地数据目录失败");
+      }
+      setDemoResetFeedback("已打开本地数据目录");
+      await refreshStatus();
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "打开本地数据目录失败"));
+    } finally {
+      setLocalDataBusy("");
+    }
+  };
+
   const updateManualGameContext = async (gameId: string | null, action = "manual-game") => {
     setGameContextBusy(action);
     try {
@@ -757,15 +919,66 @@ export function App() {
     }
   };
 
+  const completeOnboarding = async () => {
+    queueMessageAutoScroll(true);
+    setOnboardingDismissedThisSession(true);
+    setOnboardingReopened(false);
+    setDemoDocHintOpen(false);
+    await updateAppSettings({
+      onboarding_completed: true,
+      onboarding_last_seen_at: new Date().toISOString()
+    });
+  };
+
+  const reopenOnboarding = () => {
+    setOnboardingDismissedThisSession(false);
+    setOnboardingReopened(true);
+    setDemoDocHintOpen(false);
+    const panel = document.getElementById("chat-panel");
+    if (typeof panel?.scrollIntoView === "function") {
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   useEffect(() => {
     void refreshStatus();
-  }, []);
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    const runtime = window.reilinkRuntime;
+    setBackendRuntimeAvailable(Boolean(runtime));
+    if (!runtime) return undefined;
+
+    let active = true;
+    const applyStatus = (status: BackendRuntimeStatus) => {
+      if (!active) return;
+      setBackendRuntimeStatus(status);
+      if (status.backend_status === "connected") {
+        void refreshStatus();
+      }
+    };
+    void runtime.getBackendStatus().then(applyStatus).catch(() => {
+      if (active) {
+        setBackendRuntimeStatus({
+          ...emptyBackendRuntimeStatus,
+          backend_start_error: "无法读取本地后端运行状态。",
+          backend_status: "failed"
+        });
+      }
+    });
+    const unsubscribe = runtime.onBackendStatus(applyStatus);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [refreshStatus]);
 
   const checkProactive = useCallback(async () => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on" || sending) return;
     try {
       const response = await api.checkProactive("default", Boolean(input.trim()), backendStatus === "connected");
       if (response.should_send && response.message) {
+        queueMessageAutoScroll();
         setMessages((current) => [
           ...current,
           {
@@ -783,7 +996,7 @@ export function App() {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "主动陪伴检查失败"));
     }
-  }, [appSettings.proactive_companion, backendStatus, input, sending]);
+  }, [appSettings.proactive_companion, backendStatus, input, queueMessageAutoScroll, sending]);
 
   useEffect(() => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on") return undefined;
@@ -802,12 +1015,14 @@ export function App() {
     setLastInterimPlaceholderShown(false);
     setLastError("");
     setLastRawError("");
+    queueMessageAutoScroll(true);
     setMessages((current) => [...current, userMessage]);
     setInput("");
     setSending(true);
     const placeholderTimer = window.setTimeout(() => {
       placeholderShown = true;
       setLastInterimPlaceholderShown(true);
+      queueMessageAutoScroll();
       setMessages((current) => [
         ...current,
         { id: placeholderId, role: "assistant", text: pickPlaceholder(), createdAt: new Date().toISOString(), pending: true }
@@ -817,12 +1032,14 @@ export function App() {
       const response = await api.chat(trimmed);
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
+      queueMessageAutoScroll();
       setMessages((current) => current.filter((message) => message.id !== placeholderId));
       const segments = response.reply_segments.length > 0 ? response.reply_segments : [response.reply];
       for (const [index, segment] of segments.entries()) {
         if (index > 0) {
           await sleep(nextSegmentDelay());
         }
+        queueMessageAutoScroll();
         setMessages((current) => [
           ...current,
           { id: crypto.randomUUID(), role: "assistant", text: segment, createdAt: new Date().toISOString(), pending: false }
@@ -836,6 +1053,7 @@ export function App() {
       const reply = productErrorText(error, "模型服务返回错误，请检查配置");
       setLastRawError(errorRawText(error));
       setLastError(reply);
+      queueMessageAutoScroll();
       setMessages((current) => [
         ...current.filter((message) => message.id !== placeholderId),
         { id: crypto.randomUUID(), role: "assistant", text: reply, createdAt: new Date().toISOString(), pending: false }
@@ -866,6 +1084,9 @@ export function App() {
   const handleDebugAction = async (
     action: "refresh" | "reset-game-session" | "reset-memory" | "clear-pending"
   ) => {
+    if (action === "reset-memory" && !window.confirm("这会清空本地记忆，无法撤销。确定继续吗？")) {
+      return;
+    }
     setDebugActionBusy(action);
     try {
       setLastError("");
@@ -881,6 +1102,88 @@ export function App() {
     } catch (error) {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "调试操作失败"));
+    } finally {
+      setDebugActionBusy("");
+    }
+  };
+
+  const resetOnboardingForDemo = async () => {
+    const updated = await api.updateSettings({
+      onboarding_completed: false,
+      onboarding_last_seen_at: null
+    });
+    setAppSettings(updated);
+    setOnboardingDismissedThisSession(false);
+    setOnboardingReopened(true);
+    setDemoDocHintOpen(false);
+  };
+
+  const clearCurrentChat = () => {
+    queueMessageAutoScroll(true);
+    setMessages([]);
+  };
+
+  const handleDemoResetAction = async (action: DemoResetAction) => {
+    if (
+      action === "clear-chat" &&
+      !window.confirm("这会清空当前聊天记录，无法撤销。确定继续吗？")
+    ) {
+      return;
+    }
+    if (
+      action === "reset-memory" &&
+      !window.confirm("这会清空本地记忆，无法撤销。确定继续吗？")
+    ) {
+      return;
+    }
+    if (
+      action === "reset-demo" &&
+      !window.confirm("这会清空当前聊天并重置演示状态，但不会清空长期记忆。确定继续吗？")
+    ) {
+      return;
+    }
+
+    setDebugActionBusy(`demo-${action}`);
+    setDemoResetFeedback("");
+    try {
+      setLastError("");
+      setLastRawError("");
+      if (action === "reset-onboarding") {
+        await resetOnboardingForDemo();
+        await refreshStatus();
+        setDemoResetFeedback("已恢复新手引导");
+      } else if (action === "clear-chat") {
+        clearCurrentChat();
+        setDemoResetFeedback("已清空当前聊天记录");
+      } else if (action === "reset-game-session") {
+        await api.resetGameSession();
+        await refreshStatus();
+        setDemoResetFeedback("已清空会话状态");
+      } else if (action === "clear-pending") {
+        await api.clearPendingMemories();
+        await refreshStatus();
+        setDemoResetFeedback("已清空待确认记忆");
+      } else if (action === "reset-memory") {
+        await api.resetMemory();
+        await refreshStatus();
+        setDemoResetFeedback("已重置长期记忆");
+      } else if (action === "reset-proactive") {
+        await api.resetProactive();
+        await refreshStatus();
+        setDemoResetFeedback("已重置主动陪伴状态");
+      } else if (action === "reset-demo") {
+        clearCurrentChat();
+        await api.resetGameSession();
+        await api.clearPendingMemories();
+        await api.resetProactive();
+        await resetOnboardingForDemo();
+        await refreshStatus();
+        setDemoResetFeedback("已重置演示状态（未清空长期记忆）");
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "演示重置操作失败"));
+      setDemoResetFeedback("操作失败，请查看错误提示");
     } finally {
       setDebugActionBusy("");
     }
@@ -938,8 +1241,48 @@ export function App() {
   const plannedCatalogGames = gameContext.available_games.filter((game) => game.support_status !== "supported" || !game.knowledge_available);
   const companionName = "Rei";
   const companionSubtitle = "安静、冷淡的游戏陪伴";
-  const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
+  const runtimeState = backendRuntimeStatus.backend_status;
+  const runtimeIsStarting = runtimeState === "checking" || runtimeState === "starting";
+  const companionStatus = backendStatus === "connected" ? "在线" : runtimeIsStarting ? "启动中" : backendStatus === "checking" ? "检查中" : "离线";
+  const runtimeStatusLabel = backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : statusLabel;
+  const providerBackendStatusText = backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : (
+    backendStatus === "connected" ? "后端已连接" : "后端未连接"
+  );
+  const backendRuntimeNotice = backendStatus !== "connected"
+    ? {
+        title: backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : "后端未连接",
+        body: backendRuntimeAvailable
+          ? backendRuntimeStatus.backend_start_error || (
+              runtimeState === "starting"
+                ? "ReiLink 正在尝试启动本地 FastAPI backend。"
+                : "请确认本地 backend 可用，或在项目目录运行 make dev-backend。"
+            )
+          : "请在项目目录运行 make dev-backend 后刷新。"
+      }
+    : null;
   const setupNeedsAttention = backendStatus === "connected" && (setupStatus.needs_setup || !setupStatus.provider_configured);
+  const onboardingVisible = backendStatus === "connected" && (
+    (!appSettings.onboarding_completed && !onboardingDismissedThisSession) || onboardingReopened
+  );
+  const displayLocalDataStatus = {
+    ...localDataStatus,
+    data_dir: localDataStatus.data_dir || backendRuntimeStatus.user_data_dir,
+    knowledge_dir: localDataStatus.knowledge_dir || backendRuntimeStatus.knowledge_path,
+    knowledge_source: localDataStatus.knowledge_source !== "missing"
+      ? localDataStatus.knowledge_source
+      : backendRuntimeStatus.knowledge_source
+  };
+  const onboardingApiKeyText = setupStatus.api_key_loaded
+    ? "当前 DeepSeek API Key 已加载。"
+    : "当前 API Key 未配置，请先完成模型配置。";
+
+  useEffect(() => {
+    if (forceNextScrollRef.current || shouldAutoScrollRef.current) {
+      scrollMessagesToBottom();
+      forceNextScrollRef.current = false;
+    }
+  }, [messages, onboardingVisible, scrollMessagesToBottom]);
+
   const openSettingsPanel = () => {
     const panel = document.getElementById("settings-panel");
     if (typeof panel?.scrollIntoView === "function") {
@@ -1026,7 +1369,7 @@ export function App() {
               游戏：{debugText(displayGame)}
             </span>
             <span className="topChip">Boss：{displayBoss ?? "空闲"}</span>
-            <span className={`connection ${backendStatus}`}>{statusLabel}</span>
+            <span className={`connection ${backendStatus}`}>{runtimeStatusLabel}</span>
             <button aria-label="刷新状态" className="iconButton soft" onClick={refreshStatus}>
               <RefreshCw size={17} />
             </button>
@@ -1038,7 +1381,16 @@ export function App() {
             <div className="timelineMarker">今天</div>
 
           <section className="chatPanel" aria-label="聊天面板">
-            <div className="messages">
+            <div className="messages" role="log" aria-label="聊天消息列表" ref={messagesRef} onScroll={handleMessagesScroll}>
+              {backendRuntimeNotice && (
+                <section className="setupNotice backendRuntimeNotice" role="status" aria-label="后端状态提示">
+                  <div className="setupNoticeHeader">
+                    <RefreshCw size={18} />
+                    <h2>{backendRuntimeNotice.title}</h2>
+                  </div>
+                  <p>{backendRuntimeNotice.body}</p>
+                </section>
+              )}
               {setupNeedsAttention && (
                 <section className="setupNotice" role="status" aria-label="模型配置提示">
                   <div className="setupNoticeHeader">
@@ -1063,6 +1415,67 @@ export function App() {
 DEEPSEEK_API_KEY=
 DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </div>
+                  )}
+                </section>
+              )}
+              {onboardingVisible && (
+                <section className="onboardingCard" aria-label="新手引导">
+                  <div className="onboardingHeader">
+                    <div>
+                      <p className="eyebrow">Quick Start</p>
+                      <h2>快速开始 ReiLink</h2>
+                    </div>
+                    <button
+                      className="iconButton soft"
+                      type="button"
+                      aria-label="关闭新手引导"
+                      onClick={() => void completeOnboarding()}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <ol className="onboardingSteps">
+                    <li>
+                      <strong>配置模型服务</strong>
+                      <span>{onboardingApiKeyText}</span>
+                    </li>
+                    <li>
+                      <strong>选择当前游戏</strong>
+                      <span>可以让 ReiLink 自动检测，也可以手动选择当前游戏。</span>
+                    </li>
+                    <li>
+                      <strong>开始聊天</strong>
+                      <span>试试：我现在卡在女武神 / 螳螂领主怎么打？</span>
+                    </li>
+                    <li>
+                      <strong>确认记忆</strong>
+                      <span>ReiLink 不会直接写入长期记忆，需要你手动保存。</span>
+                    </li>
+                    <li>
+                      <strong>开启主动陪伴</strong>
+                      <span>如果需要，可以开启主动陪伴；它会保持低频和克制。</span>
+                    </li>
+                    <li>
+                      <strong>查看调试信息</strong>
+                      <span>调试面板可以看到游戏状态、知识匹配和模型路由。</span>
+                    </li>
+                  </ol>
+                  <div className="onboardingActions">
+                    <button className="smallButton" type="button" onClick={() => void completeOnboarding()}>
+                      <Sparkles size={15} />
+                      开始使用
+                    </button>
+                    <button className="smallButton quiet" type="button" onClick={openSettingsPanel}>
+                      <Settings size={15} />
+                      打开设置
+                    </button>
+                    <button className="smallButton quiet" type="button" onClick={() => setDemoDocHintOpen((open) => !open)}>
+                      <FileText size={15} />
+                      查看 Demo 文档
+                    </button>
+                  </div>
+                  {demoDocHintOpen && (
+                    <p className="onboardingDocHint">Demo 文档在本地仓库：docs/DEMO_SCRIPT.md</p>
                   )}
                 </section>
               )}
@@ -1101,7 +1514,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
         </section>
 
         <aside className="infoRail" aria-label="信息侧栏">
-          <section className="infoCard settingsPanel" aria-label="设置" id="settings-panel">
+          <section className="infoCard settingsPanel" aria-label="设置" id="settings-panel" style={{ order: 1 }}>
             <div className="cardHeader">
               <Settings size={17} />
               <h2>设置</h2>
@@ -1182,6 +1595,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="pro">高质量</option>
                 </select>
               </label>
+              <label className="settingRow">
+                <span>自动启动本地后端</span>
+                <select
+                  aria-label="自动启动本地后端"
+                  disabled={!backendRuntimeAvailable || backendRuntimeBusy}
+                  value={backendRuntimeStatus.backend_auto_start_enabled ? "on" : "off"}
+                  onChange={(event) => void updateBackendAutoStart(event.target.value === "on")}
+                >
+                  <option value="on">开启</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
               <div className="providerStatusPanel" role="group" aria-label="模型服务状态">
                 <div className="providerStatusTitle">
                   <KeyRound size={15} />
@@ -1192,6 +1617,28 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <dt>模型服务</dt>
                     <dd>DeepSeek</dd>
                   </div>
+                  <div>
+                    <dt>本地后端</dt>
+                    <dd>{providerBackendStatusText}</dd>
+                  </div>
+                  <div>
+                    <dt>启动来源</dt>
+                    <dd>{backendRuntimeSourceText(backendRuntimeStatus)}</dd>
+                  </div>
+                  <div>
+                    <dt>知识资源</dt>
+                    <dd>{knowledgeSourceText(backendRuntimeStatus.knowledge_source)}</dd>
+                  </div>
+                  <div>
+                    <dt>用户数据</dt>
+                    <dd>{debugText(backendRuntimeStatus.user_data_dir, "未设置")}</dd>
+                  </div>
+                  {backendRuntimeStatus.backend_start_error ? (
+                    <div>
+                      <dt>后端错误</dt>
+                      <dd>{backendRuntimeStatus.backend_start_error}</dd>
+                    </div>
+                  ) : null}
                   <div>
                     <dt>API Key</dt>
                     <dd>{setupStatus.api_key_loaded ? "已加载" : "未配置"}</dd>
@@ -1213,6 +1660,171 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <dd>{debugText(setupStatus.pro_model)}</dd>
                   </div>
                 </dl>
+              </div>
+              <div className="onboardingSettingsPanel" role="group" aria-label="新手引导设置">
+                <div>
+                  <span>新手引导</span>
+                  <strong>{appSettings.onboarding_completed ? "已完成" : "未完成"}</strong>
+                </div>
+                <button className="smallButton quiet" type="button" aria-label="新手引导：重新查看" onClick={reopenOnboarding}>
+                  重新查看
+                </button>
+              </div>
+              <div className="localDataPanel demoResetPanel" role="group" aria-label="本地数据">
+                <div className="demoResetHeader">
+                  <div>
+                    <span>本地数据</span>
+                    <strong>Local Data</strong>
+                  </div>
+                </div>
+                <dl className="debugFacts localDataFacts">
+                  <div>
+                    <dt>用户数据目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.data_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>记忆目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.memory_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>会话目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.session_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>设置目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.settings_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>日志目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.logs_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>知识资源</dt>
+                    <dd>{knowledgeSourceText(displayLocalDataStatus.knowledge_source)}</dd>
+                  </div>
+                  <div>
+                    <dt>知识目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.knowledge_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>数据目录状态</dt>
+                    <dd>{displayLocalDataStatus.writable ? "可写" : "不可写"}</dd>
+                  </div>
+                  <div>
+                    <dt>目录已创建</dt>
+                    <dd>{displayLocalDataStatus.data_dir_exists ? "是" : "否"}</dd>
+                  </div>
+                  <div>
+                    <dt>待确认记忆数</dt>
+                    <dd>{displayLocalDataStatus.pending_memory_count}</dd>
+                  </div>
+                  <div>
+                    <dt>记忆文件数</dt>
+                    <dd>{displayLocalDataStatus.memory_files_count}</dd>
+                  </div>
+                  <div>
+                    <dt>会话文件数</dt>
+                    <dd>{displayLocalDataStatus.session_files_count}</dd>
+                  </div>
+                  <div>
+                    <dt>后端来源</dt>
+                    <dd>{backendRuntimeSourceText(backendRuntimeStatus)}</dd>
+                  </div>
+                  {backendRuntimeStatus.backend_start_error ? (
+                    <div>
+                      <dt>后端错误</dt>
+                      <dd>{backendRuntimeStatus.backend_start_error}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+                <div className="demoResetActions">
+                  <button
+                    className="smallButton"
+                    type="button"
+                    title="Open local data directory"
+                    disabled={!backendRuntimeAvailable || localDataBusy !== ""}
+                    onClick={() => void openLocalDataDirectory()}
+                  >
+                    <FolderOpen size={14} />
+                    打开本地数据目录
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    title="Reset onboarding"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-onboarding")}
+                  >
+                    <RefreshCw size={14} />
+                    重置新手引导
+                  </button>
+                  <button
+                    className="smallButton quiet danger"
+                    type="button"
+                    title="Clear current chat session"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("clear-chat")}
+                  >
+                    <MessageSquare size={14} />
+                    清空聊天记录
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    title="Reset game session"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-game-session")}
+                  >
+                    <Gamepad2 size={14} />
+                    清空会话状态
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    title="Clear pending memories"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("clear-pending")}
+                  >
+                    <Database size={14} />
+                    清空待确认记忆
+                  </button>
+                  <button
+                    className="smallButton quiet danger"
+                    type="button"
+                    title="Reset long-term memory"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-memory")}
+                  >
+                    <Database size={14} />
+                    重置长期记忆
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    title="Reset proactive runtime state"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-proactive")}
+                  >
+                    <Sparkles size={14} />
+                    重置主动陪伴状态
+                  </button>
+                  <button
+                    className="smallButton demoResetPrimary"
+                    type="button"
+                    title="Reset demo state without clearing long-term memory"
+                    disabled={debugActionBusy !== ""}
+                    onClick={() => void handleDemoResetAction("reset-demo")}
+                  >
+                    <RefreshCw size={14} />
+                    重置演示状态
+                  </button>
+                </div>
+                <p className="settingHint">重置演示状态不会清空长期记忆。危险操作会先确认。</p>
+                {demoResetFeedback && (
+                  <p className="demoResetFeedback" role="status">
+                    {demoResetFeedback}
+                  </p>
+                )}
               </div>
               <label className="settingRow">
                 <span>自动游戏检测</span>
@@ -1334,7 +1946,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             </p>
           </section>
 
-          <section className="infoCard pendingPanel" aria-label="待确认记忆" id="pending-memory-panel">
+          <section className="infoCard pendingPanel" aria-label="待确认记忆" id="pending-memory-panel" style={{ order: 2 }}>
             <div className="cardHeader">
               <Database size={17} />
               <h2>待确认记忆</h2>
@@ -1374,7 +1986,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             </div>
           </section>
 
-          <section className="infoCard gameSessionPanel" aria-label="游戏状态" id="game-session-panel">
+          <section className="infoCard gameSessionPanel" aria-label="游戏状态" id="game-session-panel" style={{ order: 3 }}>
             <div className="cardHeader">
               <Gamepad2 size={17} />
               <h2>游戏状态</h2>
@@ -1424,7 +2036,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
           </section>
 
           {debugPanelVisible && (
-            <section className="infoCard foldPanel" aria-label="调试面板" id="debug-panel">
+            <section className="infoCard foldPanel" aria-label="调试面板" id="debug-panel" style={{ order: 5 }}>
               <button
                 className="foldHeader"
                 aria-expanded={debugOpen}
@@ -1869,7 +2481,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           memory_profile: memoryProfile,
                           pending_memory: pendingMemories,
                           prompt_preview: promptPreview,
-                          settings: appSettings,
+                          backend_runtime: backendRuntimeStatus,
+                          settings: {
+                            persona_mode: appSettings.persona_mode,
+                            debug_panel: appSettings.debug_panel,
+                            memory_enabled: appSettings.memory_enabled,
+                            pending_memory_mode: appSettings.pending_memory_mode,
+                            response_length: appSettings.response_length,
+                            model_preference: appSettings.model_preference,
+                            proactive_companion: appSettings.proactive_companion,
+                            proactive_sensitivity: appSettings.proactive_sensitivity,
+                            auto_game_detection: appSettings.auto_game_detection
+                          },
                           chat: {
                             intent: chatDebug.intent,
                             selected_model: chatDebug.selected_model,
@@ -1929,7 +2552,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
           )}
 
           {debugPanelVisible && (
-            <section className="infoCard foldPanel" aria-label="回复上下文预览" id="prompt-preview-panel">
+            <section className="infoCard foldPanel" aria-label="回复上下文预览" id="prompt-preview-panel" style={{ order: 4 }}>
               <button
                 className="foldHeader"
                 aria-expanded={promptPreviewOpen}
