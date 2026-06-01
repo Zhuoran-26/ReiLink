@@ -12,6 +12,10 @@ export type ReiLinkEvent =
   | { type: "knowledge_used"; timestamp: string; game?: string; topics?: string[] }
   | { type: "model_routed"; timestamp: string; model?: string; route_reason?: string }
   | { type: "backend_status_changed"; timestamp: string; status: string }
-  | { type: "runtime_status_changed"; timestamp: string; backend_source?: string; knowledge_source?: string };
+  | { type: "runtime_status_changed"; timestamp: string; backend_source?: string; knowledge_source?: string }
+  | { type: "tts_started"; timestamp: string; character_count: number }
+  | { type: "tts_completed"; timestamp: string; character_count: number }
+  | { type: "tts_stopped"; timestamp: string; character_count?: number; reason?: string }
+  | { type: "tts_error"; timestamp: string; character_count?: number; reason?: string; status?: string };
 
 export type ReiLinkEventType = ReiLinkEvent["type"];

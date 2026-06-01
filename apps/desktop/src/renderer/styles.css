@@ -266,6 +266,15 @@ button {
   color: #b4a6ff;
 }
 
+.stopVoiceButton {
+  cursor: pointer;
+}
+
+.stopVoiceButton:hover {
+  border-color: rgba(180, 158, 255, 0.38);
+  background: rgba(41, 38, 70, 0.78);
+}
+
 .connection.connected {
   color: #9de8bd;
   border-color: rgba(112, 211, 154, 0.34);
@@ -742,7 +751,8 @@ button {
   gap: 10px;
 }
 
-.gameContextControl {
+.gameContextControl,
+.voiceOutputPanel {
   display: grid;
   gap: 10px;
   border: 1px solid rgba(145, 164, 213, 0.14);

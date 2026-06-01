@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App, EventStreamPanel, INTERIM_PLACEHOLDERS } from "../App";
 import { eventBus } from "../eventBus";
+import { voiceOutput } from "../voiceOutput";
 import type {
   AppSettings,
   GameContextResponse,
@@ -632,6 +633,7 @@ const appSettings: AppSettings = {
   proactive_companion: "off",
   proactive_sensitivity: "low",
   auto_game_detection: "on",
+  voice_output: "off",
   onboarding_completed: true,
   onboarding_last_seen_at: "2026-06-01T12:00:00.000Z"
 };
@@ -678,6 +680,29 @@ let appSettingsStore = { ...appSettings };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
 let scrollToMock: ReturnType<typeof vi.fn>;
+
+class MockSpeechSynthesisUtterance {
+  text: string;
+  rate = 1;
+  volume = 1;
+  onend: ((event: SpeechSynthesisEvent) => void) | null = null;
+  onerror: ((event: SpeechSynthesisErrorEvent) => void) | null = null;
+
+  constructor(text: string) {
+    this.text = text;
+  }
+}
+
+const installSpeechSynthesisMock = () => {
+  const speak = vi.fn();
+  const cancel = vi.fn();
+  vi.stubGlobal("SpeechSynthesisUtterance", MockSpeechSynthesisUtterance);
+  Object.defineProperty(window, "speechSynthesis", {
+    configurable: true,
+    value: { speak, cancel }
+  });
+  return { speak, cancel };
+};
 
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
   let status = { ...initialStatus };
@@ -893,6 +918,7 @@ describe("App", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    voiceOutput.resetForTest();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     Reflect.deleteProperty(window, "reilinkRuntime");
@@ -943,6 +969,7 @@ describe("App", () => {
     expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
+    expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
     expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("on");
     expect(screen.getByLabelText("自动启动本地后端")).toBeDisabled();
     expect(screen.getByLabelText("自动游戏检测")).toHaveValue("on");
@@ -1304,6 +1331,7 @@ describe("App", () => {
   });
 
   it("updates settings through the API", async () => {
+    installSpeechSynthesisMock();
     render(<App />);
 
     await userEvent.selectOptions(await screen.findByLabelText("人格模式"), "guarded");
@@ -1327,6 +1355,14 @@ describe("App", () => {
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),
         expect.objectContaining({ method: "POST", body: JSON.stringify({ model_preference: "pro" }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("语音输出 / Voice Output"), "on");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_output: "on" }) })
       )
     );
 
@@ -1419,6 +1455,131 @@ describe("App", () => {
         expect.objectContaining({ type: "assistant_reply_completed" })
       ])
     );
+  });
+
+  it("does not speak assistant replies when Voice Output is disabled", async () => {
+    const speech = installSpeechSynthesisMock();
+    render(<App />);
+
+    await screen.findByLabelText("语音输出 / Voice Output");
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    expect(speech.speak).not.toHaveBeenCalled();
+    expect(eventBus.getRecentEvents(20)).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "tts_started" })]));
+  });
+
+  it("speaks assistant replies when Voice Output is enabled", async () => {
+    const speech = installSpeechSynthesisMock();
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0]).toMatchObject({ text: "别急着翻滚。先看动作。再试一次。" });
+    expect(screen.getAllByRole("button", { name: "停止语音 / Stop Voice" }).length).toBeGreaterThan(0);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started", character_count: 16 })])
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onend?.({} as SpeechSynthesisEvent);
+    });
+
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_completed", character_count: 16 })])
+    );
+  });
+
+  it("stops active speech from the Stop Voice control", async () => {
+    const speech = installSpeechSynthesisMock();
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+
+    await userEvent.click(screen.getAllByRole("button", { name: "停止语音 / Stop Voice" })[0]);
+
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_stopped", reason: "user_stop" })])
+    );
+  });
+
+  it("sending a new user message cancels active speech", async () => {
+    const speech = installSpeechSynthesisMock();
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "再说一遍");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_stopped", reason: "new_message" })])
+    );
+  });
+
+  it("disabling Voice Output cancels active speech", async () => {
+    const speech = installSpeechSynthesisMock();
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+
+    await userEvent.selectOptions(screen.getByLabelText("语音输出 / Voice Output"), "off");
+
+    await waitFor(() => expect(speech.cancel).toHaveBeenCalledTimes(1));
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_stopped", reason: "disabled" })])
+    );
+  });
+
+  it("shows TTS lifecycle summaries without full assistant text in Event Stream", async () => {
+    render(
+      <EventStreamPanel
+        events={[
+          { type: "tts_started", timestamp: new Date().toISOString(), character_count: 16 },
+          { type: "tts_completed", timestamp: new Date().toISOString(), character_count: 16 },
+          { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "user_stop" },
+          {
+            type: "tts_error",
+            timestamp: new Date().toISOString(),
+            character_count: 16,
+            reason: "unavailable",
+            status: "当前环境不支持"
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    expect(eventStream).toHaveTextContent("语音开始播放");
+    expect(eventStream).toHaveTextContent("语音播放完成");
+    expect(eventStream).toHaveTextContent("语音已停止");
+    expect(eventStream).toHaveTextContent("语音播放失败");
+    expect(eventStream).toHaveTextContent("16 字");
+    expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
+    expect(eventStream).not.toHaveTextContent("raw_prompt");
+    expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
+    expect(eventStream).not.toHaveTextContent("services/backend/.env");
   });
 
   it("emits pending memory creation only after a chat operation discovers new pending memory", async () => {

@@ -15,6 +15,7 @@ import {
   Send,
   Settings,
   Sparkles,
+  VolumeX,
   X
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -41,6 +42,7 @@ import {
 import type { ReiLinkEvent } from "../shared/events";
 import type { BackendRuntimeStatus } from "../shared/runtime";
 import { eventBus } from "./eventBus";
+import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
 
 type Message = {
   id: string;
@@ -328,6 +330,7 @@ const defaultAppSettings: AppSettings = {
   proactive_companion: "off",
   proactive_sensitivity: "low",
   auto_game_detection: "on",
+  voice_output: "off",
   onboarding_completed: false,
   onboarding_last_seen_at: null
 };
@@ -417,6 +420,7 @@ const labelMap: Record<string, string> = {
   knowledge_supported_games_count: "已支持游戏数",
   knowledge_used_in_prompt: "已注入回复上下文",
   auto_game_detection: "自动游戏检测",
+  voice_output: "语音输出",
   automatic_detected_result: "自动检测结果",
   llm_called: "是否调用 LLM",
   llm_event: "LLM 游戏事件",
@@ -566,6 +570,7 @@ const valueMap: Record<string, string> = {
   not_found: "未找到运行环境",
   user_is_typing: "正在输入",
   user_preference: "用户偏好",
+  user_stop: "用户停止",
   waiting_for_user_activity_after_proactive: "等待用户回应",
   weak: "较弱",
   current_game: "当前运行游戏",
@@ -691,6 +696,14 @@ const eventSummary = (event: ReiLinkEvent) => {
       return debugText(event.status);
     case "runtime_status_changed":
       return [debugText(event.backend_source), knowledgeSourceText(event.knowledge_source as BackendRuntimeStatus["knowledge_source"])].join(" / ");
+    case "tts_started":
+      return `${event.character_count} 字`;
+    case "tts_completed":
+      return `${event.character_count} 字`;
+    case "tts_stopped":
+      return event.reason ? debugText(event.reason) : "已停止";
+    case "tts_error":
+      return event.status ? debugText(event.status) : debugText(event.reason);
     default:
       return "event";
   }
@@ -711,7 +724,11 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     knowledge_used: "使用游戏知识",
     model_routed: "模型路由完成",
     backend_status_changed: "后端状态变化",
-    runtime_status_changed: "运行来源变化"
+    runtime_status_changed: "运行来源变化",
+    tts_started: "语音开始播放",
+    tts_completed: "语音播放完成",
+    tts_stopped: "语音已停止",
+    tts_error: "语音播放失败"
   };
   return labels[type];
 };
@@ -799,7 +816,7 @@ const backendRuntimeStatusText = (status: BackendRuntimeStatus) => {
 
 const backendRuntimeSourceText = (status: BackendRuntimeStatus) => {
   if (status.backend_started_from === "external") return "外部后端";
-  if (status.backend_started_from === "configured_binary") return "指定 backend binary";
+  if (status.backend_started_from === "configured_binary") return "指定后端";
   if (status.backend_started_from === "bundled_binary") return "内置后端";
   if (status.backend_started_from === "repo") return "本地源码后端";
   return status.backend_started_by_app ? "桌面端启动" : "外部或未启动";
@@ -908,6 +925,7 @@ export function App() {
   const [lastRawError, setLastRawError] = useState("");
   const [lastInterimPlaceholderShown, setLastInterimPlaceholderShown] = useState(false);
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceOutputStatus>(() => voiceOutput.getStatus());
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const forceNextScrollRef = useRef(true);
@@ -918,6 +936,10 @@ export function App() {
   const lastGameSessionEventRef = useRef<string | null>(null);
   const lastKnowledgeEventRef = useRef<string | null>(null);
   const lastModelRouteEventRef = useRef<string | null>(null);
+
+  const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
+    voiceOutput.stop(reason);
+  }, []);
 
   const isMessagesNearBottom = useCallback(() => {
     const element = messagesRef.current;
@@ -1219,6 +1241,20 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const unsubscribe = voiceOutput.subscribe(setVoiceStatus);
+    return () => {
+      unsubscribe();
+      voiceOutput.stop("unmount");
+    };
+  }, []);
+
+  useEffect(() => {
+    if (appSettings.voice_output === "off") {
+      voiceOutput.stop("disabled");
+    }
+  }, [appSettings.voice_output]);
+
+  useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
 
@@ -1298,6 +1334,7 @@ export function App() {
     event.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || sending) return;
+    voiceOutput.stop("new_message");
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed, createdAt: new Date().toISOString() };
     const placeholderId = crypto.randomUUID();
     const replyMessageId = crypto.randomUUID();
@@ -1347,6 +1384,9 @@ export function App() {
         });
       }
       eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
+      if (appSettings.voice_output === "on") {
+        voiceOutput.speak(segments.join("\n"));
+      }
       setLastInterimPlaceholderShown(placeholderShown);
       await refreshStatus({ emitPendingMemoryCreated: true });
     } catch (error) {
@@ -1674,8 +1714,19 @@ export function App() {
               游戏：{debugText(displayGame)}
             </span>
             <span className="topChip">Boss：{displayBoss ?? "空闲"}</span>
+            {voiceStatus.active && (
+              <button
+                aria-label="停止语音 / Stop Voice"
+                className="topChip stopVoiceButton"
+                type="button"
+                onClick={() => stopVoiceOutput("user_stop")}
+              >
+                <VolumeX size={15} />
+                停止语音
+              </button>
+            )}
             <span className={`connection ${backendStatus}`}>{runtimeStatusLabel}</span>
-	            <button aria-label="刷新状态" className="iconButton soft" onClick={() => void refreshStatus()}>
+            <button aria-label="刷新状态" className="iconButton soft" onClick={() => void refreshStatus()}>
               <RefreshCw size={17} />
             </button>
           </div>
@@ -1900,6 +1951,35 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="pro">高质量</option>
                 </select>
               </label>
+              <div className="voiceOutputPanel" role="group" aria-label="语音输出设置">
+                <label className="settingRow">
+                  <span>语音输出 / Voice Output</span>
+                  <select
+                    aria-label="语音输出 / Voice Output"
+                    disabled={settingsBusy !== "" || !voiceStatus.available}
+                    value={appSettings.voice_output}
+                    onChange={(event) =>
+                      void updateAppSettings({ voice_output: event.target.value as AppSettings["voice_output"] })
+                    }
+                  >
+                    <option value="off">关闭</option>
+                    <option value="on">开启</option>
+                  </select>
+                </label>
+                {!voiceStatus.available && <p className="settingHint">当前环境不支持语音输出。</p>}
+                {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
+                {voiceStatus.active && (
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    aria-label="停止语音 / Stop Voice"
+                    onClick={() => stopVoiceOutput("user_stop")}
+                  >
+                    <VolumeX size={14} />
+                    停止语音
+                  </button>
+                )}
+              </div>
               <label className="settingRow">
                 <span>自动启动本地后端</span>
                 <select
@@ -2802,7 +2882,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             model_preference: appSettings.model_preference,
                             proactive_companion: appSettings.proactive_companion,
                             proactive_sensitivity: appSettings.proactive_sensitivity,
-                            auto_game_detection: appSettings.auto_game_detection
+                            auto_game_detection: appSettings.auto_game_detection,
+                            voice_output: appSettings.voice_output
                           },
                           chat: {
                             intent: chatDebug.intent,

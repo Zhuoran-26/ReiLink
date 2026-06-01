@@ -41,7 +41,7 @@ export class InteractionEventBus {
 // backend, uploaded, or allowed to carry API keys/secrets/raw prompts.
 //
 // Future consumers:
-// - TTS can subscribe to assistant_reply_segment_shown.
+// - TTS can subscribe to assistant_reply_completed or use completed reply text from the renderer.
 // - Live2D can subscribe to assistant_reply_started, proactive_message_shown, and game_session_changed.
 // - Overlay can subscribe to proactive_message_shown and backend_status_changed.
 export const eventBus = new InteractionEventBus();
