@@ -1477,6 +1477,7 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("Rei 显示回复片段");
     expect(eventStream).not.toHaveTextContent("user_message_sent");
     expect(eventStream).not.toHaveTextContent("assistant_reply_segment_shown");
+    expect(eventStream).not.toHaveTextContent("bundled");
     expect(eventStream).toHaveTextContent("Margit 怎么打？");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
@@ -1507,12 +1508,29 @@ describe("App", () => {
         segment_index: 0,
         text: "先别贪刀。"
       });
+      eventBus.emit({
+        type: "runtime_status_changed",
+        timestamp: new Date().toISOString(),
+        backend_source: "bundled_binary",
+        knowledge_source: "bundled"
+      });
+      eventBus.emit({
+        type: "backend_status_changed",
+        timestamp: new Date().toISOString(),
+        status: "starting"
+      });
     });
 
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     expect(eventStream).not.toBeNull();
     await waitFor(() => expect(eventStream).toHaveTextContent("用户发送消息"));
     expect(eventStream).toHaveTextContent("Rei 显示回复片段");
+    expect(eventStream).toHaveTextContent("运行来源变化");
+    expect(eventStream).toHaveTextContent("内置后端 / 内置知识资源");
+    expect(eventStream).not.toHaveTextContent("bundled_binary");
+    expect(eventStream).toHaveTextContent("后端状态变化");
+    expect(eventStream).toHaveTextContent("正在启动");
+    expect(eventStream).not.toHaveTextContent("starting");
     expect(eventStream).toHaveTextContent("我现在卡在女武神");
     expect(eventStream).toHaveTextContent("先别贪刀。");
   });
