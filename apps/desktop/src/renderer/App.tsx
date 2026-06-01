@@ -263,6 +263,8 @@ const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
   backend_app_mode: "dev",
   backend_binary_exists: false,
   backend_binary_path: null,
+  bundled_backend_binary_path: null,
+  bundled_backend_exists: false,
   backend_started_by_app: false,
   backend_started_from: "none",
   backend_start_error: null,
@@ -272,7 +274,10 @@ const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
   backend_root: null,
   backend_python_path: null,
   backend_health_url: "http://127.0.0.1:8000/api/health",
-  backend_retry_count: 0
+  backend_retry_count: 0,
+  knowledge_path: null,
+  knowledge_source: "missing",
+  user_data_dir: ""
 };
 
 const emptyProactiveStatus: ProactiveStatusResponse = {
@@ -650,9 +655,16 @@ const backendRuntimeStatusText = (status: BackendRuntimeStatus) => {
 
 const backendRuntimeSourceText = (status: BackendRuntimeStatus) => {
   if (status.backend_started_from === "external") return "外部后端";
-  if (status.backend_started_from === "binary") return "backend binary";
+  if (status.backend_started_from === "configured_binary") return "指定 backend binary";
+  if (status.backend_started_from === "bundled_binary") return "内置后端";
   if (status.backend_started_from === "repo") return "本地源码后端";
   return status.backend_started_by_app ? "桌面端启动" : "外部或未启动";
+};
+
+const knowledgeSourceText = (source: BackendRuntimeStatus["knowledge_source"]) => {
+  if (source === "bundled") return "内置知识资源";
+  if (source === "repo") return "本地源码知识";
+  return "缺失";
 };
 
 const formatPromptOrder = (order: string[]) =>
@@ -1560,6 +1572,20 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <dt>启动来源</dt>
                     <dd>{backendRuntimeSourceText(backendRuntimeStatus)}</dd>
                   </div>
+                  <div>
+                    <dt>知识资源</dt>
+                    <dd>{knowledgeSourceText(backendRuntimeStatus.knowledge_source)}</dd>
+                  </div>
+                  <div>
+                    <dt>用户数据</dt>
+                    <dd>{debugText(backendRuntimeStatus.user_data_dir, "未设置")}</dd>
+                  </div>
+                  {backendRuntimeStatus.backend_start_error ? (
+                    <div>
+                      <dt>后端错误</dt>
+                      <dd>{backendRuntimeStatus.backend_start_error}</dd>
+                    </div>
+                  ) : null}
                   <div>
                     <dt>API Key</dt>
                     <dd>{setupStatus.api_key_loaded ? "已加载" : "未配置"}</dd>

@@ -14,12 +14,15 @@ type BackendRuntimeConfig = {
 type RuntimeLogger = Pick<Console, "error" | "log" | "warn">;
 type BackendRuntimeMode = "auto" | "binary" | "repo";
 type BackendStartedFrom = BackendRuntimeStatus["backend_started_from"];
+type BinaryStartedFrom = Extract<BackendStartedFrom, "configured_binary" | "bundled_binary">;
+type KnowledgeSource = BackendRuntimeStatus["knowledge_source"];
 
 type BackendChildProcess = {
   killed?: boolean;
   kill: (signal?: NodeJS.Signals | number) => boolean;
   once: (event: "exit", listener: (code: number | null, signal: NodeJS.Signals | null) => void) => unknown;
   on: (event: "error", listener: (error: Error) => void) => unknown;
+  pid?: number;
   stdout?: {
     on: (event: "data", listener: (chunk: Buffer | string) => void) => unknown;
   } | null;
@@ -42,9 +45,12 @@ type BackendStartRuntime = {
   binaryPath: string | null;
   command: string;
   cwd: string;
+  knowledgeDir: string | null;
+  knowledgeSource: KnowledgeSource;
   projectRoot: string | null;
   pythonPath: string | null;
   source: Exclude<BackendStartedFrom, "external" | "none">;
+  userDataDir: string;
 };
 
 type BackendRepoResolution =
@@ -57,8 +63,15 @@ type BackendRepoResolution =
       status: "missing_project_root" | "missing_venv";
     };
 
+type BackendBinaryCandidate = {
+  path: string;
+  source: BinaryStartedFrom;
+};
+
+type BackendBinaryCandidateInput = string | BackendBinaryCandidate;
+
 type BackendBinaryResolution =
-  | (BackendStartRuntime & { source: "binary"; status: "ready" })
+  | (BackendStartRuntime & { source: BinaryStartedFrom; status: "ready" })
   | {
       binaryPath: string | null;
       message: string;
@@ -67,7 +80,7 @@ type BackendBinaryResolution =
 
 export type BackendRuntimeManagerOptions = {
   appUserDataPath: string;
-  backendBinaryCandidates?: string[];
+  backendBinaryCandidates?: BackendBinaryCandidateInput[];
   compiledMainDir: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -78,6 +91,7 @@ export type BackendRuntimeManagerOptions = {
   logger?: RuntimeLogger;
   portOpenCheck?: (host: string, port: number) => Promise<boolean>;
   repoRootCandidates?: string[];
+  resourcesPath?: string;
   spawnBackend?: SpawnBackend;
   startupAttempts?: number;
   startupIntervalMs?: number;
@@ -100,12 +114,16 @@ const MAX_BACKEND_LOG_LINES_PER_STREAM = 20;
 const createDefaultStatus = (
   appMode: "dev" | "packaged",
   healthUrl: string,
-  runtimeMode: BackendRuntimeMode
+  runtimeMode: BackendRuntimeMode,
+  userDataDir: string,
+  bundledBackendBinaryPath: string | null
 ): BackendRuntimeStatus => ({
   backend_auto_start_enabled: true,
   backend_app_mode: appMode,
   backend_binary_exists: false,
   backend_binary_path: null,
+  bundled_backend_binary_path: bundledBackendBinaryPath,
+  bundled_backend_exists: false,
   backend_started_by_app: false,
   backend_started_from: "none",
   backend_start_error: null,
@@ -115,13 +133,16 @@ const createDefaultStatus = (
   backend_root: null,
   backend_python_path: null,
   backend_health_url: healthUrl,
-  backend_retry_count: 0
+  backend_retry_count: 0,
+  knowledge_path: null,
+  knowledge_source: "missing",
+  user_data_dir: userDataDir
 });
 
 export class BackendRuntimeManager {
   private readonly appMode: "dev" | "packaged";
   private readonly appUserDataPath: string;
-  private readonly backendBinaryCandidates: string[];
+  private readonly backendBinaryCandidates: BackendBinaryCandidate[];
   private readonly backendRuntimeMode: BackendRuntimeMode;
   private readonly compiledMainDir: string;
   private readonly cwd: string;
@@ -132,9 +153,11 @@ export class BackendRuntimeManager {
   private readonly logger: RuntimeLogger;
   private readonly portOpenCheck: (host: string, port: number) => Promise<boolean>;
   private readonly repoRootCandidates: string[];
+  private readonly resourcesPath: string;
   private readonly spawnBackend: SpawnBackend;
   private readonly startupAttempts: number;
   private readonly startupIntervalMs: number;
+  private readonly userDataDir: string;
   private readonly listeners = new Set<(status: BackendRuntimeStatus) => void>();
   private backendLogLines = { stderr: 0, stdout: 0 };
   private child: BackendChildProcess | null = null;
@@ -154,12 +177,22 @@ export class BackendRuntimeManager {
     this.portOpenCheck = options.portOpenCheck ?? isTcpPortOpen;
     this.appMode = options.isPackaged ? "packaged" : "dev";
     this.backendRuntimeMode = normalizeRuntimeMode(this.env.REILINK_BACKEND_RUNTIME);
+    this.resourcesPath = options.resourcesPath ?? getElectronResourcesPath();
+    this.userDataDir = path.join(this.appUserDataPath, "data");
     this.repoRootCandidates = uniquePaths(options.repoRootCandidates ?? this.defaultRepoRootCandidates());
-    this.backendBinaryCandidates = uniquePaths(options.backendBinaryCandidates ?? this.defaultBackendBinaryCandidates());
+    this.backendBinaryCandidates = normalizeBackendBinaryCandidates(
+      options.backendBinaryCandidates ?? this.defaultBackendBinaryCandidates()
+    );
     this.spawnBackend = options.spawnBackend ?? ((command, args, spawnOptions) => spawn(command, args, spawnOptions));
-    this.startupAttempts = options.startupAttempts ?? 30;
+    this.startupAttempts = options.startupAttempts ?? 60;
     this.startupIntervalMs = options.startupIntervalMs ?? 500;
-    this.status = createDefaultStatus(this.appMode, this.healthUrl, this.backendRuntimeMode);
+    this.status = createDefaultStatus(
+      this.appMode,
+      this.healthUrl,
+      this.backendRuntimeMode,
+      this.userDataDir,
+      this.defaultBundledBackendBinaryPath()
+    );
   }
 
   getStatus(): BackendRuntimeStatus {
@@ -205,25 +238,37 @@ export class BackendRuntimeManager {
     }
     this.logRuntime("stopping app-started backend", { source: this.status.backend_started_from });
     this.child = null;
-    child.kill("SIGTERM");
+    terminateBackendProcess(child, "SIGTERM");
     setTimeout(() => {
-      if (!child.killed) child.kill("SIGKILL");
+      if (!child.killed) terminateBackendProcess(child, "SIGKILL");
     }, 2500).unref?.();
   }
 
   private async ensureBackendInternal(): Promise<BackendRuntimeStatus> {
     const config = await this.loadConfig();
     const autoStartEnabled = config.backend_auto_start_enabled !== false;
+    const bundledBackendBinaryPath = this.defaultBundledBackendBinaryPath();
+    const bundledBackendExists = Boolean(
+      bundledBackendBinaryPath && (await pathExists(bundledBackendBinaryPath, constants.X_OK))
+    );
+    const initialKnowledge = await this.resolveKnowledgeRuntime(null);
     this.logRuntime("ensure backend", {
       appMode: this.appMode,
       autoStartEnabled,
       binaryCandidates: this.backendBinaryCandidates,
+      bundledBackendBinaryPath,
+      bundledBackendExists,
       healthUrl: this.healthUrl,
+      knowledgeSource: initialKnowledge.source,
       repoRootCandidates: this.repoRootCandidates,
       runtimeMode: this.backendRuntimeMode
     });
     this.updateStatus({
       backend_auto_start_enabled: autoStartEnabled,
+      bundled_backend_binary_path: bundledBackendBinaryPath,
+      bundled_backend_exists: bundledBackendExists,
+      knowledge_path: initialKnowledge.dir,
+      knowledge_source: initialKnowledge.source,
       backend_retry_count: 0,
       backend_start_error: null,
       backend_status: "checking"
@@ -313,16 +358,23 @@ export class BackendRuntimeManager {
   }
 
   private async tryStartRuntime(runtime: BackendStartRuntime): Promise<BackendRuntimeStatus> {
+    await this.ensureWritableDataDirs(runtime.userDataDir);
     this.updateStatus({
-      backend_binary_exists: runtime.source === "binary" ? true : this.status.backend_binary_exists,
+      backend_binary_exists:
+        runtime.source === "configured_binary" || runtime.source === "bundled_binary" ? true : this.status.backend_binary_exists,
       backend_binary_path: runtime.binaryPath ?? this.status.backend_binary_path,
+      bundled_backend_exists:
+        runtime.source === "bundled_binary" ? true : this.status.bundled_backend_exists,
       backend_project_root: runtime.projectRoot,
+      knowledge_path: runtime.knowledgeDir,
+      knowledge_source: runtime.knowledgeSource,
       backend_python_path: runtime.pythonPath,
       backend_root: runtime.backendDir,
       backend_started_by_app: true,
       backend_started_from: runtime.source,
       backend_start_error: null,
-      backend_status: "starting"
+      backend_status: "starting",
+      user_data_dir: runtime.userDataDir
     });
     if (!this.startBackend(runtime)) {
       this.updateStatus({
@@ -429,23 +481,27 @@ export class BackendRuntimeManager {
 
   private async resolveBackendBinary(): Promise<BackendBinaryResolution> {
     for (const candidate of this.backendBinaryCandidates) {
-      if (!(await pathExists(candidate, constants.X_OK))) continue;
+      if (!(await pathExists(candidate.path, constants.X_OK))) continue;
       const projectRoot = await this.resolveProjectRoot();
-      this.logRuntime("resolved backend binary", { binaryPath: candidate, projectRoot });
+      const knowledge = await this.resolveKnowledgeRuntime(projectRoot);
+      this.logRuntime("resolved backend binary", { binaryPath: candidate.path, projectRoot, source: candidate.source });
       return {
         args: [],
         backendDir: null,
-        binaryPath: candidate,
-        command: candidate,
-        cwd: path.dirname(candidate),
+        binaryPath: candidate.path,
+        command: candidate.path,
+        cwd: path.dirname(candidate.path),
+        knowledgeDir: knowledge.dir,
+        knowledgeSource: knowledge.source,
         projectRoot,
         pythonPath: null,
-        source: "binary",
+        source: candidate.source,
+        userDataDir: this.userDataDir,
         status: "ready"
       };
     }
     return {
-      binaryPath: this.backendBinaryCandidates[0] ?? null,
+      binaryPath: this.backendBinaryCandidates[0]?.path ?? null,
       message: this.backendRuntimeMode === "binary" ? BACKEND_BINARY_ONLY_NOT_FOUND_MESSAGE : BACKEND_BINARY_NOT_FOUND_MESSAGE,
       status: "not_found"
     };
@@ -480,15 +536,19 @@ export class BackendRuntimeManager {
         status: "missing_venv"
       };
     }
+    const knowledge = await this.resolveKnowledgeRuntime(projectRoot);
     return {
       args: ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
       backendDir,
       binaryPath: null,
       command: pythonPath,
       cwd: backendDir,
+      knowledgeDir: knowledge.dir,
+      knowledgeSource: knowledge.source,
       projectRoot,
       pythonPath,
       source: "repo",
+      userDataDir: this.userDataDir,
       status: "ready"
     };
   }
@@ -521,8 +581,13 @@ export class BackendRuntimeManager {
       if (runtime.projectRoot && !env.REILINK_PROJECT_ROOT) {
         env.REILINK_PROJECT_ROOT = runtime.projectRoot;
       }
+      env.REILINK_DATA_DIR = runtime.userDataDir;
+      if (runtime.knowledgeDir) {
+        env.REILINK_KNOWLEDGE_DIR = runtime.knowledgeDir;
+      }
       this.child = this.spawnBackend(runtime.command, runtime.args, {
         cwd: runtime.cwd,
+        detached: process.platform !== "win32",
         env,
         stdio: "pipe",
         windowsHide: true
@@ -579,6 +644,7 @@ export class BackendRuntimeManager {
       startedByApp: snapshot.backend_started_by_app,
       startedFrom: snapshot.backend_started_from,
       status: snapshot.backend_status,
+      knowledgeSource: snapshot.knowledge_source,
       retryCount: snapshot.backend_retry_count,
       startError: snapshot.backend_start_error
     });
@@ -586,30 +652,58 @@ export class BackendRuntimeManager {
   }
 
   private defaultRepoRootCandidates(): string[] {
-    const resourcesPath = getElectronResourcesPath();
     return [
       this.env.REILINK_PROJECT_ROOT ?? "",
       this.env.REILINK_REPO_ROOT ?? "",
       this.cwd,
       this.compiledMainDir,
-      resourcesPath,
+      this.resourcesPath,
       path.join(this.homeDir, "Desktop", "ReiLink"),
       path.join(this.homeDir, "ReiLink")
     ];
   }
 
-  private defaultBackendBinaryCandidates(): string[] {
+  private defaultBackendBinaryCandidates(): BackendBinaryCandidate[] {
     const binaryName = os.platform() === "win32" ? "reilink-backend.exe" : "reilink-backend";
-    const resourcesPath = getElectronResourcesPath();
+    const candidates: BackendBinaryCandidate[] = [];
     if (this.env.REILINK_BACKEND_BINARY) {
-      return [this.env.REILINK_BACKEND_BINARY];
+      candidates.push({ path: this.env.REILINK_BACKEND_BINARY, source: "configured_binary" });
     }
-    return [
-      path.join(this.cwd, "apps", "desktop", "backend-bin", binaryName),
-      path.resolve(this.compiledMainDir, "..", "..", "backend-bin", binaryName),
-      resourcesPath ? path.join(resourcesPath, "backend-bin", binaryName) : "",
-      path.join(this.cwd, "services", "backend", "dist", binaryName)
-    ];
+    const bundledPath = this.defaultBundledBackendBinaryPath(binaryName);
+    if (bundledPath) candidates.push({ path: bundledPath, source: "bundled_binary" });
+    return candidates;
+  }
+
+  private defaultBundledBackendBinaryPath(binaryName = os.platform() === "win32" ? "reilink-backend.exe" : "reilink-backend"): string | null {
+    if (this.resourcesPath) return path.join(this.resourcesPath, "backend", binaryName);
+    return path.resolve(this.compiledMainDir, "..", "..", "..", "backend", binaryName);
+  }
+
+  private defaultBundledKnowledgeGamesDir(): string | null {
+    if (this.resourcesPath) return path.join(this.resourcesPath, "knowledge", "games");
+    return path.resolve(this.compiledMainDir, "..", "..", "..", "knowledge", "games");
+  }
+
+  private async resolveKnowledgeRuntime(projectRoot: string | null): Promise<{ dir: string | null; source: KnowledgeSource }> {
+    const bundledKnowledge = this.defaultBundledKnowledgeGamesDir();
+    if (bundledKnowledge && (await pathExists(path.join(bundledKnowledge, "catalog.json")))) {
+      return { dir: bundledKnowledge, source: "bundled" };
+    }
+    if (projectRoot) {
+      const repoKnowledge = path.join(projectRoot, "data", "knowledge", "games");
+      if (await pathExists(path.join(repoKnowledge, "catalog.json"))) {
+        return { dir: repoKnowledge, source: "repo" };
+      }
+    }
+    return { dir: null, source: "missing" };
+  }
+
+  private async ensureWritableDataDirs(userDataDir: string): Promise<void> {
+    await Promise.all(
+      ["", "memory", "session", "settings", "logs", "conversations"].map((child) =>
+        mkdir(path.join(userDataDir, child), { recursive: true })
+      )
+    );
   }
 
   private logRuntime(message: string, details?: Record<string, unknown>) {
@@ -658,6 +752,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function terminateBackendProcess(child: BackendChildProcess, signal: NodeJS.Signals): boolean {
+  if (process.platform !== "win32" && child.pid) {
+    try {
+      process.kill(-child.pid, signal);
+      return true;
+    } catch {
+      return child.kill(signal);
+    }
+  }
+  return child.kill(signal);
+}
+
 function sanitizeLogText(text: string): string {
   return text
     .replace(/(DEEPSEEK_API_KEY|OPENAI_API_KEY)\s*=\s*([^\s",}]+)/gi, "$1=<redacted>")
@@ -672,6 +778,23 @@ function uniquePaths(paths: string[]): string[] {
     if (seen.has(resolved)) continue;
     seen.add(resolved);
     result.push(resolved);
+  }
+  return result;
+}
+
+function normalizeBackendBinaryCandidates(candidates: BackendBinaryCandidateInput[]): BackendBinaryCandidate[] {
+  const seen = new Set<string>();
+  const result: BackendBinaryCandidate[] = [];
+  for (const candidate of candidates) {
+    const rawPath = typeof candidate === "string" ? candidate : candidate.path;
+    if (!rawPath) continue;
+    const resolved = path.resolve(rawPath);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    result.push({
+      path: resolved,
+      source: typeof candidate === "string" ? "configured_binary" : candidate.source
+    });
   }
   return result;
 }

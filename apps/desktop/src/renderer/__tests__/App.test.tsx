@@ -640,6 +640,8 @@ const backendRuntimeStatus: BackendRuntimeStatus = {
   backend_app_mode: "packaged",
   backend_binary_exists: false,
   backend_binary_path: null,
+  bundled_backend_binary_path: "/Applications/ReiLink.app/Contents/Resources/backend/reilink-backend",
+  bundled_backend_exists: true,
   backend_started_by_app: false,
   backend_started_from: "external",
   backend_start_error: null,
@@ -649,7 +651,10 @@ const backendRuntimeStatus: BackendRuntimeStatus = {
   backend_root: "/Users/aragoto/Desktop/ReiLink/services/backend",
   backend_python_path: "/Users/aragoto/Desktop/ReiLink/services/backend/.venv/bin/python",
   backend_health_url: "http://127.0.0.1:8000/api/health",
-  backend_retry_count: 0
+  backend_retry_count: 0,
+  knowledge_path: "/Applications/ReiLink.app/Contents/Resources/knowledge/games",
+  knowledge_source: "bundled",
+  user_data_dir: "/Users/aragoto/Library/Application Support/ReiLink/data"
 };
 
 let appSettingsStore = { ...appSettings };
@@ -667,6 +672,7 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
         ...status,
         backend_auto_start_enabled: enabled,
         backend_start_error: enabled ? null : "自动启动已关闭，请手动运行 make dev-backend。",
+        backend_started_from: enabled ? status.backend_started_from : "none",
         backend_status: enabled ? status.backend_status : "disabled"
       };
       for (const listener of listeners) listener(status);

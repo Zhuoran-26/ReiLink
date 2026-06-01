@@ -10,15 +10,22 @@ from app.core.config import settings
 
 def _validate_runtime_paths() -> None:
     missing: list[str] = []
-    if not settings.data_dir.is_dir():
-        missing.append(f"data directory: {settings.data_dir}")
+    for writable_dir in (
+        settings.data_dir,
+        settings.memory_dir,
+        settings.session_dir,
+        settings.conversations_dir,
+        settings.data_dir / "settings",
+        settings.data_dir / "logs",
+    ):
+        writable_dir.mkdir(parents=True, exist_ok=True)
     if not (settings.knowledge_games_dir / "catalog.json").is_file():
         missing.append(f"knowledge catalog: {settings.knowledge_games_dir / 'catalog.json'}")
     if missing:
         print(
             "ReiLink backend runtime error: required local data paths were not found.\n"
             + "\n".join(f"- {item}" for item in missing)
-            + "\nSet REILINK_PROJECT_ROOT or REILINK_DATA_DIR, then start the backend again.",
+            + "\nSet REILINK_PROJECT_ROOT, REILINK_DATA_DIR, or REILINK_KNOWLEDGE_DIR, then start the backend again.",
             file=sys.stderr,
         )
         raise SystemExit(2)

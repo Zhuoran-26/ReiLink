@@ -134,13 +134,80 @@ REILINK_DATA_DIR=/path/to/data
 
 如果没有显式设置，backend 会从 binary 位置、当前工作目录和源码路径向上寻找包含 knowledge catalog 的 ReiLink 项目目录。
 
+### Standalone App Packaging v1
+
+当前 `make package-desktop` 会要求先生成 backend binary：
+
+```bash
+make package-backend
+make package-desktop
+```
+
+如果 backend binary 不存在，desktop 打包会清晰失败，并提示先运行 `make package-backend`。
+
+打包后 `.app` 内会包含：
+
+```text
+ReiLink.app/Contents/Resources/backend/reilink-backend
+ReiLink.app/Contents/Resources/knowledge/games/catalog.json
+ReiLink.app/Contents/Resources/knowledge/games/elden_ring/manifest.json
+ReiLink.app/Contents/Resources/knowledge/games/elden_ring/snippets.json
+ReiLink.app/Contents/Resources/knowledge/games/hollow_knight/manifest.json
+ReiLink.app/Contents/Resources/knowledge/games/hollow_knight/snippets.json
+```
+
+`.env` 不会被复制进 `.app`。`data/memory`、`data/session` 和本地用户状态也不会被复制进 `.app`。API key 继续来自：
+
+1. `REILINK_BACKEND_ENV` 指定的 env 文件
+2. repo-local `services/backend/.env`
+3. 当前环境变量中的 `DEEPSEEK_API_KEY`
+
+如果都没有配置，前端 First Run / Provider Setup 会提示用户完成模型配置。
+
+packaged app 启动 backend 的优先级为：
+
+1. 外部 backend 已运行：直接使用。
+2. `REILINK_BACKEND_BINARY` 指定的 binary：优先使用。
+3. `.app` resources 内置 binary：使用 `Contents/Resources/backend/reilink-backend`。
+4. repo-local `.venv` backend：作为开发 fallback。
+5. 全部失败：显示中文错误。
+
+standalone 模式下，Electron 会给 backend 传入：
+
+```bash
+REILINK_DATA_DIR="$HOME/Library/Application Support/ReiLink/data"
+REILINK_KNOWLEDGE_DIR="ReiLink.app/Contents/Resources/knowledge/games"
+```
+
+其中 knowledge 是只读资源；memory、session、settings、logs 写入用户可写目录，不写入 `.app`。
+
+### 如何测试 packaged app
+
+```bash
+make package-backend
+make package-desktop
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+open apps/desktop/release/ReiLink-darwin-arm64/ReiLink.app
+curl http://127.0.0.1:8000/api/health
+```
+
+预期：
+
+- UI 不是黑屏
+- backend 来源显示“内置后端”
+- 知识资源显示“内置知识资源”
+- `/api/health` 返回 `{"status":"ok"}`
+- 退出 app 后，本次 app 启动的 backend 会被关闭
+- `.app` resources 中没有 `.env`、memory、session
+
 ### 当前限制
 
-- 当前 binary 仍依赖本地 `data` 目录，不是完整自包含 app。
-- 当前 binary 仍建议通过 `REILINK_PROJECT_ROOT` 指向 repo 根目录。
+- 当前是本地未签名 macOS 开发构建，不是正式 installer。
+- 尚未 code sign，也未 notarize。
+- 当前不生成 DMG / pkg installer。
+- 当前只验证 macOS 本地打包；backend binary 由当前 Python/PyInstaller 环境生成，实际架构跟随本机。
 - DeepSeek API key 仍通过本地 `.env` 或环境变量提供，不会打包进 binary。
 - 产物未签名，不能作为正式 release artifact。
-- 尚未把 binary 自动复制进 Electron `.app` resources。
 - 仍未实现 installer、notarization、auto updater。
 
 ### 是否建议进入下一阶段 standalone packaging
@@ -285,13 +352,80 @@ REILINK_DATA_DIR=/path/to/data
 
 Without explicit settings, the backend searches upward from the binary path, current working directory, and source paths for a ReiLink project root containing the knowledge catalog.
 
+### Standalone App Packaging v1
+
+`make package-desktop` now expects the backend binary to exist first:
+
+```bash
+make package-backend
+make package-desktop
+```
+
+If the backend binary is missing, desktop packaging fails with a clear message telling the user to run `make package-backend`.
+
+The packaged `.app` contains:
+
+```text
+ReiLink.app/Contents/Resources/backend/reilink-backend
+ReiLink.app/Contents/Resources/knowledge/games/catalog.json
+ReiLink.app/Contents/Resources/knowledge/games/elden_ring/manifest.json
+ReiLink.app/Contents/Resources/knowledge/games/elden_ring/snippets.json
+ReiLink.app/Contents/Resources/knowledge/games/hollow_knight/manifest.json
+ReiLink.app/Contents/Resources/knowledge/games/hollow_knight/snippets.json
+```
+
+`.env` is not copied into the app bundle. `data/memory`, `data/session`, and local user state are not copied either. API keys continue to come from:
+
+1. an env file passed with `REILINK_BACKEND_ENV`
+2. repo-local `services/backend/.env`
+3. `DEEPSEEK_API_KEY` in the current environment
+
+If none are configured, the frontend First Run / Provider Setup flow asks the user to configure the model provider.
+
+The packaged app starts the backend in this order:
+
+1. Use an already-running external backend.
+2. Use the binary specified by `REILINK_BACKEND_BINARY`.
+3. Use the bundled binary at `Contents/Resources/backend/reilink-backend`.
+4. Fall back to the repo-local `.venv` backend for development.
+5. If all options fail, show a clear Chinese error.
+
+In standalone mode, Electron passes:
+
+```bash
+REILINK_DATA_DIR="$HOME/Library/Application Support/ReiLink/data"
+REILINK_KNOWLEDGE_DIR="ReiLink.app/Contents/Resources/knowledge/games"
+```
+
+Knowledge is treated as read-only bundled content. Memory, session, settings, and logs are written to the user-writable data directory, not into the `.app`.
+
+### Testing the Packaged App
+
+```bash
+make package-backend
+make package-desktop
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+open apps/desktop/release/ReiLink-darwin-arm64/ReiLink.app
+curl http://127.0.0.1:8000/api/health
+```
+
+Expected behavior:
+
+- the UI is not a black screen
+- backend source shows the bundled backend
+- knowledge source shows bundled knowledge
+- `/api/health` returns `{"status":"ok"}`
+- quitting the app stops the backend started by that app run
+- app resources do not contain `.env`, memory, or session data
+
 ### Current Limitations
 
-- The binary still depends on a local `data` directory.
-- `REILINK_PROJECT_ROOT` is still recommended for reliable local testing.
+- This is an unsigned local macOS development build, not a production installer.
+- Code signing and notarization are not implemented.
+- DMG / pkg installer generation is not implemented.
+- Only macOS local packaging is covered. The backend binary architecture follows the local Python/PyInstaller build environment.
 - API keys remain local `.env` / environment configuration and are not bundled.
 - The binary is unsigned and not suitable as a formal release artifact.
-- The binary is not yet copied into Electron `.app` resources.
 - Installer, notarization, and auto update are not part of this spike.
 
 ### Recommendation

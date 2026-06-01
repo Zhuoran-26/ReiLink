@@ -18,8 +18,10 @@ export type BackendRuntimeStatus = {
   backend_app_mode: "dev" | "packaged";
   backend_binary_exists: boolean;
   backend_binary_path: string | null;
+  bundled_backend_binary_path: string | null;
+  bundled_backend_exists: boolean;
   backend_started_by_app: boolean;
-  backend_started_from: "external" | "binary" | "repo" | "none";
+  backend_started_from: "external" | "configured_binary" | "bundled_binary" | "repo" | "none";
   backend_start_error: string | null;
   backend_status: BackendRuntimeState;
   backend_runtime_mode: "auto" | "binary" | "repo";
@@ -28,6 +30,9 @@ export type BackendRuntimeStatus = {
   backend_python_path: string | null;
   backend_health_url: string;
   backend_retry_count: number;
+  knowledge_path: string | null;
+  knowledge_source: "bundled" | "repo" | "missing";
+  user_data_dir: string;
 };
 
 export type ReilinkRuntimeBridge = {

@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { chmod, mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -30,6 +30,19 @@ const createRepoRoot = async (withVenv = true) => {
     await writeFile(path.join(repoRoot, "services", "backend", ".venv", "bin", "python"), "", "utf8");
   }
   return repoRoot;
+};
+
+const createBundledResources = async () => {
+  const resourcesPath = await mkdtemp(path.join(os.tmpdir(), "reilink-resources-"));
+  const backendBinary = path.join(resourcesPath, "backend", "reilink-backend");
+  const knowledgeDir = path.join(resourcesPath, "knowledge", "games");
+  await mkdir(path.dirname(backendBinary), { recursive: true });
+  await writeFile(backendBinary, "", "utf8");
+  await chmod(backendBinary, 0o755);
+  await mkdir(path.join(knowledgeDir, "elden_ring"), { recursive: true });
+  await writeFile(path.join(knowledgeDir, "catalog.json"), "{\"games\":[]}\n", "utf8");
+  await writeFile(path.join(knowledgeDir, "elden_ring", "snippets.json"), "[]\n", "utf8");
+  return { backendBinary, knowledgeDir, resourcesPath };
 };
 
 const createManager = async (
@@ -101,7 +114,7 @@ describe("BackendRuntimeManager", () => {
     expect(spawnBackend).not.toHaveBeenCalled();
   });
 
-  it("starts backend binary before repo backend when binary exists", async () => {
+  it("starts configured backend binary before repo backend when binary exists", async () => {
     const repoRoot = await createRepoRoot();
     const appUserDataPath = await mkdtemp(path.join(os.tmpdir(), "reilink-runtime-user-"));
     const binaryPath = path.join(repoRoot, "services", "backend", "dist", "reilink-backend");
@@ -131,7 +144,7 @@ describe("BackendRuntimeManager", () => {
     expect(status.backend_status).toBe("connected");
     expect(status.backend_binary_exists).toBe(true);
     expect(status.backend_binary_path).toBe(binaryPath);
-    expect(status.backend_started_from).toBe("binary");
+    expect(status.backend_started_from).toBe("configured_binary");
     expect(spawnBackend).toHaveBeenCalledWith(
       binaryPath,
       [],
@@ -176,9 +189,129 @@ describe("BackendRuntimeManager", () => {
       expect.stringContaining(path.join("services", "backend", ".venv", "bin", "python")),
       ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
       expect.objectContaining({
-        cwd: expect.stringContaining(path.join("services", "backend"))
+        cwd: expect.stringContaining(path.join("services", "backend")),
+        env: expect.objectContaining({
+          REILINK_DATA_DIR: expect.stringContaining("reilink-runtime-user-"),
+          REILINK_KNOWLEDGE_DIR: path.join(repoRoot, "data", "knowledge", "games")
+        })
       })
     );
+  });
+
+  it("falls back from missing configured binary to bundled backend binary", async () => {
+    const repoRoot = await createRepoRoot();
+    const appUserDataPath = await mkdtemp(path.join(os.tmpdir(), "reilink-runtime-user-"));
+    const { backendBinary, resourcesPath } = await createBundledResources();
+    const missingBinary = path.join(repoRoot, "configured", "missing-backend");
+    const child = new FakeBackendProcess();
+    const spawnBackend = vi.fn(() => child);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(okResponse);
+    const manager = new BackendRuntimeManager({
+      appUserDataPath,
+      compiledMainDir: repoRoot,
+      env: { REILINK_BACKEND_BINARY: missingBinary },
+      fetchImpl,
+      repoRootCandidates: [repoRoot],
+      resourcesPath,
+      spawnBackend,
+      startupAttempts: 2,
+      startupIntervalMs: 1,
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+    });
+
+    const status = await manager.ensureBackend();
+
+    expect(status.backend_status).toBe("connected");
+    expect(status.backend_started_from).toBe("bundled_binary");
+    expect(status.backend_binary_path).toBe(backendBinary);
+    expect(spawnBackend).toHaveBeenCalledWith(backendBinary, [], expect.any(Object));
+  });
+
+  it("starts bundled backend binary before repo backend when bundled binary exists", async () => {
+    const repoRoot = await createRepoRoot();
+    const appUserDataPath = await mkdtemp(path.join(os.tmpdir(), "reilink-runtime-user-"));
+    const { backendBinary, knowledgeDir, resourcesPath } = await createBundledResources();
+    const child = new FakeBackendProcess();
+    const spawnBackend = vi.fn(() => child);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(okResponse);
+    const manager = new BackendRuntimeManager({
+      appUserDataPath,
+      compiledMainDir: repoRoot,
+      fetchImpl,
+      repoRootCandidates: [repoRoot],
+      resourcesPath,
+      spawnBackend,
+      startupAttempts: 2,
+      startupIntervalMs: 1,
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+    });
+
+    const status = await manager.ensureBackend();
+
+    expect(status.backend_status).toBe("connected");
+    expect(status.backend_binary_path).toBe(backendBinary);
+    expect(status.backend_started_from).toBe("bundled_binary");
+    expect(status.bundled_backend_binary_path).toBe(backendBinary);
+    expect(status.bundled_backend_exists).toBe(true);
+    expect(status.knowledge_source).toBe("bundled");
+    expect(status.knowledge_path).toBe(knowledgeDir);
+    expect(status.user_data_dir).toBe(path.join(appUserDataPath, "data"));
+    await expect(access(path.join(appUserDataPath, "data", "memory"))).resolves.toBeUndefined();
+    await expect(access(path.join(appUserDataPath, "data", "session"))).resolves.toBeUndefined();
+    await expect(access(path.join(appUserDataPath, "data", "settings"))).resolves.toBeUndefined();
+    await expect(access(path.join(appUserDataPath, "data", "logs"))).resolves.toBeUndefined();
+    expect(spawnBackend).toHaveBeenCalledWith(
+      backendBinary,
+      [],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          REILINK_DATA_DIR: path.join(appUserDataPath, "data"),
+          REILINK_KNOWLEDGE_DIR: knowledgeDir,
+          REILINK_PROJECT_ROOT: repoRoot
+        })
+      })
+    );
+  });
+
+  it("prefers external then configured binary then bundled binary then repo", async () => {
+    const repoRoot = await createRepoRoot();
+    const appUserDataPath = await mkdtemp(path.join(os.tmpdir(), "reilink-runtime-user-"));
+    const { backendBinary: bundledBinary, resourcesPath } = await createBundledResources();
+    const configuredBinary = path.join(repoRoot, "configured", "reilink-backend");
+    await mkdir(path.dirname(configuredBinary), { recursive: true });
+    await writeFile(configuredBinary, "", "utf8");
+    await chmod(configuredBinary, 0o755);
+    const child = new FakeBackendProcess();
+    const spawnBackend = vi.fn(() => child);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(okResponse);
+    const manager = new BackendRuntimeManager({
+      appUserDataPath,
+      compiledMainDir: repoRoot,
+      env: { REILINK_BACKEND_BINARY: configuredBinary },
+      fetchImpl,
+      repoRootCandidates: [repoRoot],
+      resourcesPath,
+      spawnBackend,
+      startupAttempts: 2,
+      startupIntervalMs: 1,
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+    });
+
+    const status = await manager.ensureBackend();
+
+    expect(status.backend_started_from).toBe("configured_binary");
+    expect(status.backend_binary_path).toBe(configuredBinary);
+    expect(status.bundled_backend_binary_path).toBe(bundledBinary);
+    expect(spawnBackend).toHaveBeenCalledWith(configuredBinary, [], expect.any(Object));
   });
 
   it("starts local backend when health check fails then becomes healthy", async () => {
