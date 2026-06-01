@@ -1,4 +1,4 @@
-.PHONY: install-backend install-desktop dev-backend dev-desktop dev dev-renderer doctor validate-knowledge package-desktop test test-backend test-desktop test-e2e lint typecheck
+.PHONY: install-backend install-desktop dev-backend dev-desktop dev dev-renderer doctor validate-knowledge package-backend package-desktop test test-backend test-desktop test-e2e lint typecheck
 
 PYTHON ?= python3
 
@@ -29,6 +29,9 @@ validate-knowledge:
 
 package-desktop:
 	cd apps/desktop && npm run package
+
+package-backend:
+	cd services/backend && .venv/bin/python -m pip install -r requirements-bundle.txt && .venv/bin/python -m PyInstaller reilink_backend.spec --clean --noconfirm
 
 dev-renderer:
 	cd apps/desktop && npm run dev

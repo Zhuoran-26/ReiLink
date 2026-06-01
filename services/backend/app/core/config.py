@@ -1,11 +1,51 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-REPO_ROOT = BACKEND_DIR.parents[1]
-ENV_FILE = BACKEND_DIR / ".env"
+SOURCE_BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def _walk_for_repo_root(start: Path) -> Path | None:
+    current = start.resolve()
+    if current.is_file():
+        current = current.parent
+    while True:
+        if (current / "data" / "knowledge" / "games" / "catalog.json").is_file():
+            return current
+        parent = current.parent
+        if parent == current:
+            return None
+        current = parent
+
+
+def _resolve_repo_root() -> Path:
+    candidates: list[Path] = []
+    for env_key in ("REILINK_PROJECT_ROOT", "REILINK_REPO_ROOT"):
+        value = os.getenv(env_key)
+        if value:
+            candidates.append(Path(value))
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable))
+    candidates.extend([Path.cwd(), SOURCE_BACKEND_DIR])
+    for candidate in candidates:
+        repo_root = _walk_for_repo_root(candidate)
+        if repo_root:
+            return repo_root
+    return SOURCE_BACKEND_DIR.parents[1]
+
+
+def _resolve_backend_dir(repo_root: Path) -> Path:
+    source_backend = repo_root / "services" / "backend"
+    if (source_backend / "app").is_dir():
+        return source_backend
+    return SOURCE_BACKEND_DIR
+
+
+REPO_ROOT = _resolve_repo_root()
+BACKEND_DIR = _resolve_backend_dir(REPO_ROOT)
+ENV_FILE = Path(os.getenv("REILINK_BACKEND_ENV", BACKEND_DIR / ".env"))
 
 
 def _load_env_file(path: Path) -> bool:

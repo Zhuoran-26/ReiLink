@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -22,7 +22,9 @@ const failedResponse = { ok: false, status: 500 } as Response;
 const createRepoRoot = async (withVenv = true) => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), "reilink-runtime-"));
   await mkdir(path.join(repoRoot, "services", "backend", "app"), { recursive: true });
+  await mkdir(path.join(repoRoot, "data", "knowledge", "games"), { recursive: true });
   await writeFile(path.join(repoRoot, "services", "backend", "app", "main.py"), "", "utf8");
+  await writeFile(path.join(repoRoot, "data", "knowledge", "games", "catalog.json"), "{\"games\":[]}\n", "utf8");
   if (withVenv) {
     await mkdir(path.join(repoRoot, "services", "backend", ".venv", "bin"), { recursive: true });
     await writeFile(path.join(repoRoot, "services", "backend", ".venv", "bin", "python"), "", "utf8");
@@ -38,6 +40,7 @@ const createManager = async (
   const appUserDataPath = await mkdtemp(path.join(os.tmpdir(), "reilink-runtime-user-"));
   const manager = new BackendRuntimeManager({
     appUserDataPath,
+    backendBinaryCandidates: [],
     compiledMainDir: repoRoot,
     repoRootCandidates: [repoRoot],
     startupAttempts: 2,
@@ -60,6 +63,7 @@ describe("BackendRuntimeManager", () => {
       .mockResolvedValueOnce(okResponse);
     const manager = new BackendRuntimeManager({
       appUserDataPath,
+      backendBinaryCandidates: [],
       compiledMainDir: path.join(os.tmpdir(), "not-reilink"),
       cwd: os.tmpdir(),
       env: { REILINK_PROJECT_ROOT: repoRoot },
@@ -77,6 +81,7 @@ describe("BackendRuntimeManager", () => {
     expect(status.backend_status).toBe("connected");
     expect(status.backend_project_root).toBe(repoRoot);
     expect(status.backend_root).toBe(path.join(repoRoot, "services", "backend"));
+    expect(status.backend_started_from).toBe("repo");
     expect(spawnBackend).toHaveBeenCalled();
   });
 
@@ -92,7 +97,88 @@ describe("BackendRuntimeManager", () => {
 
     expect(status.backend_status).toBe("external_backend_detected");
     expect(status.backend_started_by_app).toBe(false);
+    expect(status.backend_started_from).toBe("external");
     expect(spawnBackend).not.toHaveBeenCalled();
+  });
+
+  it("starts backend binary before repo backend when binary exists", async () => {
+    const repoRoot = await createRepoRoot();
+    const appUserDataPath = await mkdtemp(path.join(os.tmpdir(), "reilink-runtime-user-"));
+    const binaryPath = path.join(repoRoot, "services", "backend", "dist", "reilink-backend");
+    await mkdir(path.dirname(binaryPath), { recursive: true });
+    await writeFile(binaryPath, "", "utf8");
+    await chmod(binaryPath, 0o755);
+    const child = new FakeBackendProcess();
+    const spawnBackend = vi.fn(() => child);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(okResponse);
+    const manager = new BackendRuntimeManager({
+      appUserDataPath,
+      backendBinaryCandidates: [binaryPath],
+      compiledMainDir: repoRoot,
+      fetchImpl,
+      repoRootCandidates: [repoRoot],
+      spawnBackend,
+      startupAttempts: 2,
+      startupIntervalMs: 1,
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+    });
+
+    const status = await manager.ensureBackend();
+
+    expect(status.backend_status).toBe("connected");
+    expect(status.backend_binary_exists).toBe(true);
+    expect(status.backend_binary_path).toBe(binaryPath);
+    expect(status.backend_started_from).toBe("binary");
+    expect(spawnBackend).toHaveBeenCalledWith(
+      binaryPath,
+      [],
+      expect.objectContaining({
+        cwd: path.dirname(binaryPath),
+        stdio: "pipe",
+        windowsHide: true
+      })
+    );
+  });
+
+  it("falls back to repo backend when configured binary is missing", async () => {
+    const repoRoot = await createRepoRoot();
+    const appUserDataPath = await mkdtemp(path.join(os.tmpdir(), "reilink-runtime-user-"));
+    const missingBinary = path.join(repoRoot, "services", "backend", "dist", "missing-backend");
+    const child = new FakeBackendProcess();
+    const spawnBackend = vi.fn(() => child);
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(failedResponse)
+      .mockResolvedValueOnce(okResponse);
+    const manager = new BackendRuntimeManager({
+      appUserDataPath,
+      backendBinaryCandidates: [missingBinary],
+      compiledMainDir: repoRoot,
+      env: { REILINK_BACKEND_BINARY: missingBinary },
+      fetchImpl,
+      repoRootCandidates: [repoRoot],
+      spawnBackend,
+      startupAttempts: 2,
+      startupIntervalMs: 1,
+      logger: { error: vi.fn(), log: vi.fn(), warn: vi.fn() }
+    });
+
+    const status = await manager.ensureBackend();
+
+    expect(status.backend_status).toBe("connected");
+    expect(status.backend_binary_exists).toBe(false);
+    expect(status.backend_binary_path).toBe(missingBinary);
+    expect(status.backend_started_from).toBe("repo");
+    expect(spawnBackend).toHaveBeenCalledWith(
+      expect.stringContaining(path.join("services", "backend", ".venv", "bin", "python")),
+      ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      expect.objectContaining({
+        cwd: expect.stringContaining(path.join("services", "backend"))
+      })
+    );
   });
 
   it("starts local backend when health check fails then becomes healthy", async () => {
@@ -108,6 +194,7 @@ describe("BackendRuntimeManager", () => {
 
     expect(status.backend_status).toBe("connected");
     expect(status.backend_started_by_app).toBe(true);
+    expect(status.backend_started_from).toBe("repo");
     expect(spawnBackend).toHaveBeenCalledWith(
       expect.stringContaining(path.join("services", "backend", ".venv", "bin", "python")),
       ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
@@ -140,6 +227,7 @@ describe("BackendRuntimeManager", () => {
     const spawnBackend = vi.fn();
     const manager = new BackendRuntimeManager({
       appUserDataPath,
+      backendBinaryCandidates: [],
       compiledMainDir: path.join(os.tmpdir(), "not-reilink"),
       cwd: os.tmpdir(),
       fetchImpl: vi.fn().mockResolvedValue(failedResponse),

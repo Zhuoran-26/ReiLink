@@ -260,10 +260,14 @@ const emptySetupStatus: SetupStatus = {
 
 const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
   backend_auto_start_enabled: true,
+  backend_app_mode: "dev",
+  backend_binary_exists: false,
+  backend_binary_path: null,
   backend_started_by_app: false,
+  backend_started_from: "none",
   backend_start_error: null,
   backend_status: "checking",
-  backend_runtime_mode: "dev",
+  backend_runtime_mode: "auto",
   backend_project_root: null,
   backend_root: null,
   backend_python_path: null,
@@ -642,6 +646,13 @@ const backendRuntimeStatusText = (status: BackendRuntimeStatus) => {
   if (status.backend_status === "not_found") return "未找到后端运行环境";
   if (status.backend_status === "disabled") return "自动启动已关闭，请手动运行 make dev-backend";
   return "后端未连接";
+};
+
+const backendRuntimeSourceText = (status: BackendRuntimeStatus) => {
+  if (status.backend_started_from === "external") return "外部后端";
+  if (status.backend_started_from === "binary") return "backend binary";
+  if (status.backend_started_from === "repo") return "本地源码后端";
+  return status.backend_started_by_app ? "桌面端启动" : "外部或未启动";
 };
 
 const formatPromptOrder = (order: string[]) =>
@@ -1547,7 +1558,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </div>
                   <div>
                     <dt>启动来源</dt>
-                    <dd>{backendRuntimeStatus.backend_started_by_app ? "桌面端启动" : "外部或未启动"}</dd>
+                    <dd>{backendRuntimeSourceText(backendRuntimeStatus)}</dd>
                   </div>
                   <div>
                     <dt>API Key</dt>

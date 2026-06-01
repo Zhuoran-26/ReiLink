@@ -637,10 +637,14 @@ const appSettings: AppSettings = {
 
 const backendRuntimeStatus: BackendRuntimeStatus = {
   backend_auto_start_enabled: true,
+  backend_app_mode: "packaged",
+  backend_binary_exists: false,
+  backend_binary_path: null,
   backend_started_by_app: false,
+  backend_started_from: "external",
   backend_start_error: null,
   backend_status: "external_backend_detected",
-  backend_runtime_mode: "packaged",
+  backend_runtime_mode: "auto",
   backend_project_root: "/Users/aragoto/Desktop/ReiLink",
   backend_root: "/Users/aragoto/Desktop/ReiLink/services/backend",
   backend_python_path: "/Users/aragoto/Desktop/ReiLink/services/backend/.venv/bin/python",
@@ -956,6 +960,7 @@ describe("App", () => {
     installRuntimeBridge({
       ...backendRuntimeStatus,
       backend_started_by_app: true,
+      backend_started_from: "repo",
       backend_status: "starting"
     });
     vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 500 })));

@@ -15,10 +15,14 @@ export type BackendRuntimeState =
 
 export type BackendRuntimeStatus = {
   backend_auto_start_enabled: boolean;
+  backend_app_mode: "dev" | "packaged";
+  backend_binary_exists: boolean;
+  backend_binary_path: string | null;
   backend_started_by_app: boolean;
+  backend_started_from: "external" | "binary" | "repo" | "none";
   backend_start_error: string | null;
   backend_status: BackendRuntimeState;
-  backend_runtime_mode: "dev" | "packaged";
+  backend_runtime_mode: "auto" | "binary" | "repo";
   backend_project_root: string | null;
   backend_root: string | null;
   backend_python_path: string | null;

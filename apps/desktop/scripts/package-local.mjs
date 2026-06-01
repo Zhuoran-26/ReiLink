@@ -66,7 +66,7 @@ await chmod(path.join(outputApp, "Contents", "MacOS", "Electron"), 0o755).catch(
 
 console.log(`✅ ReiLink desktop app packaged: ${path.relative(process.cwd(), outputApp)}`);
 console.log("Note: this is an unsigned local development build.");
-console.log("Backend auto-start uses the local repo backend when services/backend/.venv is available.");
+console.log("Backend auto-start uses REILINK_BACKEND_BINARY when set, then falls back to the local repo backend.");
 
 async function requirePath(target, message) {
   try {
