@@ -92,6 +92,22 @@ export type SetupStatus = {
   pro_model: string;
 };
 
+export type LocalDataStatus = {
+  data_dir: string;
+  memory_dir: string;
+  session_dir: string;
+  settings_dir: string;
+  logs_dir: string;
+  knowledge_dir: string | null;
+  knowledge_source: "bundled" | "repo" | "missing";
+  data_dir_exists: boolean;
+  memory_files_count: number;
+  session_files_count: number;
+  pending_memory_count: number;
+  using_bundled_knowledge: boolean;
+  writable: boolean;
+};
+
 export type ProactiveTriggerType = "idle_silence" | "repeated_death" | "late_night" | "frustration_loop" | "none";
 
 export type ProactiveStatusResponse = {
@@ -385,6 +401,7 @@ export const api = {
   health: () => request<{ status: string }>("/api/health"),
   setupStatus: () => request<SetupStatus>("/api/setup/status"),
   settings: () => request<AppSettings>("/api/settings"),
+  localDataStatus: () => request<LocalDataStatus>("/api/local-data/status"),
   updateSettings: (settings: AppSettingsUpdate) =>
     request<AppSettings>("/api/settings", {
       method: "POST",

@@ -35,9 +35,16 @@ export type BackendRuntimeStatus = {
   user_data_dir: string;
 };
 
+export type OpenLocalDataDirResult = {
+  ok: boolean;
+  path: string;
+  error: string | null;
+};
+
 export type ReilinkRuntimeBridge = {
   getBackendStatus: () => Promise<BackendRuntimeStatus>;
   setBackendAutoStart: (enabled: boolean) => Promise<BackendRuntimeStatus>;
+  openLocalDataDir: () => Promise<OpenLocalDataDirResult>;
   onBackendStatus: (callback: (status: BackendRuntimeStatus) => void) => () => void;
 };
 

@@ -2,6 +2,25 @@ import { expect, test } from "@playwright/test";
 
 test("mock backend chat flow works", async ({ page }) => {
   await page.route("**/api/health", (route) => route.fulfill({ json: { status: "ok" } }));
+  await page.route("**/api/local-data/status", (route) =>
+    route.fulfill({
+      json: {
+        data_dir: "/Users/aragoto/Library/Application Support/ReiLink/data",
+        memory_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/memory",
+        session_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/session",
+        settings_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/settings",
+        logs_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/logs",
+        knowledge_dir: "/Applications/ReiLink.app/Contents/Resources/knowledge/games",
+        knowledge_source: "bundled",
+        data_dir_exists: true,
+        memory_files_count: 0,
+        session_files_count: 0,
+        pending_memory_count: 0,
+        using_bundled_knowledge: true,
+        writable: true
+      }
+    })
+  );
   await page.route("**/api/settings", (route) =>
     route.fulfill({
       json: {

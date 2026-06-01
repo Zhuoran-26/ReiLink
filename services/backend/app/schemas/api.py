@@ -209,6 +209,22 @@ class SetupStatusResponse(BaseModel):
     pro_model: str
 
 
+class LocalDataStatusResponse(BaseModel):
+    data_dir: str
+    memory_dir: str
+    session_dir: str
+    settings_dir: str
+    logs_dir: str
+    knowledge_dir: str | None = None
+    knowledge_source: Literal["bundled", "repo", "missing"]
+    data_dir_exists: bool
+    memory_files_count: int = 0
+    session_files_count: int = 0
+    pending_memory_count: int = 0
+    using_bundled_knowledge: bool = False
+    writable: bool = False
+
+
 class MemoryProvenanceItem(BaseModel):
     source: Literal["profile", "episode", "current_session"]
     field: str

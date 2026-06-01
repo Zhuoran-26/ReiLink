@@ -657,6 +657,22 @@ const backendRuntimeStatus: BackendRuntimeStatus = {
   user_data_dir: "/Users/aragoto/Library/Application Support/ReiLink/data"
 };
 
+const localDataStatus = {
+  data_dir: "/Users/aragoto/Library/Application Support/ReiLink/data",
+  memory_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/memory",
+  session_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/session",
+  settings_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/settings",
+  logs_dir: "/Users/aragoto/Library/Application Support/ReiLink/data/logs",
+  knowledge_dir: "/Applications/ReiLink.app/Contents/Resources/knowledge/games",
+  knowledge_source: "bundled",
+  data_dir_exists: true,
+  memory_files_count: 2,
+  session_files_count: 3,
+  pending_memory_count: 1,
+  using_bundled_knowledge: true,
+  writable: true
+} as const;
+
 let appSettingsStore = { ...appSettings };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
@@ -678,6 +694,7 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
       for (const listener of listeners) listener(status);
       return status;
     }),
+    openLocalDataDir: vi.fn(async () => ({ ok: true, path: status.user_data_dir, error: null })),
     onBackendStatus: vi.fn((callback: (nextStatus: BackendRuntimeStatus) => void) => {
       listeners.add(callback);
       return () => listeners.delete(callback);
@@ -854,6 +871,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -950,15 +968,27 @@ describe("App", () => {
     const onboardingSettings = screen.getByRole("group", { name: "新手引导设置" });
     expect(within(onboardingSettings).getByText("已完成")).toBeInTheDocument();
     expect(within(onboardingSettings).getByRole("button", { name: "新手引导：重新查看" })).toBeInTheDocument();
-    const demoResetPanel = screen.getByRole("group", { name: "演示与重置" });
-    expect(within(demoResetPanel).getByText("Demo & Reset")).toBeInTheDocument();
+    const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
+    expect(within(demoResetPanel).getByText("Local Data")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("用户数据目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getAllByText("/Users/aragoto/Library/Application Support/ReiLink/data").length).toBeGreaterThan(0);
+    expect(within(demoResetPanel).getByText("记忆目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("会话目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("设置目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("日志目录")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("内置知识资源")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("可写")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("待确认记忆数")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("记忆文件数")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByText("会话文件数")).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "打开本地数据目录" })).toBeInTheDocument();
     expect(within(demoResetPanel).getByRole("button", { name: "重置新手引导" })).toBeInTheDocument();
     expect(within(demoResetPanel).getByRole("button", { name: "清空聊天记录" })).toBeInTheDocument();
-    expect(within(demoResetPanel).getByRole("button", { name: "重置游戏状态" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "清空会话状态" })).toBeInTheDocument();
     expect(within(demoResetPanel).getByRole("button", { name: "清空待确认记忆" })).toBeInTheDocument();
     expect(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" })).toBeInTheDocument();
     expect(within(demoResetPanel).getByRole("button", { name: "重置主动陪伴状态" })).toBeInTheDocument();
-    expect(within(demoResetPanel).getByRole("button", { name: "一键重置演示状态" })).toBeInTheDocument();
+    expect(within(demoResetPanel).getByRole("button", { name: "重置演示状态" })).toBeInTheDocument();
     expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
   });
 
@@ -1002,6 +1032,19 @@ describe("App", () => {
 
     await waitFor(() => expect(runtime.bridge.setBackendAutoStart).toHaveBeenCalledWith(false));
     expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("off");
+  });
+
+  it("opens the local data directory through the runtime bridge", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    const localDataPanel = await screen.findByRole("group", { name: "本地数据" });
+    const openButton = within(localDataPanel).getByRole("button", { name: "打开本地数据目录" });
+    await waitFor(() => expect(openButton).toBeEnabled());
+    await userEvent.click(openButton);
+
+    await waitFor(() => expect(runtime.bridge.openLocalDataDir).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("已打开本地数据目录")).toBeInTheDocument();
   });
 
   it("keeps the debug panel last in the right rail", async () => {
@@ -1075,7 +1118,7 @@ describe("App", () => {
   it("resets onboarding from demo reset controls", async () => {
     render(<App />);
 
-    const demoResetPanel = await screen.findByRole("group", { name: "演示与重置" });
+    const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置新手引导" }));
 
     await waitFor(() => expect(appSettingsStore.onboarding_completed).toBe(false));
@@ -1095,15 +1138,15 @@ describe("App", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
 
-    const demoResetPanel = await screen.findByRole("group", { name: "演示与重置" });
-    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置游戏状态" }));
+    const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空会话状态" }));
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/debug/game-session/reset"),
         expect.objectContaining({ method: "POST" })
       )
     );
-    expect(screen.getByText("已重置游戏状态")).toBeInTheDocument();
+    expect(screen.getByText("已清空会话状态")).toBeInTheDocument();
 
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空待确认记忆" }));
     await waitFor(() =>
@@ -1140,7 +1183,7 @@ describe("App", () => {
     await screen.findByText("Margit 怎么打？");
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
 
-    const demoResetPanel = screen.getByRole("group", { name: "演示与重置" });
+    const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空聊天记录" }));
 
     await waitFor(() => expect(screen.queryByText("Margit 怎么打？")).not.toBeInTheDocument());
@@ -1158,9 +1201,9 @@ describe("App", () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
 
-    const demoResetPanel = await screen.findByRole("group", { name: "演示与重置" });
+    const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" }));
-    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "一键重置演示状态" }));
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置演示状态" }));
 
     expect(fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/api/memory/reset"),
@@ -1184,8 +1227,8 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     await screen.findByText("Margit 怎么打？");
 
-    const demoResetPanel = screen.getByRole("group", { name: "演示与重置" });
-    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "一键重置演示状态" }));
+    const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
+    await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置演示状态" }));
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1548,6 +1591,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
+        if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -1609,6 +1653,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
+        if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -1677,6 +1722,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
+        if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -1817,7 +1863,7 @@ describe("App", () => {
     expect(screen.getByText("记忆摘要")).toBeInTheDocument();
     expect(screen.getByText("注入记忆")).toBeInTheDocument();
     expect(screen.getByText("跳过记忆")).toBeInTheDocument();
-    expect(screen.getByText("待确认记忆")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
     expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "忽略" })).toBeInTheDocument();
@@ -1845,6 +1891,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, status: "idle", game_id: null, game_name: null });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1885,6 +1932,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "sekiro", game_name: "只狼" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1930,6 +1978,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "hollow_knight", game_name: "空洞骑士" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1976,6 +2025,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -2023,6 +2073,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: null, game_name: "星之门遗迹" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -2061,6 +2112,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -2122,6 +2174,7 @@ describe("App", () => {
         const setup = setupStatusResponse(url);
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);

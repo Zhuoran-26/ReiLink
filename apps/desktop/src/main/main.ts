@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 import { BackendRuntimeManager } from "./backendRuntime.js";
+import { openLocalDataDir } from "./localData.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,6 +100,7 @@ app.whenReady().then(() => {
   ipcMain.handle("backend-runtime:set-auto-start", (_event, enabled: boolean) =>
     backendRuntime?.setAutoStartEnabled(Boolean(enabled))
   );
+  ipcMain.handle("local-data:open-dir", () => openLocalDataDir(app.getPath("userData"), shell));
   void backendRuntime.ensureBackend();
   createWindow();
 });

@@ -827,6 +827,16 @@ button {
   gap: 8px;
 }
 
+.localDataFacts {
+  border-top: 1px solid rgba(145, 164, 213, 0.1);
+  border-bottom: 1px solid rgba(145, 164, 213, 0.1);
+  padding: 9px 0;
+}
+
+.localDataFacts div {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
 .demoResetActions .smallButton {
   min-width: 0;
   display: inline-flex;

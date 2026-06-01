@@ -6,6 +6,7 @@ import {
   ChevronUp,
   Database,
   FileText,
+  FolderOpen,
   Gamepad2,
   KeyRound,
   MessageSquare,
@@ -27,6 +28,7 @@ import {
   GameDetectionResponse,
   GameSessionDebugResponse,
   GameStatus,
+  LocalDataStatus,
   MemoryDebugResponse,
   PendingMemory,
   PromptPreviewResponse,
@@ -256,6 +258,22 @@ const emptySetupStatus: SetupStatus = {
   missing_items: ["DEEPSEEK_API_KEY"],
   fast_model: "deepseek-v4-flash",
   pro_model: "deepseek-v4-pro"
+};
+
+const emptyLocalDataStatus: LocalDataStatus = {
+  data_dir: "",
+  memory_dir: "",
+  session_dir: "",
+  settings_dir: "",
+  logs_dir: "",
+  knowledge_dir: null,
+  knowledge_source: "missing",
+  data_dir_exists: false,
+  memory_files_count: 0,
+  session_files_count: 0,
+  pending_memory_count: 0,
+  using_bundled_knowledge: false,
+  writable: false
 };
 
 const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
@@ -735,6 +753,7 @@ export function App() {
   const [semanticDebug, setSemanticDebug] = useState<SemanticExtractionDebugResponse>(emptySemanticExtractionDebug);
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
   const [setupStatus, setSetupStatus] = useState<SetupStatus>(emptySetupStatus);
+  const [localDataStatus, setLocalDataStatus] = useState<LocalDataStatus>(emptyLocalDataStatus);
   const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
@@ -743,6 +762,7 @@ export function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [settingsBusy, setSettingsBusy] = useState("");
   const [backendRuntimeBusy, setBackendRuntimeBusy] = useState(false);
+  const [localDataBusy, setLocalDataBusy] = useState("");
   const [gameContextBusy, setGameContextBusy] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。", createdAt: new Date().toISOString() }
@@ -798,6 +818,7 @@ export function App() {
       setBackendStatus("connected");
       setSetupStatus(currentSetupStatus);
       setAppSettings(await api.settings());
+      setLocalDataStatus(await api.localDataStatus());
       setGameStatus(await api.gameStatus());
       const currentGameContext = await api.gameContext();
       setGameContext(currentGameContext);
@@ -854,6 +875,30 @@ export function App() {
       setLastError(productErrorText(error, "本地后端自动启动设置失败"));
     } finally {
       setBackendRuntimeBusy(false);
+    }
+  };
+
+  const openLocalDataDirectory = async () => {
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.openLocalDataDir) {
+      setLastError("当前桌面端不支持打开本地数据目录");
+      return;
+    }
+    setLocalDataBusy("open-dir");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const result = await runtime.openLocalDataDir();
+      if (!result.ok) {
+        throw new Error(result.error || "打开本地数据目录失败");
+      }
+      setDemoResetFeedback("已打开本地数据目录");
+      await refreshStatus();
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "打开本地数据目录失败"));
+    } finally {
+      setLocalDataBusy("");
     }
   };
 
@@ -1113,7 +1158,7 @@ export function App() {
       } else if (action === "reset-game-session") {
         await api.resetGameSession();
         await refreshStatus();
-        setDemoResetFeedback("已重置游戏状态");
+        setDemoResetFeedback("已清空会话状态");
       } else if (action === "clear-pending") {
         await api.clearPendingMemories();
         await refreshStatus();
@@ -1219,6 +1264,14 @@ export function App() {
   const onboardingVisible = backendStatus === "connected" && (
     (!appSettings.onboarding_completed && !onboardingDismissedThisSession) || onboardingReopened
   );
+  const displayLocalDataStatus = {
+    ...localDataStatus,
+    data_dir: localDataStatus.data_dir || backendRuntimeStatus.user_data_dir,
+    knowledge_dir: localDataStatus.knowledge_dir || backendRuntimeStatus.knowledge_path,
+    knowledge_source: localDataStatus.knowledge_source !== "missing"
+      ? localDataStatus.knowledge_source
+      : backendRuntimeStatus.knowledge_source
+  };
   const onboardingApiKeyText = setupStatus.api_key_loaded
     ? "当前 DeepSeek API Key 已加载。"
     : "当前 API Key 未配置，请先完成模型配置。";
@@ -1617,14 +1670,84 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   重新查看
                 </button>
               </div>
-              <div className="demoResetPanel" role="group" aria-label="演示与重置">
+              <div className="localDataPanel demoResetPanel" role="group" aria-label="本地数据">
                 <div className="demoResetHeader">
                   <div>
-                    <span>演示与重置</span>
-                    <strong>Demo & Reset</strong>
+                    <span>本地数据</span>
+                    <strong>Local Data</strong>
                   </div>
                 </div>
+                <dl className="debugFacts localDataFacts">
+                  <div>
+                    <dt>用户数据目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.data_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>记忆目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.memory_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>会话目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.session_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>设置目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.settings_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>日志目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.logs_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>知识资源</dt>
+                    <dd>{knowledgeSourceText(displayLocalDataStatus.knowledge_source)}</dd>
+                  </div>
+                  <div>
+                    <dt>知识目录</dt>
+                    <dd>{debugText(displayLocalDataStatus.knowledge_dir, "未设置")}</dd>
+                  </div>
+                  <div>
+                    <dt>数据目录状态</dt>
+                    <dd>{displayLocalDataStatus.writable ? "可写" : "不可写"}</dd>
+                  </div>
+                  <div>
+                    <dt>目录已创建</dt>
+                    <dd>{displayLocalDataStatus.data_dir_exists ? "是" : "否"}</dd>
+                  </div>
+                  <div>
+                    <dt>待确认记忆数</dt>
+                    <dd>{displayLocalDataStatus.pending_memory_count}</dd>
+                  </div>
+                  <div>
+                    <dt>记忆文件数</dt>
+                    <dd>{displayLocalDataStatus.memory_files_count}</dd>
+                  </div>
+                  <div>
+                    <dt>会话文件数</dt>
+                    <dd>{displayLocalDataStatus.session_files_count}</dd>
+                  </div>
+                  <div>
+                    <dt>后端来源</dt>
+                    <dd>{backendRuntimeSourceText(backendRuntimeStatus)}</dd>
+                  </div>
+                  {backendRuntimeStatus.backend_start_error ? (
+                    <div>
+                      <dt>后端错误</dt>
+                      <dd>{backendRuntimeStatus.backend_start_error}</dd>
+                    </div>
+                  ) : null}
+                </dl>
                 <div className="demoResetActions">
+                  <button
+                    className="smallButton"
+                    type="button"
+                    title="Open local data directory"
+                    disabled={!backendRuntimeAvailable || localDataBusy !== ""}
+                    onClick={() => void openLocalDataDirectory()}
+                  >
+                    <FolderOpen size={14} />
+                    打开本地数据目录
+                  </button>
                   <button
                     className="smallButton quiet"
                     type="button"
@@ -1653,7 +1776,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     onClick={() => void handleDemoResetAction("reset-game-session")}
                   >
                     <Gamepad2 size={14} />
-                    重置游戏状态
+                    清空会话状态
                   </button>
                   <button
                     className="smallButton quiet"
@@ -1693,10 +1816,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     onClick={() => void handleDemoResetAction("reset-demo")}
                   >
                     <RefreshCw size={14} />
-                    一键重置演示状态
+                    重置演示状态
                   </button>
                 </div>
-                <p className="settingHint">一键重置不会清空长期记忆。危险操作会先确认。</p>
+                <p className="settingHint">重置演示状态不会清空长期记忆。危险操作会先确认。</p>
                 {demoResetFeedback && (
                   <p className="demoResetFeedback" role="status">
                     {demoResetFeedback}
