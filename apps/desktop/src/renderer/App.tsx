@@ -262,7 +262,13 @@ const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
   backend_auto_start_enabled: true,
   backend_started_by_app: false,
   backend_start_error: null,
-  backend_status: "checking"
+  backend_status: "checking",
+  backend_runtime_mode: "dev",
+  backend_project_root: null,
+  backend_root: null,
+  backend_python_path: null,
+  backend_health_url: "http://127.0.0.1:8000/api/health",
+  backend_retry_count: 0
 };
 
 const emptyProactiveStatus: ProactiveStatusResponse = {
@@ -624,11 +630,17 @@ const formatSeconds = (value: number | null | undefined) => {
 
 const backendRuntimeStatusText = (status: BackendRuntimeStatus) => {
   if (status.backend_status === "connected") return "后端已连接";
+  if (status.backend_status === "external_backend_detected") return "已检测到外部后端";
   if (status.backend_status === "starting") return "正在启动本地后端";
   if (status.backend_status === "checking") return "后端连接中";
+  if (status.backend_status === "missing_project_root") return "未找到本地后端目录";
+  if (status.backend_status === "missing_venv") return "未找到 backend venv";
+  if (status.backend_status === "spawn_failed") return "后端启动失败";
+  if (status.backend_status === "health_timeout") return "后端启动超时";
+  if (status.backend_status === "port_occupied") return "端口 8000 已被占用";
   if (status.backend_status === "failed") return "后端启动失败";
   if (status.backend_status === "not_found") return "未找到后端运行环境";
-  if (status.backend_status === "disabled") return "自动启动已关闭";
+  if (status.backend_status === "disabled") return "自动启动已关闭，请手动运行 make dev-backend";
   return "后端未连接";
 };
 
@@ -1164,12 +1176,10 @@ export function App() {
   const runtimeState = backendRuntimeStatus.backend_status;
   const runtimeIsStarting = runtimeState === "checking" || runtimeState === "starting";
   const companionStatus = backendStatus === "connected" ? "在线" : runtimeIsStarting ? "启动中" : backendStatus === "checking" ? "检查中" : "离线";
-  const runtimeStatusLabel = backendStatus === "connected" ? "已连接" : backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : statusLabel;
-  const providerBackendStatusText = backendStatus === "connected"
-    ? "后端已连接"
-    : backendRuntimeAvailable
-      ? backendRuntimeStatusText(backendRuntimeStatus)
-      : "后端未连接";
+  const runtimeStatusLabel = backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : statusLabel;
+  const providerBackendStatusText = backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : (
+    backendStatus === "connected" ? "后端已连接" : "后端未连接"
+  );
   const backendRuntimeNotice = backendStatus !== "connected"
     ? {
         title: backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : "后端未连接",

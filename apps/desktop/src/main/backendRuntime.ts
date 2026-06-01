@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import type { BackendRuntimeStatus, BackendRuntimeState } from "../shared/runtime.js";
+import type { BackendRuntimeState, BackendRuntimeStatus } from "../shared/runtime.js";
 
 type BackendRuntimeConfig = {
   backend_auto_start_enabled?: boolean;
@@ -27,60 +28,107 @@ type BackendChildProcess = {
 
 type SpawnBackend = (command: string, args: string[], options: Parameters<typeof spawn>[2]) => BackendChildProcess;
 
+type HealthCheckResult = {
+  ok: boolean;
+  error?: string;
+  statusCode?: number;
+};
+
+type BackendRuntimeResolution =
+  | {
+      backendDir: string;
+      projectRoot: string;
+      pythonPath: string;
+      status: "ready";
+    }
+  | {
+      backendDir: string | null;
+      message: string;
+      projectRoot: string | null;
+      pythonPath: string | null;
+      status: "missing_project_root" | "missing_venv";
+    };
+
 export type BackendRuntimeManagerOptions = {
   appUserDataPath: string;
   compiledMainDir: string;
+  cwd?: string;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
   healthUrl?: string;
+  homeDir?: string;
+  isPackaged?: boolean;
   logger?: RuntimeLogger;
+  portOpenCheck?: (host: string, port: number) => Promise<boolean>;
   repoRootCandidates?: string[];
   spawnBackend?: SpawnBackend;
   startupAttempts?: number;
   startupIntervalMs?: number;
 };
 
-const DEFAULT_STATUS: BackendRuntimeStatus = {
+const DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/api/health";
+const PROJECT_ROOT_NOT_FOUND_MESSAGE =
+  "未找到 ReiLink 项目目录，请设置 REILINK_PROJECT_ROOT 或手动运行 make dev-backend。";
+const BACKEND_VENV_NOT_FOUND_MESSAGE =
+  "未找到 backend venv，请先创建 services/backend/.venv 或手动运行 make dev-backend。";
+const BACKEND_START_FAILED_MESSAGE = "后端启动失败，请在项目目录运行 make dev-backend。";
+const BACKEND_HEALTH_TIMEOUT_MESSAGE = "后端启动超时，请查看 Electron main process 日志或手动运行 make dev-backend。";
+const BACKEND_PORT_OCCUPIED_MESSAGE = "端口 8000 已被占用，但不是可用的 ReiLink backend。";
+const AUTO_START_DISABLED_MESSAGE = "自动启动已关闭，请手动运行 make dev-backend。";
+const BACKEND_EXITED_MESSAGE = "本地后端进程已退出。";
+const MAX_BACKEND_LOG_LINES_PER_STREAM = 20;
+
+const createDefaultStatus = (mode: "dev" | "packaged", healthUrl: string): BackendRuntimeStatus => ({
   backend_auto_start_enabled: true,
   backend_started_by_app: false,
   backend_start_error: null,
-  backend_status: "checking"
-};
-
-const BACKEND_NOT_FOUND_MESSAGE = "未找到本地后端，请先在项目目录运行 make dev-backend。";
-const BACKEND_START_FAILED_MESSAGE = "本地后端启动失败，请在项目目录运行 make dev-backend。";
+  backend_status: "checking",
+  backend_runtime_mode: mode,
+  backend_project_root: null,
+  backend_root: null,
+  backend_python_path: null,
+  backend_health_url: healthUrl,
+  backend_retry_count: 0
+});
 
 export class BackendRuntimeManager {
   private readonly appUserDataPath: string;
   private readonly compiledMainDir: string;
+  private readonly cwd: string;
   private readonly env: NodeJS.ProcessEnv;
   private readonly fetchImpl: typeof fetch;
   private readonly healthUrl: string;
+  private readonly homeDir: string;
   private readonly logger: RuntimeLogger;
+  private readonly portOpenCheck: (host: string, port: number) => Promise<boolean>;
   private readonly repoRootCandidates: string[];
+  private readonly runtimeMode: "dev" | "packaged";
   private readonly spawnBackend: SpawnBackend;
   private readonly startupAttempts: number;
   private readonly startupIntervalMs: number;
   private readonly listeners = new Set<(status: BackendRuntimeStatus) => void>();
+  private backendLogLines = { stderr: 0, stdout: 0 };
   private child: BackendChildProcess | null = null;
   private ensurePromise: Promise<BackendRuntimeStatus> | null = null;
-  private status: BackendRuntimeStatus = { ...DEFAULT_STATUS };
+  private spawnErrorMessage: string | null = null;
+  private status: BackendRuntimeStatus;
 
   constructor(options: BackendRuntimeManagerOptions) {
     this.appUserDataPath = options.appUserDataPath;
     this.compiledMainDir = options.compiledMainDir;
+    this.cwd = options.cwd ?? process.cwd();
     this.env = options.env ?? process.env;
     this.fetchImpl = options.fetchImpl ?? fetch;
-    this.healthUrl = options.healthUrl ?? "http://127.0.0.1:8000/api/health";
+    this.healthUrl = options.healthUrl ?? DEFAULT_HEALTH_URL;
+    this.homeDir = options.homeDir ?? os.homedir();
     this.logger = options.logger ?? console;
-    this.repoRootCandidates = options.repoRootCandidates ?? [
-      this.env.REILINK_REPO_ROOT ?? "",
-      process.cwd(),
-      this.compiledMainDir
-    ];
+    this.portOpenCheck = options.portOpenCheck ?? isTcpPortOpen;
+    this.runtimeMode = options.isPackaged ? "packaged" : "dev";
+    this.repoRootCandidates = uniquePaths(options.repoRootCandidates ?? this.defaultRepoRootCandidates());
     this.spawnBackend = options.spawnBackend ?? ((command, args, spawnOptions) => spawn(command, args, spawnOptions));
-    this.startupAttempts = options.startupAttempts ?? 40;
+    this.startupAttempts = options.startupAttempts ?? 30;
     this.startupIntervalMs = options.startupIntervalMs ?? 500;
+    this.status = createDefaultStatus(this.runtimeMode, this.healthUrl);
   }
 
   getStatus(): BackendRuntimeStatus {
@@ -94,14 +142,15 @@ export class BackendRuntimeManager {
 
   async setAutoStartEnabled(enabled: boolean): Promise<BackendRuntimeStatus> {
     await this.saveConfig({ backend_auto_start_enabled: enabled });
+    this.logRuntime("auto-start setting changed", { enabled });
     this.updateStatus({ backend_auto_start_enabled: enabled });
     if (enabled) {
       return this.ensureBackend();
     }
-    if (this.status.backend_status !== "connected") {
+    if (this.status.backend_status !== "connected" && this.status.backend_status !== "external_backend_detected") {
       this.updateStatus({
         backend_started_by_app: Boolean(this.child),
-        backend_start_error: "自动启动本地后端已关闭，请手动运行 make dev-backend。",
+        backend_start_error: AUTO_START_DISABLED_MESSAGE,
         backend_status: "disabled"
       });
     }
@@ -118,7 +167,11 @@ export class BackendRuntimeManager {
 
   async stopStartedBackend(): Promise<void> {
     const child = this.child;
-    if (!child) return;
+    if (!child) {
+      this.logRuntime("quit requested; no app-started backend to stop");
+      return;
+    }
+    this.logRuntime("stopping app-started backend");
     this.child = null;
     child.kill("SIGTERM");
     setTimeout(() => {
@@ -129,48 +182,87 @@ export class BackendRuntimeManager {
   private async ensureBackendInternal(): Promise<BackendRuntimeStatus> {
     const config = await this.loadConfig();
     const autoStartEnabled = config.backend_auto_start_enabled !== false;
+    this.logRuntime("ensure backend", {
+      autoStartEnabled,
+      healthUrl: this.healthUrl,
+      mode: this.runtimeMode,
+      repoRootCandidates: this.repoRootCandidates
+    });
     this.updateStatus({
       backend_auto_start_enabled: autoStartEnabled,
+      backend_retry_count: 0,
       backend_start_error: null,
       backend_status: "checking"
     });
 
-    if (await this.isBackendHealthy()) {
+    const initialHealth = await this.checkBackendHealth("initial");
+    if (initialHealth.ok) {
+      this.logRuntime("external backend detected", { healthUrl: this.healthUrl });
       this.updateStatus({
-        backend_started_by_app: Boolean(this.child),
+        backend_started_by_app: false,
         backend_start_error: null,
-        backend_status: "connected"
+        backend_status: "external_backend_detected"
+      });
+      return this.getStatus();
+    }
+
+    if (await this.isHealthPortOpen()) {
+      this.logRuntime("port occupied by non-ReiLink backend", {
+        healthUrl: this.healthUrl,
+        statusCode: initialHealth.statusCode
+      });
+      this.updateStatus({
+        backend_started_by_app: false,
+        backend_start_error: BACKEND_PORT_OCCUPIED_MESSAGE,
+        backend_status: "port_occupied"
       });
       return this.getStatus();
     }
 
     if (!autoStartEnabled) {
+      this.logRuntime("auto-start disabled; not spawning backend");
       this.updateStatus({
         backend_started_by_app: false,
-        backend_start_error: "自动启动本地后端已关闭，请手动运行 make dev-backend。",
+        backend_start_error: AUTO_START_DISABLED_MESSAGE,
         backend_status: "disabled"
       });
       return this.getStatus();
     }
 
     const runtime = await this.resolveBackendRuntime();
-    if (!runtime) {
+    if (runtime.status !== "ready") {
+      this.logRuntime("backend runtime missing", runtime);
       this.updateStatus({
+        backend_project_root: runtime.projectRoot,
+        backend_python_path: runtime.pythonPath,
+        backend_root: runtime.backendDir,
         backend_started_by_app: false,
-        backend_start_error: BACKEND_NOT_FOUND_MESSAGE,
-        backend_status: "not_found"
+        backend_start_error: runtime.message,
+        backend_status: runtime.status
       });
       return this.getStatus();
     }
 
     this.updateStatus({
+      backend_project_root: runtime.projectRoot,
+      backend_python_path: runtime.pythonPath,
+      backend_root: runtime.backendDir,
       backend_started_by_app: true,
       backend_start_error: null,
       backend_status: "starting"
     });
-    this.startBackend(runtime);
+    if (!this.startBackend(runtime)) {
+      this.updateStatus({
+        backend_started_by_app: false,
+        backend_start_error: this.spawnErrorMessage ?? BACKEND_START_FAILED_MESSAGE,
+        backend_status: "spawn_failed"
+      });
+      return this.getStatus();
+    }
 
-    if (await this.waitForHealthyBackend()) {
+    const waitResult = await this.waitForHealthyBackend();
+    if (waitResult === "healthy") {
+      this.logRuntime("app-started backend connected", { retryCount: this.status.backend_retry_count });
       this.updateStatus({
         backend_started_by_app: true,
         backend_start_error: null,
@@ -179,11 +271,25 @@ export class BackendRuntimeManager {
       return this.getStatus();
     }
 
+    if (waitResult === "spawn_failed") {
+      await this.stopStartedBackend();
+      this.updateStatus({
+        backend_started_by_app: false,
+        backend_start_error: this.spawnErrorMessage ?? BACKEND_START_FAILED_MESSAGE,
+        backend_status: "spawn_failed"
+      });
+      return this.getStatus();
+    }
+
     await this.stopStartedBackend();
+    this.logRuntime("backend health timeout", {
+      healthUrl: this.healthUrl,
+      retryCount: this.status.backend_retry_count
+    });
     this.updateStatus({
       backend_started_by_app: false,
-      backend_start_error: BACKEND_START_FAILED_MESSAGE,
-      backend_status: "failed"
+      backend_start_error: BACKEND_HEALTH_TIMEOUT_MESSAGE,
+      backend_status: "health_timeout"
     });
     return this.getStatus();
   }
@@ -206,81 +312,171 @@ export class BackendRuntimeManager {
     return path.join(this.appUserDataPath, "runtime-settings.json");
   }
 
-  private async isBackendHealthy(): Promise<boolean> {
+  private async checkBackendHealth(label: string): Promise<HealthCheckResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1000);
     try {
       const response = await this.fetchImpl(this.healthUrl, { signal: controller.signal });
-      return response.ok;
-    } catch {
-      return false;
+      const result = { ok: response.ok, statusCode: response.status };
+      this.logRuntime("health check", { label, ok: result.ok, statusCode: result.statusCode, url: this.healthUrl });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logRuntime("health check failed", { error: message, label, url: this.healthUrl });
+      return { ok: false, error: message };
     } finally {
       clearTimeout(timeout);
     }
   }
 
-  private async waitForHealthyBackend(): Promise<boolean> {
-    for (let attempt = 0; attempt < this.startupAttempts; attempt += 1) {
-      if (await this.isBackendHealthy()) return true;
+  private async waitForHealthyBackend(): Promise<"healthy" | "spawn_failed" | "timeout"> {
+    for (let attempt = 1; attempt <= this.startupAttempts; attempt += 1) {
+      if (this.spawnErrorMessage) return "spawn_failed";
+      this.updateStatus({ backend_retry_count: attempt });
+      const health = await this.checkBackendHealth(`startup-${attempt}`);
+      if (health.ok) return "healthy";
       await sleep(this.startupIntervalMs);
     }
-    return false;
+    return this.spawnErrorMessage ? "spawn_failed" : "timeout";
   }
 
-  private async resolveBackendRuntime(): Promise<{ backendDir: string; pythonPath: string } | null> {
-    for (const candidate of this.repoRootCandidates.filter(Boolean)) {
+  private async isHealthPortOpen(): Promise<boolean> {
+    const healthUrl = new URL(this.healthUrl);
+    const port = Number(healthUrl.port || (healthUrl.protocol === "https:" ? 443 : 80));
+    return this.portOpenCheck(healthUrl.hostname, port);
+  }
+
+  private async resolveBackendRuntime(): Promise<BackendRuntimeResolution> {
+    this.logRuntime("resolving backend runtime", { candidates: this.repoRootCandidates });
+    let projectRoot: string | null = null;
+    for (const candidate of this.repoRootCandidates) {
       const repoRoot = await findRepoRoot(candidate);
       if (!repoRoot) continue;
-      const backendDir = path.join(repoRoot, "services", "backend");
-      const pythonPath = path.join(backendDir, ".venv", os.platform() === "win32" ? "Scripts/python.exe" : "bin/python");
-      if (await pathExists(pythonPath)) {
-        return { backendDir, pythonPath };
-      }
+      projectRoot = repoRoot;
+      this.logRuntime("resolved project root", { candidate, projectRoot });
+      break;
     }
-    return null;
+
+    if (!projectRoot) {
+      return {
+        backendDir: null,
+        message: PROJECT_ROOT_NOT_FOUND_MESSAGE,
+        projectRoot: null,
+        pythonPath: null,
+        status: "missing_project_root"
+      };
+    }
+
+    const backendDir = path.join(projectRoot, "services", "backend");
+    const pythonPath = path.join(backendDir, ".venv", os.platform() === "win32" ? "Scripts/python.exe" : "bin/python");
+    this.logRuntime("resolved backend paths", {
+      backendDir,
+      cwd: backendDir,
+      pythonPath
+    });
+    if (!(await pathExists(pythonPath))) {
+      return {
+        backendDir,
+        message: BACKEND_VENV_NOT_FOUND_MESSAGE,
+        projectRoot,
+        pythonPath,
+        status: "missing_venv"
+      };
+    }
+    return { backendDir, projectRoot, pythonPath, status: "ready" };
   }
 
   private startBackend(runtime: { backendDir: string; pythonPath: string }) {
-    if (this.child) return;
+    if (this.child) {
+      this.logRuntime("backend child already exists; not spawning another");
+      return true;
+    }
+    this.backendLogLines = { stderr: 0, stdout: 0 };
+    this.spawnErrorMessage = null;
     const args = ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"];
-    this.child = this.spawnBackend(runtime.pythonPath, args, {
-      cwd: runtime.backendDir,
-      env: { ...this.env },
-      stdio: "pipe",
-      windowsHide: true
+    this.logRuntime("spawning backend", {
+      args,
+      command: runtime.pythonPath,
+      cwd: runtime.backendDir
     });
-    this.child.stdout?.on("data", (chunk) => this.logBackendOutput("log", chunk));
-    this.child.stderr?.on("data", (chunk) => this.logBackendOutput("warn", chunk));
+    try {
+      this.child = this.spawnBackend(runtime.pythonPath, args, {
+        cwd: runtime.backendDir,
+        env: { ...this.env },
+        stdio: "pipe",
+        windowsHide: true
+      });
+    } catch (error) {
+      this.spawnErrorMessage = `${BACKEND_START_FAILED_MESSAGE} ${error instanceof Error ? error.message : String(error)}`;
+      this.logRuntime("spawn threw", { error: this.spawnErrorMessage });
+      return false;
+    }
+    this.child.stdout?.on("data", (chunk) => this.logBackendOutput("stdout", chunk));
+    this.child.stderr?.on("data", (chunk) => this.logBackendOutput("stderr", chunk));
     this.child.on("error", (error) => {
-      this.logger.error("[ReiLink backend]", sanitizeLogText(error.message));
+      this.spawnErrorMessage = `${BACKEND_START_FAILED_MESSAGE} ${error.message}`;
+      this.logger.error("[ReiLink backend runtime] spawn error", sanitizeLogText(error.message));
       this.updateStatus({
         backend_started_by_app: false,
-        backend_start_error: BACKEND_START_FAILED_MESSAGE,
-        backend_status: "failed"
+        backend_start_error: this.spawnErrorMessage,
+        backend_status: "spawn_failed"
       });
     });
-    this.child.once("exit", () => {
+    this.child.once("exit", (code, signal) => {
+      this.logRuntime("backend process exited", { code, signal });
       this.child = null;
       if (this.status.backend_status === "connected" || this.status.backend_status === "starting") {
+        this.spawnErrorMessage = this.status.backend_status === "starting" ? BACKEND_START_FAILED_MESSAGE : this.spawnErrorMessage;
         this.updateStatus({
           backend_started_by_app: false,
-          backend_start_error: "本地后端进程已退出。",
-          backend_status: "disconnected"
+          backend_start_error: this.status.backend_status === "starting" ? BACKEND_START_FAILED_MESSAGE : BACKEND_EXITED_MESSAGE,
+          backend_status: this.status.backend_status === "starting" ? "spawn_failed" : "disconnected"
         });
       }
     });
+    return true;
   }
 
-  private logBackendOutput(level: "log" | "warn", chunk: Buffer | string) {
+  private logBackendOutput(stream: "stderr" | "stdout", chunk: Buffer | string) {
     const text = sanitizeLogText(String(chunk)).trim();
-    if (!text) return;
-    this.logger[level](`[ReiLink backend] ${text}`);
+    if (!text || this.backendLogLines[stream] >= MAX_BACKEND_LOG_LINES_PER_STREAM) return;
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    for (const line of lines) {
+      if (this.backendLogLines[stream] >= MAX_BACKEND_LOG_LINES_PER_STREAM) return;
+      this.backendLogLines[stream] += 1;
+      const level = stream === "stderr" ? "warn" : "log";
+      this.logger[level](`[ReiLink backend ${stream}] ${line}`);
+    }
   }
 
   private updateStatus(patch: Partial<BackendRuntimeStatus>) {
     this.status = { ...this.status, ...patch };
     const snapshot = this.getStatus();
+    this.logRuntime("status", {
+      startedByApp: snapshot.backend_started_by_app,
+      status: snapshot.backend_status,
+      retryCount: snapshot.backend_retry_count,
+      startError: snapshot.backend_start_error
+    });
     for (const listener of this.listeners) listener(snapshot);
+  }
+
+  private defaultRepoRootCandidates(): string[] {
+    const resourcesPath = getElectronResourcesPath();
+    return [
+      this.env.REILINK_PROJECT_ROOT ?? "",
+      this.env.REILINK_REPO_ROOT ?? "",
+      this.cwd,
+      this.compiledMainDir,
+      resourcesPath,
+      path.join(this.homeDir, "Desktop", "ReiLink"),
+      path.join(this.homeDir, "ReiLink")
+    ];
+  }
+
+  private logRuntime(message: string, details?: Record<string, unknown>) {
+    const suffix = details ? ` ${sanitizeLogText(JSON.stringify(details))}` : "";
+    this.logger.log(`[ReiLink backend runtime] ${message}${suffix}`);
   }
 }
 
@@ -294,6 +490,21 @@ async function findRepoRoot(startPath: string): Promise<string | null> {
     if (parent === current) return null;
     current = parent;
   }
+}
+
+async function isTcpPortOpen(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host, port });
+    const finish = (open: boolean) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(open);
+    };
+    socket.setTimeout(500);
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+    socket.once("timeout", () => finish(false));
+  });
 }
 
 async function pathExists(target: string): Promise<boolean> {
@@ -311,13 +522,34 @@ function sleep(ms: number): Promise<void> {
 
 function sanitizeLogText(text: string): string {
   return text
-    .replace(/(DEEPSEEK_API_KEY|OPENAI_API_KEY)\s*=\s*([^\s]+)/gi, "$1=<redacted>")
+    .replace(/(DEEPSEEK_API_KEY|OPENAI_API_KEY)\s*=\s*([^\s",}]+)/gi, "$1=<redacted>")
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer <redacted>");
 }
 
+function uniquePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const candidate of paths.filter(Boolean)) {
+    const resolved = path.resolve(candidate);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    result.push(resolved);
+  }
+  return result;
+}
+
+function getElectronResourcesPath() {
+  const maybeProcess = process as NodeJS.Process & { resourcesPath?: string };
+  return maybeProcess.resourcesPath ?? "";
+}
+
 export const backendRuntimeMessage = {
-  notFound: BACKEND_NOT_FOUND_MESSAGE,
+  autoStartDisabled: AUTO_START_DISABLED_MESSAGE,
+  healthTimeout: BACKEND_HEALTH_TIMEOUT_MESSAGE,
+  missingProjectRoot: PROJECT_ROOT_NOT_FOUND_MESSAGE,
+  missingVenv: BACKEND_VENV_NOT_FOUND_MESSAGE,
+  portOccupied: BACKEND_PORT_OCCUPIED_MESSAGE,
   startFailed: BACKEND_START_FAILED_MESSAGE
 } satisfies Record<string, string>;
 
-export type { BackendRuntimeStatus, BackendRuntimeState };
+export type { BackendRuntimeState, BackendRuntimeStatus };

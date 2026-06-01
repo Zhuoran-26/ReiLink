@@ -639,7 +639,13 @@ const backendRuntimeStatus: BackendRuntimeStatus = {
   backend_auto_start_enabled: true,
   backend_started_by_app: false,
   backend_start_error: null,
-  backend_status: "connected"
+  backend_status: "external_backend_detected",
+  backend_runtime_mode: "packaged",
+  backend_project_root: "/Users/aragoto/Desktop/ReiLink",
+  backend_root: "/Users/aragoto/Desktop/ReiLink/services/backend",
+  backend_python_path: "/Users/aragoto/Desktop/ReiLink/services/backend/.venv/bin/python",
+  backend_health_url: "http://127.0.0.1:8000/api/health",
+  backend_retry_count: 0
 };
 
 let appSettingsStore = { ...appSettings };
@@ -656,7 +662,7 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
       status = {
         ...status,
         backend_auto_start_enabled: enabled,
-        backend_start_error: enabled ? null : "自动启动本地后端已关闭，请手动运行 make dev-backend。",
+        backend_start_error: enabled ? null : "自动启动已关闭，请手动运行 make dev-backend。",
         backend_status: enabled ? status.backend_status : "disabled"
       };
       for (const listener of listeners) listener(status);

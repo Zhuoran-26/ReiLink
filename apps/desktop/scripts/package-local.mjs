@@ -52,6 +52,8 @@ await writeFile(
   `${JSON.stringify(packagedPackage, null, 2)}\n`,
   "utf8"
 );
+await requirePath(path.join(resourcesApp, packagedPackage.main), "Packaged Electron main entry is missing.");
+await requirePath(path.join(resourcesApp, "dist-electron", "main", "preload.cjs"), "Packaged Electron preload entry is missing.");
 
 const plistPath = path.join(outputApp, "Contents", "Info.plist");
 let plist = await readFile(plistPath, "utf8");

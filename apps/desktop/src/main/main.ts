@@ -32,7 +32,7 @@ process.on("unhandledRejection", (reason) => {
 
 const registerPackagedRendererProtocol = () => {
   if (isDevRenderer()) return;
-  const rendererRoot = path.resolve(__dirname, "../dist");
+  const rendererRoot = path.resolve(__dirname, "../../dist");
   protocol.handle(APP_PROTOCOL, (request) => {
     const requestUrl = new URL(request.url);
     const requestedPath = decodeURIComponent(requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname);
@@ -54,7 +54,7 @@ const createWindow = () => {
     minHeight: 640,
     backgroundColor: "#111318",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -87,7 +87,8 @@ app.whenReady().then(() => {
   registerPackagedRendererProtocol();
   backendRuntime = new BackendRuntimeManager({
     appUserDataPath: app.getPath("userData"),
-    compiledMainDir: __dirname
+    compiledMainDir: __dirname,
+    isPackaged: !isDevRenderer()
   });
   backendRuntime.onStatusChange((status) => {
     for (const window of BrowserWindow.getAllWindows()) {
