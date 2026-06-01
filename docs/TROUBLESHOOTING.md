@@ -169,17 +169,18 @@ ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
 现象：
 
 - `make package-desktop` 失败。
-- 提示找不到 Electron runtime、`dist`、`dist-electron` 或 `main.js`。
+- 提示找不到 Electron runtime、`dist`、`dist-electron`、`main.js`、backend binary 或 bundled knowledge。
 
 处理：
 
 ```bash
 make install-desktop
 make typecheck
+make package-backend
 make package-desktop
 ```
 
-说明：Packaging v1 只支持本地 macOS 开发打包，复用 `apps/desktop/node_modules/electron/dist/Electron.app`。如果曾使用 `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`，需要重新安装 Electron binary 后才能打包或启动 Electron shell。
+说明：Packaging v1 只支持本地 macOS 开发打包，复用 `apps/desktop/node_modules/electron/dist/Electron.app`，并要求先生成 backend binary。`make package-desktop` 会把 backend binary 和 bundled knowledge resources 打进 `.app`。如果曾使用 `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`，需要重新安装 Electron binary 后才能打包或启动 Electron shell。
 
 ### macOS unsigned app warning（macOS 未签名应用提示）
 
@@ -203,6 +204,7 @@ make package-desktop
 处理：
 
 ```bash
+make package-backend
 make package-desktop
 ```
 
@@ -214,19 +216,80 @@ apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app
 
 `release/`、`dist/` 和 `dist-electron/` 属于本地构建产物，不要提交到 git。
 
-### Packaged desktop still needs backend（打包桌面端仍需单独启动 backend）
+### 打包应用后端启动失败（Packaged app backend fails to start）
 
 现象：
 
-- 打包后的桌面 app 可以打开，但显示后端未连接或聊天请求失败。
+- 打包后的 `ReiLink.app` 可以打开，但显示后端未连接或聊天请求失败。
+- Settings / Local Data 或 Runtime 状态中显示 backend 启动失败、端口占用或 backend binary 缺失。
 
 处理：
+
+- 先查看 Settings 中显示的 backend 来源：external backend、configured binary、bundled binary、repo fallback 或 none。
+- 检查 8000 端口是否已经被其他进程占用：
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+```
+
+- 确认内置 backend binary 是否存在：
+
+```text
+ReiLink.app/Contents/Resources/backend/reilink-backend
+```
+
+- 如果要指定本地 backend binary，可设置 `REILINK_BACKEND_BINARY` 后重新打开 app。
+- 如果要让 packaged app 回退到 repo-local backend，可设置 `REILINK_PROJECT_ROOT` 指向 ReiLink 仓库根目录。
+- 如果 macOS 拦截未签名 App，先在 Finder 中 Control-click / 右键点击 `ReiLink.app` 后选择 Open，或在 macOS Privacy & Security 中允许打开。
+
+说明：当前 packaged app 会优先复用已经运行且健康的 `http://127.0.0.1:8000` backend；没有外部 backend 时，才会尝试启动指定 binary、内置 binary 或 repo fallback。
+
+### 本地数据目录（Local data directory）
+
+数据位置：
+
+```text
+~/Library/Application Support/ReiLink/data
+```
+
+处理：
+
+- 在 Settings 的“本地数据 / Local Data”中可以查看并打开本地数据目录。
+- memory / session / settings / logs 写入用户数据目录，不在 `.app/Contents/Resources` 内。
+- `.app` resources 只保存只读资源，例如 bundled knowledge 和 backend binary。
+- 如果需要清理演示状态，可使用 Settings 中的 Demo & Reset / Local Data controls。
+
+### 后端进程残留（Backend process residue）
+
+现象：
+
+- 退出 app 后，8000 端口仍然被占用。
+- `pgrep` 还能看到 uvicorn、backend 或 Electron 相关进程。
+
+检查：
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+pgrep -fl "uvicorn|app.main|ReiLink|Electron"
+```
+
+说明：
+
+- 如果 backend 是手动 `make dev-backend` 启动，App 退出后不会杀掉它，这是正确行为。
+- 如果 backend 是 App 自动启动，退出 App 后应释放 8000 端口。
+- 如果端口仍被占用，先确认占用进程是否是手动启动的开发 backend，再决定是否停止。
+
+开发模式手动启动 backend：
 
 ```bash
 make dev-backend
 ```
 
-说明：Packaging v1 只打包 Electron desktop，不内置 FastAPI backend。桌面端仍默认访问 `http://127.0.0.1:8000`。
+确认健康状态：
+
+```bash
+curl http://127.0.0.1:8000/api/health
+```
 
 ### GitHub push HTTP/1.1 workaround（GitHub push HTTP/1.1 兼容处理）
 
@@ -473,17 +536,18 @@ This is enough for renderer lint, unit tests, and build. Running the Electron sh
 Symptoms:
 
 - `make package-desktop` fails.
-- The error mentions a missing Electron runtime, `dist`, `dist-electron`, or `main.js`.
+- The error mentions a missing Electron runtime, `dist`, `dist-electron`, `main.js`, backend binary, or bundled knowledge.
 
 Fix:
 
 ```bash
 make install-desktop
 make typecheck
+make package-backend
 make package-desktop
 ```
 
-Packaging v1 supports local macOS packaging only and reuses `apps/desktop/node_modules/electron/dist/Electron.app`. If you previously installed with `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`, reinstall the Electron binary before packaging or running the Electron shell.
+Packaging v1 supports local macOS packaging only, reuses `apps/desktop/node_modules/electron/dist/Electron.app`, and expects the backend binary to be generated first. `make package-desktop` bundles the backend binary and bundled knowledge resources into the `.app`. If you previously installed with `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`, reinstall the Electron binary before packaging or running the Electron shell.
 
 ### macOS Unsigned App Warning
 
@@ -507,6 +571,7 @@ Symptoms:
 Fix:
 
 ```bash
+make package-backend
 make package-desktop
 ```
 
@@ -518,19 +583,80 @@ apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app
 
 `release/`, `dist/`, and `dist-electron/` are local build outputs and should not be committed.
 
-### Packaged Desktop Still Needs Backend
+### Packaged App Backend Fails To Start
 
 Symptoms:
 
-- The packaged desktop app opens, but shows the backend disconnected or chat requests fail.
+- The packaged `ReiLink.app` opens, but shows the backend disconnected or chat requests fail.
+- Settings / Local Data or Runtime status reports a backend startup failure, port conflict, or missing backend binary.
 
 Fix:
+
+- First check the backend source shown in Settings: external backend, configured binary, bundled binary, repo fallback, or none.
+- Check whether port 8000 is already occupied by another process:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+```
+
+- Confirm that the bundled backend binary exists:
+
+```text
+ReiLink.app/Contents/Resources/backend/reilink-backend
+```
+
+- To use a specific local backend binary, set `REILINK_BACKEND_BINARY` and reopen the app.
+- To let the packaged app fall back to the repo-local backend, set `REILINK_PROJECT_ROOT` to the ReiLink repository root.
+- If macOS blocks the unsigned app, Control-click / right-click `ReiLink.app` in Finder and choose Open, or allow it in macOS Privacy & Security.
+
+The packaged app first reuses a healthy external backend at `http://127.0.0.1:8000`. If none is available, it tries the configured binary, bundled binary, and repo fallback.
+
+### Local Data Directory
+
+Data location:
+
+```text
+~/Library/Application Support/ReiLink/data
+```
+
+Fix:
+
+- Settings "本地数据 / Local Data" shows and opens the local data directory.
+- Memory, session, settings, and logs are written to the user data directory, not inside `.app/Contents/Resources`.
+- `.app` resources only hold read-only resources such as bundled knowledge and the backend binary.
+- To clean demo state, use the Settings Demo & Reset / Local Data controls.
+
+### Backend Process Residue
+
+Symptoms:
+
+- Port 8000 is still occupied after quitting the app.
+- `pgrep` still shows uvicorn, backend, or Electron-related processes.
+
+Check:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+pgrep -fl "uvicorn|app.main|ReiLink|Electron"
+```
+
+Notes:
+
+- If the backend was started manually with `make dev-backend`, the app should not kill it on quit. That is expected.
+- If the backend was started automatically by the app, quitting the app should release port 8000.
+- If the port remains occupied, confirm whether it is a manually started development backend before stopping it.
+
+Manual backend startup in development:
 
 ```bash
 make dev-backend
 ```
 
-Packaging v1 only packages the Electron desktop app. It does not bundle the FastAPI backend. The desktop app still talks to `http://127.0.0.1:8000` by default.
+Health check:
+
+```bash
+curl http://127.0.0.1:8000/api/health
+```
 
 ### GitHub Push HTTP/1.1 Workaround
 

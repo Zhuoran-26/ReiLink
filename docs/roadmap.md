@@ -4,7 +4,7 @@
 
 ### 当前阶段：v0.2-pre productization 基本完成
 
-MVP v0.1 / v0.1.1 已完成，其中 `reilink-mvp-v0.1.1` 已作为公开展示版本发布。当前 `dev/codex-reilink` 上的 v0.2-pre productization 已基本完成，重点是首次配置、开发启动、公开展示、release readiness 和多游戏知识包维护。
+MVP v0.1 / v0.1.1 已完成，其中 `reilink-mvp-v0.1.1` 已作为公开展示版本发布。`reilink-v0.2-pre` 已作为预发布版本公开。当前 `dev/codex-reilink` 上的 v0.2-pre productization 已基本完成，重点是首次配置、开发启动、公开展示、standalone runtime、local data controls、release readiness 和多游戏知识包维护。
 
 MVP v0.1 / v0.1.1 已完成的核心能力：
 
@@ -28,12 +28,21 @@ v0.2-pre 已完成的产品化补齐：
 - Public screenshots and showcase assets。
 - Knowledge Pack Validation Tool。
 - Knowledge Pack Authoring Guide。
+- Backend bundle spike。
+- Standalone App Packaging v1。
+- Bundled backend binary。
+- Bundled knowledge resources。
+- Backend runtime priority 与自动启动 / 退出清理。
+- 用户数据目录：`~/Library/Application Support/ReiLink/data`。
+- Local Data Controls：Settings 中查看、打开和安全重置本地数据。
 - Release notes / roadmap / checklist sync。
 
 ### 下一阶段重点
 
-- v0.2 stable polish：修整体验细节、文档边界和 release checklist。
-- Installer / packaging：准备更易分发的桌面安装方式。
+- v0.2 stable packaging polish：修整 packaged app 体验、文档边界和 release checklist。
+- macOS installer / DMG：准备更易分发的桌面安装方式。
+- Code signing / notarization research：调研正式分发所需的签名、公证和权限边界。
+- Windows packaging：验证 Windows desktop packaging 与 backend binary 方案。
 - Knowledge pack expansion：扩展更多游戏 sample knowledge packs，同时保持轻量、可审查。
 - Optional RAG / vector retrieval：评估是否进入更强检索层，但不把 sample pack 阶段误写成完整 RAG。
 - Voice interaction：语音输入 / 输出。
@@ -59,7 +68,7 @@ v0.2-pre 已完成的产品化补齐：
 
 ### Current Stage: v0.2-pre Productization Mostly Complete
 
-MVP v0.1 / v0.1.1 is complete, and `reilink-mvp-v0.1.1` has been published as the public showcase version. The current `dev/codex-reilink` branch has mostly completed v0.2-pre productization, focused on first-run setup, developer startup, public presentation, release readiness, and multi-game knowledge pack maintenance.
+MVP v0.1 / v0.1.1 is complete, and `reilink-mvp-v0.1.1` has been published as the public showcase version. `reilink-v0.2-pre` has been published as a pre-release. The current `dev/codex-reilink` branch has mostly completed v0.2-pre productization, focused on first-run setup, developer startup, public presentation, standalone runtime, local data controls, release readiness, and multi-game knowledge pack maintenance.
 
 Core capabilities completed in MVP v0.1 / v0.1.1:
 
@@ -83,12 +92,21 @@ Productization work completed in v0.2-pre:
 - Public screenshots and showcase assets.
 - Knowledge Pack Validation Tool.
 - Knowledge Pack Authoring Guide.
+- Backend bundle spike.
+- Standalone App Packaging v1.
+- Bundled backend binary.
+- Bundled knowledge resources.
+- Backend runtime priority plus auto-start / quit cleanup.
+- User data directory: `~/Library/Application Support/ReiLink/data`.
+- Local Data Controls for showing, opening, and safely resetting local data.
 - Release notes / roadmap / checklist sync.
 
 ### Next Focus
 
-- v0.2 stable polish: refine experience details, documentation boundaries, and the release checklist.
-- Installer / packaging: prepare an easier desktop distribution path.
+- v0.2 stable packaging polish: refine packaged app experience, documentation boundaries, and the release checklist.
+- macOS installer / DMG: prepare an easier desktop distribution path.
+- Code signing / notarization research: investigate signing, notarization, and permission boundaries for formal distribution.
+- Windows packaging: validate the Windows desktop packaging and backend binary path.
 - Knowledge pack expansion: add more sample knowledge packs while keeping them lightweight and reviewable.
 - Optional RAG / vector retrieval: evaluate a stronger retrieval layer without mislabeling the current sample-pack stage as full RAG.
 - Voice interaction: speech input and output.

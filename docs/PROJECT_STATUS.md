@@ -2,15 +2,15 @@
 
 ## 中文
 
-Updated: 2026-06-01
+Updated: 2026-06-02
 
 ### 当前阶段
 
 当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。当前 `dev/codex-reilink` 已完成 v0.2-pre 的主要产品化补齐，适合后续准备 `reilink-v0.2-pre` tag / pre-release。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation。
 
-v0.2-pre 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示、多游戏知识维护和 release readiness 更清晰、更稳定。
+v0.2-pre 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示、standalone runtime、本地数据目录、多游戏知识维护和 release readiness 更清晰、更稳定。
 
 产品方向：
 
@@ -29,7 +29,7 @@ dev/codex-reilink
 
 `PROJECT_STATUS.md` 不维护实时 latest commit hash。需要确认最新提交、稳定基线或发布点时，以 `git log --oneline`、release tag 和当前 git history 为准。
 
-本文件只记录阶段性状态：MVP v0.1.1 已作为公开展示版本发布；当前开发继续在 `dev/codex-reilink` 上准备 v0.2-pre release sync。
+本文件只记录阶段性状态：MVP v0.1.1 已作为公开展示版本发布；v0.2-pre 已公开为 pre-release；当前开发继续在 `dev/codex-reilink` 上补齐 runtime / product foundation。精确状态以 git log / tag 为准。
 
 ### 已完成主要能力
 
@@ -66,15 +66,24 @@ dev/codex-reilink
 - Knowledge Pack Manifest。
 - Knowledge Pack Validation Tool。
 - Knowledge Pack Authoring Guide。
+- Backend bundle spike。
+- Standalone App Packaging v1。
+- Bundled backend binary。
+- Bundled knowledge resources。
+- Backend runtime priority：external backend、configured binary、bundled binary、repo fallback。
+- User data dir：packaged app 使用 `~/Library/Application Support/ReiLink/data`。
+- Local Data Controls：Settings 中查看 / 打开本地数据目录，并复用 Demo Reset / reset controls。
 
 ### 后续重点
 
-- v0.2 stable polish。
-- Installer / packaging。
+- v0.2 stable packaging polish。
+- Installer / DMG spike。
+- Code signing / notarization research。
+- Windows packaging。
 - Knowledge pack expansion。
 - Optional RAG / vector retrieval。
-- Voice interaction。
-- Overlay / Live2D。
+- Optional Voice interaction。
+- Optional Overlay / Live2D。
 - Multi-companion system。
 
 ### 当前数据范围
@@ -113,15 +122,15 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-01
+Updated: 2026-06-02
 
 ### Current Stage
 
 Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. The current `dev/codex-reilink` branch has completed the main v0.2-pre productization work and is ready for a later `reilink-v0.2-pre` tag / pre-release preparation pass.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation.
 
-The v0.2-pre focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, multi-game knowledge maintenance, and release readiness clearer and more stable.
+The v0.2-pre focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, standalone runtime, local data directories, multi-game knowledge maintenance, and release readiness clearer and more stable.
 
 Product direction:
 
@@ -140,7 +149,7 @@ dev/codex-reilink
 
 `PROJECT_STATUS.md` does not maintain a real-time latest commit hash. To confirm the latest commit, stable baseline, or release point, use `git log --oneline`, release tags, and the current git history.
 
-This file records stage-level status only: MVP v0.1.1 has been published as the public showcase version; active development continues on `dev/codex-reilink` for the v0.2-pre release sync.
+This file records stage-level status only: MVP v0.1.1 has been published as the public showcase version; v0.2-pre has been published as a pre-release; active development continues on `dev/codex-reilink` for runtime / product foundation. Exact status should come from git log / tags.
 
 ### Completed Major Capabilities
 
@@ -177,15 +186,24 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Knowledge Pack Manifest.
 - Knowledge Pack Validation Tool.
 - Knowledge Pack Authoring Guide.
+- Backend bundle spike.
+- Standalone App Packaging v1.
+- Bundled backend binary.
+- Bundled knowledge resources.
+- Backend runtime priority: external backend, configured binary, bundled binary, repo fallback.
+- User data dir: the packaged app uses `~/Library/Application Support/ReiLink/data`.
+- Local Data Controls: Settings can show / open the local data directory and reuse Demo Reset / reset controls.
 
 ### Upcoming Focus
 
-- v0.2 stable polish.
-- Installer / packaging.
+- v0.2 stable packaging polish.
+- Installer / DMG spike.
+- Code signing / notarization research.
+- Windows packaging.
 - Knowledge pack expansion.
 - Optional RAG / vector retrieval.
-- Voice interaction.
-- Overlay / Live2D.
+- Optional Voice interaction.
+- Optional Overlay / Live2D.
 - Multi-companion system.
 
 ### Current Data Scope
