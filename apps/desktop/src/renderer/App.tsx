@@ -335,6 +335,18 @@ const defaultAppSettings: AppSettings = {
   onboarding_last_seen_at: null
 };
 
+const hasAppSetting = (settings: Partial<AppSettings>, key: keyof AppSettings) =>
+  Object.prototype.hasOwnProperty.call(settings, key);
+
+const normalizeAppSettings = (
+  settings: Partial<AppSettings>,
+  fallback: Partial<AppSettings> = {}
+): AppSettings => ({
+  ...defaultAppSettings,
+  ...fallback,
+  ...settings
+});
+
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 const PROACTIVE_CHECK_INTERVAL_MS = 30000;
@@ -666,6 +678,20 @@ const debugListText = (item: unknown): string => {
 const truncateEventText = (value: string, maxLength = 64) =>
   value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
 
+const eventTextLength = (value: string) => `${value.length} 字`;
+
+const voiceStopReasonText = (reason?: string) => {
+  const labels: Record<string, string> = {
+    user_stop: "用户停止",
+    new_message: "新消息打断",
+    disabled: "已关闭",
+    unmount: "窗口关闭",
+    new_reply: "新回复开始"
+  };
+  if (!reason) return "已停止";
+  return labels[reason] ?? debugText(reason);
+};
+
 const eventSummary = (event: ReiLinkEvent) => {
   switch (event.type) {
     case "user_message_sent":
@@ -673,7 +699,7 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "assistant_reply_started":
       return "开始生成回复";
     case "assistant_reply_segment_shown":
-      return truncateEventText(event.text);
+      return `第 ${event.segment_index + 1} 段 / ${eventTextLength(event.text)}`;
     case "assistant_reply_completed":
       return "回复显示完成";
     case "proactive_message_shown":
@@ -701,7 +727,7 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "tts_completed":
       return `${event.character_count} 字`;
     case "tts_stopped":
-      return event.reason ? debugText(event.reason) : "已停止";
+      return voiceStopReasonText(event.reason);
     case "tts_error":
       return event.status ? debugText(event.status) : debugText(event.reason);
     default:
@@ -1103,7 +1129,13 @@ export function App() {
       setBackendStatus("connected");
       emitBackendStatusChanged("connected");
       setSetupStatus(currentSetupStatus);
-      setAppSettings(await api.settings());
+      const currentSettings = await api.settings();
+      setAppSettings((previous) =>
+        normalizeAppSettings(
+          currentSettings,
+          hasAppSetting(currentSettings, "voice_output") ? {} : { voice_output: previous.voice_output }
+        )
+      );
       setLocalDataStatus(await api.localDataStatus());
       setGameStatus(await api.gameStatus());
       const currentGameContext = await api.gameContext();
@@ -1137,7 +1169,12 @@ export function App() {
       setLastError("");
       setLastRawError("");
       const updated = await api.updateSettings(patch);
-      setAppSettings(updated);
+      setAppSettings((previous) =>
+        normalizeAppSettings(
+          updated,
+          hasAppSetting(updated, "voice_output") ? {} : { voice_output: patch.voice_output ?? previous.voice_output }
+        )
+      );
       if (patch.debug_panel === "hide") {
         setDebugOpen(false);
         setPromptPreviewOpen(false);
@@ -1457,7 +1494,12 @@ export function App() {
       onboarding_completed: false,
       onboarding_last_seen_at: null
     });
-    setAppSettings(updated);
+    setAppSettings((previous) =>
+      normalizeAppSettings(
+        updated,
+        hasAppSetting(updated, "voice_output") ? {} : { voice_output: previous.voice_output }
+      )
+    );
     setOnboardingDismissedThisSession(false);
     setOnboardingReopened(true);
     setDemoDocHintOpen(false);

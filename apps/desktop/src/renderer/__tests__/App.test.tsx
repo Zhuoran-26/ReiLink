@@ -679,6 +679,7 @@ const localDataStatus = {
 let appSettingsStore = { ...appSettings };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
+let omitVoiceOutputFromSettings = false;
 let scrollToMock: ReturnType<typeof vi.fn>;
 
 class MockSpeechSynthesisUtterance {
@@ -755,6 +756,7 @@ const resetSettingsResponse = () => {
   proactiveStatusStore = { ...proactiveStatus };
   setupStatusStore = { ...setupStatus };
   chatFailureResponse = null;
+  omitVoiceOutputFromSettings = false;
   proactiveCheckStore = {
     should_send: false,
     trigger_type: "none",
@@ -801,11 +803,18 @@ const gameContextResponse = (url: string, init?: RequestInit) => {
 };
 
 const settingsResponse = (url: string, init?: RequestInit) => {
+  const settingsPayload = () => {
+    if (!omitVoiceOutputFromSettings) return appSettingsStore;
+    const legacySettings = { ...appSettingsStore } as Partial<AppSettings>;
+    delete legacySettings.voice_output;
+    return legacySettings;
+  };
+
   if (url.endsWith("/api/settings") && init?.method === "POST") {
     appSettingsStore = { ...appSettingsStore, ...JSON.parse(String(init.body ?? "{}")) };
-    return Response.json(appSettingsStore);
+    return Response.json(settingsPayload());
   }
-  if (url.endsWith("/api/settings")) return Response.json(appSettingsStore);
+  if (url.endsWith("/api/settings")) return Response.json(settingsPayload());
   return null;
 };
 
@@ -1495,6 +1504,30 @@ describe("App", () => {
     );
   });
 
+  it("keeps Voice Output enabled when older settings responses omit the field", async () => {
+    const speech = installSpeechSynthesisMock();
+    omitVoiceOutputFromSettings = true;
+    render(<App />);
+
+    await userEvent.selectOptions(await screen.findByLabelText("语音输出 / Voice Output"), "on");
+    await waitFor(() => expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("on"));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_output: "on" }) })
+      )
+    );
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started", character_count: 16 })])
+    );
+  });
+
   it("stops active speech from the Stop Voice control", async () => {
     const speech = installSpeechSynthesisMock();
     appSettingsStore = { ...appSettingsStore, voice_output: "on" };
@@ -1557,6 +1590,8 @@ describe("App", () => {
           { type: "tts_started", timestamp: new Date().toISOString(), character_count: 16 },
           { type: "tts_completed", timestamp: new Date().toISOString(), character_count: 16 },
           { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "user_stop" },
+          { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "new_message" },
+          { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "disabled" },
           {
             type: "tts_error",
             timestamp: new Date().toISOString(),
@@ -1574,8 +1609,12 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("语音开始播放");
     expect(eventStream).toHaveTextContent("语音播放完成");
     expect(eventStream).toHaveTextContent("语音已停止");
+    expect(eventStream).toHaveTextContent("新消息打断");
+    expect(eventStream).toHaveTextContent("已关闭");
     expect(eventStream).toHaveTextContent("语音播放失败");
     expect(eventStream).toHaveTextContent("16 字");
+    expect(eventStream).not.toHaveTextContent("new_message");
+    expect(eventStream).not.toHaveTextContent("disabled");
     expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
@@ -1640,6 +1679,7 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("assistant_reply_segment_shown");
     expect(eventStream).not.toHaveTextContent("bundled");
     expect(eventStream).toHaveTextContent("Margit 怎么打？");
+    expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("services/backend/.env");
@@ -1693,7 +1733,8 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("正在启动");
     expect(eventStream).not.toHaveTextContent("starting");
     expect(eventStream).toHaveTextContent("我现在卡在女武神");
-    expect(eventStream).toHaveTextContent("先别贪刀。");
+    expect(eventStream).toHaveTextContent("第 1 段 / 5 字");
+    expect(eventStream).not.toHaveTextContent("先别贪刀。");
   });
 
   it("shows only the latest 20 Event Stream rows", async () => {
