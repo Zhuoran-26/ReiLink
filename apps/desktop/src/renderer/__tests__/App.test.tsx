@@ -634,6 +634,8 @@ const appSettings: AppSettings = {
   proactive_sensitivity: "low",
   auto_game_detection: "on",
   voice_output: "off",
+  voice_rate: 1,
+  voice_volume: 1,
   onboarding_completed: true,
   onboarding_last_seen_at: "2026-06-01T12:00:00.000Z"
 };
@@ -686,6 +688,7 @@ class MockSpeechSynthesisUtterance {
   text: string;
   rate = 1;
   volume = 1;
+  voice: SpeechSynthesisVoice | null = null;
   onend: ((event: SpeechSynthesisEvent) => void) | null = null;
   onerror: ((event: SpeechSynthesisErrorEvent) => void) | null = null;
 
@@ -694,15 +697,41 @@ class MockSpeechSynthesisUtterance {
   }
 }
 
-const installSpeechSynthesisMock = () => {
+const mockVoice = (lang: string, name = lang): SpeechSynthesisVoice =>
+  ({
+    default: false,
+    lang,
+    localService: true,
+    name,
+    voiceURI: name
+  }) as SpeechSynthesisVoice;
+
+const installSpeechSynthesisMock = (voices: SpeechSynthesisVoice[] = []) => {
+  const listeners = new Set<() => void>();
   const speak = vi.fn();
   const cancel = vi.fn();
+  const getVoices = vi.fn(() => voices);
+  const setVoices = (nextVoices: SpeechSynthesisVoice[]) => {
+    voices = nextVoices;
+    for (const listener of listeners) listener();
+  };
   vi.stubGlobal("SpeechSynthesisUtterance", MockSpeechSynthesisUtterance);
   Object.defineProperty(window, "speechSynthesis", {
     configurable: true,
-    value: { speak, cancel }
+    value: {
+      speak,
+      cancel,
+      getVoices,
+      addEventListener: vi.fn((event: string, listener: () => void) => {
+        if (event === "voiceschanged") listeners.add(listener);
+      }),
+      removeEventListener: vi.fn((event: string, listener: () => void) => {
+        if (event === "voiceschanged") listeners.delete(listener);
+      }),
+      onvoiceschanged: null
+    }
   });
-  return { speak, cancel };
+  return { speak, cancel, getVoices, setVoices };
 };
 
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
@@ -807,6 +836,8 @@ const settingsResponse = (url: string, init?: RequestInit) => {
     if (!omitVoiceOutputFromSettings) return appSettingsStore;
     const legacySettings = { ...appSettingsStore } as Partial<AppSettings>;
     delete legacySettings.voice_output;
+    delete legacySettings.voice_rate;
+    delete legacySettings.voice_volume;
     return legacySettings;
   };
 
@@ -979,6 +1010,10 @@ describe("App", () => {
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
     expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
+    expect(screen.getByText(/当前状态：已关闭/)).toBeInTheDocument();
+    expect(screen.getByText(/本地语音：不可用/)).toBeInTheDocument();
+    expect(screen.getByLabelText("语速 / Rate")).toHaveValue("1");
+    expect(screen.getByLabelText("音量 / Volume")).toHaveValue("1");
     expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("on");
     expect(screen.getByLabelText("自动启动本地后端")).toBeDisabled();
     expect(screen.getByLabelText("自动游戏检测")).toHaveValue("on");
@@ -1375,6 +1410,22 @@ describe("App", () => {
       )
     );
 
+    fireEvent.change(screen.getByLabelText("语速 / Rate"), { target: { value: "1.2" } });
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_rate: 1.2 }) })
+      )
+    );
+
+    fireEvent.change(screen.getByLabelText("音量 / Volume"), { target: { value: "0.6" } });
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_volume: 0.6 }) })
+      )
+    );
+
     await userEvent.selectOptions(screen.getByLabelText("自动游戏检测"), "off");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1479,17 +1530,57 @@ describe("App", () => {
     expect(eventBus.getRecentEvents(20)).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "tts_started" })]));
   });
 
-  it("speaks assistant replies when Voice Output is enabled", async () => {
-    const speech = installSpeechSynthesisMock();
+  it("does not crash and shows a readable status when local TTS is unavailable", async () => {
     appSettingsStore = { ...appSettingsStore, voice_output: "on" };
     render(<App />);
 
+    expect(await screen.findByText(/本地语音：不可用/)).toBeInTheDocument();
+    expect(screen.getByText("当前环境不支持本地语音输出。")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "tts_error", reason: "unavailable", status: "当前环境不支持" })
+      ])
+    );
+  });
+
+  it("updates the Voice Output status when system voices load later", async () => {
+    const speech = installSpeechSynthesisMock();
+    render(<App />);
+
+    expect(await screen.findByText(/等待系统语音列表/)).toBeInTheDocument();
+
+    act(() => {
+      speech.setVoices([mockVoice("zh-Hans")]);
+    });
+
+    expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
+  });
+
+  it("speaks assistant replies when Voice Output is enabled", async () => {
+    const speech = installSpeechSynthesisMock([
+      mockVoice("en-US"),
+      mockVoice("zh-Hans"),
+      mockVoice("zh-CN")
+    ]);
+    appSettingsStore = { ...appSettingsStore, voice_output: "on", voice_rate: 1.2, voice_volume: 0.6 };
+    render(<App />);
+
+    expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
 
     await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
-    expect(speech.speak.mock.calls[0][0]).toMatchObject({ text: "别急着翻滚。先看动作。再试一次。" });
+    expect(speech.speak.mock.calls[0][0]).toMatchObject({
+      text: "别急着翻滚。先看动作。再试一次。",
+      rate: 1.2,
+      volume: 0.6,
+      voice: expect.objectContaining({ lang: "zh-CN" })
+    });
     expect(screen.getAllByRole("button", { name: "停止语音 / Stop Voice" }).length).toBeGreaterThan(0);
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "tts_started", character_count: 16 })])
@@ -1517,15 +1608,35 @@ describe("App", () => {
         expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_output: "on" }) })
       )
     );
+    fireEvent.change(screen.getByLabelText("语速 / Rate"), { target: { value: "1.3" } });
+    await waitFor(() => expect(screen.getByLabelText("语速 / Rate")).toHaveValue("1.3"));
+    fireEvent.change(screen.getByLabelText("音量 / Volume"), { target: { value: "0.5" } });
+    await waitFor(() => expect(screen.getByLabelText("音量 / Volume")).toHaveValue("0.5"));
 
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
 
     await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0]).toMatchObject({ rate: 1.3, volume: 0.5 });
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "tts_started", character_count: 16 })])
     );
+  });
+
+  it("does not repeat speech for the same assistant reply after a rerender", async () => {
+    const speech = installSpeechSynthesisMock();
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    const { rerender } = render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+
+    rerender(<App />);
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
   });
 
   it("stops active speech from the Stop Voice control", async () => {
@@ -1613,8 +1724,10 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("已关闭");
     expect(eventStream).toHaveTextContent("语音播放失败");
     expect(eventStream).toHaveTextContent("16 字");
+    expect(eventStream).not.toHaveTextContent("user_stop");
     expect(eventStream).not.toHaveTextContent("new_message");
     expect(eventStream).not.toHaveTextContent("disabled");
+    expect(eventStream).not.toHaveTextContent("unavailable");
     expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");

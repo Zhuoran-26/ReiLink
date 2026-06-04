@@ -331,6 +331,8 @@ const defaultAppSettings: AppSettings = {
   proactive_sensitivity: "low",
   auto_game_detection: "on",
   voice_output: "off",
+  voice_rate: 1,
+  voice_volume: 1,
   onboarding_completed: false,
   onboarding_last_seen_at: null
 };
@@ -345,6 +347,12 @@ const normalizeAppSettings = (
   ...defaultAppSettings,
   ...fallback,
   ...settings
+});
+
+const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSettings, patch: Partial<AppSettings> = {}) => ({
+  voice_output: hasAppSetting(settings, "voice_output") ? settings.voice_output : patch.voice_output ?? previous.voice_output,
+  voice_rate: hasAppSetting(settings, "voice_rate") ? settings.voice_rate : patch.voice_rate ?? previous.voice_rate,
+  voice_volume: hasAppSetting(settings, "voice_volume") ? settings.voice_volume : patch.voice_volume ?? previous.voice_volume
 });
 
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
@@ -433,6 +441,8 @@ const labelMap: Record<string, string> = {
   knowledge_used_in_prompt: "已注入回复上下文",
   auto_game_detection: "自动游戏检测",
   voice_output: "语音输出",
+  voice_rate: "语速",
+  voice_volume: "音量",
   automatic_detected_result: "自动检测结果",
   llm_called: "是否调用 LLM",
   llm_event: "LLM 游戏事件",
@@ -451,6 +461,7 @@ const labelMap: Record<string, string> = {
   matched_game_id: "匹配游戏 ID",
   matched_topics: "相关主题",
   next_possible_trigger_at: "下次可能触发",
+  new_message: "新消息打断",
   parse_error: "解析错误",
   persona: "人格",
   persona_mode: "人格模式",
@@ -583,6 +594,7 @@ const valueMap: Record<string, string> = {
   user_is_typing: "正在输入",
   user_preference: "用户偏好",
   user_stop: "用户停止",
+  unavailable: "当前环境不支持",
   waiting_for_user_activity_after_proactive: "等待用户回应",
   weak: "较弱",
   current_game: "当前运行游戏",
@@ -962,6 +974,7 @@ export function App() {
   const lastGameSessionEventRef = useRef<string | null>(null);
   const lastKnowledgeEventRef = useRef<string | null>(null);
   const lastModelRouteEventRef = useRef<string | null>(null);
+  const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
 
   const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
     voiceOutput.stop(reason);
@@ -1133,7 +1146,7 @@ export function App() {
       setAppSettings((previous) =>
         normalizeAppSettings(
           currentSettings,
-          hasAppSetting(currentSettings, "voice_output") ? {} : { voice_output: previous.voice_output }
+          voiceSettingFallback(currentSettings, previous)
         )
       );
       setLocalDataStatus(await api.localDataStatus());
@@ -1172,7 +1185,7 @@ export function App() {
       setAppSettings((previous) =>
         normalizeAppSettings(
           updated,
-          hasAppSetting(updated, "voice_output") ? {} : { voice_output: patch.voice_output ?? previous.voice_output }
+          voiceSettingFallback(updated, previous, patch)
         )
       );
       if (patch.debug_panel === "hide") {
@@ -1421,8 +1434,12 @@ export function App() {
         });
       }
       eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
-      if (appSettings.voice_output === "on") {
-        voiceOutput.speak(segments.join("\n"));
+      if (appSettings.voice_output === "on" && !spokenAssistantReplyIdsRef.current.has(replyMessageId)) {
+        spokenAssistantReplyIdsRef.current.add(replyMessageId);
+        voiceOutput.speak(segments.join("\n"), {
+          rate: appSettings.voice_rate,
+          volume: appSettings.voice_volume
+        });
       }
       setLastInterimPlaceholderShown(placeholderShown);
       await refreshStatus({ emitPendingMemoryCreated: true });
@@ -1497,7 +1514,7 @@ export function App() {
     setAppSettings((previous) =>
       normalizeAppSettings(
         updated,
-        hasAppSetting(updated, "voice_output") ? {} : { voice_output: previous.voice_output }
+        voiceSettingFallback(updated, previous)
       )
     );
     setOnboardingDismissedThisSession(false);
@@ -2008,8 +2025,49 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <option value="on">开启</option>
                   </select>
                 </label>
-                {!voiceStatus.available && <p className="settingHint">当前环境不支持语音输出。</p>}
+                <p className="settingHint">
+                  当前状态：{appSettings.voice_output === "on" ? "已开启" : "已关闭"}；本地语音：
+                  {voiceStatus.available ? "可用" : "不可用"}。
+                </p>
+                {voiceStatus.available && (
+                  <p className="settingHint">
+                    语音选择：{voiceStatus.hasChineseVoice ? "优先使用中文语音" : voiceStatus.hasVoices ? "使用系统默认语音" : "等待系统语音列表"}。
+                  </p>
+                )}
+                {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
                 {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
+                <label className="settingRow">
+                  <span>语速 / Rate</span>
+                  <span className="rangeControl">
+                    <input
+                      aria-label="语速 / Rate"
+                      disabled={settingsBusy !== ""}
+                      max="1.3"
+                      min="0.7"
+                      step="0.1"
+                      type="range"
+                      value={appSettings.voice_rate}
+                      onChange={(event) => void updateAppSettings({ voice_rate: Number(event.target.value) })}
+                    />
+                    <strong>{appSettings.voice_rate.toFixed(1)}</strong>
+                  </span>
+                </label>
+                <label className="settingRow">
+                  <span>音量 / Volume</span>
+                  <span className="rangeControl">
+                    <input
+                      aria-label="音量 / Volume"
+                      disabled={settingsBusy !== ""}
+                      max="1"
+                      min="0"
+                      step="0.1"
+                      type="range"
+                      value={appSettings.voice_volume}
+                      onChange={(event) => void updateAppSettings({ voice_volume: Number(event.target.value) })}
+                    />
+                    <strong>{appSettings.voice_volume.toFixed(1)}</strong>
+                  </span>
+                </label>
                 {voiceStatus.active && (
                   <button
                     className="smallButton quiet"
@@ -2925,7 +2983,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             proactive_companion: appSettings.proactive_companion,
                             proactive_sensitivity: appSettings.proactive_sensitivity,
                             auto_game_detection: appSettings.auto_game_detection,
-                            voice_output: appSettings.voice_output
+                            voice_output: appSettings.voice_output,
+                            voice_rate: appSettings.voice_rate,
+                            voice_volume: appSettings.voice_volume
                           },
                           chat: {
                             intent: chatDebug.intent,

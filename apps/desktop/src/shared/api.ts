@@ -355,6 +355,8 @@ export type AppSettings = {
   proactive_sensitivity: "low" | "normal" | "high";
   auto_game_detection: "on" | "off";
   voice_output: "on" | "off";
+  voice_rate: number;
+  voice_volume: number;
   onboarding_completed: boolean;
   onboarding_last_seen_at: string | null;
 };
