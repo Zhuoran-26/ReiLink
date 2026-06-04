@@ -13,9 +13,9 @@ export type ReiLinkEvent =
   | { type: "model_routed"; timestamp: string; model?: string; route_reason?: string }
   | { type: "backend_status_changed"; timestamp: string; status: string }
   | { type: "runtime_status_changed"; timestamp: string; backend_source?: string; knowledge_source?: string }
-  | { type: "tts_started"; timestamp: string; character_count: number }
-  | { type: "tts_completed"; timestamp: string; character_count: number }
-  | { type: "tts_stopped"; timestamp: string; character_count?: number; reason?: string }
-  | { type: "tts_error"; timestamp: string; character_count?: number; reason?: string; status?: string };
+  | { type: "tts_started"; timestamp: string; character_count: number; source?: "assistant_reply" | "test_voice" }
+  | { type: "tts_completed"; timestamp: string; character_count: number; source?: "assistant_reply" | "test_voice" }
+  | { type: "tts_stopped"; timestamp: string; character_count?: number; reason?: string; source?: "assistant_reply" | "test_voice" }
+  | { type: "tts_error"; timestamp: string; character_count?: number; reason?: string; status?: string; source?: "assistant_reply" | "test_voice" };
 
 export type ReiLinkEventType = ReiLinkEvent["type"];

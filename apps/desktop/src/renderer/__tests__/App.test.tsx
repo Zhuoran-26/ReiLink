@@ -689,6 +689,8 @@ class MockSpeechSynthesisUtterance {
   rate = 1;
   volume = 1;
   voice: SpeechSynthesisVoice | null = null;
+  lang = "";
+  onstart: ((event: SpeechSynthesisEvent) => void) | null = null;
   onend: ((event: SpeechSynthesisEvent) => void) | null = null;
   onerror: ((event: SpeechSynthesisErrorEvent) => void) | null = null;
 
@@ -710,6 +712,7 @@ const installSpeechSynthesisMock = (voices: SpeechSynthesisVoice[] = []) => {
   const listeners = new Set<() => void>();
   const speak = vi.fn();
   const cancel = vi.fn();
+  const resume = vi.fn();
   const getVoices = vi.fn(() => voices);
   const setVoices = (nextVoices: SpeechSynthesisVoice[]) => {
     voices = nextVoices;
@@ -721,7 +724,11 @@ const installSpeechSynthesisMock = (voices: SpeechSynthesisVoice[] = []) => {
     value: {
       speak,
       cancel,
+      resume,
       getVoices,
+      paused: false,
+      pending: false,
+      speaking: false,
       addEventListener: vi.fn((event: string, listener: () => void) => {
         if (event === "voiceschanged") listeners.add(listener);
       }),
@@ -731,7 +738,7 @@ const installSpeechSynthesisMock = (voices: SpeechSynthesisVoice[] = []) => {
       onvoiceschanged: null
     }
   });
-  return { speak, cancel, getVoices, setVoices };
+  return { speak, cancel, resume, getVoices, setVoices };
 };
 
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
@@ -1012,6 +1019,8 @@ describe("App", () => {
     expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
     expect(screen.getByText(/当前状态：已关闭/)).toBeInTheDocument();
     expect(screen.getByText(/本地语音：不可用/)).toBeInTheDocument();
+    expect(screen.getByText(/播放状态：当前环境不支持本地语音输出/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeDisabled();
     expect(screen.getByLabelText("语速 / Rate")).toHaveValue("1");
     expect(screen.getByLabelText("音量 / Volume")).toHaveValue("1");
     expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("on");
@@ -1560,6 +1569,120 @@ describe("App", () => {
     expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
   });
 
+  it("plays a test voice from Settings without writing chat", async () => {
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    render(<App />);
+
+    expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
+    const chatPanel = screen.getByRole("region", { name: "聊天面板" });
+    await userEvent.click(screen.getByRole("button", { name: "测试语音 / Test Voice" }));
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0]).toMatchObject({
+      text: "你好，我是 Rei。语音输出测试。",
+      lang: "zh-CN",
+      voice: expect.objectContaining({ lang: "zh-CN" })
+    });
+    expect(within(chatPanel).queryByText("你好，我是 Rei。语音输出测试。")).not.toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({ method: "POST" })
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
+    });
+
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started", source: "test_voice" })])
+    );
+  });
+
+  it("falls back to the system default voice when voices are empty", async () => {
+    const speech = installSpeechSynthesisMock([]);
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    expect(await screen.findByText(/等待系统语音列表/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0]).toMatchObject({ lang: "zh-CN", voice: null });
+  });
+
+  it("emits TTS started only after the system reports playback started", () => {
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+
+    expect(voiceOutput.speak("你好", { source: "test_voice" })).toBe(true);
+    expect(voiceOutput.getStatus()).toMatchObject({ active: true, phase: "starting" });
+    expect(eventBus.getRecentEvents(20)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started" })])
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
+    });
+
+    expect(voiceOutput.getStatus()).toMatchObject({ active: true, phase: "playing" });
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started", source: "test_voice" })])
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onend?.({} as SpeechSynthesisEvent);
+    });
+
+    expect(voiceOutput.getStatus()).toMatchObject({ active: false, phase: "idle" });
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_completed", source: "test_voice" })])
+    );
+  });
+
+  it("reports a readable TTS error when playback never starts", () => {
+    vi.useFakeTimers();
+    installSpeechSynthesisMock([mockVoice("zh-CN")]);
+
+    expect(voiceOutput.speak("你好", { source: "test_voice" })).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(voiceOutput.getStatus()).toMatchObject({
+      active: false,
+      phase: "idle",
+      lastError: "语音没有开始，请检查系统声音输出或语音包"
+    });
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tts_error",
+          reason: "start_timeout",
+          status: "语音没有开始，请检查系统声音输出或语音包",
+          source: "test_voice"
+        })
+      ])
+    );
+  });
+
+  it("emits TTS error from the system speech error callback", () => {
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+
+    expect(voiceOutput.speak("你好", { source: "test_voice" })).toBe(true);
+    act(() => {
+      speech.speak.mock.calls[0][0].onerror?.({ error: "speech_error" } as unknown as SpeechSynthesisErrorEvent);
+    });
+
+    expect(voiceOutput.getStatus()).toMatchObject({ active: false, phase: "idle", lastError: "播放失败" });
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "tts_error", reason: "speech_error", status: "播放失败", source: "test_voice" })
+      ])
+    );
+  });
+
   it("speaks assistant replies when Voice Output is enabled", async () => {
     const speech = installSpeechSynthesisMock([
       mockVoice("en-US"),
@@ -1579,11 +1702,20 @@ describe("App", () => {
       text: "别急着翻滚。先看动作。再试一次。",
       rate: 1.2,
       volume: 0.6,
+      lang: "zh-CN",
       voice: expect.objectContaining({ lang: "zh-CN" })
     });
     expect(screen.getAllByRole("button", { name: "停止语音 / Stop Voice" }).length).toBeGreaterThan(0);
+    expect(eventBus.getRecentEvents(20)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started" })])
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
+    });
+
     expect(eventBus.getRecentEvents(20)).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "tts_started", character_count: 16 })])
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started", character_count: 16, source: "assistant_reply" })])
     );
 
     act(() => {
@@ -1619,6 +1751,9 @@ describe("App", () => {
 
     await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
     expect(speech.speak.mock.calls[0][0]).toMatchObject({ rate: 1.3, volume: 0.5 });
+    act(() => {
+      speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
+    });
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "tts_started", character_count: 16 })])
     );
@@ -1699,7 +1834,7 @@ describe("App", () => {
       <EventStreamPanel
         events={[
           { type: "tts_started", timestamp: new Date().toISOString(), character_count: 16 },
-          { type: "tts_completed", timestamp: new Date().toISOString(), character_count: 16 },
+          { type: "tts_completed", timestamp: new Date().toISOString(), character_count: 16, source: "test_voice" },
           { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "user_stop" },
           { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "new_message" },
           { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "disabled" },
@@ -1720,6 +1855,7 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("语音开始播放");
     expect(eventStream).toHaveTextContent("语音播放完成");
     expect(eventStream).toHaveTextContent("语音已停止");
+    expect(eventStream).toHaveTextContent("测试语音");
     expect(eventStream).toHaveTextContent("新消息打断");
     expect(eventStream).toHaveTextContent("已关闭");
     expect(eventStream).toHaveTextContent("语音播放失败");
@@ -1728,6 +1864,8 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("new_message");
     expect(eventStream).not.toHaveTextContent("disabled");
     expect(eventStream).not.toHaveTextContent("unavailable");
+    expect(eventStream).not.toHaveTextContent("test_voice");
+    expect(eventStream).not.toHaveTextContent("你好，我是 Rei。语音输出测试。");
     expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");

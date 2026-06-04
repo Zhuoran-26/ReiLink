@@ -1,9 +1,11 @@
 import { eventBus } from "./eventBus";
 
 export type VoiceStopReason = "user_stop" | "new_message" | "disabled" | "unmount" | "new_reply";
+export type VoiceSpeakSource = "assistant_reply" | "test_voice";
 
 export type VoiceOutputStatus = {
   active: boolean;
+  phase: "idle" | "starting" | "playing";
   available: boolean;
   lastError: string | null;
   hasVoices: boolean;
@@ -12,13 +14,18 @@ export type VoiceOutputStatus = {
 };
 
 type VoiceOutputListener = (status: VoiceOutputStatus) => void;
-type VoiceSpeakOptions = { rate?: number; volume?: number };
+type VoiceSpeakOptions = { rate?: number; volume?: number; source?: VoiceSpeakSource };
 
 type ActiveSpeech = {
   utterance: SpeechSynthesisUtterance;
   characterCount: number;
+  source: VoiceSpeakSource;
   stopped: boolean;
+  started: boolean;
+  startTimer: number | null;
 };
+
+const START_TIMEOUT_MS = 5000;
 
 const now = () => new Date().toISOString();
 
@@ -30,7 +37,8 @@ const reasonText = (reason: string) => {
     unmount: "窗口关闭",
     new_reply: "新回复开始",
     unavailable: "当前环境不支持",
-    speech_error: "播放失败"
+    speech_error: "播放失败",
+    start_timeout: "语音没有开始，请检查系统声音输出或语音包"
   };
   return labels[reason] ?? "播放失败";
 };
@@ -64,6 +72,7 @@ export class VoiceOutputController {
     const selectedVoice = this.selectVoice();
     return {
       active: Boolean(this.activeSpeech),
+      phase: this.activeSpeech ? (this.activeSpeech.started ? "playing" : "starting") : "idle",
       available: this.isAvailable(),
       lastError: this.lastError,
       hasVoices: this.voices.length > 0,
@@ -84,10 +93,11 @@ export class VoiceOutputController {
     const safeText = text.trim();
     if (!safeText) return false;
     const characterCount = safeText.length;
+    const source = options.source ?? "assistant_reply";
     this.prepareVoices();
     if (!this.isAvailable()) {
       this.lastError = "当前环境不支持语音输出。";
-      this.emitUnavailable(characterCount);
+      this.emitUnavailable(characterCount, source);
       this.notify();
       return false;
     }
@@ -101,19 +111,55 @@ export class VoiceOutputController {
     if (selectedVoice) {
       utterance.voice = selectedVoice;
     }
-    const activeSpeech: ActiveSpeech = { utterance, characterCount, stopped: false };
+    utterance.lang = selectedVoice?.lang ?? "zh-CN";
+    const activeSpeech: ActiveSpeech = {
+      utterance,
+      characterCount,
+      source,
+      stopped: false,
+      started: false,
+      startTimer: null
+    };
     this.activeSpeech = activeSpeech;
     this.lastError = null;
 
+    utterance.onstart = () => {
+      if (this.activeSpeech !== activeSpeech || activeSpeech.stopped) return;
+      activeSpeech.started = true;
+      this.clearStartTimer(activeSpeech);
+      eventBus.emit({
+        type: "tts_started",
+        timestamp: now(),
+        character_count: characterCount,
+        source
+      });
+      this.notify();
+    };
+
     utterance.onend = () => {
       if (this.activeSpeech !== activeSpeech || activeSpeech.stopped) return;
+      this.clearStartTimer(activeSpeech);
       this.activeSpeech = null;
-      eventBus.emit({ type: "tts_completed", timestamp: now(), character_count: characterCount });
+      if (!activeSpeech.started) {
+        this.lastError = reasonText("start_timeout");
+        eventBus.emit({
+          type: "tts_error",
+          timestamp: now(),
+          character_count: characterCount,
+          reason: "start_timeout",
+          status: this.lastError,
+          source
+        });
+        this.notify();
+        return;
+      }
+      eventBus.emit({ type: "tts_completed", timestamp: now(), character_count: characterCount, source });
       this.notify();
     };
 
     utterance.onerror = (event) => {
       if (this.activeSpeech !== activeSpeech || activeSpeech.stopped) return;
+      this.clearStartTimer(activeSpeech);
       this.activeSpeech = null;
       const reason = event.error || "speech_error";
       this.lastError = reasonText(reason);
@@ -122,14 +168,47 @@ export class VoiceOutputController {
         timestamp: now(),
         character_count: characterCount,
         reason,
-        status: this.lastError
+        status: this.lastError,
+        source
       });
       this.notify();
     };
 
-    eventBus.emit({ type: "tts_started", timestamp: now(), character_count: characterCount });
     this.notify();
-    window.speechSynthesis.speak(utterance);
+    activeSpeech.startTimer = window.setTimeout(() => {
+      if (this.activeSpeech !== activeSpeech || activeSpeech.stopped || activeSpeech.started) return;
+      this.activeSpeech = null;
+      this.lastError = reasonText("start_timeout");
+      eventBus.emit({
+        type: "tts_error",
+        timestamp: now(),
+        character_count: characterCount,
+        reason: "start_timeout",
+        status: this.lastError,
+        source
+      });
+      this.notify();
+    }, START_TIMEOUT_MS);
+    try {
+      if (window.speechSynthesis.paused && typeof window.speechSynthesis.resume === "function") {
+        window.speechSynthesis.resume();
+      }
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      this.clearStartTimer(activeSpeech);
+      this.activeSpeech = null;
+      this.lastError = reasonText("speech_error");
+      eventBus.emit({
+        type: "tts_error",
+        timestamp: now(),
+        character_count: characterCount,
+        reason: "speech_error",
+        status: this.lastError,
+        source
+      });
+      this.notify();
+      return false;
+    }
     return true;
   }
 
@@ -137,13 +216,15 @@ export class VoiceOutputController {
     if (!this.activeSpeech) return;
     const activeSpeech = this.activeSpeech;
     activeSpeech.stopped = true;
+    this.clearStartTimer(activeSpeech);
     this.activeSpeech = null;
     window.speechSynthesis?.cancel();
     eventBus.emit({
       type: "tts_stopped",
       timestamp: now(),
       character_count: activeSpeech.characterCount,
-      reason
+      reason,
+      source: activeSpeech.source
     });
     this.notify();
   }
@@ -151,6 +232,7 @@ export class VoiceOutputController {
   resetForTest() {
     if (this.activeSpeech) {
       this.activeSpeech.stopped = true;
+      this.clearStartTimer(this.activeSpeech);
     }
     this.activeSpeech = null;
     this.lastError = null;
@@ -199,7 +281,7 @@ export class VoiceOutputController {
     return [...this.voices].sort((left, right) => voicePriority(left) - voicePriority(right))[0];
   }
 
-  private emitUnavailable(characterCount: number) {
+  private emitUnavailable(characterCount: number, source: VoiceSpeakSource) {
     const currentTime = Date.now();
     if (currentTime - this.lastUnavailableEventAt < 3000) return;
     this.lastUnavailableEventAt = currentTime;
@@ -208,8 +290,15 @@ export class VoiceOutputController {
       timestamp: now(),
       character_count: characterCount,
       reason: "unavailable",
-      status: reasonText("unavailable")
+      status: reasonText("unavailable"),
+      source
     });
+  }
+
+  private clearStartTimer(activeSpeech: ActiveSpeech) {
+    if (activeSpeech.startTimer === null) return;
+    window.clearTimeout(activeSpeech.startTimer);
+    activeSpeech.startTimer = null;
   }
 
   private notify() {

@@ -15,6 +15,7 @@ import {
   Send,
   Settings,
   Sparkles,
+  Volume2,
   VolumeX,
   X
 } from "lucide-react";
@@ -360,6 +361,7 @@ const PLACEHOLDER_DELAY_MS = 3000;
 const PROACTIVE_CHECK_INTERVAL_MS = 30000;
 const AUTO_SCROLL_THRESHOLD_PX = 120;
 const EVENT_STREAM_LIMIT = 20;
+const TEST_VOICE_TEXT = "你好，我是 Rei。语音输出测试。";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -704,6 +706,11 @@ const voiceStopReasonText = (reason?: string) => {
   return labels[reason] ?? debugText(reason);
 };
 
+const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
+  if (source === "test_voice") return "测试语音";
+  return "";
+};
+
 const eventSummary = (event: ReiLinkEvent) => {
   switch (event.type) {
     case "user_message_sent":
@@ -735,13 +742,13 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "runtime_status_changed":
       return [debugText(event.backend_source), knowledgeSourceText(event.knowledge_source as BackendRuntimeStatus["knowledge_source"])].join(" / ");
     case "tts_started":
-      return `${event.character_count} 字`;
+      return [voiceEventSourceText(event.source), `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_completed":
-      return `${event.character_count} 字`;
+      return [voiceEventSourceText(event.source), `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_stopped":
-      return voiceStopReasonText(event.reason);
+      return [voiceEventSourceText(event.source), voiceStopReasonText(event.reason)].filter(Boolean).join(" / ");
     case "tts_error":
-      return event.status ? debugText(event.status) : debugText(event.reason);
+      return [voiceEventSourceText(event.source), event.status ? debugText(event.status) : debugText(event.reason)].filter(Boolean).join(" / ");
     default:
       return "event";
   }
@@ -775,6 +782,13 @@ const eventStreamTime = (timestamp: string) => {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return "时间未知";
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+};
+
+const voicePhaseText = (status: VoiceOutputStatus) => {
+  if (!status.available) return "当前环境不支持本地语音输出";
+  if (status.phase === "starting") return "正在准备播放";
+  if (status.phase === "playing") return "正在播放";
+  return "已停止";
 };
 
 export function EventStreamPanel({
@@ -979,6 +993,14 @@ export function App() {
   const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
     voiceOutput.stop(reason);
   }, []);
+
+  const testVoiceOutput = useCallback(() => {
+    voiceOutput.speak(TEST_VOICE_TEXT, {
+      rate: appSettings.voice_rate,
+      volume: appSettings.voice_volume,
+      source: "test_voice"
+    });
+  }, [appSettings.voice_rate, appSettings.voice_volume]);
 
   const isMessagesNearBottom = useCallback(() => {
     const element = messagesRef.current;
@@ -1438,7 +1460,8 @@ export function App() {
         spokenAssistantReplyIdsRef.current.add(replyMessageId);
         voiceOutput.speak(segments.join("\n"), {
           rate: appSettings.voice_rate,
-          volume: appSettings.voice_volume
+          volume: appSettings.voice_volume,
+          source: "assistant_reply"
         });
       }
       setLastInterimPlaceholderShown(placeholderShown);
@@ -2029,12 +2052,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   当前状态：{appSettings.voice_output === "on" ? "已开启" : "已关闭"}；本地语音：
                   {voiceStatus.available ? "可用" : "不可用"}。
                 </p>
+                <p className="settingHint">播放状态：{voicePhaseText(voiceStatus)}。</p>
                 {voiceStatus.available && (
                   <p className="settingHint">
                     语音选择：{voiceStatus.hasChineseVoice ? "优先使用中文语音" : voiceStatus.hasVoices ? "使用系统默认语音" : "等待系统语音列表"}。
                   </p>
                 )}
                 {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
+                <p className="settingHint">如果更换过系统语音包，请先点“测试语音”确认系统声音可用。</p>
                 {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
                 <label className="settingRow">
                   <span>语速 / Rate</span>
@@ -2079,6 +2104,16 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     停止语音
                   </button>
                 )}
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  aria-label="测试语音 / Test Voice"
+                  disabled={!voiceStatus.available}
+                  onClick={testVoiceOutput}
+                >
+                  <Volume2 size={14} />
+                  测试语音
+                </button>
               </div>
               <label className="settingRow">
                 <span>自动启动本地后端</span>
