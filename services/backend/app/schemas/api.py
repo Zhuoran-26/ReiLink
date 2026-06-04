@@ -295,6 +295,9 @@ class ChatDebugResponse(BaseModel):
     matched_topics: list[str] = Field(default_factory=list)
     snippets_count: int = 0
     snippet_titles: list[str] = Field(default_factory=list)
+    snippet_previews: list[str] = Field(default_factory=list)
+    matched_terms: list[str] = Field(default_factory=list)
+    result_scores: list[float] = Field(default_factory=list)
     knowledge_used_in_prompt: bool = False
 
 

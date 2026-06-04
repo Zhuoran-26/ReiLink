@@ -17,6 +17,10 @@ from app.modules.knowledge.retriever import KnowledgeSnippet
 
 logger = get_logger(__name__)
 
+KNOWLEDGE_CONTEXT_TITLE = "本地知识包检索结果 / Local Knowledge Pack Results"
+KNOWLEDGE_SNIPPET_LIMIT = 420
+KNOWLEDGE_CONTEXT_LIMIT = 1600
+
 
 @dataclass(frozen=True)
 class ProviderInfo:
@@ -189,7 +193,8 @@ class OpenAICompatibleProvider(LLMProvider):
                 {
                     "role": "system",
                     "content": (
-                        "以下游戏知识只作为事实参考。不要逐字照抄，不要输出 markdown 标题。"
+                        "以下本地游戏知识只作为事实参考。不要逐字照抄，不要输出 markdown 标题。"
+                        "如果检索结果和用户问题不相关，就忽略它。"
                         f"\n{knowledge}"
                     ),
                 }
@@ -367,16 +372,39 @@ def log_provider_state(event: str) -> ProviderInfo:
 
 
 def _knowledge_context(snippets: list[KnowledgeSnippet]) -> str:
-    return "\n".join(
-        f"- {normalize_terminology(item.title)}（{item.kind}）：{normalize_terminology(item.content)[:220]}"
-        for item in snippets
-    )
+    if not snippets:
+        return ""
+    lines = [KNOWLEDGE_CONTEXT_TITLE]
+    used = len(KNOWLEDGE_CONTEXT_TITLE)
+    for index, item in enumerate(snippets[:3], start=1):
+        terms = "、".join(item.matched_terms[:4])
+        term_text = f"；命中：{terms}" if terms else ""
+        content = _truncate_context_text(normalize_terminology(item.content), KNOWLEDGE_SNIPPET_LIMIT)
+        line = f"{index}. {normalize_terminology(item.title)}（{item.kind}{term_text}）：{content}"
+        projected = used + 1 + len(line)
+        if projected > KNOWLEDGE_CONTEXT_LIMIT:
+            remaining = KNOWLEDGE_CONTEXT_LIMIT - used - 1
+            if remaining <= 24:
+                break
+            line = _truncate_context_text(line, remaining)
+            lines.append(line)
+            break
+        lines.append(line)
+        used = projected
+    return "\n".join(lines)
 
 
 def estimate_prompt_tokens(system_prompt: str, user_message: str, snippets: list[KnowledgeSnippet]) -> int:
     knowledge = _knowledge_context(snippets)
     chars = len(system_prompt) + len(user_message) + len(knowledge)
     return max(1, chars // 2)
+
+
+def _truncate_context_text(text: str, limit: int) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: max(0, limit - 1)].rstrip()}…"
 
 
 def _first_tip(snippets: list[KnowledgeSnippet]) -> str | None:

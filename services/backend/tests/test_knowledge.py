@@ -54,6 +54,15 @@ def test_generic_retriever_matches_margit_for_current_game():
     assert "boss" in result.coverage
     assert result.last_updated == "2026-06-01"
     assert result.supported_games_count == 2
+    assert result.snippets[0].entry_id == result.snippets[0].source_id
+    assert result.snippets[0].pack_id == "elden_ring"
+    assert result.snippets[0].game_id == "elden_ring"
+    assert result.snippets[0].score > 0
+    assert result.snippets[0].matched_terms
+    assert len(result.snippets[0].content) <= 420
+    assert result.as_debug_dict()["snippet_previews"]
+    assert result.as_debug_dict()["matched_terms"]
+    assert result.as_debug_dict()["result_scores"]
 
 
 def test_game_catalog_matches_explicit_user_game_alias():
@@ -745,3 +754,55 @@ def test_generic_retriever_returns_at_most_three_snippets():
     )
 
     assert len(result.snippets) <= 3
+
+
+def test_snippet_preview_length_limit_is_enforced_for_long_entries(tmp_path):
+    games_dir = tmp_path / "games"
+    snippets_path = games_dir / "long_game" / "snippets.json"
+    snippets_path.parent.mkdir(parents=True)
+    snippets_path.write_text(
+        """
+[
+  {
+    "id": "long_boss",
+    "title": "Long Boss",
+    "kind": "boss_strategy",
+    "topics": ["long_game", "boss_strategy"],
+    "aliases": ["Long Boss"],
+    "summary": "%s"
+  }
+]
+"""
+        % ("Long Boss " + "very long content " * 80),
+        encoding="utf-8",
+    )
+    (games_dir / "catalog.json").write_text(
+        f"""
+{{
+  "games": [
+    {{
+      "game_id": "long_game",
+      "display_name": "长文本游戏",
+      "aliases": ["Long Game", "长文本游戏"],
+      "knowledge_game_id": "long_game",
+      "knowledge_path": "{snippets_path}",
+      "knowledge_available": true,
+      "support_status": "supported",
+      "enabled": true
+    }}
+  ]
+}}
+""",
+        encoding="utf-8",
+    )
+
+    result = GameKnowledgeRetriever(games_dir).retrieve(
+        current_game="长文本游戏",
+        user_message="Long Boss 怎么打",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert len(result.snippets[0].content) <= 420

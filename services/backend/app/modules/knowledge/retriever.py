@@ -18,6 +18,12 @@ class KnowledgeSnippet:
     content: str
     kind: str = "general"
     source_id: str | None = None
+    game_id: str | None = None
+    pack_id: str | None = None
+    entry_id: str | None = None
+    score: float = 0.0
+    matched_terms: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
     topics: list[str] = field(default_factory=list)
 
 
@@ -68,6 +74,9 @@ class KnowledgeRetrievalResult:
             "matched_topics": self.topics,
             "snippets_count": len(self.snippets),
             "snippet_titles": [snippet.title for snippet in self.snippets],
+            "snippet_previews": [snippet.content for snippet in self.snippets],
+            "matched_terms": _dedupe(term for snippet in self.snippets for term in snippet.matched_terms),
+            "result_scores": [snippet.score for snippet in self.snippets],
             "knowledge_used_in_prompt": self.matched and bool(self.snippets),
             "confidence": self.confidence,
             "fallback_reason": self.fallback_reason,
@@ -115,17 +124,17 @@ class GameKnowledgeRetriever:
         if not terms and not intent.startswith(f"{game_id}_"):
             return self._empty_from_match(game_match, "no_knowledge_match")
 
-        scored: list[tuple[int, KnowledgeSnippet]] = []
+        scored: list[KnowledgeSnippet] = []
         for entry in entries:
-            score = self._score_entry(entry, terms, intent, game_id)
+            score, matched_terms = self._score_entry(entry, terms, intent, game_id)
             if score <= 0:
                 continue
-            scored.append((score, self._snippet(entry, snippets_path, game_id)))
+            scored.append(self._snippet(entry, snippets_path, game_id, score, matched_terms))
 
-        scored.sort(key=lambda item: item[0], reverse=True)
-        snippets = [snippet for _, snippet in scored[: max(1, min(limit, 3))]]
+        scored.sort(key=lambda item: item.score, reverse=True)
+        snippets = scored[: max(1, min(limit, 3))]
         topics = _dedupe(topic for snippet in snippets for topic in snippet.topics)
-        confidence = min(1.0, round((scored[0][0] / 12), 2)) if scored else 0.0
+        confidence = min(1.0, round((scored[0].score / 12), 2)) if scored else 0.0
         manifest = self.catalog.load_manifest_for_game_id(game_id)
         return KnowledgeRetrievalResult(
             matched=bool(snippets),
@@ -203,40 +212,66 @@ class GameKnowledgeRetriever:
         return terms
 
     @staticmethod
-    def _score_entry(entry: dict[str, Any], terms: set[str], intent: str, game_id: str) -> int:
+    def _score_entry(entry: dict[str, Any], terms: set[str], intent: str, game_id: str) -> tuple[float, list[str]]:
         specific_terms = {term for term in terms if not _is_generic_strategy_term(term)}
-        searchable = " ".join(
-            str(part)
-            for part in (
-                entry.get("id"),
-                entry.get("title"),
-                entry.get("kind"),
-                entry.get("summary"),
-                " ".join(str(item) for item in entry.get("topics") or []),
-                " ".join(str(item) for item in entry.get("aliases") or []),
-            )
-        ).lower()
+        title = str(entry.get("title") or "").lower()
+        kind = str(entry.get("kind") or "").lower()
+        summary = str(entry.get("summary") or entry.get("content") or entry.get("body") or "").lower()
+        topics = " ".join(str(item) for item in entry.get("topics") or []).lower()
         aliases = [str(item).lower() for item in entry.get("aliases") or []]
-        score = sum(1 for term in specific_terms if term.lower() in searchable)
-        score += sum(5 for alias in aliases if alias and alias in " ".join(terms).lower())
+        headings = " ".join(
+            str(item.get("heading") or item.get("title") or "")
+            for item in entry.get("sections") or []
+            if isinstance(item, dict)
+        ).lower()
+        matched_terms: list[str] = []
+        score = 0.0
+        for term in specific_terms:
+            lower_term = term.lower()
+            term_score = 0.0
+            if lower_term in title:
+                term_score += 8
+            if any(lower_term == alias or lower_term in alias for alias in aliases):
+                term_score += 10
+            if lower_term in topics or lower_term in kind:
+                term_score += 5
+            if lower_term in headings:
+                term_score += 3
+            if lower_term in summary:
+                term_score += 1
+            if term_score > 0:
+                score += term_score
+                matched_terms.append(term)
+        joined_terms = " ".join(terms).lower()
+        score += sum(5 for alias in aliases if alias and alias in joined_terms)
         intent_tags = {str(item) for item in entry.get("intent_tags") or []}
         if score > 0 and intent in intent_tags:
             score += 3
         if score > 0 and intent.startswith(f"{game_id}_") and any(str(topic).startswith("boss") for topic in entry.get("topics") or []):
             score += 1
-        return score
+        return score, _dedupe(matched_terms)
 
     @staticmethod
-    def _snippet(entry: dict[str, Any], path: Path, game_id: str) -> KnowledgeSnippet:
+    def _snippet(entry: dict[str, Any], path: Path, game_id: str, score: float, matched_terms: list[str]) -> KnowledgeSnippet:
         source_id = str(entry.get("id") or entry.get("title") or "knowledge")
-        content = _truncate(normalize_terminology(str(entry.get("summary") or entry.get("content") or "")), 220)
+        topics = [str(topic) for topic in entry.get("topics") or [game_id]]
+        content = _truncate(normalize_terminology(str(entry.get("summary") or entry.get("content") or "")), 420)
         return KnowledgeSnippet(
             source=_source_label(path),
             source_id=source_id,
+            game_id=game_id,
+            pack_id=game_id,
+            entry_id=source_id,
             title=normalize_terminology(str(entry.get("title") or source_id)),
             content=content,
             kind=str(entry.get("kind") or "general"),
-            topics=[str(topic) for topic in entry.get("topics") or [game_id]],
+            score=round(score, 2),
+            matched_terms=matched_terms[:8],
+            metadata={
+                "topics": topics[:8],
+                "kind": str(entry.get("kind") or "general"),
+            },
+            topics=topics,
         )
 
     @staticmethod
@@ -278,7 +313,9 @@ def _truncate(text: str, limit: int) -> str:
     normalized = re.sub(r"\s+", " ", text).strip()
     if len(normalized) <= limit:
         return normalized
-    return f"{normalized[:limit].rstrip()}..."
+    if limit <= 3:
+        return normalized[:limit]
+    return f"{normalized[: limit - 3].rstrip()}..."
 
 
 def _dedupe(items: Any) -> list[str]:

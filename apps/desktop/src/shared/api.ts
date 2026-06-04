@@ -242,6 +242,9 @@ export type ChatDebugResponse = {
   matched_topics: string[];
   snippets_count: number;
   snippet_titles: string[];
+  snippet_previews: string[];
+  matched_terms: string[];
+  result_scores: number[];
   knowledge_used_in_prompt: boolean;
 };
 

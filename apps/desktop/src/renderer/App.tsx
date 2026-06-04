@@ -178,6 +178,9 @@ const emptyChatDebug: ChatDebugResponse = {
   matched_topics: [],
   snippets_count: 0,
   snippet_titles: [],
+  snippet_previews: [],
+  matched_terms: [],
+  result_scores: [],
   knowledge_used_in_prompt: false
 };
 
@@ -462,6 +465,7 @@ const labelMap: Record<string, string> = {
   matched_game_display_name: "匹配游戏",
   matched_game_id: "匹配游戏 ID",
   matched_topics: "相关主题",
+  matched_terms: "命中词",
   next_possible_trigger_at: "下次可能触发",
   new_message: "新消息打断",
   parse_error: "解析错误",
@@ -484,6 +488,8 @@ const labelMap: Record<string, string> = {
   session_focus_summary: "会话焦点",
   skip_reason: "跳过原因",
   snippet_titles: "命中的知识标题",
+  snippet_previews: "知识片段预览",
+  result_scores: "命中分数",
   snippets_count: "命中知识条数",
   support_status: "支持状态",
   supported_games_count: "已支持游戏数",
@@ -791,6 +797,25 @@ const voicePhaseText = (status: VoiceOutputStatus) => {
   return "已停止";
 };
 
+const safeProviderDebug = (debug: ProviderDebugResponse) => {
+  const safeDebug: Partial<ProviderDebugResponse> = { ...debug };
+  delete safeDebug.env_file_path;
+  return safeDebug;
+};
+
+const safeBackendRuntimeDebug = (status: BackendRuntimeStatus) => ({
+  backend_auto_start_enabled: status.backend_auto_start_enabled,
+  backend_app_mode: status.backend_app_mode,
+  backend_binary_exists: status.backend_binary_exists,
+  bundled_backend_exists: status.bundled_backend_exists,
+  backend_started_by_app: status.backend_started_by_app,
+  backend_started_from: status.backend_started_from,
+  backend_status: status.backend_status,
+  backend_runtime_mode: status.backend_runtime_mode,
+  backend_retry_count: status.backend_retry_count,
+  knowledge_source: status.knowledge_source
+});
+
 export function EventStreamPanel({
   events,
   open,
@@ -1079,13 +1104,17 @@ export function App() {
   }, []);
 
   const emitKnowledgeUsed = useCallback((currentChatDebug: ChatDebugResponse) => {
-    const topics = currentChatDebug.matched_topics.length > 0
+    let topics = currentChatDebug.matched_topics.length > 0
       ? currentChatDebug.matched_topics
       : currentChatDebug.snippet_titles;
     const hasKnowledgeResult = currentChatDebug.knowledge_used_in_prompt ||
       currentChatDebug.knowledge_matched ||
-      topics.length > 0;
+      topics.length > 0 ||
+      Boolean(currentChatDebug.request_started_at && currentChatDebug.knowledge_available);
     if (!hasKnowledgeResult) return;
+    if (topics.length === 0) {
+      topics = ["未命中本地知识"];
+    }
 
     const game = currentChatDebug.knowledge_game_display_name ??
       currentChatDebug.knowledge_game_id ??
@@ -2913,12 +2942,24 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{debugText(chatDebug.matched_topics)}</dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("matched_terms")}</dt>
+                        <dd>{debugText(chatDebug.matched_terms)}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("snippets_count")}</dt>
                         <dd>{chatDebug.snippets_count}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("snippet_titles")}</dt>
                         <dd>{debugText(chatDebug.snippet_titles)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("snippet_previews")}</dt>
+                        <dd>{debugText(chatDebug.snippet_previews)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("result_scores")}</dt>
+                        <dd>{debugText(chatDebug.result_scores)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("knowledge_used_in_prompt")}</dt>
@@ -2996,7 +3037,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                    <pre className="debugJson">
                       {JSON.stringify(
                         {
-                          provider_debug: providerDebug,
+                          provider_debug: safeProviderDebug(providerDebug),
                           setup_status: setupStatus,
                           proactive: proactiveStatus,
                           game_context: gameContext,
@@ -3007,7 +3048,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           memory_profile: memoryProfile,
                           pending_memory: pendingMemories,
                           prompt_preview: promptPreview,
-                          backend_runtime: backendRuntimeStatus,
+                          backend_runtime: safeBackendRuntimeDebug(backendRuntimeStatus),
                           settings: {
                             persona_mode: appSettings.persona_mode,
                             debug_panel: appSettings.debug_panel,
@@ -3055,6 +3096,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             matched_topics: chatDebug.matched_topics,
                             snippets_count: chatDebug.snippets_count,
                             snippet_titles: chatDebug.snippet_titles,
+                            snippet_previews: chatDebug.snippet_previews,
+                            matched_terms: chatDebug.matched_terms,
+                            result_scores: chatDebug.result_scores,
                             knowledge_used_in_prompt: chatDebug.knowledge_used_in_prompt,
                             fallback_reason: chatDebug.fallback_reason,
                             last_latency_ms: chatDebug.total_latency_ms,
@@ -3247,12 +3291,24 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <dd>{debugText(knowledgeSummary.matched_topics)}</dd>
                     </div>
                     <div>
+                      <dt>{formatDebugLabel("matched_terms")}</dt>
+                      <dd>{debugText(knowledgeSummary.matched_terms)}</dd>
+                    </div>
+                    <div>
                       <dt>{formatDebugLabel("snippets_count")}</dt>
                       <dd>{debugText(knowledgeSummary.snippets_count)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("snippet_titles")}</dt>
                       <dd>{debugText(knowledgeSummary.snippet_titles)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("snippet_previews")}</dt>
+                      <dd>{debugText(knowledgeSummary.snippet_previews)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("result_scores")}</dt>
+                      <dd>{debugText(knowledgeSummary.result_scores)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("knowledge_used_in_prompt")}</dt>

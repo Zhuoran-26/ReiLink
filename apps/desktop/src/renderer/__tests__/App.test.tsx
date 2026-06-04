@@ -254,6 +254,9 @@ const chatDebug = {
   matched_topics: ["margit", "boss_strategy"],
   snippets_count: 2,
   snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
+  snippet_previews: ["Margit 很多攻击会故意延迟。保持中距离。", "如果伤害明显不够，可以先强化武器。"],
+  matched_terms: ["margit", "恶兆妖鬼"],
+  result_scores: [18, 14],
   knowledge_used_in_prompt: true
 };
 
@@ -281,6 +284,9 @@ const unsupportedChatDebug = {
   matched_topics: [],
   snippets_count: 0,
   snippet_titles: [],
+  snippet_previews: [],
+  matched_terms: [],
+  result_scores: [],
   knowledge_used_in_prompt: false
 };
 
@@ -309,6 +315,9 @@ const hollowKnightChatDebug = {
   matched_topics: ["螳螂领主", "boss_strategy"],
   snippets_count: 1,
   snippet_titles: ["螳螂领主：节奏观察"],
+  snippet_previews: ["螳螂领主的威胁主要来自连续冲刺和下劈。"],
+  matched_terms: ["螳螂领主"],
+  result_scores: [18],
   knowledge_used_in_prompt: true
 };
 
