@@ -162,6 +162,7 @@ Transcript 策略：
 | `local_asr_ready` | 本地语音识别可用 | 本地语音识别可用 | 模型名摘要、设备摘要 |
 | `local_asr_model_missing` | 缺少本地语音模型 | 缺少语音模型 | 不显示完整路径 |
 | `local_asr_binary_missing` | 缺少本地识别程序 | 缺少识别程序 | 不显示完整路径 |
+| `local_asr_binary_not_executable` | 识别程序不可执行 | 识别程序不可执行 | 不显示完整路径 |
 | `local_asr_transcribing` | 正在识别 | 语音识别开始 | 耗时、音频时长摘要 |
 | `local_asr_completed` | 已填入输入框 | 识别完成 / N 字 | 不显示完整 transcript |
 | `local_asr_error` | 本地语音识别失败 | 语音识别失败 | 中文错误和安全状态 |
@@ -178,8 +179,10 @@ Transcript 策略：
 ## 1.7 后续实现任务拆分
 
 1. Local ASR config detection v1
-   - 目标：检测 binary path、model path 和用户模型目录是否存在。
-   - 风险：不要泄露完整路径；不要把 `.app` 当作可写目录。
+   - 当前已实现：读取 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`，检测 binary 是否存在且可执行、model 是否存在。
+   - 当前状态：`local_asr_not_configured`、`local_asr_binary_missing`、`local_asr_binary_not_executable`、`local_asr_model_missing`、`local_asr_ready`。
+   - 当前边界：只做配置检测，不调用 whisper 或任何 ASR binary，不录音，不转写，不上传音频，不下载模型，不把模型或用户数据写入 `.app`。
+   - UI 只显示中文摘要和安全文件名，不显示完整路径、raw env、raw subprocess output、API key、`.env` 或 raw prompt。
 
 2. Local ASR CLI probe v1
    - 目标：安全调用 `--help` 或轻量 probe，确认 binary 可执行。
@@ -204,4 +207,3 @@ Transcript 策略：
 7. Local ASR QA / privacy polish v1
    - 目标：补齐机器可读场景、manual QA 和隐私回归。
    - 风险：完整 transcript、完整路径或 raw subprocess output 泄露。
-

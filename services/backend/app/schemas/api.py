@@ -231,6 +231,28 @@ class LocalDataStatusResponse(BaseModel):
     writable: bool = False
 
 
+LocalAsrStatus = Literal[
+    "local_asr_not_configured",
+    "local_asr_binary_missing",
+    "local_asr_binary_not_executable",
+    "local_asr_model_missing",
+    "local_asr_ready",
+]
+
+
+class LocalAsrStatusResponse(BaseModel):
+    status: LocalAsrStatus
+    available: bool = False
+    binary_configured: bool = False
+    binary_present: bool = False
+    binary_executable: bool = False
+    model_configured: bool = False
+    model_present: bool = False
+    display_message: str
+    safe_binary_name: str | None = None
+    safe_model_name: str | None = None
+
+
 class MemoryProvenanceItem(BaseModel):
     source: Literal["profile", "episode", "current_session"]
     field: str

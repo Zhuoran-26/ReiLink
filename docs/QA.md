@@ -110,11 +110,19 @@
 
 - 当前 Web Speech Recognition 在 Electron packaged app 中可能暴露 API，但识别服务不可用；Voice Input v1 的预期是显示 `语音识别服务不可用` 或明确 unavailable fallback，不崩溃。
 - v1 仍保留输入框入口、安全 fallback、系统听写提示和“不自动发送”的边界。
-- 后续 local ASR QA 重点是：binary / model 配置检测、转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
+- 当前 Local ASR Config Detection v1 只检测配置，不执行 whisper / ASR binary，不录音，不转写，不上传音频，不下载模型，不把模型或用户数据写入 `.app`。
+- Local ASR 配置来源仅为 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`。
+- Settings / Debug Panel 应显示 `本地语音识别 / Local ASR` 状态；状态包括未配置、缺少本地识别程序、识别程序不可执行、缺少本地语音模型、已就绪。
+- 未配置：两个环境变量都为空，或只配置了识别程序但未配置模型；显示用户可读中文提示，Voice Input 仍回退到系统听写提示。
+- 缺少本地识别程序：配置了 binary 但文件不存在；UI 只显示安全文件名，不显示完整路径。
+- 识别程序不可执行：binary 文件存在但没有执行权限；UI 只显示中文状态和安全文件名，不显示完整路径。
+- 缺少本地语音模型：binary 可执行但 model 文件不存在；UI 只显示安全模型名，不显示完整路径。
+- 已就绪：binary 存在且可执行、model 存在；当前仍不会自动识别语音，也不会调用 whisper。
+- Local ASR QA 后续重点是：转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
 - 用户临时替代方案：使用系统听写直接输入到聊天框。
 - 默认不上传音频，不保存音频，不自动发送 transcript。
 - 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
-- Event Stream 不显示完整 transcript、完整音频路径、raw subprocess output、API key、`.env`、Authorization 或 raw prompt。
+- 当前配置检测不会产生音频或 transcript。Event Stream / Debug / Raw JSON 不显示完整 transcript、完整音频路径、raw subprocess output、API key、`.env`、Authorization、完整本地路径或 raw prompt。
 
 ### 5. Knowledge Retrieval 回归检查
 

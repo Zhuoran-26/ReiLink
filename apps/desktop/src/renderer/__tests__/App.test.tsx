@@ -11,6 +11,7 @@ import type {
   AppSettings,
   GameContextResponse,
   GameDetectionResponse,
+  LocalAsrStatus,
   ProactiveCheckResponse,
   ProactiveStatusResponse,
   SetupStatus
@@ -707,7 +708,21 @@ const localDataStatus = {
   writable: true
 } as const;
 
+const localAsrStatus: LocalAsrStatus = {
+  status: "local_asr_not_configured",
+  available: false,
+  binary_configured: false,
+  binary_present: false,
+  binary_executable: false,
+  model_configured: false,
+  model_present: false,
+  display_message: "本地语音识别未配置",
+  safe_binary_name: null,
+  safe_model_name: null
+};
+
 let appSettingsStore = { ...appSettings };
+let localAsrStatusStore: LocalAsrStatus = { ...localAsrStatus };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
 let omitVoiceOutputFromSettings = false;
@@ -891,6 +906,7 @@ const setChatScroll = (
 
 const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
+  localAsrStatusStore = { ...localAsrStatus };
   gameContextStore = { ...gameContext };
   proactiveStatusStore = { ...proactiveStatus };
   setupStatusStore = { ...setupStatus };
@@ -1030,6 +1046,7 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   if (setup) return setup;
   if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
   if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+  if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
   if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
   if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
   if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1717,6 +1734,69 @@ describe("App", () => {
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音识别功能：可用");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("麦克风权限：可请求");
     expect(screen.getByText(/语音输入：待命/)).toBeInTheDocument();
+  });
+
+  it("shows Local ASR not configured status in Voice Input settings", async () => {
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("本地语音识别 / Local ASR");
+    expect(voiceInputSettings).toHaveTextContent("未配置");
+    expect(voiceInputSettings).toHaveTextContent("本地语音识别未配置");
+    expect(voiceInputSettings).toHaveTextContent("当前仍不会自动识别语音");
+    expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto");
+    expect(voiceInputSettings).not.toHaveTextContent("REILINK_LOCAL_ASR_BINARY");
+    expect(voiceInputSettings).not.toHaveTextContent("REILINK_LOCAL_ASR_MODEL");
+  });
+
+  it("shows Local ASR model missing with safe file names only", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_model_missing",
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: false,
+      display_message: "缺少本地语音模型",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("缺少模型文件");
+    expect(voiceInputSettings).toHaveTextContent("缺少本地语音模型");
+    expect(voiceInputSettings).toHaveTextContent("识别程序：whisper-cli");
+    expect(voiceInputSettings).toHaveTextContent("模型：ggml-base.bin");
+    expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto/Library/Application Support/ReiLink/models");
+  });
+
+  it("shows Local ASR ready without changing Voice Input fallback behavior", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("已就绪");
+    expect(voiceInputSettings).toHaveTextContent("本地语音识别配置已就绪");
+    expect(voiceInputSettings).toHaveTextContent("当前仍不会自动识别语音");
+    expect(screen.getByRole("button", { name: "开始语音 / Start Voice" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
   });
 
   it("starts SpeechRecognition when Voice Input is supported", async () => {
@@ -2664,6 +2744,9 @@ describe("App", () => {
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
+        if (url.endsWith("/api/voice-input/local-asr/status")) {
+          return Promise.resolve(Response.json(localAsrStatusStore));
+        }
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -2726,6 +2809,9 @@ describe("App", () => {
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
+        if (url.endsWith("/api/voice-input/local-asr/status")) {
+          return Promise.resolve(Response.json(localAsrStatusStore));
+        }
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -2795,6 +2881,9 @@ describe("App", () => {
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
+        if (url.endsWith("/api/voice-input/local-asr/status")) {
+          return Promise.resolve(Response.json(localAsrStatusStore));
+        }
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -2968,6 +3057,7 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, status: "idle", game_id: null, game_name: null });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -3009,6 +3099,7 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "sekiro", game_name: "只狼" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -3055,6 +3146,7 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "hollow_knight", game_name: "空洞骑士" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -3102,6 +3194,7 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -3150,6 +3243,7 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: null, game_name: "星之门遗迹" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -3189,6 +3283,7 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -3265,6 +3360,7 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);

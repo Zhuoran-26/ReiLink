@@ -108,6 +108,26 @@ export type LocalDataStatus = {
   writable: boolean;
 };
 
+export type LocalAsrStatusValue =
+  | "local_asr_not_configured"
+  | "local_asr_binary_missing"
+  | "local_asr_binary_not_executable"
+  | "local_asr_model_missing"
+  | "local_asr_ready";
+
+export type LocalAsrStatus = {
+  status: LocalAsrStatusValue;
+  available: boolean;
+  binary_configured: boolean;
+  binary_present: boolean;
+  binary_executable: boolean;
+  model_configured: boolean;
+  model_present: boolean;
+  display_message: string;
+  safe_binary_name: string | null;
+  safe_model_name: string | null;
+};
+
 export type ProactiveTriggerType = "idle_silence" | "repeated_death" | "late_night" | "frustration_loop" | "none";
 
 export type ProactiveStatusResponse = {
@@ -411,6 +431,7 @@ export const api = {
   setupStatus: () => request<SetupStatus>("/api/setup/status"),
   settings: () => request<AppSettings>("/api/settings"),
   localDataStatus: () => request<LocalDataStatus>("/api/local-data/status"),
+  localAsrStatus: () => request<LocalAsrStatus>("/api/voice-input/local-asr/status"),
   updateSettings: (settings: AppSettingsUpdate) =>
     request<AppSettings>("/api/settings", {
       method: "POST",

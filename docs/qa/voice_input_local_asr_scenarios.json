@@ -30,6 +30,16 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
   },
   {
+    "id": "local-asr-binary-not-executable",
+    "category": "voice_input_local_asr",
+    "precondition": "A configured local ASR binary exists but is not executable",
+    "expected_status": "local_asr_binary_not_executable",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI shows 识别程序不可执行 without running the binary or showing the full configured path.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", "raw subprocess output"]
+  },
+  {
     "id": "local-asr-model-missing",
     "category": "voice_input_local_asr",
     "precondition": "A local ASR binary exists but the model file is missing",

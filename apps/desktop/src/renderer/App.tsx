@@ -30,6 +30,7 @@ import {
   GameDetectionResponse,
   GameSessionDebugResponse,
   GameStatus,
+  LocalAsrStatus,
   LocalDataStatus,
   MemoryDebugResponse,
   PendingMemory,
@@ -286,6 +287,19 @@ const emptyLocalDataStatus: LocalDataStatus = {
   pending_memory_count: 0,
   using_bundled_knowledge: false,
   writable: false
+};
+
+const emptyLocalAsrStatus: LocalAsrStatus = {
+  status: "local_asr_not_configured",
+  available: false,
+  binary_configured: false,
+  binary_present: false,
+  binary_executable: false,
+  model_configured: false,
+  model_present: false,
+  display_message: "本地语音识别未配置",
+  safe_binary_name: null,
+  safe_model_name: null
 };
 
 const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
@@ -907,6 +921,25 @@ const voiceInputRuntimeText = (status: VoiceInputStatus) => {
   return "未知";
 };
 
+const localAsrStatusText = (status: LocalAsrStatus) => {
+  const labels: Record<LocalAsrStatus["status"], string> = {
+    local_asr_not_configured: "未配置",
+    local_asr_binary_missing: "缺少本地识别程序",
+    local_asr_binary_not_executable: "识别程序不可执行",
+    local_asr_model_missing: "缺少模型文件",
+    local_asr_ready: "已就绪"
+  };
+  return labels[status.status] ?? "未配置";
+};
+
+const localAsrStatusDetail = (status: LocalAsrStatus) => {
+  if (status.status === "local_asr_ready") return "本地语音识别配置已就绪。当前仍不会自动识别语音。";
+  if (status.status === "local_asr_binary_missing") return "未找到本地识别程序。当前仍可使用系统听写输入到文本框。";
+  if (status.status === "local_asr_binary_not_executable") return "本地识别程序不可执行。当前仍可使用系统听写输入到文本框。";
+  if (status.status === "local_asr_model_missing") return "未找到本地语音模型。当前仍可使用系统听写输入到文本框。";
+  return "当前仍不会自动识别语音。后续版本会使用本地 ASR。";
+};
+
 const appendTranscriptToInput = (current: string, transcript: string) => {
   const text = transcript.trim();
   if (!text) return current;
@@ -1091,6 +1124,7 @@ export function App() {
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
   const [setupStatus, setSetupStatus] = useState<SetupStatus>(emptySetupStatus);
   const [localDataStatus, setLocalDataStatus] = useState<LocalDataStatus>(emptyLocalDataStatus);
+  const [localAsrStatus, setLocalAsrStatus] = useState<LocalAsrStatus>(emptyLocalAsrStatus);
   const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
@@ -1333,6 +1367,7 @@ export function App() {
         )
       );
       setLocalDataStatus(await api.localDataStatus());
+      setLocalAsrStatus(await api.localAsrStatus());
       setGameStatus(await api.gameStatus());
       const currentGameContext = await api.gameContext();
       setGameContext(currentGameContext);
@@ -2317,6 +2352,19 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <p className="settingHint">最近识别：{voiceInputStatus.lastTranscriptCharacterCount} 字。</p>
                 )}
                 {voiceInputStatus.lastError && <p className="settingHint">{voiceInputStatus.lastError}</p>}
+                <div className="settingRow static">
+                  <span>本地语音识别 / Local ASR</span>
+                  <strong>{localAsrStatusText(localAsrStatus)}</strong>
+                </div>
+                <p className="settingHint">{localAsrStatus.display_message}</p>
+                <p className="settingHint">{localAsrStatusDetail(localAsrStatus)}</p>
+                {(localAsrStatus.safe_binary_name || localAsrStatus.safe_model_name) && (
+                  <p className="settingHint">
+                    {localAsrStatus.safe_binary_name ? `识别程序：${debugText(localAsrStatus.safe_binary_name)}` : ""}
+                    {localAsrStatus.safe_binary_name && localAsrStatus.safe_model_name ? "。" : ""}
+                    {localAsrStatus.safe_model_name ? `模型：${debugText(localAsrStatus.safe_model_name)}` : ""}
+                  </p>
+                )}
               </div>
               <label className="settingRow">
                 <span>自动启动本地后端</span>
@@ -3027,6 +3075,28 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           {debugText(voiceInputStatus.lastError)}
                         </dd>
                       </div>
+                      <div>
+                        <dt>本地语音识别</dt>
+                        <dd>{localAsrStatusText(localAsrStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>本地识别说明</dt>
+                        <dd>{debugText(localAsrStatus.display_message)}</dd>
+                      </div>
+                      <div>
+                        <dt>识别程序</dt>
+                        <dd>{debugText(localAsrStatus.safe_binary_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>模型文件</dt>
+                        <dd>{debugText(localAsrStatus.safe_model_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>配置状态</dt>
+                        <dd>
+                          binary {localAsrStatus.binary_configured ? "已配置" : "未配置"} / model {localAsrStatus.model_configured ? "已配置" : "未配置"}
+                        </dd>
+                      </div>
                     </dl>
                   </section>
 
@@ -3316,6 +3386,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                               runtimeEnvironment: voiceInputRuntimeText(voiceInputStatus),
                               lastStartStatus: voiceInputStatus.diagnostics.lastStartStatus
                             }
+                          },
+                          local_asr: {
+                            status: localAsrStatus.status,
+                            available: localAsrStatus.available,
+                            binary_configured: localAsrStatus.binary_configured,
+                            binary_present: localAsrStatus.binary_present,
+                            binary_executable: localAsrStatus.binary_executable,
+                            model_configured: localAsrStatus.model_configured,
+                            model_present: localAsrStatus.model_present,
+                            display_message: localAsrStatus.display_message,
+                            safe_binary_name: localAsrStatus.safe_binary_name,
+                            safe_model_name: localAsrStatus.safe_model_name
                           },
                           chat: {
                             intent: chatDebug.intent,

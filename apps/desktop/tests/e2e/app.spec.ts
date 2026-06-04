@@ -21,6 +21,22 @@ test("mock backend chat flow works", async ({ page }) => {
       }
     })
   );
+  await page.route("**/api/voice-input/local-asr/status", (route) =>
+    route.fulfill({
+      json: {
+        status: "local_asr_not_configured",
+        available: false,
+        binary_configured: false,
+        binary_present: false,
+        binary_executable: false,
+        model_configured: false,
+        model_present: false,
+        display_message: "本地语音识别未配置",
+        safe_binary_name: null,
+        safe_model_name: null
+      }
+    })
+  );
   await page.route("**/api/settings", (route) =>
     route.fulfill({
       json: {
