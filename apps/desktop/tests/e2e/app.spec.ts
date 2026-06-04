@@ -304,7 +304,13 @@ test("mock backend chat flow works", async ({ page }) => {
         matched_topics: ["margit", "boss_strategy"],
         snippets_count: 2,
         snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
-        knowledge_used_in_prompt: true
+        snippet_previews: ["Margit 很多攻击会故意延迟。保持中距离。", "如果伤害明显不够，可以先强化武器。"],
+        matched_terms: ["margit", "恶兆妖鬼"],
+        result_scores: [18, 14],
+        knowledge_used_in_prompt: true,
+        knowledge_retrieval_status: "used",
+        knowledge_not_used_reason: null,
+        knowledge_retrieval_min_score: 8
       }
     })
   );
@@ -409,7 +415,7 @@ test("mock backend chat flow works", async ({ page }) => {
   );
 
   await page.goto("/");
-  await expect(page.getByText("已连接")).toBeVisible();
+  await expect(page.getByText("已连接", { exact: true })).toBeVisible();
   await expect(page.getByText("游戏：艾尔登法环")).toBeVisible();
   await page.getByLabel("聊天输入").fill("Margit 怎么打?");
   await page.getByRole("button", { name: /发送/i }).click();

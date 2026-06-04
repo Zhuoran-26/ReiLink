@@ -56,6 +56,9 @@ class ChatLatencyMetrics:
     matched_terms: list[str] | None = None
     result_scores: list[float] | None = None
     knowledge_used_in_prompt: bool = False
+    knowledge_retrieval_status: str = "not_found"
+    knowledge_not_used_reason: str | None = None
+    knowledge_retrieval_min_score: float = 8.0
 
     def as_dict(self) -> dict:
         data = asdict(self)

@@ -10,6 +10,13 @@ from app.core.config import settings
 from app.modules.elden_ring_knowledge.terminology import normalize_terminology
 from app.modules.knowledge.catalog import GameCatalog, GameMatchResult
 
+RETRIEVAL_STATUS_USED = "used"
+RETRIEVAL_STATUS_NOT_FOUND = "not_found"
+RETRIEVAL_STATUS_BELOW_THRESHOLD = "below_threshold"
+RETRIEVAL_STATUS_NO_PACK = "no_pack"
+RETRIEVAL_STATUS_NOT_GAME_RELATED = "not_game_related"
+MIN_RETRIEVAL_SCORE = 8.0
+
 
 @dataclass(frozen=True)
 class KnowledgeSnippet:
@@ -49,6 +56,9 @@ class KnowledgeRetrievalResult:
     knowledge_pack_status: str = "unknown"
     coverage: list[str] = field(default_factory=list)
     last_updated: str = "unknown"
+    retrieval_status: str = RETRIEVAL_STATUS_NOT_FOUND
+    not_used_reason: str | None = "no_knowledge_match"
+    retrieval_min_score: float = MIN_RETRIEVAL_SCORE
 
     def as_debug_dict(self) -> dict[str, Any]:
         return {
@@ -80,6 +90,9 @@ class KnowledgeRetrievalResult:
             "knowledge_used_in_prompt": self.matched and bool(self.snippets),
             "confidence": self.confidence,
             "fallback_reason": self.fallback_reason,
+            "retrieval_status": self.retrieval_status,
+            "not_used_reason": self.not_used_reason,
+            "retrieval_min_score": self.retrieval_min_score,
         }
 
 
@@ -109,20 +122,42 @@ class GameKnowledgeRetriever:
         )
         game_id = game_match.matched_game_id
         if not game_id:
-            return self._empty_from_match(game_match)
+            return self._empty_from_match(game_match, retrieval_status=RETRIEVAL_STATUS_NO_PACK)
         if not game_match.knowledge_available:
-            return self._empty_from_match(game_match, game_match.fallback_reason or "no_supported_knowledge")
+            return self._empty_from_match(
+                game_match,
+                game_match.fallback_reason or "no_supported_knowledge",
+                retrieval_status=RETRIEVAL_STATUS_NO_PACK,
+            )
         if not game_match.knowledge_path:
-            return self._empty_from_match(game_match, "no_supported_knowledge")
+            return self._empty_from_match(
+                game_match,
+                "no_supported_knowledge",
+                retrieval_status=RETRIEVAL_STATUS_NO_PACK,
+            )
+        if _is_not_game_related(user_message, intent, game_id, game_match.match_source):
+            return self._empty_from_match(
+                game_match,
+                "not_game_related",
+                retrieval_status=RETRIEVAL_STATUS_NOT_GAME_RELATED,
+            )
 
         snippets_path = self.catalog.resolve_knowledge_path(game_match.knowledge_path)
         if not snippets_path.is_file():
-            return self._empty_from_match(game_match, "knowledge_file_missing")
+            return self._empty_from_match(
+                game_match,
+                "knowledge_file_missing",
+                retrieval_status=RETRIEVAL_STATUS_NO_PACK,
+            )
 
         entries = self._load_entries(snippets_path)
         terms = self._terms(user_message, current_boss, game_session_state, intent)
         if not terms and not intent.startswith(f"{game_id}_"):
-            return self._empty_from_match(game_match, "no_knowledge_match")
+            return self._empty_from_match(
+                game_match,
+                "no_knowledge_match",
+                retrieval_status=RETRIEVAL_STATUS_NOT_FOUND,
+            )
 
         scored: list[KnowledgeSnippet] = []
         for entry in entries:
@@ -132,9 +167,22 @@ class GameKnowledgeRetriever:
             scored.append(self._snippet(entry, snippets_path, game_id, score, matched_terms))
 
         scored.sort(key=lambda item: item.score, reverse=True)
+        if not scored:
+            return self._empty_from_match(
+                game_match,
+                "no_knowledge_match",
+                retrieval_status=RETRIEVAL_STATUS_NOT_FOUND,
+            )
+        if scored[0].score < MIN_RETRIEVAL_SCORE:
+            return self._empty_from_match(
+                game_match,
+                "below_threshold",
+                confidence=min(1.0, round(scored[0].score / 12, 2)),
+                retrieval_status=RETRIEVAL_STATUS_BELOW_THRESHOLD,
+            )
         snippets = scored[: max(1, min(limit, 3))]
         topics = _dedupe(topic for snippet in snippets for topic in snippet.topics)
-        confidence = min(1.0, round((scored[0].score / 12), 2)) if scored else 0.0
+        confidence = min(1.0, round((scored[0].score / 12), 2))
         manifest = self.catalog.load_manifest_for_game_id(game_id)
         return KnowledgeRetrievalResult(
             matched=bool(snippets),
@@ -147,6 +195,8 @@ class GameKnowledgeRetriever:
             knowledge_path=game_match.knowledge_path,
             supported_games_count=game_match.supported_games_count,
             fallback_reason=None if snippets else "no_knowledge_match",
+            retrieval_status=RETRIEVAL_STATUS_USED,
+            not_used_reason=None,
             active_source=_active_source(game_match.match_source),
             knowledge_available=True,
             support_status=game_match.support_status,
@@ -276,25 +326,39 @@ class GameKnowledgeRetriever:
 
     @staticmethod
     def _empty(game_id: str | None = None) -> KnowledgeRetrievalResult:
-        return KnowledgeRetrievalResult(False, game_id, [], [], 0.0)
+        return KnowledgeRetrievalResult(
+            False,
+            game_id,
+            [],
+            [],
+            0.0,
+            retrieval_status=RETRIEVAL_STATUS_NO_PACK if game_id is None else RETRIEVAL_STATUS_NOT_FOUND,
+            not_used_reason="no_knowledge_match",
+        )
 
     def _empty_from_match(
         self,
         game_match: GameMatchResult,
         fallback_reason: str | None = None,
+        *,
+        confidence: float = 0.0,
+        retrieval_status: str | None = None,
     ) -> KnowledgeRetrievalResult:
+        reason = fallback_reason or game_match.fallback_reason or "no_knowledge_match"
         manifest = self.catalog.load_manifest_for_game_id(game_match.matched_game_id)
         return KnowledgeRetrievalResult(
             matched=False,
             game_id=game_match.matched_game_id,
             topics=[],
             snippets=[],
-            confidence=0.0,
+            confidence=confidence,
             game_display_name=game_match.matched_game_display_name,
             match_source=game_match.match_source,
             knowledge_path=game_match.knowledge_path,
             supported_games_count=game_match.supported_games_count,
-            fallback_reason=fallback_reason or game_match.fallback_reason or "no_knowledge_match",
+            fallback_reason=reason,
+            retrieval_status=retrieval_status or _status_from_fallback(reason),
+            not_used_reason=reason,
             active_source=_active_source(game_match.match_source),
             knowledge_available=game_match.knowledge_available,
             support_status=game_match.support_status,
@@ -374,6 +438,64 @@ def _should_include_session_terms(user_message: str, intent: str) -> bool:
     return any(signal in compact for signal in signals)
 
 
+def _is_not_game_related(user_message: str, intent: str, game_id: str, match_source: str | None) -> bool:
+    if intent.startswith(f"{game_id}_"):
+        return False
+    compact = re.sub(r"\s+", "", user_message.lower())
+    if _should_include_session_terms(user_message, intent):
+        return False
+    if match_source in {"user_switch", "user_message", "alias"} and _has_game_signal(compact):
+        return False
+    casual_patterns = (
+        "今天有点累",
+        "今天有点困",
+        "你在吗",
+        "在吗",
+        "陪我聊",
+        "刚才打得好烦",
+        "好烦",
+        "我先休息",
+        "先休息",
+        "hello",
+        "谢谢",
+        "謝謝",
+    )
+    if any(pattern in compact for pattern in casual_patterns):
+        return True
+    if intent in {"identity_question", "casual_chat"} and match_source in {"current_game", "process", "window_title", "manual"}:
+        return not _has_game_signal(compact)
+    return False
+
+
+def _has_game_signal(compact_text: str) -> bool:
+    signals = (
+        "怎么打",
+        "怎麼打",
+        "怎么躲",
+        "怎麼躲",
+        "在哪",
+        "哪里",
+        "哪裡",
+        "路线",
+        "路線",
+        "地图",
+        "地圖",
+        "护符",
+        "護符",
+        "回血",
+        "装备",
+        "裝備",
+        "武器",
+        "boss",
+        "卡在",
+        "卡住",
+        "打不过",
+        "打不過",
+        "死了",
+    )
+    return any(signal in compact_text for signal in signals)
+
+
 def _is_generic_strategy_term(term: str) -> bool:
     return term.lower() in {
         "strategy",
@@ -386,3 +508,20 @@ def _is_generic_strategy_term(term: str) -> bool:
         "怎么躲",
         "怎麼躲",
     }
+
+
+def _status_from_fallback(fallback_reason: str | None) -> str:
+    if fallback_reason == "below_threshold":
+        return RETRIEVAL_STATUS_BELOW_THRESHOLD
+    if fallback_reason == "not_game_related":
+        return RETRIEVAL_STATUS_NOT_GAME_RELATED
+    if fallback_reason in {
+        "no_game_detected",
+        "no_active_game",
+        "unknown_game",
+        "no_supported_knowledge",
+        "knowledge_disabled",
+        "knowledge_file_missing",
+    }:
+        return RETRIEVAL_STATUS_NO_PACK
+    return RETRIEVAL_STATUS_NOT_FOUND

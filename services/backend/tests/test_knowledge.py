@@ -60,9 +60,12 @@ def test_generic_retriever_matches_margit_for_current_game():
     assert result.snippets[0].score > 0
     assert result.snippets[0].matched_terms
     assert len(result.snippets[0].content) <= 420
+    assert result.retrieval_status == "used"
+    assert result.not_used_reason is None
     assert result.as_debug_dict()["snippet_previews"]
     assert result.as_debug_dict()["matched_terms"]
     assert result.as_debug_dict()["result_scores"]
+    assert result.as_debug_dict()["retrieval_status"] == "used"
 
 
 def test_game_catalog_matches_explicit_user_game_alias():
@@ -353,6 +356,7 @@ def test_hollow_knight_current_game_does_not_match_unrelated_boss():
     assert result.knowledge_available is True
     assert result.snippets == []
     assert result.fallback_reason == "no_knowledge_match"
+    assert result.retrieval_status == "not_found"
 
 
 def test_manual_override_elden_ring_does_not_use_hollow_knight_snippets():
@@ -409,6 +413,7 @@ def test_planned_game_query_does_not_use_elden_ring_snippets():
     assert result.knowledge_available is False
     assert result.snippets == []
     assert result.fallback_reason == "no_supported_knowledge"
+    assert result.retrieval_status == "no_pack"
 
 
 def test_explicit_user_switch_overrides_session_and_detector_game():
@@ -546,6 +551,62 @@ def test_generic_retriever_ignores_non_game_chat():
 
     assert result.matched is False
     assert result.snippets == []
+    assert result.retrieval_status == "not_game_related"
+    assert result.not_used_reason == "not_game_related"
+
+
+def test_generic_retriever_does_not_use_below_threshold_match(tmp_path):
+    games_dir = tmp_path / "games"
+    snippets_path = games_dir / "weak_game" / "snippets.json"
+    snippets_path.parent.mkdir(parents=True)
+    snippets_path.write_text(
+        """
+[
+  {
+    "id": "weak_note",
+    "title": "General note",
+    "kind": "general",
+    "topics": ["weak_game"],
+    "aliases": [],
+    "summary": "needle appears only once in body text."
+  }
+]
+""",
+        encoding="utf-8",
+    )
+    (games_dir / "catalog.json").write_text(
+        f"""
+{{
+  "games": [
+    {{
+      "game_id": "weak_game",
+      "display_name": "弱命中游戏",
+      "aliases": ["Weak Game"],
+      "knowledge_game_id": "weak_game",
+      "knowledge_path": "{snippets_path}",
+      "knowledge_available": true,
+      "support_status": "supported",
+      "enabled": true
+    }}
+  ]
+}}
+""",
+        encoding="utf-8",
+    )
+
+    result = GameKnowledgeRetriever(games_dir).retrieve(
+        current_game="弱命中游戏",
+        user_message="needle",
+        current_boss=None,
+        game_session_state={},
+        intent="weak_game_general_help",
+    )
+
+    assert result.matched is False
+    assert result.snippets == []
+    assert result.retrieval_status == "below_threshold"
+    assert result.not_used_reason == "below_threshold"
+    assert result.confidence > 0
 
 
 def test_current_boss_context_is_used_for_followup_game_message():
@@ -573,7 +634,8 @@ def test_current_boss_context_is_not_used_for_unrelated_preference():
     assert result.matched is False
     assert result.game_id == "elden_ring"
     assert result.snippets == []
-    assert result.fallback_reason == "no_knowledge_match"
+    assert result.fallback_reason == "not_game_related"
+    assert result.retrieval_status == "not_game_related"
 
 
 def test_generic_retriever_falls_back_for_unsupported_game():
@@ -643,6 +705,7 @@ def test_unknown_game_returns_no_game_detected():
     assert result.matched is False
     assert result.game_id is None
     assert result.fallback_reason == "no_game_detected"
+    assert result.retrieval_status == "no_pack"
 
 
 def test_knowledge_disabled_does_not_inject_snippets(tmp_path):

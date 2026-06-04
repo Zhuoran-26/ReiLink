@@ -257,7 +257,10 @@ const chatDebug = {
   snippet_previews: ["Margit 很多攻击会故意延迟。保持中距离。", "如果伤害明显不够，可以先强化武器。"],
   matched_terms: ["margit", "恶兆妖鬼"],
   result_scores: [18, 14],
-  knowledge_used_in_prompt: true
+  knowledge_used_in_prompt: true,
+  knowledge_retrieval_status: "used",
+  knowledge_not_used_reason: null,
+  knowledge_retrieval_min_score: 8
 };
 
 const unsupportedChatDebug = {
@@ -287,7 +290,10 @@ const unsupportedChatDebug = {
   snippet_previews: [],
   matched_terms: [],
   result_scores: [],
-  knowledge_used_in_prompt: false
+  knowledge_used_in_prompt: false,
+  knowledge_retrieval_status: "no_pack",
+  knowledge_not_used_reason: "no_supported_knowledge",
+  knowledge_retrieval_min_score: 8
 };
 
 const hollowKnightChatDebug = {
@@ -318,7 +324,10 @@ const hollowKnightChatDebug = {
   snippet_previews: ["螳螂领主的威胁主要来自连续冲刺和下劈。"],
   matched_terms: ["螳螂领主"],
   result_scores: [18],
-  knowledge_used_in_prompt: true
+  knowledge_used_in_prompt: true,
+  knowledge_retrieval_status: "used",
+  knowledge_not_used_reason: null,
+  knowledge_retrieval_min_score: 8
 };
 
 const unknownChatDebug = {
@@ -420,6 +429,9 @@ const promptPreview = {
     snippets_count: 2,
     snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
     knowledge_used_in_prompt: true,
+    retrieval_status: "used",
+    not_used_reason: null,
+    retrieval_min_score: 8,
     confidence: 0.83,
     fallback_reason: null
   },
@@ -458,6 +470,9 @@ const unsupportedPromptPreview = {
     snippets_count: 0,
     snippet_titles: [],
     knowledge_used_in_prompt: false,
+    retrieval_status: "no_pack",
+    not_used_reason: "no_supported_knowledge",
+    retrieval_min_score: 8,
     confidence: 0,
     fallback_reason: "no_supported_knowledge"
   }
@@ -491,6 +506,9 @@ const hollowKnightPromptPreview = {
     snippets_count: 1,
     snippet_titles: ["螳螂领主：节奏观察"],
     knowledge_used_in_prompt: true,
+    retrieval_status: "used",
+    not_used_reason: null,
+    retrieval_min_score: 8,
     confidence: 0.83,
     fallback_reason: null
   }
@@ -514,6 +532,7 @@ const unknownPromptPreview = {
     knowledge_pack_status: "unknown",
     coverage: [],
     last_updated: "unknown",
+    not_used_reason: "unknown_game",
     fallback_reason: "unknown_game"
   }
 };
@@ -1935,6 +1954,8 @@ describe("App", () => {
     );
     expect(eventStream).toHaveTextContent("用户发送消息");
     expect(eventStream).toHaveTextContent("Rei 显示回复片段");
+    expect(eventStream).toHaveTextContent("使用游戏知识");
+    expect(eventStream).toHaveTextContent("已使用本地知识");
     expect(eventStream).not.toHaveTextContent("user_message_sent");
     expect(eventStream).not.toHaveTextContent("assistant_reply_segment_shown");
     expect(eventStream).not.toHaveTextContent("bundled");
@@ -1943,6 +1964,38 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("services/backend/.env");
+  });
+
+  it("shows readable knowledge retrieval reasons in Event Stream", () => {
+    render(
+      <EventStreamPanel
+        events={[
+          {
+            type: "knowledge_used",
+            timestamp: new Date().toISOString(),
+            game: "艾尔登法环",
+            topics: ["相关性不足，未使用", "这次不是游戏知识问题"]
+          },
+          {
+            type: "knowledge_used",
+            timestamp: new Date().toISOString(),
+            topics: ["未命中本地知识"]
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).toHaveTextContent("使用游戏知识");
+    expect(eventStream).toHaveTextContent("艾尔登法环 / 相关性不足，未使用、这次不是游戏知识问题");
+    expect(eventStream).toHaveTextContent("未命中本地知识");
+    expect(eventStream).not.toHaveTextContent("无 / 未命中本地知识");
+    expect(eventStream).not.toHaveTextContent("below_threshold");
+    expect(eventStream).not.toHaveTextContent("not_game_related");
+    expect(eventStream).not.toHaveTextContent("raw_prompt");
+    expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
   });
 
   it("shows an empty Event Stream state when there are no events", () => {
@@ -2464,6 +2517,9 @@ describe("App", () => {
     expect(screen.getAllByText("当前来源").length).toBeGreaterThan(0);
     expect(screen.getAllByText("知识库状态").length).toBeGreaterThan(0);
     expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("检索结果").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("未使用原因").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("已使用本地知识").length).toBeGreaterThan(0);
     expect(screen.getAllByText("相关主题").length).toBeGreaterThan(0);
     expect(screen.getAllByText("命中知识条数").length).toBeGreaterThan(0);
     expect(screen.getAllByText("命中的知识标题").length).toBeGreaterThan(0);
@@ -2494,6 +2550,7 @@ describe("App", () => {
     expect(screen.getByText("会话焦点")).toBeInTheDocument();
     expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
     expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("检索结果").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Boss 攻略").length).toBeGreaterThan(0);
     expect(screen.getByText("记忆摘要")).toBeInTheDocument();

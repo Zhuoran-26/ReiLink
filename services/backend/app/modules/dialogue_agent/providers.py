@@ -194,7 +194,7 @@ class OpenAICompatibleProvider(LLMProvider):
                     "role": "system",
                     "content": (
                         "以下本地游戏知识只作为事实参考。不要逐字照抄，不要输出 markdown 标题。"
-                        "如果检索结果和用户问题不相关，就忽略它。"
+                        "如果检索结果和用户问题不相关，就忽略它；没有写到的信息不要编。"
                         f"\n{knowledge}"
                     ),
                 }

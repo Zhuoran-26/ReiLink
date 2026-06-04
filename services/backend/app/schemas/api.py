@@ -299,6 +299,9 @@ class ChatDebugResponse(BaseModel):
     matched_terms: list[str] = Field(default_factory=list)
     result_scores: list[float] = Field(default_factory=list)
     knowledge_used_in_prompt: bool = False
+    knowledge_retrieval_status: Literal["used", "not_found", "below_threshold", "no_pack", "not_game_related"] = "not_found"
+    knowledge_not_used_reason: str | None = None
+    knowledge_retrieval_min_score: float = 8.0
 
 
 class PromptPreviewResponse(BaseModel):

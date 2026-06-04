@@ -246,6 +246,9 @@ export type ChatDebugResponse = {
   matched_terms: string[];
   result_scores: number[];
   knowledge_used_in_prompt: boolean;
+  knowledge_retrieval_status: "used" | "not_found" | "below_threshold" | "no_pack" | "not_game_related";
+  knowledge_not_used_reason: string | null;
+  knowledge_retrieval_min_score: number;
 };
 
 export type GameSessionDebugResponse = {

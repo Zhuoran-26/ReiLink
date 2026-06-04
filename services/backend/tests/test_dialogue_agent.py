@@ -130,9 +130,36 @@ def test_deepseek_provider_injects_limited_local_knowledge_context(monkeypatch):
     assert "测试条目 0" in knowledge_text
     assert "测试条目 2" in knowledge_text
     assert "测试条目 3" not in knowledge_text
+    assert "没有写到的信息不要编" in knowledge_text
     assert len(knowledge_text) < 1900
     assert "Authorization" not in knowledge_text
     assert ".env" not in knowledge_text
+
+
+def test_deepseek_provider_does_not_inject_empty_knowledge_context(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "好的"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.settings.deepseek_api_key", "test-key")
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.urllib.request.urlopen", fake_urlopen)
+
+    DeepSeekProvider().generate_with_metrics("中文短句", "今天有点累", [], "casual_chat")
+
+    messages = captured["payload"]["messages"]
+    assert all("本地知识包检索结果 / Local Knowledge Pack Results" not in message["content"] for message in messages)
 
 
 def test_deepseek_provider_fast_route_disables_thinking(monkeypatch):

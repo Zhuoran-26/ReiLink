@@ -181,7 +181,10 @@ const emptyChatDebug: ChatDebugResponse = {
   snippet_previews: [],
   matched_terms: [],
   result_scores: [],
-  knowledge_used_in_prompt: false
+  knowledge_used_in_prompt: false,
+  knowledge_retrieval_status: "not_found",
+  knowledge_not_used_reason: null,
+  knowledge_retrieval_min_score: 8
 };
 
 const emptyGameSessionDebug: GameSessionDebugResponse = {
@@ -444,6 +447,9 @@ const labelMap: Record<string, string> = {
   knowledge_summary: "游戏知识摘要",
   knowledge_supported_games_count: "已支持游戏数",
   knowledge_used_in_prompt: "已注入回复上下文",
+  knowledge_retrieval_status: "检索结果",
+  knowledge_not_used_reason: "未使用原因",
+  knowledge_retrieval_min_score: "最低命中分数",
   auto_game_detection: "自动游戏检测",
   voice_output: "语音输出",
   voice_rate: "语速",
@@ -559,6 +565,10 @@ const valueMap: Record<string, string> = {
   no_game_detected: "未检测到游戏",
   no_knowledge_match: "没有可用知识命中",
   no_supported_knowledge: "未支持知识库",
+  used: "已使用本地知识",
+  below_threshold: "相关性不足，未使用",
+  no_pack: "没有可用知识包",
+  not_game_related: "这次不是游戏知识问题",
   unknown_game: "未接入知识库",
   none: "无",
   normal: "普通",
@@ -660,6 +670,45 @@ const fallbackModeText = (available: boolean, used: boolean, fallback?: string |
   return "仅使用模型回答";
 };
 
+const knowledgeRetrievalStatusText = (status: unknown) => {
+  const labels: Record<string, string> = {
+    used: "已使用本地知识",
+    not_found: "未命中本地知识",
+    below_threshold: "相关性不足，未使用",
+    no_pack: "没有可用知识包",
+    not_game_related: "这次不是游戏知识问题"
+  };
+  return labels[String(status || "")] ?? "未命中本地知识";
+};
+
+const knowledgeNotUsedReasonText = (reason: unknown) => {
+  const labels: Record<string, string> = {
+    no_game_detected: "未检测到游戏",
+    no_active_game: "尚未确定当前游戏",
+    no_knowledge_match: "没有可用知识命中",
+    no_supported_knowledge: "未支持知识库",
+    unknown_game: "未接入知识库",
+    knowledge_disabled: "该游戏知识库已关闭",
+    knowledge_file_missing: "知识文件不存在",
+    below_threshold: "相关性不足，未使用",
+    not_game_related: "这次不是游戏知识问题"
+  };
+  const key = String(reason || "");
+  if (!key) return "无";
+  return labels[key] ?? debugText(key);
+};
+
+const knowledgeEventTopics = (debug: ChatDebugResponse) => {
+  if (debug.knowledge_used_in_prompt) {
+    const labels = debug.matched_topics.length > 0 ? debug.matched_topics : debug.snippet_titles;
+    return ["已使用本地知识", ...labels.slice(0, 2)];
+  }
+  return [
+    knowledgeRetrievalStatusText(debug.knowledge_retrieval_status),
+    knowledgeNotUsedReasonText(debug.knowledge_not_used_reason ?? debug.knowledge_fallback_reason)
+  ].filter((item, index, items) => item !== "无" && items.indexOf(item) === index);
+};
+
 const formatDateKey = (date: Date) =>
   `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 
@@ -740,7 +789,7 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "game_session_changed":
       return [debugText(event.game), debugText(event.current_boss), debugText(event.activity)].join(" / ");
     case "knowledge_used":
-      return [debugText(event.game), debugText(event.topics)].join(" / ");
+      return [event.game ? debugText(event.game) : "", debugText(event.topics)].filter(Boolean).join(" / ");
     case "model_routed":
       return `模型：${debugText(event.model)} / 原因：${debugText(event.route_reason)}`;
     case "backend_status_changed":
@@ -1104,17 +1153,16 @@ export function App() {
   }, []);
 
   const emitKnowledgeUsed = useCallback((currentChatDebug: ChatDebugResponse) => {
-    let topics = currentChatDebug.matched_topics.length > 0
-      ? currentChatDebug.matched_topics
-      : currentChatDebug.snippet_titles;
+    const topics = knowledgeEventTopics(currentChatDebug);
     const hasKnowledgeResult = currentChatDebug.knowledge_used_in_prompt ||
       currentChatDebug.knowledge_matched ||
       topics.length > 0 ||
-      Boolean(currentChatDebug.request_started_at && currentChatDebug.knowledge_available);
+      Boolean(currentChatDebug.request_started_at && (
+        currentChatDebug.knowledge_available ||
+        currentChatDebug.knowledge_retrieval_status !== "not_found" ||
+        currentChatDebug.knowledge_fallback_reason
+      ));
     if (!hasKnowledgeResult) return;
-    if (topics.length === 0) {
-      topics = ["未命中本地知识"];
-    }
 
     const game = currentChatDebug.knowledge_game_display_name ??
       currentChatDebug.knowledge_game_id ??
@@ -1126,7 +1174,9 @@ export function App() {
       game,
       topics,
       currentChatDebug.knowledge_used_in_prompt,
-      currentChatDebug.knowledge_matched
+      currentChatDebug.knowledge_matched,
+      currentChatDebug.knowledge_retrieval_status,
+      currentChatDebug.knowledge_not_used_reason
     );
     if (lastKnowledgeEventRef.current === signature) return;
     lastKnowledgeEventRef.current = signature;
@@ -2896,6 +2946,16 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         </dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("knowledge_retrieval_status")}</dt>
+                        <dd>{knowledgeRetrievalStatusText(chatDebug.knowledge_retrieval_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_not_used_reason")}</dt>
+                        <dd className={chatDebug.knowledge_not_used_reason ? "debugError" : ""}>
+                          {knowledgeNotUsedReasonText(chatDebug.knowledge_not_used_reason)}
+                        </dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("knowledge_game_display_name")}</dt>
                         <dd>{debugText(chatDebug.knowledge_game_display_name)}</dd>
                       </div>
@@ -2970,6 +3030,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <div>
                         <dt>{formatDebugLabel("knowledge_confidence")}</dt>
                         <dd>{Number(chatDebug.knowledge_confidence ?? 0).toFixed(2)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_retrieval_min_score")}</dt>
+                        <dd>{Number(chatDebug.knowledge_retrieval_min_score ?? 0).toFixed(0)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("knowledge_fallback_reason")}</dt>
@@ -3100,6 +3164,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             matched_terms: chatDebug.matched_terms,
                             result_scores: chatDebug.result_scores,
                             knowledge_used_in_prompt: chatDebug.knowledge_used_in_prompt,
+                            knowledge_retrieval_status: chatDebug.knowledge_retrieval_status,
+                            knowledge_not_used_reason: chatDebug.knowledge_not_used_reason,
+                            knowledge_retrieval_min_score: chatDebug.knowledge_retrieval_min_score,
                             fallback_reason: chatDebug.fallback_reason,
                             last_latency_ms: chatDebug.total_latency_ms,
                             llm_latency_ms: chatDebug.llm_latency_ms,
@@ -3207,6 +3274,16 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <div>
                       <dt>{formatDebugLabel("knowledge_matched")}</dt>
                       <dd>{debugText(knowledgeSummary.knowledge_matched)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_retrieval_status")}</dt>
+                      <dd>{knowledgeRetrievalStatusText(knowledgeSummary.retrieval_status)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_not_used_reason")}</dt>
+                      <dd className={knowledgeSummary.not_used_reason ? "debugError" : ""}>
+                        {knowledgeNotUsedReasonText(knowledgeSummary.not_used_reason)}
+                      </dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("active_game_id")}</dt>
@@ -3317,6 +3394,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <div>
                       <dt>{formatDebugLabel("confidence")}</dt>
                       <dd>{debugText(knowledgeSummary.confidence)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_retrieval_min_score")}</dt>
+                      <dd>{debugText(knowledgeSummary.retrieval_min_score)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("fallback_reason")}</dt>
