@@ -778,6 +778,7 @@ type MockRecognitionResult = {
 
 class MockSpeechRecognition {
   static instances: MockSpeechRecognition[] = [];
+  static startError: Error | null = null;
 
   lang = "";
   interimResults = false;
@@ -787,6 +788,7 @@ class MockSpeechRecognition {
   onerror: ((event: { error: string }) => void) | null = null;
   onend: (() => void) | null = null;
   start = vi.fn(() => {
+    if (MockSpeechRecognition.startError) throw MockSpeechRecognition.startError;
     this.onstart?.();
   });
   stop = vi.fn(() => {
@@ -814,6 +816,7 @@ class MockSpeechRecognition {
 
 const installSpeechRecognitionMock = (kind: "standard" | "webkit" = "standard") => {
   MockSpeechRecognition.instances = [];
+  MockSpeechRecognition.startError = null;
   if (kind === "standard") {
     vi.stubGlobal("SpeechRecognition", MockSpeechRecognition);
     Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: MockSpeechRecognition });
@@ -824,6 +827,21 @@ const installSpeechRecognitionMock = (kind: "standard" | "webkit" = "standard") 
     Reflect.deleteProperty(window, "SpeechRecognition");
   }
   return MockSpeechRecognition;
+};
+
+const installMediaDevicesMock = (permission: "prompt" | "granted" | "denied" = "prompt") => {
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn()
+    }
+  });
+  Object.defineProperty(navigator, "permissions", {
+    configurable: true,
+    value: {
+      query: vi.fn(async () => ({ state: permission }))
+    }
+  });
 };
 
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
@@ -1057,6 +1075,8 @@ describe("App", () => {
     Reflect.deleteProperty(window, "SpeechRecognition");
     Reflect.deleteProperty(window, "webkitSpeechRecognition");
     Reflect.deleteProperty(window, "reilinkRuntime");
+    Reflect.deleteProperty(navigator, "mediaDevices");
+    Reflect.deleteProperty(navigator, "permissions");
     eventBus.clear();
   });
 
@@ -1687,16 +1707,20 @@ describe("App", () => {
   });
 
   it("shows Voice Input controls and Settings availability status", async () => {
+    installMediaDevicesMock("prompt");
     installSpeechRecognitionMock();
     render(<App />);
 
     expect(await screen.findByRole("button", { name: "开始语音 / Start Voice" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音输入 / Voice Input");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("可用");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音识别功能：可用");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("麦克风权限：可请求");
     expect(screen.getByText(/语音输入：待命/)).toBeInTheDocument();
   });
 
   it("starts SpeechRecognition when Voice Input is supported", async () => {
+    installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
 
@@ -1712,26 +1736,64 @@ describe("App", () => {
     );
   });
 
+  it("starts webkitSpeechRecognition when the prefixed API is supported", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock("webkit");
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+
+    expect(recognition.instances).toHaveLength(1);
+    expect(recognition.instances[0].start).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音识别功能：可用");
+  });
+
   it("shows Voice Input unavailable fallback without crashing", async () => {
     render(<App />);
 
     await waitFor(() =>
-      expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前环境不支持本地语音输入")
+      expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前运行环境不支持本地语音识别")
     );
-    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    const voiceButton = screen.getByRole("button", { name: "开始语音 / Start Voice" });
 
+    expect(voiceButton).toBeDisabled();
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("不可用");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("你仍然可以使用系统听写输入到文本框");
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: "voice_input_unavailable",
-          status: "当前环境不支持本地语音输入"
+          status: "当前运行环境不支持本地语音识别"
+        })
+      ])
+    );
+  });
+
+  it("shows Voice Input start failure separately from unsupported", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    recognition.startError = new Error("start failed");
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+
+    expect(recognition.instances).toHaveLength(1);
+    expect(recognition.instances[0].start).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音输入启动失败");
+    expect(screen.getByText(/语音输入：语音输入启动失败/)).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "voice_input_error",
+          reason: "start_failed",
+          status: "语音输入启动失败"
         })
       ])
     );
   });
 
   it("fills final Voice Input transcript into the input without auto sending", async () => {
+    installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
     await screen.findByText("已连接");
@@ -1766,6 +1828,7 @@ describe("App", () => {
   });
 
   it("keeps interim Voice Input transcript out of chat, memory, retrieval, and game context", async () => {
+    installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
     await screen.findByText("已连接");
@@ -1786,6 +1849,7 @@ describe("App", () => {
   });
 
   it("shows readable Voice Input errors without raw reason codes", async () => {
+    installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
 
@@ -1819,8 +1883,41 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("not-allowed");
   });
 
+  it("maps Voice Input no-speech and user stop errors to readable Chinese", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitError("no-speech");
+    });
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("没有识别到语音");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[1].emitError("aborted");
+    });
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("用户停止");
+
+    render(
+      <EventStreamPanel
+        events={eventBus.getRecentEvents(20)}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+    const eventStreamTitles = screen.getAllByText("事件流 / Event Stream");
+    const eventStream = eventStreamTitles[eventStreamTitles.length - 1].closest("details");
+    expect(eventStream).toHaveTextContent("没有识别到语音");
+    expect(eventStream).toHaveTextContent("用户停止");
+    expect(eventStream).not.toHaveTextContent("no_speech");
+    expect(eventStream).not.toHaveTextContent("aborted");
+  });
+
   it("stops active Voice Output when Voice Input starts", async () => {
     const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installMediaDevicesMock("prompt");
     installSpeechRecognitionMock();
     render(<App />);
 
@@ -1867,7 +1964,7 @@ describe("App", () => {
             type: "voice_input_unavailable",
             timestamp: new Date().toISOString(),
             reason: "not_supported",
-            status: "当前环境不支持本地语音输入",
+            status: "当前运行环境不支持本地语音识别",
             language: "zh-CN"
           }
         ]}

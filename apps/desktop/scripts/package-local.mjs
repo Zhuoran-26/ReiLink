@@ -64,6 +64,7 @@ export async function packageLocal(options = {}) {
   plist = setPlistString(plist, "CFBundleName", appName);
   plist = setPlistString(plist, "CFBundleDisplayName", appName);
   plist = setPlistString(plist, "CFBundleIdentifier", "com.reilink.desktop");
+  plist = setPlistString(plist, "NSMicrophoneUsageDescription", "ReiLink 使用麦克风进行本地按键语音输入。不会保存或上传音频。");
   await writeFile(plistPath, plist, "utf8");
 
   await chmod(path.join(outputApp, "Contents", "MacOS", "Electron"), 0o755).catch(() => undefined);
@@ -161,7 +162,7 @@ export function backendBinaryNameForPlatform(targetPlatform = platform) {
   return targetPlatform === "win32" ? "reilink-backend.exe" : "reilink-backend";
 }
 
-function setPlistString(plistText, key, value) {
+export function setPlistString(plistText, key, value) {
   const pattern = new RegExp(`(<key>${key}</key>\\s*<string>)([^<]*)(</string>)`);
   if (!pattern.test(plistText)) {
     return plistText.replace("</dict>", `\t<key>${key}</key>\n\t<string>${value}</string>\n</dict>`);

@@ -12,8 +12,24 @@
     "category": "voice_input",
     "input": "Start Voice Input when SpeechRecognition is unavailable",
     "expected_events": ["语音输入不可用"],
-    "expected_behavior": "UI shows 当前环境不支持本地语音输入 and does not crash.",
+    "expected_behavior": "UI shows 当前运行环境不支持本地语音识别, suggests system dictation into the text box, disables listening, and does not crash.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt", "not_supported"]
+  },
+  {
+    "id": "voice-input-start-failure",
+    "category": "voice_input",
+    "input": "SpeechRecognition exists but start fails",
+    "expected_events": ["语音输入失败"],
+    "expected_behavior": "UI shows 语音输入启动失败 rather than reporting unsupported.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt", "start_failed"]
+  },
+  {
+    "id": "voice-input-runtime-diagnostics",
+    "category": "voice_input",
+    "input": "Open Settings and Debug Panel",
+    "expected_controls": ["语音识别功能", "麦克风权限", "运行环境"],
+    "expected_behavior": "Settings and Debug Panel show safe readable diagnostics for recognition API, microphone permission, and dev/packaged runtime.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt", "SpeechRecognitionEvent"]
   },
   {
     "id": "voice-input-permission-denied",
@@ -59,7 +75,7 @@
     "category": "voice_input_packaged",
     "input": "Open packaged ReiLink.app and inspect Voice Input",
     "expected_controls": ["开始语音 / Start Voice", "语音输入 / Voice Input", "测试语音 / Test Voice"],
-    "expected_behavior": "Packaged app either supports SpeechRecognition or shows a readable unavailable/permission fallback without breaking chat, TTS, or knowledge retrieval.",
+    "expected_behavior": "Packaged app either supports SpeechRecognition or shows clear unavailable/permission fallback, includes microphone usage text in the bundle, and does not break chat, TTS, or knowledge retrieval.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt", "DEEPSEEK_API_KEY"]
   }
 ]

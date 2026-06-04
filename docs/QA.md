@@ -63,11 +63,15 @@
 - 聊天输入区附近可见 `开始语音 / Start Voice`。
 - Settings Panel 可见 `语音输入 / Voice Input`。
 - Settings 显示本地语音识别是否可用、当前状态、语言、最近识别字数和最近错误。
+- Settings / Debug Panel 显示安全诊断摘要：`语音识别功能`、`麦克风权限`、`运行环境`。
 - 默认不监听；只有用户点击开始后才进入 `正在听 / Listening` 或 `正在识别 / Recognizing`。
 - 不做 wake word，不做后台常驻监听。
-- 如果当前环境不支持 `SpeechRecognition` / `webkitSpeechRecognition`，显示 `当前环境不支持本地语音输入`，App 不崩溃。
+- Voice Input v1 依赖浏览器运行时提供的 `SpeechRecognition` / `webkitSpeechRecognition`。如果 Electron / Chromium 不提供该 API，显示 `当前运行环境不支持本地语音识别`，按钮不可启动，App 不崩溃。
+- 不支持本地语音识别时，Settings 应提示用户仍可使用系统听写把文本输入到聊天框。
+- 如果 constructor 存在但 `start()` 失败，显示 `语音输入启动失败` 或等价中文摘要，不应误报为环境不支持。
 - 如果麦克风或识别权限被拒绝，显示 `麦克风权限被拒绝` 或等价中文摘要，App 不崩溃。
 - 如果没有识别到语音，显示 `没有识别到语音` 或等价中文摘要。
+- 如果用户主动停止或浏览器返回 aborted，显示 `用户停止` 或等价中文摘要。
 - final transcript 只填入聊天输入框，用户可以编辑。
 - interim transcript 只影响识别状态，不自动发送。
 - final transcript 不自动发送；只有用户点击 `发送` 后才进入现有 chat flow。
@@ -87,9 +91,11 @@
 - 直接打开 packaged `ReiLink.app`，不是 dev renderer。
 - UI 非黑屏，backend 自启动。
 - `开始语音 / Start Voice` 和 `语音输入 / Voice Input` 可见。
+- Settings 显示 `语音识别功能`、`麦克风权限` 和 `运行环境：打包应用`。
 - 如果 packaged 环境支持 Web Speech Recognition，点击开始后可进入听写状态，final transcript 填入输入框但不自动发送。
-- 如果 packaged 环境不支持 Web Speech Recognition，显示可读不可用状态，不崩溃。
-- 如果权限被拒绝，显示可读中文错误，不崩溃。
+- 如果 packaged 环境不支持 Web Speech Recognition，显示 `当前运行环境不支持本地语音识别`，并提示可使用系统听写，不崩溃。
+- 如果权限被拒绝，显示 `麦克风权限被拒绝` 或等价中文错误，不崩溃。
+- packaged `Info.plist` 应包含麦克风用途说明，避免权限提示缺失。
 - `测试语音 / Test Voice` 仍可见。
 - Knowledge Retrieval 仍可用。
 - Event Stream 不泄露完整 transcript 或敏感信息。
@@ -277,7 +283,8 @@
 
 - `below_threshold` 依赖当前知识包内容和评分阈值，手动测试时可优先用机器可读场景文件里的弱相关示例。
 - `no_pack` 依赖 catalog 中仍有 planned / unsupported 游戏；当前可用 `只狼` 做手动场景。
-- Voice Input 的真实识别取决于 packaged Electron / Chromium 是否暴露 Web Speech Recognition 以及 macOS 权限；不可用或被拒绝必须显示可读 fallback，不应被视为崩溃。
+- Voice Input v1 只使用 Web Speech Recognition，不接商业 ASR，不上传音频，不保存音频。真实识别取决于 dev / packaged Electron 的 Chromium runtime 是否暴露该 API，以及 macOS 麦克风权限。
+- 如果 Electron runtime 不支持 Web Speech Recognition，当前预期是明确 unavailable fallback；用户可临时使用系统听写输入到聊天框。后续可评估 whisper.cpp / 本地 whisper binary 等 local ASR，但不属于当前 v1.1。
 - Voice Output 的真实播放取决于系统语音包和浏览器 speech synthesis 支持；失败必须被 UI 允许并可见，不应被视为崩溃。
 - Manual QA 不替代 automated tests；它用于 release 前的人眼回归与打包行为确认。
 

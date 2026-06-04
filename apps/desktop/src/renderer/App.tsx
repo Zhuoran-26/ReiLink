@@ -765,12 +765,13 @@ const voiceStopReasonText = (reason?: string) => {
 const voiceInputReasonText = (reason?: string, status?: string) => {
   if (status) return status;
   const labels: Record<string, string> = {
-    not_supported: "当前环境不支持",
+    not_supported: "当前运行环境不支持本地语音识别",
     permission_denied: "麦克风权限被拒绝",
     network: "语音识别服务不可用",
     no_speech: "没有识别到语音",
     aborted: "用户停止",
     audio_capture: "无法读取麦克风",
+    start_failed: "语音输入启动失败",
     user_stop: "用户停止",
     unmount: "窗口关闭",
     unknown: "语音输入失败"
@@ -880,7 +881,8 @@ const voicePhaseText = (status: VoiceOutputStatus) => {
 };
 
 const voiceInputPhaseText = (status: VoiceInputStatus) => {
-  if (!status.supported) return "当前环境不支持本地语音输入";
+  if (!status.supported) return "当前运行环境不支持本地语音识别";
+  if (status.lastError) return status.lastError;
   if (status.phase === "listening") return "正在听 / Listening";
   if (status.phase === "recognizing") return "正在识别 / Recognizing";
   return "待命";
@@ -888,6 +890,15 @@ const voiceInputPhaseText = (status: VoiceInputStatus) => {
 
 const voiceInputAvailabilityText = (status: VoiceInputStatus) =>
   status.supported ? "可用" : "不可用";
+
+const voiceInputApiText = (status: VoiceInputStatus) =>
+  status.diagnostics.recognitionApiAvailable ? "可用" : "不可用";
+
+const voiceInputRuntimeText = (status: VoiceInputStatus) => {
+  if (status.diagnostics.runtimeEnvironment === "packaged") return "打包应用";
+  if (status.diagnostics.runtimeEnvironment === "dev") return "开发模式";
+  return "未知";
+};
 
 const appendTranscriptToInput = (current: string, transcript: string) => {
   const text = transcript.trim();
@@ -1465,6 +1476,7 @@ export function App() {
 
   useEffect(() => {
     const unsubscribe = voiceInput.subscribe(setVoiceInputStatus);
+    void voiceInput.refreshDiagnostics();
     return () => {
       unsubscribe();
       voiceInput.stop("unmount");
@@ -2090,7 +2102,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 className={`iconButton voiceInputButton ${voiceInputStatus.phase !== "idle" ? "active" : ""}`}
                 type="button"
                 aria-label={voiceInputStatus.phase === "idle" ? "开始语音 / Start Voice" : "停止识别 / Stop Listening"}
-                title={voiceInputStatus.phase === "idle" ? "开始语音输入" : "停止识别"}
+                title={voiceInputStatus.supported ? (voiceInputStatus.phase === "idle" ? "开始语音输入" : "停止识别") : "当前运行环境不支持本地语音识别"}
+                disabled={!voiceInputStatus.supported}
                 onClick={voiceInputStatus.phase === "idle" ? startVoiceInput : stopVoiceInput}
               >
                 <Mic size={18} />
@@ -2108,7 +2121,6 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               <div className="voiceInputInlineStatus" role="status">
                 语音输入：{voiceInputPhaseText(voiceInputStatus)}
                 {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
-                {voiceInputStatus.lastError ? ` / ${voiceInputStatus.lastError}` : ""}
               </div>
             </form>
           </section>
@@ -2285,7 +2297,12 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 </div>
                 <p className="settingHint">当前状态：{voiceInputPhaseText(voiceInputStatus)}。</p>
                 <p className="settingHint">语言：{voiceInputStatus.language}。识别结果会先填入输入框，不会自动发送。</p>
-                {!voiceInputStatus.supported && <p className="settingHint">当前环境不支持本地语音输入。</p>}
+                <p className="settingHint">
+                  语音识别功能：{voiceInputApiText(voiceInputStatus)}。麦克风权限：{voiceInputStatus.diagnostics.microphonePermission}。运行环境：{voiceInputRuntimeText(voiceInputStatus)}。
+                </p>
+                {!voiceInputStatus.supported && (
+                  <p className="settingHint">当前运行环境不支持本地语音识别。你仍然可以使用系统听写输入到文本框。</p>
+                )}
                 {voiceInputStatus.lastTranscriptCharacterCount > 0 && (
                   <p className="settingHint">最近识别：{voiceInputStatus.lastTranscriptCharacterCount} 字。</p>
                 )}
@@ -2963,6 +2980,22 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{voiceInputAvailabilityText(voiceInputStatus)}</dd>
                       </div>
                       <div>
+                        <dt>语音识别功能</dt>
+                        <dd>{voiceInputApiText(voiceInputStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>麦克风权限</dt>
+                        <dd>{voiceInputStatus.diagnostics.microphonePermission}</dd>
+                      </div>
+                      <div>
+                        <dt>运行环境</dt>
+                        <dd>{voiceInputRuntimeText(voiceInputStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>启动状态</dt>
+                        <dd>{debugText(voiceInputStatus.diagnostics.lastStartStatus)}</dd>
+                      </div>
+                      <div>
                         <dt>当前状态</dt>
                         <dd>{voiceInputPhaseText(voiceInputStatus)}</dd>
                       </div>
@@ -3262,7 +3295,17 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             language: voiceInputStatus.language,
                             lastTranscriptCharacterCount: voiceInputStatus.lastTranscriptCharacterCount,
                             interimCharacterCount: voiceInputStatus.interimCharacterCount,
-                            lastError: voiceInputStatus.lastError
+                            lastError: voiceInputStatus.lastError,
+                            diagnostics: {
+                              recognitionApiAvailable: voiceInputStatus.diagnostics.recognitionApiAvailable,
+                              hasSpeechRecognition: voiceInputStatus.diagnostics.hasSpeechRecognition,
+                              hasWebkitSpeechRecognition: voiceInputStatus.diagnostics.hasWebkitSpeechRecognition,
+                              hasMediaDevices: voiceInputStatus.diagnostics.hasMediaDevices,
+                              hasGetUserMedia: voiceInputStatus.diagnostics.hasGetUserMedia,
+                              microphonePermission: voiceInputStatus.diagnostics.microphonePermission,
+                              runtimeEnvironment: voiceInputRuntimeText(voiceInputStatus),
+                              lastStartStatus: voiceInputStatus.diagnostics.lastStartStatus
+                            }
                           },
                           chat: {
                             intent: chatDebug.intent,

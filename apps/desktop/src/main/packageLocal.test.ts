@@ -10,6 +10,7 @@ type PackageLocalModule = {
     platform?: string;
   }) => Promise<{ backendBinaryPath: string; knowledgeGamesPath: string; runtimeResourcesPath: string }>;
   validateStandaloneResources: (options: { resourcesRoot: string; platform?: string }) => Promise<void>;
+  setPlistString: (plistText: string, key: string, value: string) => string;
 };
 
 const loadPackageLocal = async () =>
@@ -96,5 +97,19 @@ describe("package-local standalone resources", () => {
     await expect(validateStandaloneResources({ resourcesRoot, platform: "darwin" })).rejects.toThrow(
       "Packaged standalone resource is missing"
     );
+  });
+
+  it("adds a microphone usage description to packaged app metadata", async () => {
+    const { setPlistString } = await loadPackageLocal();
+    const plist = "<plist><dict></dict></plist>";
+
+    const result = setPlistString(
+      plist,
+      "NSMicrophoneUsageDescription",
+      "ReiLink 使用麦克风进行本地按键语音输入。不会保存或上传音频。"
+    );
+
+    expect(result).toContain("<key>NSMicrophoneUsageDescription</key>");
+    expect(result).toContain("不会保存或上传音频");
   });
 });

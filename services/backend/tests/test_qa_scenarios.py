@@ -89,6 +89,8 @@ def test_voice_input_scenarios_have_required_fields():
     assert {
         "voice-input-control-visible",
         "voice-input-unsupported-fallback",
+        "voice-input-start-failure",
+        "voice-input-runtime-diagnostics",
         "voice-input-permission-denied",
         "voice-input-final-transcript-awaits-send",
         "voice-input-does-not-trigger-context-before-send",
