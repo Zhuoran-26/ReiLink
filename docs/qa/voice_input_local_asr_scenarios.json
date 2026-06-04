@@ -60,6 +60,76 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
   },
   {
+    "id": "local-asr-probe-not-ready",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config status is not ready",
+    "expected_status": "local_asr_probe_not_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Check Local ASR is disabled or returns 配置未就绪 without starting the binary.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path"]
+  },
+  {
+    "id": "local-asr-probe-binary-missing-disabled",
+    "category": "voice_input_local_asr",
+    "precondition": "Configured local ASR binary is missing",
+    "expected_status": "local_asr_probe_not_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Check Local ASR stays disabled and the UI shows 缺少本地识别程序.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path"]
+  },
+  {
+    "id": "local-asr-probe-model-missing-disabled",
+    "category": "voice_input_local_asr",
+    "precondition": "Configured local ASR model is missing",
+    "expected_status": "local_asr_probe_not_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Check Local ASR stays disabled and the UI shows 缺少本地语音模型.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full model path"]
+  },
+  {
+    "id": "local-asr-probe-succeeded",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready and the fake binary returns help-like output",
+    "expected_status": "local_asr_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Settings shows 可以启动 and explains that this does not prove transcription is available.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "raw transcript"]
+  },
+  {
+    "id": "local-asr-probe-timed-out",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready but the fake binary does not exit before the probe timeout",
+    "expected_status": "local_asr_probe_timed_out",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Settings shows 启动超时 with a safe Chinese summary.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path"]
+  },
+  {
+    "id": "local-asr-probe-failed",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready but the fake binary exits with a non-zero code and no help-like output",
+    "expected_status": "local_asr_probe_failed",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Settings shows 启动失败 without exposing raw stdout or stderr.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path"]
+  },
+  {
+    "id": "local-asr-probe-privacy",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR CLI probe has been run",
+    "expected_status": "local_asr_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Probe does not fill the chat input, send a message, create audio files, write memory, alter prompt preview, run retrieval, or extract game context.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full audio path", "raw transcript"]
+  },
+  {
     "id": "local-asr-transcription-completed",
     "category": "voice_input_local_asr",
     "precondition": "Local ASR is ready and a short push-to-talk recording is transcribed",

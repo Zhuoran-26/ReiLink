@@ -128,6 +128,22 @@ export type LocalAsrStatus = {
   safe_model_name: string | null;
 };
 
+export type LocalAsrProbeStatusValue =
+  | "local_asr_probe_not_ready"
+  | "local_asr_probe_succeeded"
+  | "local_asr_probe_failed"
+  | "local_asr_probe_timed_out"
+  | "local_asr_probe_error";
+
+export type LocalAsrProbeResponse = {
+  status: LocalAsrProbeStatusValue;
+  available: boolean;
+  display_message: string;
+  binary_name: string | null;
+  model_name: string | null;
+  duration_ms: number;
+};
+
 export type ProactiveTriggerType = "idle_silence" | "repeated_death" | "late_night" | "frustration_loop" | "none";
 
 export type ProactiveStatusResponse = {
@@ -432,6 +448,7 @@ export const api = {
   settings: () => request<AppSettings>("/api/settings"),
   localDataStatus: () => request<LocalDataStatus>("/api/local-data/status"),
   localAsrStatus: () => request<LocalAsrStatus>("/api/voice-input/local-asr/status"),
+  probeLocalAsr: () => request<LocalAsrProbeResponse>("/api/voice-input/local-asr/probe", { method: "POST" }),
   updateSettings: (settings: AppSettingsUpdate) =>
     request<AppSettings>("/api/settings", {
       method: "POST",

@@ -118,6 +118,13 @@
 - 识别程序不可执行：binary 文件存在但没有执行权限；UI 只显示中文状态和安全文件名，不显示完整路径。
 - 缺少本地语音模型：binary 可执行但 model 文件不存在；UI 只显示安全模型名，不显示完整路径。
 - 已就绪：binary 存在且可执行、model 存在；当前仍不会自动识别语音，也不会调用 whisper。
+- Local ASR CLI Probe v1 只在配置已就绪时允许点击 `检查本地 ASR / Check Local ASR`；配置未就绪、缺少识别程序或缺少模型时按钮不可用。
+- Probe 只执行本地识别程序的 `--help` 或 `-h` 启动检查，超时时间短；成功只代表 binary 可以启动，不代表模型兼容，也不代表可以转写语音。
+- Probe 不录音，不读取音频，不传入音频路径，不传入模型路径，不创建临时音频文件，不上传音频。
+- Probe 不填入聊天输入框，不自动发送，不写 memory / prompt，不触发 knowledge retrieval 或 game context extraction。
+- Probe UI 只显示 `未检查`、`正在检查`、`可以启动`、`启动失败`、`启动超时`、`配置未就绪` 等中文摘要和安全文件名。
+- Probe UI、Debug Panel、Raw JSON 不显示完整路径、raw stdout、raw stderr、raw exception、raw env、API key、`.env`、Authorization 或 raw prompt。
+- Packaged `.app` 中未配置时应安全显示配置未就绪；配置 fake binary / fake model 时可手动验证 `可以启动`，退出后 backend 无残留。
 - Local ASR QA 后续重点是：转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
 - 用户临时替代方案：使用系统听写直接输入到聊天框。
 - 默认不上传音频，不保存音频，不自动发送 transcript。

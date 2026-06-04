@@ -11,6 +11,7 @@ import type {
   AppSettings,
   GameContextResponse,
   GameDetectionResponse,
+  LocalAsrProbeResponse,
   LocalAsrStatus,
   ProactiveCheckResponse,
   ProactiveStatusResponse,
@@ -721,8 +722,18 @@ const localAsrStatus: LocalAsrStatus = {
   safe_model_name: null
 };
 
+const localAsrProbeResponse: LocalAsrProbeResponse = {
+  status: "local_asr_probe_succeeded",
+  available: true,
+  display_message: "本地语音识别程序可以启动",
+  binary_name: "whisper-cli",
+  model_name: "ggml-base.bin",
+  duration_ms: 42
+};
+
 let appSettingsStore = { ...appSettings };
 let localAsrStatusStore: LocalAsrStatus = { ...localAsrStatus };
+let localAsrProbeResponseStore: LocalAsrProbeResponse = { ...localAsrProbeResponse };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
 let omitVoiceOutputFromSettings = false;
@@ -907,6 +918,7 @@ const setChatScroll = (
 const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
   localAsrStatusStore = { ...localAsrStatus };
+  localAsrProbeResponseStore = { ...localAsrProbeResponse };
   gameContextStore = { ...gameContext };
   proactiveStatusStore = { ...proactiveStatus };
   setupStatusStore = { ...setupStatus };
@@ -1047,6 +1059,9 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
   if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
   if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
+  if (url.endsWith("/api/voice-input/local-asr/probe") && init?.method === "POST") {
+    return Response.json(localAsrProbeResponseStore);
+  }
   if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
   if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
   if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1745,6 +1760,8 @@ describe("App", () => {
     expect(voiceInputSettings).toHaveTextContent("未配置");
     expect(voiceInputSettings).toHaveTextContent("本地语音识别未配置");
     expect(voiceInputSettings).toHaveTextContent("当前仍不会自动识别语音");
+    expect(voiceInputSettings).toHaveTextContent("配置未就绪");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeDisabled();
     expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto");
     expect(voiceInputSettings).not.toHaveTextContent("REILINK_LOCAL_ASR_BINARY");
     expect(voiceInputSettings).not.toHaveTextContent("REILINK_LOCAL_ASR_MODEL");
@@ -1771,6 +1788,7 @@ describe("App", () => {
     expect(voiceInputSettings).toHaveTextContent("缺少本地语音模型");
     expect(voiceInputSettings).toHaveTextContent("识别程序：whisper-cli");
     expect(voiceInputSettings).toHaveTextContent("模型：ggml-base.bin");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeDisabled();
     expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto/Library/Application Support/ReiLink/models");
   });
 
@@ -1795,8 +1813,142 @@ describe("App", () => {
     expect(voiceInputSettings).toHaveTextContent("已就绪");
     expect(voiceInputSettings).toHaveTextContent("本地语音识别配置已就绪");
     expect(voiceInputSettings).toHaveTextContent("当前仍不会自动识别语音");
+    expect(voiceInputSettings).toHaveTextContent("未检查");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "开始语音 / Start Voice" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
+  });
+
+  it("checks Local ASR and shows succeeded status without leaking raw output", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrProbeResponseStore = {
+      ...localAsrProbeResponse,
+      display_message: "本地语音识别程序可以启动",
+      binary_name: "whisper-cli",
+      model_name: "ggml-base.bin",
+      duration_ms: 58
+    };
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("可以启动"));
+    expect(voiceInputSettings).toHaveTextContent("本地语音识别程序可以启动");
+    expect(voiceInputSettings).toHaveTextContent("58 ms");
+    expect(voiceInputSettings).not.toHaveTextContent("Usage:");
+    expect(voiceInputSettings).not.toHaveTextContent("stderr");
+    expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto");
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/voice-input/local-asr/probe"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows Local ASR checking state while probe is pending", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    let resolveProbe: (response: Response) => void = () => undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith("/api/voice-input/local-asr/probe") && init?.method === "POST") {
+          return new Promise<Response>((resolve) => {
+            resolveProbe = resolve;
+          });
+        }
+        return defaultFetchResponse(url, init);
+      })
+    );
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("正在检查");
+
+    resolveProbe(Response.json(localAsrProbeResponse));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("可以启动"));
+  });
+
+  it("shows Local ASR timeout and failed probe states safely", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrProbeResponseStore = {
+      ...localAsrProbeResponse,
+      status: "local_asr_probe_timed_out",
+      available: false,
+      display_message: "本地语音识别程序启动超时",
+      duration_ms: 3000
+    };
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("启动超时"));
+
+    localAsrProbeResponseStore = {
+      ...localAsrProbeResponse,
+      status: "local_asr_probe_failed",
+      available: false,
+      display_message: "本地语音识别程序启动失败",
+      duration_ms: 61
+    };
+    await userEvent.click(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("启动失败"));
+    expect(screen.getByRole("group", { name: "语音输入设置" })).not.toHaveTextContent("raw stderr");
+  });
+
+  it("Local ASR probe does not fill chat input or auto send", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    render(<App />);
+
+    const input = await screen.findByLabelText("聊天输入");
+    await userEvent.click(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("可以启动"));
+
+    expect(input).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
   });
 
   it("starts SpeechRecognition when Voice Input is supported", async () => {

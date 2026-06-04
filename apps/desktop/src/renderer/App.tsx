@@ -30,6 +30,7 @@ import {
   GameDetectionResponse,
   GameSessionDebugResponse,
   GameStatus,
+  LocalAsrProbeResponse,
   LocalAsrStatus,
   LocalDataStatus,
   MemoryDebugResponse,
@@ -940,6 +941,27 @@ const localAsrStatusDetail = (status: LocalAsrStatus) => {
   return "当前仍不会自动识别语音。后续版本会使用本地 ASR。";
 };
 
+const localAsrProbeStatusText = (probe: LocalAsrProbeResponse | null, checking: boolean, configReady: boolean) => {
+  if (checking) return "正在检查";
+  if (!configReady) return "配置未就绪";
+  if (!probe) return "未检查";
+  const labels: Record<LocalAsrProbeResponse["status"], string> = {
+    local_asr_probe_not_ready: "配置未就绪",
+    local_asr_probe_succeeded: "可以启动",
+    local_asr_probe_failed: "启动失败",
+    local_asr_probe_timed_out: "启动超时",
+    local_asr_probe_error: "启动失败"
+  };
+  return labels[probe.status] ?? "未检查";
+};
+
+const localAsrProbeHint = (probe: LocalAsrProbeResponse | null, checking: boolean, configReady: boolean) => {
+  if (checking) return "正在检查本地语音识别程序。不会录音，也不会转写。";
+  if (!configReady) return "配置就绪后才能检查本地 ASR。";
+  if (!probe) return "检查只确认识别程序能否启动，不代表已经可以转写语音。";
+  return probe.display_message;
+};
+
 const appendTranscriptToInput = (current: string, transcript: string) => {
   const text = transcript.trim();
   if (!text) return current;
@@ -1125,6 +1147,8 @@ export function App() {
   const [setupStatus, setSetupStatus] = useState<SetupStatus>(emptySetupStatus);
   const [localDataStatus, setLocalDataStatus] = useState<LocalDataStatus>(emptyLocalDataStatus);
   const [localAsrStatus, setLocalAsrStatus] = useState<LocalAsrStatus>(emptyLocalAsrStatus);
+  const [localAsrProbe, setLocalAsrProbe] = useState<LocalAsrProbeResponse | null>(null);
+  const [localAsrProbeChecking, setLocalAsrProbeChecking] = useState(false);
   const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
@@ -1367,7 +1391,9 @@ export function App() {
         )
       );
       setLocalDataStatus(await api.localDataStatus());
-      setLocalAsrStatus(await api.localAsrStatus());
+      const currentLocalAsrStatus = await api.localAsrStatus();
+      setLocalAsrStatus(currentLocalAsrStatus);
+      if (currentLocalAsrStatus.status !== "local_asr_ready") setLocalAsrProbe(null);
       setGameStatus(await api.gameStatus());
       const currentGameContext = await api.gameContext();
       setGameContext(currentGameContext);
@@ -1418,6 +1444,25 @@ export function App() {
       setLastError(productErrorText(error, "设置更新失败"));
     } finally {
       setSettingsBusy("");
+    }
+  };
+
+  const checkLocalAsr = async () => {
+    if (localAsrStatus.status !== "local_asr_ready" || localAsrProbeChecking) return;
+    setLocalAsrProbeChecking(true);
+    try {
+      setLocalAsrProbe(await api.probeLocalAsr());
+    } catch {
+      setLocalAsrProbe({
+        status: "local_asr_probe_error",
+        available: false,
+        display_message: "本地语音识别检查失败",
+        binary_name: localAsrStatus.safe_binary_name,
+        model_name: localAsrStatus.safe_model_name,
+        duration_ms: 0
+      });
+    } finally {
+      setLocalAsrProbeChecking(false);
     }
   };
 
@@ -1851,6 +1896,7 @@ export function App() {
   const debugPanelVisible = appSettings.debug_panel === "show";
   const displayGame = gameContext.active_game_display_name ?? gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
   const displayBoss = gameSessionDebug.current_boss?.name ?? null;
+  const localAsrConfigReady = localAsrStatus.status === "local_asr_ready";
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
   const detectedKnowledgeGameId = gameContext.detected_game.knowledge_game_id;
@@ -2365,6 +2411,28 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     {localAsrStatus.safe_model_name ? `模型：${debugText(localAsrStatus.safe_model_name)}` : ""}
                   </p>
                 )}
+                <div className="settingRow static">
+                  <span>本地 ASR 检查</span>
+                  <strong>{localAsrProbeStatusText(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</strong>
+                </div>
+                <p className="settingHint">{localAsrProbeHint(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</p>
+                {localAsrProbe && (
+                  <p className="settingHint">
+                    {localAsrProbe.duration_ms} ms
+                    {localAsrProbe.binary_name ? `。识别程序：${debugText(localAsrProbe.binary_name)}` : ""}
+                    {localAsrProbe.model_name ? `。模型：${debugText(localAsrProbe.model_name)}` : ""}
+                  </p>
+                )}
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  aria-label="检查本地 ASR / Check Local ASR"
+                  disabled={!localAsrConfigReady || localAsrProbeChecking}
+                  onClick={() => void checkLocalAsr()}
+                >
+                  <RefreshCw size={14} />
+                  检查本地 ASR
+                </button>
               </div>
               <label className="settingRow">
                 <span>自动启动本地后端</span>
@@ -3097,6 +3165,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           binary {localAsrStatus.binary_configured ? "已配置" : "未配置"} / model {localAsrStatus.model_configured ? "已配置" : "未配置"}
                         </dd>
                       </div>
+                      <div>
+                        <dt>本地 ASR 检查</dt>
+                        <dd>{localAsrProbeStatusText(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</dd>
+                      </div>
+                      <div>
+                        <dt>检查说明</dt>
+                        <dd>{debugText(localAsrProbeHint(localAsrProbe, localAsrProbeChecking, localAsrConfigReady))}</dd>
+                      </div>
+                      <div>
+                        <dt>检查耗时</dt>
+                        <dd>{localAsrProbe ? `${localAsrProbe.duration_ms} ms` : "无"}</dd>
+                      </div>
                     </dl>
                   </section>
 
@@ -3397,7 +3477,17 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             model_present: localAsrStatus.model_present,
                             display_message: localAsrStatus.display_message,
                             safe_binary_name: localAsrStatus.safe_binary_name,
-                            safe_model_name: localAsrStatus.safe_model_name
+                            safe_model_name: localAsrStatus.safe_model_name,
+                            probe: localAsrProbe
+                              ? {
+                                  status: localAsrProbe.status,
+                                  available: localAsrProbe.available,
+                                  display_message: localAsrProbe.display_message,
+                                  binary_name: localAsrProbe.binary_name,
+                                  model_name: localAsrProbe.model_name,
+                                  duration_ms: localAsrProbe.duration_ms
+                                }
+                              : null
                           },
                           chat: {
                             intent: chatDebug.intent,

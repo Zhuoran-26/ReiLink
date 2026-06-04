@@ -176,7 +176,15 @@ Transcript 策略：
 - 不显示长 payload。
 - 不显示 API key、Authorization、`.env` 或 raw prompt。
 
-## 1.7 后续实现任务拆分
+## 1.7 Local ASR CLI Probe v1
+
+CLI Probe v1 是 binary launch probe，不是 transcription。它只在 Local ASR config status 为 `local_asr_ready` 时运行，尝试启动本地识别程序的 `--help`，必要时回退到 `-h`，并使用短 timeout。
+
+Probe 只证明 binary 可以被 backend 启动，不证明模型兼容，不证明真实语音转写可用。它不传入 model path，不传入 audio path，不录音，不创建临时音频，不上传音频，不把结果写入 memory / prompt / retrieval / game context。
+
+Settings / Debug Panel 只显示 `未检查`、`正在检查`、`可以启动`、`启动失败`、`启动超时`、`配置未就绪` 等中文摘要、安全 binary 名、安全 model 名和耗时。不显示完整路径、raw stdout、raw stderr、raw exception、raw env、API key、`.env` 或 raw prompt。
+
+## 1.8 后续实现任务拆分
 
 1. Local ASR config detection v1
    - 当前已实现：读取 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`，检测 binary 是否存在且可执行、model 是否存在。

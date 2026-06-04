@@ -37,6 +37,18 @@ test("mock backend chat flow works", async ({ page }) => {
       }
     })
   );
+  await page.route("**/api/voice-input/local-asr/probe", (route) =>
+    route.fulfill({
+      json: {
+        status: "local_asr_probe_not_ready",
+        available: false,
+        display_message: "本地语音识别配置未就绪，未执行检查",
+        binary_name: null,
+        model_name: null,
+        duration_ms: 0
+      }
+    })
+  );
   await page.route("**/api/settings", (route) =>
     route.fulfill({
       json: {

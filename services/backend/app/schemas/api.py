@@ -253,6 +253,24 @@ class LocalAsrStatusResponse(BaseModel):
     safe_model_name: str | None = None
 
 
+LocalAsrProbeStatus = Literal[
+    "local_asr_probe_not_ready",
+    "local_asr_probe_succeeded",
+    "local_asr_probe_failed",
+    "local_asr_probe_timed_out",
+    "local_asr_probe_error",
+]
+
+
+class LocalAsrProbeResponse(BaseModel):
+    status: LocalAsrProbeStatus
+    available: bool = False
+    display_message: str
+    binary_name: str | None = None
+    model_name: str | None = None
+    duration_ms: int = 0
+
+
 class MemoryProvenanceItem(BaseModel):
     source: Literal["profile", "episode", "current_session"]
     field: str
