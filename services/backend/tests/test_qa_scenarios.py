@@ -48,6 +48,19 @@ def test_retrieval_scenarios_have_required_fields_and_valid_statuses():
         assert isinstance(item.get("should_inject_knowledge"), bool)
 
 
+def test_retrieval_scenarios_include_explicit_game_query_switch_cases():
+    scenario_ids = {item.get("id") for item in _load_scenarios()}
+
+    assert {
+        "cross-game-hollow-knight-possessive-used",
+        "cross-game-hollow-knight-chinese-possessive-used",
+        "cross-game-elden-ring-possessive-used",
+        "cross-game-elden-ring-fahuan-used",
+        "casual-tired-not-game-related",
+        "casual-thanks-not-game-related",
+    } <= scenario_ids
+
+
 def test_forbidden_terms_are_arrays_when_present():
     for item in _load_scenarios():
         forbidden_terms = item.get("forbidden_terms", [])

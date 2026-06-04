@@ -96,11 +96,23 @@
 当前上下文为 Elden Ring，用户输入：
 
 - `我在玩 Hollow Knight，Hornet 怎么打？`
+- `Hollow Knight 里的 Hornet 怎么打？`
+- `空洞骑士里的 Hornet 怎么打？`
+
+当前上下文为空洞骑士，用户输入：
+
+- `Elden Ring 里的 Margit 怎么打？`
+- `法环 Margit 怎么打？`
 
 期望：
 
-- 使用 Hollow Knight knowledge。
-- 不使用 Elden Ring knowledge。
+- 使用用户明确写出的游戏 knowledge。
+- 不使用当前上下文里的另一个游戏 knowledge。
+- 当用户明确写出另一个游戏名时，用户这句里的游戏名优先于当前游戏上下文。
+- 如果用户没有明确写出游戏名，但当前游戏存在，则继续使用当前游戏。
+- 如果既没有明确游戏名，也没有当前游戏，不做宽泛跨游戏检索。
+- `Hollow Knight 里的 Hornet 怎么打？` 的检索词应聚焦 `Hornet`，不靠 `hollow` / `knight` 命中。
+- `法环 Margit 怎么打？` 的检索词应聚焦 `Margit`，不靠 `elden` / `ring` 命中。
 - Debug / Event Stream 显示可读中文摘要。
 - 如果手动选择当前游戏，手动选择优先，并显示冲突或当前来源摘要。
 
@@ -222,7 +234,6 @@
 
 - `below_threshold` 依赖当前知识包内容和评分阈值，手动测试时可优先用机器可读场景文件里的弱相关示例。
 - `no_pack` 依赖 catalog 中仍有 planned / unsupported 游戏；当前可用 `只狼` 做手动场景。
-- 当前跨游戏切换更稳定的表达是“我在玩/换个游戏”；在已有 Elden Ring 上下文时，`Hollow Knight 里的 Hornet 怎么打？` 这种所属格问法可能不会切换知识包，应作为后续检索改进候选。
 - Voice Output 的真实播放取决于系统语音包和浏览器 speech synthesis 支持；失败必须被 UI 允许并可见，不应被视为崩溃。
 - Manual QA 不替代 automated tests；它用于 release 前的人眼回归与打包行为确认。
 

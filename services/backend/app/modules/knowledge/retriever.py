@@ -151,7 +151,7 @@ class GameKnowledgeRetriever:
             )
 
         entries = self._load_entries(snippets_path)
-        terms = self._terms(user_message, current_boss, game_session_state, intent)
+        terms = self._terms(user_message, current_boss, game_session_state, intent, game_id)
         if not terms and not intent.startswith(f"{game_id}_"):
             return self._empty_from_match(
                 game_match,
@@ -233,6 +233,7 @@ class GameKnowledgeRetriever:
         current_boss: str | None,
         game_session_state: dict[str, Any] | None,
         intent: str,
+        game_id: str | None = None,
     ) -> set[str]:
         text_parts = [user_message]
         if _should_include_session_terms(user_message, intent):
@@ -259,7 +260,23 @@ class GameKnowledgeRetriever:
         english_stop = {"the", "and", "how", "should", "what", "with", "beat", "for", "about", "where", "is"}
         terms.update(term for term in re.findall(r"[a-zA-Z][a-zA-Z0-9'-]+", lower) if term not in english_stop)
         terms.update(token for token in re.findall(r"[\u4e00-\u9fff]{2,}", text) if token not in {"怎么", "怎么办", "哪里", "在哪", "什么"})
+        game_name_terms = self._game_name_terms(game_id)
+        terms = {term for term in terms if not _is_game_name_term(term, game_name_terms)}
         return terms
+
+    def _game_name_terms(self, game_id: str | None) -> set[str]:
+        game = self.catalog.get_game(game_id)
+        if not game:
+            return set()
+        names = [game.game_id, game.knowledge_game_id or "", game.display_name, *game.aliases]
+        terms: set[str] = set()
+        for name in names:
+            normalized = normalize_terminology(str(name)).lower().strip()
+            compact = re.sub(r"[\s_\-:：·•.。?？!！'\"“”‘’]+", "", normalized)
+            terms.update({normalized, compact})
+            terms.update(re.findall(r"[a-zA-Z][a-zA-Z0-9'-]+", normalized))
+            terms.update(re.findall(r"[\u4e00-\u9fff]{2,}", normalized))
+        return {term for term in terms if term}
 
     @staticmethod
     def _score_entry(entry: dict[str, Any], terms: set[str], intent: str, game_id: str) -> tuple[float, list[str]]:
@@ -508,6 +525,14 @@ def _is_generic_strategy_term(term: str) -> bool:
         "怎么躲",
         "怎麼躲",
     }
+
+
+def _is_game_name_term(term: str, game_name_terms: set[str]) -> bool:
+    if not game_name_terms:
+        return False
+    normalized = normalize_terminology(str(term)).lower().strip()
+    compact = re.sub(r"[\s_\-:：·•.。?？!！'\"“”‘’]+", "", normalized)
+    return normalized in game_name_terms or compact in game_name_terms
 
 
 def _status_from_fallback(fallback_reason: str | None) -> str:

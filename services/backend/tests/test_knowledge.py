@@ -172,13 +172,93 @@ def test_game_catalog_recognizes_planned_game_without_knowledge():
 def test_game_catalog_prefers_current_game_when_supported():
     match = GameCatalog().match_game(
         current_game="Elden Ring",
-        user_message="老头环里恶兆妖鬼怎么打",
+        user_message="恶兆妖鬼怎么打",
         game_session_state={},
     )
 
     assert match.matched_game_id == "elden_ring"
     assert match.match_source == "current_game"
     assert match.confidence >= 0.9
+
+
+@pytest.mark.parametrize(
+    ("current_game", "message", "expected_game", "expected_title", "expected_term"),
+    [
+        ("Elden Ring", "Hollow Knight 里的 Hornet 怎么打？", "hollow_knight", "大黄蜂", "hornet"),
+        ("Elden Ring", "空洞骑士里的 Hornet 怎么打？", "hollow_knight", "大黄蜂", "hornet"),
+        ("空洞骑士", "Elden Ring 里的 Margit 怎么打？", "elden_ring", "Margit", "margit"),
+        ("空洞骑士", "法环 Margit 怎么打？", "elden_ring", "Margit", "margit"),
+    ],
+)
+def test_explicit_game_query_overrides_current_game_context(
+    current_game: str,
+    message: str,
+    expected_game: str,
+    expected_title: str,
+    expected_term: str,
+):
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=current_game,
+        user_message=message,
+        current_boss=None,
+        game_session_state={"current_game": current_game},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert result.game_id == expected_game
+    assert result.match_source == "user_message"
+    assert result.active_source == "user_message"
+    assert any(expected_title in snippet.title for snippet in result.snippets)
+    matched_terms = result.as_debug_dict()["matched_terms"]
+    assert expected_term in {term.lower() for term in matched_terms}
+    assert not set(term.lower() for term in matched_terms) <= {"hollow", "knight", "elden", "ring"}
+
+
+def test_explicit_hollow_knight_query_terms_do_not_keep_game_name_tokens():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="Elden Ring",
+        user_message="Hollow Knight 里的 Hornet 怎么打？",
+        current_boss=None,
+        game_session_state={"current_game": "Elden Ring"},
+        intent="casual_chat",
+    )
+
+    matched_terms = {term.lower() for term in result.as_debug_dict()["matched_terms"]}
+    assert "hornet" in matched_terms
+    assert "hollow" not in matched_terms
+    assert "knight" not in matched_terms
+    assert "hollow knight" not in matched_terms
+
+
+def test_no_explicit_game_query_uses_current_context():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="空洞骑士",
+        user_message="Hornet 怎么打？",
+        current_boss=None,
+        game_session_state={"current_game": "空洞骑士"},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert result.game_id == "hollow_knight"
+    assert result.match_source == "current_game"
+    assert any("大黄蜂" in snippet.title for snippet in result.snippets)
+
+
+def test_no_explicit_game_and_no_current_game_avoids_broad_search():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=None,
+        user_message="路线",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id is None
+    assert result.snippets == []
+    assert result.retrieval_status == "no_pack"
 
 
 def test_generic_retriever_infers_game_from_content_alias_without_game_name():
@@ -546,6 +626,28 @@ def test_generic_retriever_ignores_non_game_chat():
         user_message="今天有点困",
         current_boss=None,
         game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.snippets == []
+    assert result.retrieval_status == "not_game_related"
+    assert result.not_used_reason == "not_game_related"
+
+
+@pytest.mark.parametrize(
+    ("current_game", "message"),
+    [
+        ("Elden Ring", "今天有点累"),
+        ("空洞骑士", "谢谢"),
+    ],
+)
+def test_idle_chat_with_current_game_stays_not_game_related(current_game: str, message: str):
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=current_game,
+        user_message=message,
+        current_boss=None,
+        game_session_state={"current_game": current_game},
         intent="casual_chat",
     )
 

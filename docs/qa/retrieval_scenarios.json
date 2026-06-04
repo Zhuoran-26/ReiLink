@@ -44,12 +44,45 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
   },
   {
-    "id": "cross-game-hollow-knight-hornet-used",
+    "id": "cross-game-hollow-knight-possessive-used",
     "category": "knowledge_retrieval",
     "game_context": "elden_ring",
-    "input": "我在玩 Hollow Knight，Hornet 怎么打？",
+    "input": "Hollow Knight 里的 Hornet 怎么打？",
     "expected_status": "used",
     "expected_game": "hollow_knight",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "cross-game-hollow-knight-chinese-possessive-used",
+    "category": "knowledge_retrieval",
+    "game_context": "elden_ring",
+    "input": "空洞骑士里的 Hornet 怎么打？",
+    "expected_status": "used",
+    "expected_game": "hollow_knight",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "cross-game-elden-ring-possessive-used",
+    "category": "knowledge_retrieval",
+    "game_context": "hollow_knight",
+    "input": "Elden Ring 里的 Margit 怎么打？",
+    "expected_status": "used",
+    "expected_game": "elden_ring",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "cross-game-elden-ring-fahuan-used",
+    "category": "knowledge_retrieval",
+    "game_context": "hollow_knight",
+    "input": "法环 Margit 怎么打？",
+    "expected_status": "used",
+    "expected_game": "elden_ring",
     "should_inject_knowledge": true,
     "expected_event_summary": "已使用本地知识",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
