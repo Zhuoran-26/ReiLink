@@ -236,6 +236,8 @@ make package-desktop
 
 常见启动问题见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
 
+QA / 回归入口见 [docs/QA.md](docs/QA.md)，机器可读场景见 [docs/qa/retrieval_scenarios.json](docs/qa/retrieval_scenarios.json)。
+
 ### 环境变量
 
 示例配置，放在 `services/backend/.env`：
@@ -553,6 +555,8 @@ Notes:
 - `make package-desktop`: builds an unsigned local macOS Electron app with the backend binary and bundled knowledge resources.
 
 For common startup issues, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+For manual QA and regression coverage, see [docs/QA.md](docs/QA.md). Machine-readable scenarios live in [docs/qa/retrieval_scenarios.json](docs/qa/retrieval_scenarios.json).
 
 ### Environment Variables
 
