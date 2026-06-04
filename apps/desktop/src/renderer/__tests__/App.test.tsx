@@ -1883,6 +1883,25 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("not-allowed");
   });
 
+  it("shows Voice Input service unavailable as unavailable instead of available", async () => {
+    installMediaDevicesMock("granted");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitError("network");
+    });
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    expect(voiceInputSettings).toHaveTextContent("服务不可用");
+    expect(voiceInputSettings).toHaveTextContent("语音识别功能：服务不可用");
+    expect(voiceInputSettings).toHaveTextContent("麦克风权限：已允许");
+    expect(voiceInputSettings).toHaveTextContent("当前运行环境的语音识别服务不可用");
+    expect(voiceInputSettings).toHaveTextContent("你仍然可以使用系统听写输入到文本框");
+    expect(screen.getByText(/语音输入：语音识别服务不可用/)).toBeInTheDocument();
+  });
+
   it("maps Voice Input no-speech and user stop errors to readable Chinese", async () => {
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();

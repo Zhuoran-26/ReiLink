@@ -888,11 +888,18 @@ const voiceInputPhaseText = (status: VoiceInputStatus) => {
   return "待命";
 };
 
-const voiceInputAvailabilityText = (status: VoiceInputStatus) =>
-  status.supported ? "可用" : "不可用";
+const voiceInputServiceUnavailable = (status: VoiceInputStatus) =>
+  status.lastError === "语音识别服务不可用";
 
-const voiceInputApiText = (status: VoiceInputStatus) =>
-  status.diagnostics.recognitionApiAvailable ? "可用" : "不可用";
+const voiceInputAvailabilityText = (status: VoiceInputStatus) => {
+  if (voiceInputServiceUnavailable(status)) return "服务不可用";
+  return status.supported ? "可用" : "不可用";
+};
+
+const voiceInputApiText = (status: VoiceInputStatus) => {
+  if (voiceInputServiceUnavailable(status)) return "服务不可用";
+  return status.diagnostics.recognitionApiAvailable ? "可用" : "不可用";
+};
 
 const voiceInputRuntimeText = (status: VoiceInputStatus) => {
   if (status.diagnostics.runtimeEnvironment === "packaged") return "打包应用";
@@ -2302,6 +2309,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 </p>
                 {!voiceInputStatus.supported && (
                   <p className="settingHint">当前运行环境不支持本地语音识别。你仍然可以使用系统听写输入到文本框。</p>
+                )}
+                {voiceInputServiceUnavailable(voiceInputStatus) && (
+                  <p className="settingHint">当前运行环境的语音识别服务不可用。你仍然可以使用系统听写输入到文本框。</p>
                 )}
                 {voiceInputStatus.lastTranscriptCharacterCount > 0 && (
                   <p className="settingHint">最近识别：{voiceInputStatus.lastTranscriptCharacterCount} 字。</p>

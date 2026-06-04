@@ -69,6 +69,7 @@
 - Voice Input v1 依赖浏览器运行时提供的 `SpeechRecognition` / `webkitSpeechRecognition`。如果 Electron / Chromium 不提供该 API，显示 `当前运行环境不支持本地语音识别`，按钮不可启动，App 不崩溃。
 - 不支持本地语音识别时，Settings 应提示用户仍可使用系统听写把文本输入到聊天框。
 - 如果 constructor 存在但 `start()` 失败，显示 `语音输入启动失败` 或等价中文摘要，不应误报为环境不支持。
+- 如果 constructor 存在、麦克风已允许，但浏览器返回服务错误，显示 `语音识别服务不可用`，Settings 顶部应显示 `服务不可用`，不应继续显示为 `可用`。
 - 如果麦克风或识别权限被拒绝，显示 `麦克风权限被拒绝` 或等价中文摘要，App 不崩溃。
 - 如果没有识别到语音，显示 `没有识别到语音` 或等价中文摘要。
 - 如果用户主动停止或浏览器返回 aborted，显示 `用户停止` 或等价中文摘要。
@@ -94,6 +95,7 @@
 - Settings 显示 `语音识别功能`、`麦克风权限` 和 `运行环境：打包应用`。
 - 如果 packaged 环境支持 Web Speech Recognition，点击开始后可进入听写状态，final transcript 填入输入框但不自动发送。
 - 如果 packaged 环境不支持 Web Speech Recognition，显示 `当前运行环境不支持本地语音识别`，并提示可使用系统听写，不崩溃。
+- 如果 packaged 环境暴露 Web Speech Recognition 但服务不可达，显示 `语音识别服务不可用` 和 `服务不可用`，并提示可使用系统听写，不崩溃。
 - 如果权限被拒绝，显示 `麦克风权限被拒绝` 或等价中文错误，不崩溃。
 - packaged `Info.plist` 应包含麦克风用途说明，避免权限提示缺失。
 - `测试语音 / Test Voice` 仍可见。
