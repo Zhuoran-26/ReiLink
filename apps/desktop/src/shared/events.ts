@@ -16,6 +16,11 @@ export type ReiLinkEvent =
   | { type: "tts_started"; timestamp: string; character_count: number; source?: "assistant_reply" | "test_voice" }
   | { type: "tts_completed"; timestamp: string; character_count: number; source?: "assistant_reply" | "test_voice" }
   | { type: "tts_stopped"; timestamp: string; character_count?: number; reason?: string; source?: "assistant_reply" | "test_voice" }
-  | { type: "tts_error"; timestamp: string; character_count?: number; reason?: string; status?: string; source?: "assistant_reply" | "test_voice" };
+  | { type: "tts_error"; timestamp: string; character_count?: number; reason?: string; status?: string; source?: "assistant_reply" | "test_voice" }
+  | { type: "voice_input_started"; timestamp: string; language?: string }
+  | { type: "voice_input_completed"; timestamp: string; character_count: number; is_final?: boolean; language?: string }
+  | { type: "voice_input_stopped"; timestamp: string; character_count?: number; reason?: string; status?: string; language?: string }
+  | { type: "voice_input_error"; timestamp: string; character_count?: number; reason?: string; status?: string; language?: string }
+  | { type: "voice_input_unavailable"; timestamp: string; reason?: string; status?: string; language?: string };
 
 export type ReiLinkEventType = ReiLinkEvent["type"];

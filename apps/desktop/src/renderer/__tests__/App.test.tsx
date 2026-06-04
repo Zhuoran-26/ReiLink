@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App, EventStreamPanel, INTERIM_PLACEHOLDERS } from "../App";
 import { eventBus } from "../eventBus";
+import { voiceInput } from "../voiceInput";
 import { voiceOutput } from "../voiceOutput";
 import type {
   AppSettings,
@@ -769,6 +770,62 @@ const installSpeechSynthesisMock = (voices: SpeechSynthesisVoice[] = []) => {
   return { speak, cancel, resume, getVoices, setVoices };
 };
 
+type MockRecognitionResult = {
+  isFinal: boolean;
+  0: { transcript: string };
+  length: number;
+};
+
+class MockSpeechRecognition {
+  static instances: MockSpeechRecognition[] = [];
+
+  lang = "";
+  interimResults = false;
+  continuous = false;
+  onstart: (() => void) | null = null;
+  onresult: ((event: { resultIndex: number; results: MockRecognitionResult[] }) => void) | null = null;
+  onerror: ((event: { error: string }) => void) | null = null;
+  onend: (() => void) | null = null;
+  start = vi.fn(() => {
+    this.onstart?.();
+  });
+  stop = vi.fn(() => {
+    this.onend?.();
+  });
+  abort = vi.fn(() => {
+    this.onend?.();
+  });
+
+  constructor() {
+    MockSpeechRecognition.instances.push(this);
+  }
+
+  emitResult(transcript: string, isFinal = true) {
+    this.onresult?.({
+      resultIndex: 0,
+      results: [{ 0: { transcript }, length: 1, isFinal }]
+    });
+  }
+
+  emitError(error: string) {
+    this.onerror?.({ error });
+  }
+}
+
+const installSpeechRecognitionMock = (kind: "standard" | "webkit" = "standard") => {
+  MockSpeechRecognition.instances = [];
+  if (kind === "standard") {
+    vi.stubGlobal("SpeechRecognition", MockSpeechRecognition);
+    Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: MockSpeechRecognition });
+    Reflect.deleteProperty(window, "webkitSpeechRecognition");
+  } else {
+    vi.stubGlobal("webkitSpeechRecognition", MockSpeechRecognition);
+    Object.defineProperty(window, "webkitSpeechRecognition", { configurable: true, value: MockSpeechRecognition });
+    Reflect.deleteProperty(window, "SpeechRecognition");
+  }
+  return MockSpeechRecognition;
+};
+
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
   let status = { ...initialStatus };
   const listeners = new Set<(nextStatus: BackendRuntimeStatus) => void>();
@@ -993,9 +1050,12 @@ describe("App", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    voiceInput.resetForTest();
     voiceOutput.resetForTest();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    Reflect.deleteProperty(window, "SpeechRecognition");
+    Reflect.deleteProperty(window, "webkitSpeechRecognition");
     Reflect.deleteProperty(window, "reilinkRuntime");
     eventBus.clear();
   });
@@ -1624,6 +1684,213 @@ describe("App", () => {
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "tts_started", source: "test_voice" })])
     );
+  });
+
+  it("shows Voice Input controls and Settings availability status", async () => {
+    installSpeechRecognitionMock();
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "开始语音 / Start Voice" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音输入 / Voice Input");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("可用");
+    expect(screen.getByText(/语音输入：待命/)).toBeInTheDocument();
+  });
+
+  it("starts SpeechRecognition when Voice Input is supported", async () => {
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+
+    expect(recognition.instances).toHaveLength(1);
+    expect(recognition.instances[0].lang).toBe("zh-CN");
+    expect(recognition.instances[0].interimResults).toBe(true);
+    expect(recognition.instances[0].start).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("button", { name: "停止识别 / Stop Listening" })).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "voice_input_started", language: "zh-CN" })])
+    );
+  });
+
+  it("shows Voice Input unavailable fallback without crashing", async () => {
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前环境不支持本地语音输入")
+    );
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("不可用");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "voice_input_unavailable",
+          status: "当前环境不支持本地语音输入"
+        })
+      ])
+    );
+  });
+
+  it("fills final Voice Input transcript into the input without auto sending", async () => {
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("Hollow Knight 里的 Hornet 怎么打？", true);
+    });
+
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("Hollow Knight 里的 Hornet 怎么打？");
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(screen.queryByText("Hollow Knight 里的 Hornet 怎么打？")).not.toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "voice_input_completed",
+          character_count: "Hollow Knight 里的 Hornet 怎么打？".length,
+          is_final: true
+        })
+      ])
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    expect(await screen.findByText("Hollow Knight 里的 Hornet 怎么打？")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("keeps interim Voice Input transcript out of chat, memory, retrieval, and game context", async () => {
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("我还没确认", false);
+    });
+
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(screen.getByText(/临时识别 5 字/)).toBeInTheDocument();
+    const fetchCalls = vi.mocked(fetch).mock.calls;
+    expect(fetchCalls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/memory/pending"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/debug/prompt-preview"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/game/context"))).toBe(false);
+  });
+
+  it("shows readable Voice Input errors without raw reason codes", async () => {
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitError("not-allowed");
+    });
+
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("麦克风权限被拒绝");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "voice_input_error",
+          reason: "permission_denied",
+          status: "麦克风权限被拒绝"
+        })
+      ])
+    );
+    render(
+      <EventStreamPanel
+        events={eventBus.getRecentEvents(20)}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+    const eventStreamTitles = screen.getAllByText("事件流 / Event Stream");
+    const eventStream = eventStreamTitles[eventStreamTitles.length - 1].closest("details");
+    expect(eventStream).toHaveTextContent("语音输入失败");
+    expect(eventStream).toHaveTextContent("麦克风权限被拒绝");
+    expect(eventStream).not.toHaveTextContent("permission_denied");
+    expect(eventStream).not.toHaveTextContent("not-allowed");
+  });
+
+  it("stops active Voice Output when Voice Input starts", async () => {
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试语音 / Test Voice" }));
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "tts_stopped", reason: "user_stop" }),
+        expect.objectContaining({ type: "voice_input_started" })
+      ])
+    );
+  });
+
+  it("shows Voice Input lifecycle summaries without full transcript in Event Stream", () => {
+    render(
+      <EventStreamPanel
+        events={[
+          { type: "voice_input_started", timestamp: new Date().toISOString(), language: "zh-CN" },
+          {
+            type: "voice_input_completed",
+            timestamp: new Date().toISOString(),
+            character_count: 21,
+            is_final: true,
+            language: "zh-CN"
+          },
+          {
+            type: "voice_input_stopped",
+            timestamp: new Date().toISOString(),
+            reason: "user_stop",
+            status: "用户停止",
+            language: "zh-CN"
+          },
+          {
+            type: "voice_input_error",
+            timestamp: new Date().toISOString(),
+            reason: "no_speech",
+            status: "没有识别到语音",
+            language: "zh-CN"
+          },
+          {
+            type: "voice_input_unavailable",
+            timestamp: new Date().toISOString(),
+            reason: "not_supported",
+            status: "当前环境不支持本地语音输入",
+            language: "zh-CN"
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).toHaveTextContent("语音输入开始");
+    expect(eventStream).toHaveTextContent("语音输入完成");
+    expect(eventStream).toHaveTextContent("识别文本 21 字");
+    expect(eventStream).toHaveTextContent("语音输入已停止");
+    expect(eventStream).toHaveTextContent("语音输入失败");
+    expect(eventStream).toHaveTextContent("语音输入不可用");
+    expect(eventStream).not.toHaveTextContent("Hollow Knight 里的 Hornet 怎么打？");
+    expect(eventStream).not.toHaveTextContent("user_stop");
+    expect(eventStream).not.toHaveTextContent("no_speech");
+    expect(eventStream).not.toHaveTextContent("not_supported");
+    expect(eventStream).not.toHaveTextContent("raw_prompt");
+    expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
+    expect(eventStream).not.toHaveTextContent("services/backend/.env");
+    expect(eventStream).not.toHaveTextContent("Authorization");
   });
 
   it("falls back to the system default voice when voices are empty", async () => {

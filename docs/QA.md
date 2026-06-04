@@ -2,11 +2,12 @@
 
 ## 中文
 
-这份 QA Pack 用于在继续开发 Voice Input、Live2D、Overlay、embedding RAG 之前，快速回归 ReiLink 当前已经稳定的交互底座。它覆盖手动检查、packaged app smoke、Knowledge Retrieval、Voice Output、Event Stream / Debug 隐私，以及 release 前 runtime sanity。
+这份 QA Pack 用于在继续开发 Voice Input 后续能力、Live2D、Overlay、embedding RAG 之前，快速回归 ReiLink 当前已经稳定的交互底座。它覆盖手动检查、packaged app smoke、Knowledge Retrieval、Voice Output、Voice Input、Event Stream / Debug 隐私，以及 release 前 runtime sanity。
 
 配套机器可读场景文件：
 
 - `docs/qa/retrieval_scenarios.json`
+- `docs/qa/voice_input_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -57,7 +58,44 @@
 - Event Stream 不显示完整测试语音文本。
 - Event Stream 不显示 raw prompt、API key、`.env`、Authorization、完整路径或长 internal payload。
 
-### 3. Knowledge Retrieval 回归检查
+### 3. Voice Input push-to-talk 回归检查
+
+- 聊天输入区附近可见 `开始语音 / Start Voice`。
+- Settings Panel 可见 `语音输入 / Voice Input`。
+- Settings 显示本地语音识别是否可用、当前状态、语言、最近识别字数和最近错误。
+- 默认不监听；只有用户点击开始后才进入 `正在听 / Listening` 或 `正在识别 / Recognizing`。
+- 不做 wake word，不做后台常驻监听。
+- 如果当前环境不支持 `SpeechRecognition` / `webkitSpeechRecognition`，显示 `当前环境不支持本地语音输入`，App 不崩溃。
+- 如果麦克风或识别权限被拒绝，显示 `麦克风权限被拒绝` 或等价中文摘要，App 不崩溃。
+- 如果没有识别到语音，显示 `没有识别到语音` 或等价中文摘要。
+- final transcript 只填入聊天输入框，用户可以编辑。
+- interim transcript 只影响识别状态，不自动发送。
+- final transcript 不自动发送；只有用户点击 `发送` 后才进入现有 chat flow。
+- 未确认 transcript 不进入 memory。
+- 未确认 transcript 不进入 prompt / context。
+- 未确认 transcript 不触发 game context extraction。
+- 未确认 transcript 不触发 knowledge retrieval。
+- 开始 Voice Input 时会停止当前 Voice Output 播放，并在 Event Stream 中显示安全摘要。
+- `测试语音 / Test Voice` 仍然可见且可用。
+- Voice Output 开启后，assistant 最终回复仍可播放。
+- Voice Output 关闭时，assistant 回复不播放语音。
+- Event Stream 可显示 `语音输入开始`、`语音输入完成`、`语音输入已停止`、`语音输入失败`、`语音输入不可用`。
+- Event Stream 只显示字数、语言和中文状态，不显示完整 transcript、raw recognition event、permission object、audio data、raw prompt、API key、`.env`、Authorization 或完整本地路径。
+
+#### Packaged `.app` Voice Input
+
+- 直接打开 packaged `ReiLink.app`，不是 dev renderer。
+- UI 非黑屏，backend 自启动。
+- `开始语音 / Start Voice` 和 `语音输入 / Voice Input` 可见。
+- 如果 packaged 环境支持 Web Speech Recognition，点击开始后可进入听写状态，final transcript 填入输入框但不自动发送。
+- 如果 packaged 环境不支持 Web Speech Recognition，显示可读不可用状态，不崩溃。
+- 如果权限被拒绝，显示可读中文错误，不崩溃。
+- `测试语音 / Test Voice` 仍可见。
+- Knowledge Retrieval 仍可用。
+- Event Stream 不泄露完整 transcript 或敏感信息。
+- 退出后，由 app 自启动的 backend 没有残留进程。
+
+### 4. Knowledge Retrieval 回归检查
 
 #### Elden Ring 命中
 
@@ -176,7 +214,7 @@
 - 不注入空 knowledge 模板。
 - 不强行编知识包内容。
 
-### 4. Debug / Event Stream 隐私检查
+### 5. Debug / Event Stream 隐私检查
 
 必须不能出现：
 
@@ -188,6 +226,8 @@
 - raw prompt。
 - full assistant reply。
 - full Test Voice text。
+- full Voice Input transcript。
+- raw recognition event。
 - full knowledge pack content。
 - long backend/internal payload。
 
@@ -201,9 +241,10 @@
 - score。
 - snippet preview。
 - TTS lifecycle 摘要。
+- Voice Input lifecycle 摘要、字数、语言和中文错误。
 - backend health summary。
 
-### 5. Packaged `.app` Release Smoke Checklist
+### 6. Packaged `.app` Release Smoke Checklist
 
 - 如果 backend 代码、schema、knowledge loading 或 runtime 发生变化，重新运行 `make package-backend`。
 - 重新运行 `make package-desktop`。
@@ -212,13 +253,15 @@
 - backend 自启动，或复用健康外部 backend。
 - bundled knowledge resources 可用。
 - `语音输出 / Voice Output` 和 `测试语音 / Test Voice` 可见。
+- `语音输入 / Voice Input` 和 `开始语音 / Start Voice` 可见。
+- Voice Input supported / unsupported / permission fallback 可读，不崩溃。
 - Knowledge Retrieval 可用。
 - Event Stream 不泄露敏感内容。
 - memory / session 写入用户数据目录，不写入 `.app`。
 - `.env` 不复制进 `.app`。
 - app 退出后，自启动 backend 无残留。
 
-### 6. Release 前 Runtime Sanity
+### 7. Release 前 Runtime Sanity
 
 - `make lint`
 - `make test-desktop`
@@ -230,10 +273,11 @@
 - 如果 runtime / packaging / backend binary / knowledge loading 变更：`make package-backend && make package-desktop`
 - packaged `.app` smoke 至少覆盖：非黑屏、backend health ok、bundled knowledge、Voice Output controls、Event Stream privacy。
 
-### 7. Known Limitations
+### 8. Known Limitations
 
 - `below_threshold` 依赖当前知识包内容和评分阈值，手动测试时可优先用机器可读场景文件里的弱相关示例。
 - `no_pack` 依赖 catalog 中仍有 planned / unsupported 游戏；当前可用 `只狼` 做手动场景。
+- Voice Input 的真实识别取决于 packaged Electron / Chromium 是否暴露 Web Speech Recognition 以及 macOS 权限；不可用或被拒绝必须显示可读 fallback，不应被视为崩溃。
 - Voice Output 的真实播放取决于系统语音包和浏览器 speech synthesis 支持；失败必须被 UI 允许并可见，不应被视为崩溃。
 - Manual QA 不替代 automated tests；它用于 release 前的人眼回归与打包行为确认。
 
@@ -244,5 +288,6 @@ This QA Pack is a reusable manual regression checklist for ReiLink before future
 Machine-readable scenarios live at:
 
 - `docs/qa/retrieval_scenarios.json`
+- `docs/qa/voice_input_scenarios.json`
 
 Use the Chinese checklist above as the source of truth for manual runs. Keep results short and concrete: pass/fail, exact app mode, exact commit, and any visible privacy issue.

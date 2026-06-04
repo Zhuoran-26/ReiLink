@@ -43,6 +43,7 @@ import {
 import type { ReiLinkEvent } from "../shared/events";
 import type { BackendRuntimeStatus } from "../shared/runtime";
 import { eventBus } from "./eventBus";
+import { voiceInput, type VoiceInputStatus } from "./voiceInput";
 import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
 
 type Message = {
@@ -761,6 +762,23 @@ const voiceStopReasonText = (reason?: string) => {
   return labels[reason] ?? debugText(reason);
 };
 
+const voiceInputReasonText = (reason?: string, status?: string) => {
+  if (status) return status;
+  const labels: Record<string, string> = {
+    not_supported: "当前环境不支持",
+    permission_denied: "麦克风权限被拒绝",
+    network: "语音识别服务不可用",
+    no_speech: "没有识别到语音",
+    aborted: "用户停止",
+    audio_capture: "无法读取麦克风",
+    user_stop: "用户停止",
+    unmount: "窗口关闭",
+    unknown: "语音输入失败"
+  };
+  if (!reason) return "无";
+  return labels[reason] ?? "语音输入失败";
+};
+
 const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
   if (source === "test_voice") return "测试语音";
   return "";
@@ -804,6 +822,16 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [voiceEventSourceText(event.source), voiceStopReasonText(event.reason)].filter(Boolean).join(" / ");
     case "tts_error":
       return [voiceEventSourceText(event.source), event.status ? debugText(event.status) : debugText(event.reason)].filter(Boolean).join(" / ");
+    case "voice_input_started":
+      return [event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ") || "正在听";
+    case "voice_input_completed":
+      return [`识别文本 ${event.character_count} 字`, event.is_final ? "已填入输入框" : "", event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "voice_input_stopped":
+      return [voiceInputReasonText(event.reason, event.status), event.character_count ? `${event.character_count} 字` : "", event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "voice_input_error":
+      return [voiceInputReasonText(event.reason, event.status), event.character_count ? `${event.character_count} 字` : "", event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "voice_input_unavailable":
+      return [voiceInputReasonText(event.reason, event.status), event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
     default:
       return "event";
   }
@@ -828,7 +856,12 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     tts_started: "语音开始播放",
     tts_completed: "语音播放完成",
     tts_stopped: "语音已停止",
-    tts_error: "语音播放失败"
+    tts_error: "语音播放失败",
+    voice_input_started: "语音输入开始",
+    voice_input_completed: "语音输入完成",
+    voice_input_stopped: "语音输入已停止",
+    voice_input_error: "语音输入失败",
+    voice_input_unavailable: "语音输入不可用"
   };
   return labels[type];
 };
@@ -844,6 +877,23 @@ const voicePhaseText = (status: VoiceOutputStatus) => {
   if (status.phase === "starting") return "正在准备播放";
   if (status.phase === "playing") return "正在播放";
   return "已停止";
+};
+
+const voiceInputPhaseText = (status: VoiceInputStatus) => {
+  if (!status.supported) return "当前环境不支持本地语音输入";
+  if (status.phase === "listening") return "正在听 / Listening";
+  if (status.phase === "recognizing") return "正在识别 / Recognizing";
+  return "待命";
+};
+
+const voiceInputAvailabilityText = (status: VoiceInputStatus) =>
+  status.supported ? "可用" : "不可用";
+
+const appendTranscriptToInput = (current: string, transcript: string) => {
+  const text = transcript.trim();
+  if (!text) return current;
+  if (!current.trim()) return text;
+  return `${current.trimEnd()} ${text}`;
 };
 
 const safeProviderDebug = (debug: ProviderDebugResponse) => {
@@ -1052,6 +1102,7 @@ export function App() {
   const [lastInterimPlaceholderShown, setLastInterimPlaceholderShown] = useState(false);
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
   const [voiceStatus, setVoiceStatus] = useState<VoiceOutputStatus>(() => voiceOutput.getStatus());
+  const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>(() => voiceInput.getStatus());
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const forceNextScrollRef = useRef(true);
@@ -1075,6 +1126,19 @@ export function App() {
       source: "test_voice"
     });
   }, [appSettings.voice_rate, appSettings.voice_volume]);
+
+  const startVoiceInput = useCallback(() => {
+    voiceOutput.stop("user_stop");
+    voiceInput.start({
+      onFinalTranscript: (transcript) => {
+        setInput((current) => appendTranscriptToInput(current, transcript));
+      }
+    });
+  }, []);
+
+  const stopVoiceInput = useCallback(() => {
+    voiceInput.stop("user_stop");
+  }, []);
 
   const isMessagesNearBottom = useCallback(() => {
     const element = messagesRef.current;
@@ -1400,6 +1464,14 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const unsubscribe = voiceInput.subscribe(setVoiceInputStatus);
+    return () => {
+      unsubscribe();
+      voiceInput.stop("unmount");
+    };
+  }, []);
+
+  useEffect(() => {
     if (appSettings.voice_output === "off") {
       voiceOutput.stop("disabled");
     }
@@ -1486,6 +1558,7 @@ export function App() {
     const trimmed = input.trim();
     if (!trimmed || sending) return;
     voiceOutput.stop("new_message");
+    voiceInput.stop("user_stop");
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed, createdAt: new Date().toISOString() };
     const placeholderId = crypto.randomUUID();
     const replyMessageId = crypto.randomUUID();
@@ -2013,7 +2086,13 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             {lastError && <div className="errorNotice" role="status">{lastError}</div>}
 
             <form className="composer" onSubmit={sendMessage}>
-              <button className="iconButton disabled" type="button" aria-label="按住说话实验功能" disabled>
+              <button
+                className={`iconButton voiceInputButton ${voiceInputStatus.phase !== "idle" ? "active" : ""}`}
+                type="button"
+                aria-label={voiceInputStatus.phase === "idle" ? "开始语音 / Start Voice" : "停止识别 / Stop Listening"}
+                title={voiceInputStatus.phase === "idle" ? "开始语音输入" : "停止识别"}
+                onClick={voiceInputStatus.phase === "idle" ? startVoiceInput : stopVoiceInput}
+              >
                 <Mic size={18} />
               </button>
               <input
@@ -2026,6 +2105,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <Send size={18} />
                 <span>{sending ? "发送中" : "发送"}</span>
               </button>
+              <div className="voiceInputInlineStatus" role="status">
+                语音输入：{voiceInputPhaseText(voiceInputStatus)}
+                {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
+                {voiceInputStatus.lastError ? ` / ${voiceInputStatus.lastError}` : ""}
+              </div>
             </form>
           </section>
         </section>
@@ -2193,6 +2277,19 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <Volume2 size={14} />
                   测试语音
                 </button>
+              </div>
+              <div className="voiceOutputPanel" role="group" aria-label="语音输入设置">
+                <div className="settingRow static">
+                  <span>语音输入 / Voice Input</span>
+                  <strong>{voiceInputAvailabilityText(voiceInputStatus)}</strong>
+                </div>
+                <p className="settingHint">当前状态：{voiceInputPhaseText(voiceInputStatus)}。</p>
+                <p className="settingHint">语言：{voiceInputStatus.language}。识别结果会先填入输入框，不会自动发送。</p>
+                {!voiceInputStatus.supported && <p className="settingHint">当前环境不支持本地语音输入。</p>}
+                {voiceInputStatus.lastTranscriptCharacterCount > 0 && (
+                  <p className="settingHint">最近识别：{voiceInputStatus.lastTranscriptCharacterCount} 字。</p>
+                )}
+                {voiceInputStatus.lastError && <p className="settingHint">{voiceInputStatus.lastError}</p>}
               </div>
               <label className="settingRow">
                 <span>自动启动本地后端</span>
@@ -2859,6 +2956,38 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </section>
 
                   <section className="debugSection">
+                    <h3>语音输入</h3>
+                    <dl className="debugFacts">
+                      <div>
+                        <dt>本地语音识别</dt>
+                        <dd>{voiceInputAvailabilityText(voiceInputStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>当前状态</dt>
+                        <dd>{voiceInputPhaseText(voiceInputStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>语言</dt>
+                        <dd>{debugText(voiceInputStatus.language)}</dd>
+                      </div>
+                      <div>
+                        <dt>最近识别字数</dt>
+                        <dd>{voiceInputStatus.lastTranscriptCharacterCount}</dd>
+                      </div>
+                      <div>
+                        <dt>临时识别字数</dt>
+                        <dd>{voiceInputStatus.interimCharacterCount}</dd>
+                      </div>
+                      <div>
+                        <dt>最近错误</dt>
+                        <dd className={voiceInputStatus.lastError ? "debugError" : ""}>
+                          {debugText(voiceInputStatus.lastError)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section className="debugSection">
                     <h3>模型路由</h3>
                     <dl className="debugFacts">
                       <div>
@@ -3126,6 +3255,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             voice_output: appSettings.voice_output,
                             voice_rate: appSettings.voice_rate,
                             voice_volume: appSettings.voice_volume
+                          },
+                          voice_input: {
+                            supported: voiceInputStatus.supported,
+                            phase: voiceInputStatus.phase,
+                            language: voiceInputStatus.language,
+                            lastTranscriptCharacterCount: voiceInputStatus.lastTranscriptCharacterCount,
+                            interimCharacterCount: voiceInputStatus.interimCharacterCount,
+                            lastError: voiceInputStatus.lastError
                           },
                           chat: {
                             intent: chatDebug.intent,

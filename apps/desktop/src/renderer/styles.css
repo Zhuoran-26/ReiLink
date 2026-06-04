@@ -597,6 +597,14 @@ button {
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+.voiceInputInlineStatus {
+  grid-column: 2 / 4;
+  min-height: 18px;
+  color: #aeb8d3;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .composer input {
   width: 100%;
   min-width: 0;
@@ -637,6 +645,12 @@ button {
 .iconButton.soft {
   color: #d3dcf0;
   background: rgba(24, 30, 48, 0.54);
+}
+
+.iconButton.voiceInputButton.active {
+  color: #ffffff;
+  border-color: rgba(104, 202, 179, 0.56);
+  background: rgba(45, 99, 91, 0.7);
 }
 
 .iconButton:hover,
@@ -923,6 +937,12 @@ button {
 .settingRow span {
   color: #dce4f6;
   font-weight: 620;
+}
+
+.settingRow strong {
+  color: #edf2fb;
+  font-size: 12px;
+  text-align: right;
 }
 
 .settingRow select {
