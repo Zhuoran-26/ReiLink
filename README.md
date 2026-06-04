@@ -236,7 +236,7 @@ make package-desktop
 
 常见启动问题见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
 
-QA / 回归入口见 [docs/QA.md](docs/QA.md)，机器可读场景见 [docs/qa/retrieval_scenarios.json](docs/qa/retrieval_scenarios.json)。
+QA / 回归入口见 [docs/QA.md](docs/QA.md)，机器可读场景见 [docs/qa/retrieval_scenarios.json](docs/qa/retrieval_scenarios.json)、[docs/qa/voice_input_scenarios.json](docs/qa/voice_input_scenarios.json) 和 [docs/qa/voice_input_local_asr_scenarios.json](docs/qa/voice_input_local_asr_scenarios.json)。Voice Input v2 本地 ASR 可行性设计见 [docs/voice-input-local-asr-spike.md](docs/voice-input-local-asr-spike.md)。
 
 ### 环境变量
 
@@ -556,7 +556,7 @@ Notes:
 
 For common startup issues, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
-For manual QA and regression coverage, see [docs/QA.md](docs/QA.md). Machine-readable scenarios live in [docs/qa/retrieval_scenarios.json](docs/qa/retrieval_scenarios.json).
+For manual QA and regression coverage, see [docs/QA.md](docs/QA.md). Machine-readable scenarios live in [docs/qa/retrieval_scenarios.json](docs/qa/retrieval_scenarios.json), [docs/qa/voice_input_scenarios.json](docs/qa/voice_input_scenarios.json), and [docs/qa/voice_input_local_asr_scenarios.json](docs/qa/voice_input_local_asr_scenarios.json). The Voice Input v2 local ASR feasibility plan is in [docs/voice-input-local-asr-spike.md](docs/voice-input-local-asr-spike.md).
 
 ### Environment Variables
 

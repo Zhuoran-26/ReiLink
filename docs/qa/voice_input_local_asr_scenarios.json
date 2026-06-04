@@ -1,0 +1,122 @@
+[
+  {
+    "id": "local-asr-web-speech-unavailable-fallback",
+    "category": "voice_input_local_asr",
+    "precondition": "Electron exposes Web Speech Recognition but the recognition service is unavailable",
+    "expected_status": "voice_input_web_speech_unavailable",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI shows 语音识别服务不可用 and keeps system dictation as a temporary fallback.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", "raw_prompt"]
+  },
+  {
+    "id": "local-asr-not-configured",
+    "category": "voice_input_local_asr",
+    "precondition": "No local ASR binary or model path is configured",
+    "expected_status": "local_asr_not_configured",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Settings shows 本地语音识别未配置 with a readable setup hint.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+  },
+  {
+    "id": "local-asr-binary-missing",
+    "category": "voice_input_local_asr",
+    "precondition": "A local ASR model exists but the configured binary is missing",
+    "expected_status": "local_asr_binary_missing",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI shows 缺少本地识别程序 without showing the full configured path.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+  },
+  {
+    "id": "local-asr-model-missing",
+    "category": "voice_input_local_asr",
+    "precondition": "A local ASR binary exists but the model file is missing",
+    "expected_status": "local_asr_model_missing",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI shows 缺少本地语音模型 without showing the full configured path.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+  },
+  {
+    "id": "local-asr-ready",
+    "category": "voice_input_local_asr",
+    "precondition": "A safe local ASR binary and model are configured",
+    "expected_status": "local_asr_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Settings shows 本地语音识别可用 and does not start recording until the user clicks the voice button.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+  },
+  {
+    "id": "local-asr-transcription-completed",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR is ready and a short push-to-talk recording is transcribed",
+    "expected_status": "local_asr_completed",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Transcript fills the input box and Event Stream only shows completion plus character count.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", "full transcript"]
+  },
+  {
+    "id": "local-asr-transcription-error",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR subprocess fails or times out",
+    "expected_status": "local_asr_error",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI shows 本地语音识别失败 with a Chinese summary and no raw subprocess output.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "raw subprocess output", "full audio path"]
+  },
+  {
+    "id": "local-asr-transcript-awaits-send",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR returns a transcript",
+    "expected_status": "local_asr_completed",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Transcript remains editable in the input and is not sent until the user clicks 发送.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+  },
+  {
+    "id": "local-asr-transcript-does-not-enter-memory-before-send",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR fills the input but the user has not clicked send",
+    "expected_status": "local_asr_completed",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Unconfirmed transcript does not enter memory, prompt preview, knowledge retrieval, or game context extraction.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "full audio path"]
+  },
+  {
+    "id": "local-asr-temporary-audio-cleanup",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Backend writes temporary audio for local ASR",
+    "expected_status": "local_asr_completed",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Temporary audio is deleted after completion, failure, or timeout; UI does not show the full temp path.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", "tmp/voice-input/"]
+  },
+  {
+    "id": "local-asr-event-stream-privacy",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR lifecycle events are visible in Event Stream",
+    "expected_status": "local_asr_completed",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Event Stream shows Chinese lifecycle summaries and character counts only.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "raw subprocess output", "full audio path"]
+  },
+  {
+    "id": "local-asr-packaged-unavailable-fallback",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Packaged app has no local ASR binary or model configured",
+    "expected_status": "local_asr_not_configured",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Packaged app stays usable, shows local ASR unavailable fallback, and does not write models or user data into the app bundle.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", ".app/Contents/Resources/data"]
+  }
+]

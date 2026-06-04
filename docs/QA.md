@@ -8,6 +8,7 @@
 
 - `docs/qa/retrieval_scenarios.json`
 - `docs/qa/voice_input_scenarios.json`
+- `docs/qa/voice_input_local_asr_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -103,7 +104,19 @@
 - Event Stream 不泄露完整 transcript 或敏感信息。
 - 退出后，由 app 自启动的 backend 没有残留进程。
 
-### 4. Knowledge Retrieval 回归检查
+### 4. Voice Input v2 local ASR feasibility / 本地语音识别可行性
+
+设计文档见 `docs/voice-input-local-asr-spike.md`，机器可读场景见 `docs/qa/voice_input_local_asr_scenarios.json`。
+
+- 当前 Web Speech Recognition 在 Electron packaged app 中可能暴露 API，但识别服务不可用；Voice Input v1 的预期是显示 `语音识别服务不可用` 或明确 unavailable fallback，不崩溃。
+- v1 仍保留输入框入口、安全 fallback、系统听写提示和“不自动发送”的边界。
+- 后续 local ASR QA 重点是：binary / model 配置检测、转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
+- 用户临时替代方案：使用系统听写直接输入到聊天框。
+- 默认不上传音频，不保存音频，不自动发送 transcript。
+- 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
+- Event Stream 不显示完整 transcript、完整音频路径、raw subprocess output、API key、`.env`、Authorization 或 raw prompt。
+
+### 5. Knowledge Retrieval 回归检查
 
 #### Elden Ring 命中
 
@@ -222,7 +235,7 @@
 - 不注入空 knowledge 模板。
 - 不强行编知识包内容。
 
-### 5. Debug / Event Stream 隐私检查
+### 6. Debug / Event Stream 隐私检查
 
 必须不能出现：
 
@@ -252,7 +265,7 @@
 - Voice Input lifecycle 摘要、字数、语言和中文错误。
 - backend health summary。
 
-### 6. Packaged `.app` Release Smoke Checklist
+### 7. Packaged `.app` Release Smoke Checklist
 
 - 如果 backend 代码、schema、knowledge loading 或 runtime 发生变化，重新运行 `make package-backend`。
 - 重新运行 `make package-desktop`。
@@ -269,7 +282,7 @@
 - `.env` 不复制进 `.app`。
 - app 退出后，自启动 backend 无残留。
 
-### 7. Release 前 Runtime Sanity
+### 8. Release 前 Runtime Sanity
 
 - `make lint`
 - `make test-desktop`
@@ -281,7 +294,7 @@
 - 如果 runtime / packaging / backend binary / knowledge loading 变更：`make package-backend && make package-desktop`
 - packaged `.app` smoke 至少覆盖：非黑屏、backend health ok、bundled knowledge、Voice Output controls、Event Stream privacy。
 
-### 8. Known Limitations
+### 9. Known Limitations
 
 - `below_threshold` 依赖当前知识包内容和评分阈值，手动测试时可优先用机器可读场景文件里的弱相关示例。
 - `no_pack` 依赖 catalog 中仍有 planned / unsupported 游戏；当前可用 `只狼` 做手动场景。
@@ -298,5 +311,6 @@ Machine-readable scenarios live at:
 
 - `docs/qa/retrieval_scenarios.json`
 - `docs/qa/voice_input_scenarios.json`
+- `docs/qa/voice_input_local_asr_scenarios.json`
 
 Use the Chinese checklist above as the source of truth for manual runs. Keep results short and concrete: pass/fail, exact app mode, exact commit, and any visible privacy issue.
