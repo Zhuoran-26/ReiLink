@@ -49,6 +49,14 @@ ALLOWED_LOCAL_ASR_STATUSES = {
     "local_asr_transcription_no_text",
     "local_asr_transcription_cleanup_failed",
     "local_asr_transcription_error",
+    "audio_conversion_not_needed",
+    "audio_conversion_needed",
+    "audio_conversion_not_configured",
+    "audio_conversion_succeeded",
+    "audio_conversion_failed",
+    "audio_conversion_timed_out",
+    "audio_conversion_invalid_input",
+    "audio_conversion_cleanup_failed",
 }
 
 
@@ -211,6 +219,11 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         "local-asr-transcribe-fake-whisper-empty",
         "local-asr-transcribe-fake-whisper-long",
         "local-asr-audio-format-may-need-conversion",
+        "local-asr-audio-conversion-not-configured",
+        "local-asr-audio-conversion-succeeded",
+        "local-asr-audio-conversion-failed",
+        "local-asr-audio-conversion-timed-out",
+        "local-asr-audio-conversion-event-stream-privacy",
         "local-asr-real-whisper-optional-manual",
         "local-asr-packaged-real-whisper-optional-manual",
         "local-asr-transcribe-no-context-pollution",

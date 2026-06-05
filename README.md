@@ -345,8 +345,8 @@ make validate-knowledge
 - Windows / Linux 打包尚未完成。
 - API key 仍通过本地环境或 `.env` 配置，不会内置进 App。
 - 没有 Live2D / Vision / Overlay。
-- Voice Output 与 Voice Input v1 fallback 已接入；真实 Web Speech 在 packaged Electron 中不可靠，Local ASR 仍需真实 whisper.cpp / model 手动兼容验证。
-- Local ASR 不内置 whisper binary、model 或 ffmpeg；audio format conversion 仍是后续任务。
+- Voice Output 与 Voice Input v1 fallback 已接入；真实 Web Speech 在 packaged Electron 中不可靠，Local ASR 仍需真实 whisper.cpp / model / converter 手动兼容验证。
+- Local ASR 不内置 whisper binary、model 或 ffmpeg；audio format conversion 通过用户配置的本地 converter bridge 提供。
 - 没有完整 RAG、embedding 或 vector database。
 - 多游戏知识库仍处于样例阶段。
 - “这个 / 那个 / 刚才说的游戏”这类指代表达仍有已知限制，未来需要 Recent Entity Tracker 或 LLM semantic resolver。
@@ -355,7 +355,7 @@ make validate-knowledge
 
 - RAG / vector search
 - Steam library integration
-- Local ASR real-whisper QA and audio format conversion
+- Local ASR real-whisper / converter QA
 - Live2D / overlay
 - Multi-companion system
 - Richer game knowledge packs
@@ -674,8 +674,8 @@ The knowledge layer only provides factual context. Rei's final wording is still 
 - Windows / Linux packaging is not complete yet.
 - API keys are still configured through the local environment or `.env`; they are not bundled into the app.
 - No Live2D / Vision / Overlay.
-- Voice Output and Voice Input v1 fallback are implemented; real Web Speech is unreliable in packaged Electron, and Local ASR still needs real whisper.cpp / model compatibility QA.
-- Local ASR does not bundle a whisper binary, model, or ffmpeg; audio format conversion remains future work.
+- Voice Output and Voice Input v1 fallback are implemented; real Web Speech is unreliable in packaged Electron, and Local ASR still needs real whisper.cpp / model / converter compatibility QA.
+- Local ASR does not bundle a whisper binary, model, or ffmpeg; audio format conversion is available through a user-configured local converter bridge.
 - No full RAG, embeddings, or vector database.
 - Multi-game knowledge is still at sample-pack stage.
 - Referential phrases such as "this game", "that one", or "the game we just mentioned" have known limitations and will need a Recent Entity Tracker or LLM semantic resolver.
@@ -684,7 +684,7 @@ The knowledge layer only provides factual context. Rei's final wording is still 
 
 - RAG / vector search
 - Steam library integration
-- Local ASR real-whisper QA and audio format conversion
+- Local ASR real-whisper / converter QA
 - Live2D / overlay
 - Multi-companion system
 - Richer game knowledge packs

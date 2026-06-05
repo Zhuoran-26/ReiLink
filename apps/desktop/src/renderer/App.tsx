@@ -317,7 +317,15 @@ const emptyLocalAsrTranscription: LocalAsrTranscriptionResponse = {
   duration_ms: 0,
   size_bytes: 0,
   mime_type: null,
+  audio_format: null,
+  conversion_status: "audio_conversion_not_needed",
+  conversion_required: false,
+  converted_mime_type: null,
+  converter_configured: false,
+  safe_converter_name: null,
   temporary_file_cleaned: false,
+  temporary_input_cleaned: false,
+  temporary_converted_cleaned: false,
   binary_name: null,
   model_name: null
 };
@@ -842,7 +850,21 @@ const audioFormatSummaryText = (mimeType: string | null | undefined) => {
 const audioFormatConversionHint = (mimeType: string | null | undefined) => {
   const summary = audioFormatSummaryText(mimeType);
   if (["audio/wav", "audio/wave", "audio/x-wav"].includes(summary) || summary.includes("pcm")) return "";
-  return "当前录音格式可能需要后续转换为 WAV";
+  return "当前录音格式需要本地转换为 WAV";
+};
+
+const audioConversionStatusText = (status: LocalAsrTranscriptionResponse["conversion_status"] | null | undefined) => {
+  const labels: Record<LocalAsrTranscriptionResponse["conversion_status"], string> = {
+    audio_conversion_not_needed: "无需转换",
+    audio_conversion_needed: "音频格式需要转换",
+    audio_conversion_not_configured: "尚未配置音频转换工具",
+    audio_conversion_succeeded: "音频已转换为 WAV",
+    audio_conversion_failed: "音频转换失败",
+    audio_conversion_timed_out: "音频转换超时",
+    audio_conversion_invalid_input: "音频转换输入无效",
+    audio_conversion_cleanup_failed: "音频转换清理失败"
+  };
+  return status ? labels[status] ?? debugText(status) : "无";
 };
 
 const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
@@ -927,6 +949,9 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
         audioFormatSummaryText(event.mime_type),
+        event.conversion_status ? audioConversionStatusText(event.conversion_status) : "",
+        event.converted_mime_type ? `转为 ${audioFormatSummaryText(event.converted_mime_type)}` : "",
+        event.safe_converter_name ? `转换器：${debugText(event.safe_converter_name)}` : "",
         event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
         event.model_name ? `模型：${debugText(event.model_name)}` : ""
       ].filter(Boolean).join(" / ");
@@ -938,6 +963,9 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
         audioFormatSummaryText(event.mime_type),
+        event.conversion_status ? audioConversionStatusText(event.conversion_status) : "",
+        event.converted_mime_type ? `转为 ${audioFormatSummaryText(event.converted_mime_type)}` : "",
+        event.safe_converter_name ? `转换器：${debugText(event.safe_converter_name)}` : "",
         event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
         event.model_name ? `模型：${debugText(event.model_name)}` : ""
       ].filter(Boolean).join(" / ");
@@ -1135,6 +1163,11 @@ const localAsrTranscriptionHint = (
   if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
   if (!result) return "录音并转写会把识别文本填入输入框，发送前仍可编辑。";
   if (result.status === "local_asr_transcription_succeeded") return "转写完成，文本已填入输入框，仍需手动发送。";
+  if (result.conversion_status === "audio_conversion_not_configured") {
+    return "当前录音格式需要转换为 WAV，尚未配置音频转换工具。不会上传音频，也不会自动发送。";
+  }
+  if (result.conversion_status === "audio_conversion_timed_out") return "音频格式转换超时。不会调用本地 ASR，也不会自动发送。";
+  if (result.conversion_status === "audio_conversion_failed") return "音频格式转换失败。不会调用本地 ASR，也不会自动发送。";
   return result.display_message;
 };
 
@@ -1733,7 +1766,15 @@ export function App() {
                 duration_ms: result.duration_ms,
                 size_bytes: result.size_bytes,
                 mime_type: result.mime_type ?? undefined,
+                audio_format: result.audio_format ?? undefined,
+                conversion_status: result.conversion_status,
+                conversion_required: result.conversion_required,
+                converted_mime_type: result.converted_mime_type ?? undefined,
+                converter_configured: result.converter_configured,
+                safe_converter_name: result.safe_converter_name ?? undefined,
                 temporary_file_cleaned: result.temporary_file_cleaned,
+                temporary_input_cleaned: result.temporary_input_cleaned,
+                temporary_converted_cleaned: result.temporary_converted_cleaned,
                 binary_name: result.binary_name ?? undefined,
                 model_name: result.model_name ?? undefined
               });
@@ -1748,7 +1789,15 @@ export function App() {
               duration_ms: result.duration_ms,
               size_bytes: result.size_bytes,
               mime_type: result.mime_type ?? undefined,
+              audio_format: result.audio_format ?? undefined,
+              conversion_status: result.conversion_status,
+              conversion_required: result.conversion_required,
+              converted_mime_type: result.converted_mime_type ?? undefined,
+              converter_configured: result.converter_configured,
+              safe_converter_name: result.safe_converter_name ?? undefined,
               temporary_file_cleaned: result.temporary_file_cleaned,
+              temporary_input_cleaned: result.temporary_input_cleaned,
+              temporary_converted_cleaned: result.temporary_converted_cleaned,
               binary_name: result.binary_name ?? undefined,
               model_name: result.model_name ?? undefined
             });
@@ -1761,6 +1810,11 @@ export function App() {
               duration_ms: recording.durationMs,
               size_bytes: recording.sizeBytes,
               mime_type: recording.mimeType,
+              audio_format: recording.mimeType,
+              conversion_status: audioFormatConversionHint(recording.mimeType)
+                ? "audio_conversion_needed"
+                : "audio_conversion_not_needed",
+              conversion_required: Boolean(audioFormatConversionHint(recording.mimeType)),
               binary_name: localAsrStatus.safe_binary_name,
               model_name: localAsrStatus.safe_model_name
             };
@@ -1773,7 +1827,15 @@ export function App() {
               duration_ms: fallback.duration_ms,
               size_bytes: fallback.size_bytes,
               mime_type: fallback.mime_type ?? undefined,
+              audio_format: fallback.audio_format ?? undefined,
+              conversion_status: fallback.conversion_status,
+              conversion_required: fallback.conversion_required,
+              converted_mime_type: fallback.converted_mime_type ?? undefined,
+              converter_configured: fallback.converter_configured,
+              safe_converter_name: fallback.safe_converter_name ?? undefined,
               temporary_file_cleaned: fallback.temporary_file_cleaned,
+              temporary_input_cleaned: fallback.temporary_input_cleaned,
+              temporary_converted_cleaned: fallback.temporary_converted_cleaned,
               binary_name: fallback.binary_name ?? undefined,
               model_name: fallback.model_name ?? undefined
             });
@@ -2792,7 +2854,13 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     {localAsrTranscriptionResult.size_bytes ? `。${audioBytesText(localAsrTranscriptionResult.size_bytes)}` : ""}
                     {`。格式：${audioFormatSummaryText(localAsrTranscriptionResult.mime_type)}`}
                     {audioFormatConversionHint(localAsrTranscriptionResult.mime_type) ? `。${audioFormatConversionHint(localAsrTranscriptionResult.mime_type)}` : ""}
+                    {`。转换：${audioConversionStatusText(localAsrTranscriptionResult.conversion_status)}`}
+                    {localAsrTranscriptionResult.converted_mime_type ? `。目标格式：${audioFormatSummaryText(localAsrTranscriptionResult.converted_mime_type)}` : ""}
+                    {`。转换工具：${localAsrTranscriptionResult.converter_configured ? "已配置" : "未配置"}`}
+                    {localAsrTranscriptionResult.safe_converter_name ? `。转换器：${debugText(localAsrTranscriptionResult.safe_converter_name)}` : ""}
                     {`。临时音频已清理：${localAsrTranscriptionResult.temporary_file_cleaned ? "是" : "否"}`}
+                    {`。原始音频已清理：${localAsrTranscriptionResult.temporary_input_cleaned ? "是" : "否"}`}
+                    {`。转换音频已清理：${localAsrTranscriptionResult.temporary_converted_cleaned ? "是" : "否"}`}
                     {localAsrTranscriptionResult.binary_name ? `。识别程序：${debugText(localAsrTranscriptionResult.binary_name)}` : ""}
                     {localAsrTranscriptionResult.model_name ? `。模型：${debugText(localAsrTranscriptionResult.model_name)}` : ""}
                   </p>
@@ -3619,8 +3687,32 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{localAsrTranscriptionResult ? debugText(audioFormatConversionHint(localAsrTranscriptionResult.mime_type), "无") : "无"}</dd>
                       </div>
                       <div>
+                        <dt>本地转写转换状态</dt>
+                        <dd>{localAsrTranscriptionResult ? audioConversionStatusText(localAsrTranscriptionResult.conversion_status) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写目标格式</dt>
+                        <dd>{localAsrTranscriptionResult ? debugText(localAsrTranscriptionResult.converted_mime_type, "无") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写转换工具</dt>
+                        <dd>
+                          {localAsrTranscriptionResult
+                            ? `${localAsrTranscriptionResult.converter_configured ? "已配置" : "未配置"}${localAsrTranscriptionResult.safe_converter_name ? ` / ${debugText(localAsrTranscriptionResult.safe_converter_name)}` : ""}`
+                            : "无"}
+                        </dd>
+                      </div>
+                      <div>
                         <dt>本地转写临时音频清理</dt>
                         <dd>{localAsrTranscriptionResult ? (localAsrTranscriptionResult.temporary_file_cleaned ? "是" : "否") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写原始音频清理</dt>
+                        <dd>{localAsrTranscriptionResult ? (localAsrTranscriptionResult.temporary_input_cleaned ? "是" : "否") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写转换音频清理</dt>
+                        <dd>{localAsrTranscriptionResult ? (localAsrTranscriptionResult.temporary_converted_cleaned ? "是" : "否") : "无"}</dd>
                       </div>
                       <div>
                         <dt>录音测试</dt>
@@ -3970,9 +4062,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                                   duration_ms: localAsrTranscriptionResult.duration_ms,
                                   size_bytes: localAsrTranscriptionResult.size_bytes,
                                   mime_type: localAsrTranscriptionResult.mime_type,
+                                  audio_format: localAsrTranscriptionResult.audio_format,
                                   format_summary: audioFormatSummaryText(localAsrTranscriptionResult.mime_type),
                                   format_warning: audioFormatConversionHint(localAsrTranscriptionResult.mime_type) || null,
+                                  conversion_status: localAsrTranscriptionResult.conversion_status,
+                                  conversion_summary: audioConversionStatusText(localAsrTranscriptionResult.conversion_status),
+                                  conversion_required: localAsrTranscriptionResult.conversion_required,
+                                  converted_mime_type: localAsrTranscriptionResult.converted_mime_type,
+                                  converter_configured: localAsrTranscriptionResult.converter_configured,
+                                  safe_converter_name: localAsrTranscriptionResult.safe_converter_name,
                                   temporary_file_cleaned: localAsrTranscriptionResult.temporary_file_cleaned,
+                                  temporary_input_cleaned: localAsrTranscriptionResult.temporary_input_cleaned,
+                                  temporary_converted_cleaned: localAsrTranscriptionResult.temporary_converted_cleaned,
                                   binary_name: localAsrTranscriptionResult.binary_name,
                                   model_name: localAsrTranscriptionResult.model_name
                                 }

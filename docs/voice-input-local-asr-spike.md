@@ -205,9 +205,10 @@ Renderer Record & Transcribe
 -> MediaRecorder 录制短音频
 -> POST /api/voice-input/local-asr/transcribe
 -> backend 写入系统临时目录 reilink-local-asr-*
+-> backend 必要时调用 configured audio converter 输出 WAV
 -> backend 调用 configured local ASR binary
 -> backend 清洗 stdout / output file transcript
--> backend 删除临时音频和输出文件
+-> backend 删除原始临时音频、转换音频和输出文件
 -> renderer 只把 transcript 回填输入框
 -> 用户手动点击发送后才进入 chat flow
 ```
@@ -228,6 +229,27 @@ Backend status：
 - `local_asr_transcription_no_text`
 - `local_asr_transcription_cleanup_failed`
 - `local_asr_transcription_error`
+
+Audio conversion status：
+
+- `audio_conversion_not_needed`
+- `audio_conversion_needed`
+- `audio_conversion_not_configured`
+- `audio_conversion_succeeded`
+- `audio_conversion_failed`
+- `audio_conversion_timed_out`
+- `audio_conversion_invalid_input`
+- `audio_conversion_cleanup_failed`
+
+Audio conversion strategy：
+
+- WAV / PCM 输入不转换，直接传给 local ASR。
+- `audio/webm`、`video/webm`、`audio/ogg` 等 browser-recorded 非 WAV 输入需要转换。
+- converter 由用户通过 `REILINK_AUDIO_CONVERTER_BINARY` 配置；ReiLink 不内置、不下载、不提交 ffmpeg 或第三方二进制。
+- 默认转换命令形状：`[converter, "-y", "-i", input_path, "-ar", "16000", "-ac", "1", output_wav_path]`。
+- converter timeout 为 10 秒。
+- converter 未配置、失败或超时时，不继续调用 local ASR binary。
+- response / UI 只显示 source MIME、conversion status、`converted_mime_type`、safe converter name 和 cleanup flags。
 
 Command strategy：
 
@@ -253,15 +275,15 @@ Transcript 策略：
 - 未确认 transcript 不进入 prompt。
 - 未确认 transcript 不触发 knowledge retrieval。
 - 未确认 transcript 不触发 game context extraction。
-- Event Stream 只显示开始、完成、失败、字数、duration、size、MIME、cleanup status 和安全 status。
+- Event Stream 只显示开始、完成、失败、字数、duration、size、MIME、conversion status、target MIME、cleanup status 和安全 status。
 - Debug Panel / Raw JSON 只显示 transcript char count，不显示完整 transcript。
-- UI / response 不显示 raw stdout、raw stderr、raw exception、完整 binary path、完整 model path、完整 temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
+- UI / response 不显示 raw stdout、raw stderr、raw exception、完整 binary path、完整 model path、完整 converter path、完整 temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
 
 临时文件策略：
 
 - backend 使用系统临时目录创建随机 `reilink-local-asr-*` 目录。
 - 临时文件名不包含 transcript。
-- 成功、失败、超时和异常都尝试清理临时目录。
+- 成功、失败、超时和异常都尝试清理临时目录中的原始音频、转换音频和 ASR 输出文件。
 - cleanup 失败返回 `local_asr_transcription_cleanup_failed`，并保持响应安全。
 
 ## 1.10 Real whisper.cpp compatibility / 真实 whisper.cpp 兼容性
@@ -272,6 +294,7 @@ Transcript 策略：
 
 - local whisper binary，例如本机编译或可信来源的 `whisper-cli`。
 - local model file，例如 `ggml-base.bin`。
+- 可选 audio converter，例如用户本机自行安装的 ffmpeg-like executable。
 - 推荐模型目录：`~/Library/Application Support/ReiLink/models`。
 
 配置环境变量：
@@ -279,6 +302,7 @@ Transcript 策略：
 ```bash
 export REILINK_LOCAL_ASR_BINARY="/absolute/path/to/whisper-cli"
 export REILINK_LOCAL_ASR_MODEL="$HOME/Library/Application Support/ReiLink/models/ggml-base.bin"
+export REILINK_AUDIO_CONVERTER_BINARY="/absolute/path/to/ffmpeg"
 ```
 
 不要把 whisper binary、模型文件或 ffmpeg binary 提交进 repo；不要下载或提交模型文件到源码目录；不要把模型、memory 或 session 写入 `.app`。
@@ -288,19 +312,21 @@ export REILINK_LOCAL_ASR_MODEL="$HOME/Library/Application Support/ReiLink/models
 1. 运行 config detection：打开 app 或请求 `GET /api/voice-input/local-asr/status`，确认状态为 `local_asr_ready`，UI 只显示安全文件名。
 2. 运行 CLI probe：点击 `检查本地 ASR / Check Local ASR` 或请求 `POST /api/voice-input/local-asr/probe`，确认 binary 可以启动；这一步不传模型、不传音频。
 3. 运行 Audio Capture Test：点击 `测试录音 / Test Recording`，确认 duration、size、MIME 和 cleanup status 正常。
-4. 运行 local transcription bridge：点击 `录音并转写 / Record & Transcribe`，确认 transcript 只进入输入框，不自动发送。
-5. 展开 Event Stream / Debug Panel / Raw JSON，确认只出现字数、MIME、duration、size、cleanup、safe binary/model name，不出现完整 transcript、raw stdout/stderr、完整路径或音频内容。
+4. 如果录音格式是 WebM/Ogg，设置 `REILINK_AUDIO_CONVERTER_BINARY` 后再运行 local transcription bridge；未设置时应显示 `尚未配置音频转换工具` 且不调用 ASR。
+5. 运行 local transcription bridge：点击 `录音并转写 / Record & Transcribe`，确认 transcript 只进入输入框，不自动发送。
+6. 展开 Event Stream / Debug Panel / Raw JSON，确认只出现字数、MIME、conversion status、target MIME、duration、size、cleanup、safe binary/model/converter name，不出现完整 transcript、raw stdout/stderr、完整路径或音频内容。
 
 当前可能失败的原因：
 
-- audio format 不兼容：Electron / Chromium `MediaRecorder` 常见输出可能是 `audio/webm`，真实 whisper.cpp 常见输入更偏向 WAV / PCM。
+- audio converter 未配置或不可执行：Electron / Chromium `MediaRecorder` 常见输出可能是 `audio/webm`，真实 whisper.cpp 常见输入更偏向 WAV / PCM。
+- audio converter 参数不兼容、转换输出为空或转换超过 10 秒 timeout。
 - model path 不正确或 model 文件与 binary 不兼容。
 - binary 参数不兼容，例如不支持 `-nt`、`-m`、`-f` 或 `-l`。
 - binary 不可执行，或 packaged 环境下受权限、签名、隔离路径影响。
 - 30 秒 timeout 不足。
 - 输出格式无法解析，或 transcript 混在 stderr / 特定输出文件中。
 
-如果遇到 audio format 不兼容，后续需要单独拆 `Audio Format Conversion v1`：把 browser-recorded audio 转为 whisper.cpp 更稳定接受的 WAV / PCM。该任务会引入额外 binary、packaging、license 和用户配置问题；当前 v1.1 不实现格式转换，不接入 ffmpeg，不提交 ffmpeg binary。
+Audio Format Conversion v1 已实现为用户配置的本地 converter bridge：它把 browser-recorded audio 转为 whisper.cpp 更稳定接受的 WAV / PCM，但不内置 converter，不下载二进制，不提交 ffmpeg binary，也不把 raw converter output 暴露给 UI。
 
 隐私边界保持不变：
 
@@ -327,9 +353,9 @@ export REILINK_LOCAL_ASR_MODEL="$HOME/Library/Application Support/ReiLink/models
    - 当前边界：不调用 ASR，不转写，不保存音频，不把音频内容或路径显示到 UI / Event Stream / Debug Panel。
 
 4. Backend ASR subprocess bridge v1
-   - 当前已实现：backend 调用 local ASR binary，返回清洗后的 transcript 和安全摘要。
-   - 当前边界：不使用 shell，不返回 raw stdout/stderr/path，不保存音频。
-   - 风险：不同 whisper.cpp 版本 stdout 格式、模型兼容性、音频格式兼容性。
+   - 当前已实现：backend 可先通过用户配置的 converter 输出 WAV，再调用 local ASR binary，返回清洗后的 transcript 和安全摘要。
+   - 当前边界：不使用 shell，不返回 raw stdout/stderr/path，不保存音频，不提交 converter binary。
+   - 风险：不同 whisper.cpp 版本 stdout 格式、模型兼容性、converter 兼容性。
 
 5. Renderer push-to-talk local ASR integration v1
    - 当前已实现：把 transcript 填入输入框，不自动发送。
@@ -345,6 +371,6 @@ export REILINK_LOCAL_ASR_MODEL="$HOME/Library/Application Support/ReiLink/models
    - 风险：完整 transcript、完整路径或 raw subprocess output 泄露。
 
 8. Audio Format Conversion v1
-   - 目标：如果真实 whisper.cpp 无法稳定读取 Electron `MediaRecorder` 输出，增加到 WAV / PCM 的本地转换路径。
-   - 当前边界：本任务不实现转换，不接入 ffmpeg，不提交任何转换 binary。
+   - 当前已实现：通过 `REILINK_AUDIO_CONVERTER_BINARY` 配置本地 ffmpeg-like converter，把 WebM/Ogg 等录音格式转为 16 kHz mono WAV。
+   - 当前边界：不内置、不下载、不提交任何转换 binary；未配置时安全短路且不调用 ASR。
    - 风险：额外 binary、packaging、license、性能、错误映射和用户配置复杂度。

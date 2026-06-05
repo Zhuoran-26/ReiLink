@@ -1,3 +1,5 @@
+import type { AudioConversionStatusValue } from "./api";
+
 export type ReiLinkEvent =
   | { type: "user_message_sent"; timestamp: string; text: string }
   | { type: "assistant_reply_started"; timestamp: string; message_id?: string }
@@ -36,7 +38,15 @@ export type ReiLinkEvent =
       duration_ms?: number;
       size_bytes?: number;
       mime_type?: string;
+      audio_format?: string;
+      conversion_status?: AudioConversionStatusValue;
+      conversion_required?: boolean;
+      converted_mime_type?: string;
+      converter_configured?: boolean;
+      safe_converter_name?: string;
       temporary_file_cleaned?: boolean;
+      temporary_input_cleaned?: boolean;
+      temporary_converted_cleaned?: boolean;
       binary_name?: string;
       model_name?: string;
     }
@@ -49,7 +59,15 @@ export type ReiLinkEvent =
       duration_ms?: number;
       size_bytes?: number;
       mime_type?: string;
+      audio_format?: string;
+      conversion_status?: AudioConversionStatusValue;
+      conversion_required?: boolean;
+      converted_mime_type?: string;
+      converter_configured?: boolean;
+      safe_converter_name?: string;
       temporary_file_cleaned?: boolean;
+      temporary_input_cleaned?: boolean;
+      temporary_converted_cleaned?: boolean;
       binary_name?: string;
       model_name?: string;
     };

@@ -282,6 +282,17 @@ LocalAsrTranscriptionStatus = Literal[
     "local_asr_transcription_error",
 ]
 
+AudioConversionStatus = Literal[
+    "audio_conversion_not_needed",
+    "audio_conversion_needed",
+    "audio_conversion_not_configured",
+    "audio_conversion_succeeded",
+    "audio_conversion_failed",
+    "audio_conversion_timed_out",
+    "audio_conversion_invalid_input",
+    "audio_conversion_cleanup_failed",
+]
+
 
 class LocalAsrTranscriptionResponse(BaseModel):
     status: LocalAsrTranscriptionStatus
@@ -292,7 +303,15 @@ class LocalAsrTranscriptionResponse(BaseModel):
     duration_ms: int = 0
     size_bytes: int = 0
     mime_type: str | None = None
+    audio_format: str | None = None
+    conversion_status: AudioConversionStatus = "audio_conversion_not_needed"
+    conversion_required: bool = False
+    converted_mime_type: str | None = None
+    converter_configured: bool = False
+    safe_converter_name: str | None = None
     temporary_file_cleaned: bool = False
+    temporary_input_cleaned: bool = False
+    temporary_converted_cleaned: bool = False
     binary_name: str | None = None
     model_name: str | None = None
 

@@ -154,6 +154,16 @@ export type LocalAsrTranscriptionStatusValue =
   | "local_asr_transcription_cleanup_failed"
   | "local_asr_transcription_error";
 
+export type AudioConversionStatusValue =
+  | "audio_conversion_not_needed"
+  | "audio_conversion_needed"
+  | "audio_conversion_not_configured"
+  | "audio_conversion_succeeded"
+  | "audio_conversion_failed"
+  | "audio_conversion_timed_out"
+  | "audio_conversion_invalid_input"
+  | "audio_conversion_cleanup_failed";
+
 export type LocalAsrTranscriptionResponse = {
   status: LocalAsrTranscriptionStatusValue;
   available: boolean;
@@ -163,7 +173,15 @@ export type LocalAsrTranscriptionResponse = {
   duration_ms: number;
   size_bytes: number;
   mime_type: string | null;
+  audio_format: string | null;
+  conversion_status: AudioConversionStatusValue;
+  conversion_required: boolean;
+  converted_mime_type: string | null;
+  converter_configured: boolean;
+  safe_converter_name: string | null;
   temporary_file_cleaned: boolean;
+  temporary_input_cleaned: boolean;
+  temporary_converted_cleaned: boolean;
   binary_name: string | null;
   model_name: string | null;
 };

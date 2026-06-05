@@ -10,6 +10,13 @@ from app.modules.voice_input.audio_probe import (
     _is_allowed_audio_type,
     _safe_mime_type,
 )
+from app.modules.voice_input.audio_conversion import (
+    AUDIO_CONVERSION_TIMEOUT_SECONDS,
+    AudioConversionResult,
+    conversion_required_for_mime,
+    get_audio_converter_summary,
+    prepare_audio_for_asr,
+)
 from app.modules.voice_input.local_asr_config import BINARY_ENV, MODEL_ENV, _configured_path, get_local_asr_status
 from app.schemas.api import LocalAsrTranscriptionResponse
 
@@ -58,16 +65,25 @@ def transcribe_local_asr_audio(
     duration_ms: int = 0,
     language: str | None = None,
     timeout_seconds: int | float = TRANSCRIPTION_TIMEOUT_SECONDS,
+    conversion_timeout_seconds: int | float = AUDIO_CONVERSION_TIMEOUT_SECONDS,
     temp_root: str | None = None,
 ) -> LocalAsrTranscriptionResponse:
     config = get_local_asr_status()
     safe_mime_type = _safe_mime_type(mime_type)
     size_bytes = len(audio_bytes)
     safe_duration_ms = max(0, duration_ms)
+    converter_configured, safe_converter_name = get_audio_converter_summary()
+    conversion_required = conversion_required_for_mime(safe_mime_type)
     base_response = {
         "duration_ms": safe_duration_ms,
         "size_bytes": size_bytes,
         "mime_type": safe_mime_type,
+        "audio_format": safe_mime_type,
+        "conversion_status": "audio_conversion_needed" if conversion_required else "audio_conversion_not_needed",
+        "conversion_required": conversion_required,
+        "converted_mime_type": None,
+        "converter_configured": converter_configured,
+        "safe_converter_name": safe_converter_name,
         "binary_name": config.safe_binary_name,
         "model_name": config.safe_model_name,
     }
@@ -78,6 +94,8 @@ def transcribe_local_asr_audio(
             available=False,
             display_message="本地语音识别配置未就绪",
             temporary_file_cleaned=True,
+            temporary_input_cleaned=True,
+            temporary_converted_cleaned=True,
             **base_response,
         )
     if size_bytes > MAX_AUDIO_UPLOAD_BYTES:
@@ -86,6 +104,8 @@ def transcribe_local_asr_audio(
             available=False,
             display_message="录音文件过大",
             temporary_file_cleaned=True,
+            temporary_input_cleaned=True,
+            temporary_converted_cleaned=True,
             **base_response,
         )
     if size_bytes <= 0 or not _is_allowed_audio_type(safe_mime_type):
@@ -94,6 +114,8 @@ def transcribe_local_asr_audio(
             available=False,
             display_message="录音数据无效",
             temporary_file_cleaned=True,
+            temporary_input_cleaned=True,
+            temporary_converted_cleaned=True,
             **base_response,
         )
 
@@ -105,6 +127,8 @@ def transcribe_local_asr_audio(
             available=False,
             display_message="本地语音识别配置未就绪",
             temporary_file_cleaned=True,
+            temporary_input_cleaned=True,
+            temporary_converted_cleaned=True,
             **base_response,
         )
 
@@ -121,39 +145,114 @@ def transcribe_local_asr_audio(
                 available=False,
                 display_message="录音临时文件写入失败",
                 temporary_file_cleaned=False,
+                temporary_input_cleaned=False,
+                temporary_converted_cleaned=True,
                 **base_response,
             )
         else:
-            response = _run_transcription(
-                binary_path=binary_path,
-                model_path=model_path,
-                audio_path=temp_path,
+            conversion = prepare_audio_for_asr(
+                input_path=temp_path,
+                mime_type=safe_mime_type,
                 temp_dir=temp_dir,
-                language=language,
-                timeout_seconds=timeout_seconds,
-                base_response=base_response,
+                timeout_seconds=conversion_timeout_seconds,
             )
+            converted_response = _with_conversion(base_response, conversion)
+            if conversion.prepared_path is None:
+                response = _conversion_failure_response(conversion, converted_response)
+            else:
+                response = _run_transcription(
+                    binary_path=binary_path,
+                    model_path=model_path,
+                    audio_path=conversion.prepared_path,
+                    temp_dir=temp_dir,
+                    language=language,
+                    timeout_seconds=timeout_seconds,
+                    base_response=converted_response,
+                )
     except Exception:
         response = LocalAsrTranscriptionResponse(
             status="local_asr_transcription_error",
             available=False,
             display_message="本地语音识别失败",
             temporary_file_cleaned=bool(temp_path is None or not temp_path.exists()),
+            temporary_input_cleaned=bool(temp_path is None or not temp_path.exists()),
+            temporary_converted_cleaned=True,
             **base_response,
         )
 
     cleanup_succeeded = _cleanup_temp_dir(temp_dir)
     if not cleanup_succeeded:
         _best_effort_cleanup(temp_dir)
-        return LocalAsrTranscriptionResponse(
-            status="local_asr_transcription_cleanup_failed",
-            available=False,
-            display_message="临时音频清理失败",
-            temporary_file_cleaned=bool(temp_dir is None or not temp_dir.exists()),
-            **base_response,
+        return response.model_copy(
+            update={
+                "status": "local_asr_transcription_cleanup_failed",
+                "available": False,
+                "display_message": "临时音频清理失败",
+                "transcript": "",
+                "transcript_char_count": 0,
+                "conversion_status": "audio_conversion_cleanup_failed",
+                "temporary_file_cleaned": bool(temp_dir is None or not temp_dir.exists()),
+                "temporary_input_cleaned": bool(temp_dir is None or not temp_dir.exists()),
+                "temporary_converted_cleaned": bool(temp_dir is None or not temp_dir.exists()),
+            }
         )
 
-    return response.model_copy(update={"temporary_file_cleaned": True})
+    return response.model_copy(
+        update={
+            "temporary_file_cleaned": True,
+            "temporary_input_cleaned": True,
+            "temporary_converted_cleaned": True,
+        }
+    )
+
+
+def _with_conversion(base_response: dict[str, object], conversion: AudioConversionResult) -> dict[str, object]:
+    return {
+        **base_response,
+        "conversion_status": conversion.status,
+        "conversion_required": conversion.conversion_required,
+        "converted_mime_type": conversion.converted_mime_type,
+        "converter_configured": conversion.converter_configured,
+        "safe_converter_name": conversion.safe_converter_name,
+    }
+
+
+def _conversion_failure_response(
+    conversion: AudioConversionResult,
+    base_response: dict[str, object],
+) -> LocalAsrTranscriptionResponse:
+    status = (
+        "local_asr_transcription_timed_out"
+        if conversion.status == "audio_conversion_timed_out"
+        else "local_asr_transcription_failed"
+    )
+    return LocalAsrTranscriptionResponse(
+        status=status,
+        available=False,
+        display_message=conversion.display_message or "音频格式转换失败",
+        temporary_file_cleaned=False,
+        temporary_input_cleaned=False,
+        temporary_converted_cleaned=bool(conversion.converted_path is None or not conversion.converted_path.exists()),
+        **base_response,
+    )
+
+
+def _response_field(base_response: dict[str, object], key: str) -> str | None:
+    value = base_response.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _response_bool(base_response: dict[str, object], key: str) -> bool:
+    return bool(base_response.get(key))
+
+
+def _response_int(base_response: dict[str, object], key: str) -> int:
+    value = base_response.get(key)
+    return int(value) if isinstance(value, int) else 0
+
+
+def _temporary_converted_cleaned_before_cleanup(base_response: dict[str, object]) -> bool:
+    return _response_field(base_response, "converted_mime_type") is None
 
 
 def _run_transcription(
@@ -180,6 +279,8 @@ def _run_transcription(
             available=False,
             display_message="本地语音识别超时",
             temporary_file_cleaned=False,
+            temporary_input_cleaned=False,
+            temporary_converted_cleaned=_temporary_converted_cleaned_before_cleanup(base_response),
             **base_response,
         )
     except OSError:
@@ -188,6 +289,8 @@ def _run_transcription(
             available=False,
             display_message="本地语音识别程序无法启动",
             temporary_file_cleaned=False,
+            temporary_input_cleaned=False,
+            temporary_converted_cleaned=_temporary_converted_cleaned_before_cleanup(base_response),
             **base_response,
         )
     except Exception:
@@ -196,6 +299,8 @@ def _run_transcription(
             available=False,
             display_message="本地语音识别失败",
             temporary_file_cleaned=False,
+            temporary_input_cleaned=False,
+            temporary_converted_cleaned=_temporary_converted_cleaned_before_cleanup(base_response),
             **base_response,
         )
 
@@ -210,6 +315,8 @@ def _run_transcription(
             available=False,
             display_message="本地语音识别失败",
             temporary_file_cleaned=False,
+            temporary_input_cleaned=False,
+            temporary_converted_cleaned=_temporary_converted_cleaned_before_cleanup(base_response),
             **base_response,
         )
     if not transcript:
@@ -218,6 +325,8 @@ def _run_transcription(
             available=False,
             display_message="没有识别到文本",
             temporary_file_cleaned=False,
+            temporary_input_cleaned=False,
+            temporary_converted_cleaned=_temporary_converted_cleaned_before_cleanup(base_response),
             **base_response,
         )
     return LocalAsrTranscriptionResponse(
@@ -226,12 +335,20 @@ def _run_transcription(
         display_message="本地语音识别完成",
         transcript=transcript,
         transcript_char_count=len(transcript),
-        duration_ms=int(base_response["duration_ms"]),
-        size_bytes=int(base_response["size_bytes"]),
-        mime_type=base_response["mime_type"] if isinstance(base_response["mime_type"], str) else None,
+        duration_ms=_response_int(base_response, "duration_ms"),
+        size_bytes=_response_int(base_response, "size_bytes"),
+        mime_type=_response_field(base_response, "mime_type"),
+        audio_format=_response_field(base_response, "audio_format"),
+        conversion_status=_response_field(base_response, "conversion_status") or "audio_conversion_not_needed",
+        conversion_required=_response_bool(base_response, "conversion_required"),
+        converted_mime_type=_response_field(base_response, "converted_mime_type"),
+        converter_configured=_response_bool(base_response, "converter_configured"),
+        safe_converter_name=_response_field(base_response, "safe_converter_name"),
         temporary_file_cleaned=False,
-        binary_name=base_response["binary_name"] if isinstance(base_response["binary_name"], str) else None,
-        model_name=base_response["model_name"] if isinstance(base_response["model_name"], str) else None,
+        temporary_input_cleaned=False,
+        temporary_converted_cleaned=_temporary_converted_cleaned_before_cleanup(base_response),
+        binary_name=_response_field(base_response, "binary_name"),
+        model_name=_response_field(base_response, "model_name"),
     )
 
 

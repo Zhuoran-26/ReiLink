@@ -753,7 +753,15 @@ const localAsrTranscriptionResponse: LocalAsrTranscriptionResponse = {
   duration_ms: 3000,
   size_bytes: 16,
   mime_type: "audio/webm",
+  audio_format: "audio/webm",
+  conversion_status: "audio_conversion_succeeded",
+  conversion_required: true,
+  converted_mime_type: "audio/wav",
+  converter_configured: true,
+  safe_converter_name: "ffmpeg",
   temporary_file_cleaned: true,
+  temporary_input_cleaned: true,
+  temporary_converted_cleaned: true,
   binary_name: "whisper-cli",
   model_name: "ggml-base.bin"
 };
@@ -2078,7 +2086,7 @@ describe("App", () => {
     await waitFor(() => expect(voiceInputSettings).toHaveTextContent("录音测试完成"));
     expect(voiceInputSettings).toHaveTextContent("临时音频已清理：是");
     expect(voiceInputSettings).toHaveTextContent("格式：audio/webm");
-    expect(voiceInputSettings).toHaveTextContent("当前录音格式可能需要后续转换为 WAV");
+    expect(voiceInputSettings).toHaveTextContent("当前录音格式需要本地转换为 WAV");
     expect(audioMock.stopTrack).toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/voice-input/audio/probe"),
@@ -2164,7 +2172,12 @@ describe("App", () => {
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写完成");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("临时音频已清理：是");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("格式：audio/webm");
-    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前录音格式可能需要后续转换为 WAV");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前录音格式需要本地转换为 WAV");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转换：音频已转换为 WAV");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("目标格式：audio/wav");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转换器：ffmpeg");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("原始音频已清理：是");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转换音频已清理：是");
     expect(audioMock.stopTrack).toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/voice-input/local-asr/transcribe"),
@@ -2183,6 +2196,50 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     expect(await screen.findByText("Margit 怎么打")).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows Local ASR audio conversion not configured without filling input", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_failed",
+      available: false,
+      display_message: "尚未配置音频转换工具",
+      transcript: "",
+      transcript_char_count: 0,
+      conversion_status: "audio_conversion_not_configured",
+      conversion_required: true,
+      converted_mime_type: null,
+      converter_configured: false,
+      safe_converter_name: null
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("转写失败"));
+    expect(voiceInputSettings).toHaveTextContent("尚未配置音频转换工具");
+    expect(voiceInputSettings).toHaveTextContent("转换：尚未配置音频转换工具");
+    expect(voiceInputSettings).toHaveTextContent("转换工具：未配置");
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
   });
 
   it("keeps empty Local ASR transcription out of the input", async () => {
@@ -2246,7 +2303,11 @@ describe("App", () => {
     await waitFor(() => expect(eventStream).toHaveTextContent("本地语音识别开始"));
     expect(eventStream).toHaveTextContent("本地语音识别完成");
     expect(eventStream).toHaveTextContent(`${"Margit 怎么打".length} 字`);
+    expect(eventStream).toHaveTextContent("音频已转换为 WAV");
+    expect(eventStream).toHaveTextContent("转为 audio/wav");
+    expect(eventStream).toHaveTextContent("转换器：ffmpeg");
     expect(eventStream).not.toHaveTextContent("Margit 怎么打");
+    expect(eventStream).not.toHaveTextContent("fake-webm-audio");
     expect(eventStream).not.toHaveTextContent("raw stdout");
     expect(eventStream).not.toHaveTextContent("raw stderr");
     expect(eventStream).not.toHaveTextContent("/Users/aragoto");
@@ -2288,7 +2349,10 @@ describe("App", () => {
     expect(rawJson).not.toHaveTextContent(privateTranscript);
     expect(screen.getByText("本地转写字数").closest("div")).toHaveTextContent(String(privateTranscript.length));
     expect(screen.getByText("本地转写格式").closest("div")).toHaveTextContent("audio/webm");
-    expect(screen.getByText("本地转写格式提示").closest("div")).toHaveTextContent("当前录音格式可能需要后续转换为 WAV");
+    expect(screen.getByText("本地转写格式提示").closest("div")).toHaveTextContent("当前录音格式需要本地转换为 WAV");
+    expect(screen.getByText("本地转写转换状态").closest("div")).toHaveTextContent("音频已转换为 WAV");
+    expect(screen.getByText("本地转写目标格式").closest("div")).toHaveTextContent("audio/wav");
+    expect(screen.getByText("本地转写转换工具").closest("div")).toHaveTextContent("已配置 / ffmpeg");
   });
 
   it("shows safe audio format summaries without raw audio paths or subprocess output", async () => {
@@ -2305,7 +2369,7 @@ describe("App", () => {
     const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
     await waitFor(() => expect(voiceInputSettings).toHaveTextContent("录音测试完成"));
     expect(voiceInputSettings).toHaveTextContent("格式：audio/webm");
-    expect(voiceInputSettings).toHaveTextContent("当前录音格式可能需要后续转换为 WAV");
+    expect(voiceInputSettings).toHaveTextContent("当前录音格式需要本地转换为 WAV");
     expect(voiceInputSettings).not.toHaveTextContent("codecs=opus");
     expect(voiceInputSettings).not.toHaveTextContent("/tmp");
     expect(voiceInputSettings).not.toHaveTextContent("raw stdout");

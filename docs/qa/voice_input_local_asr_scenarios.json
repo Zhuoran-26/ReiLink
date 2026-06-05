@@ -490,6 +490,56 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
   },
   {
+    "id": "local-asr-audio-conversion-not-configured",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready, renderer captures audio/webm, and REILINK_AUDIO_CONVERTER_BINARY is unset or unusable",
+    "expected_status": "audio_conversion_not_configured",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend returns a safe conversion-not-configured summary, does not call local ASR, cleans temp audio, and renderer shows 尚未配置音频转换工具.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content"]
+  },
+  {
+    "id": "local-asr-audio-conversion-succeeded",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready, renderer captures audio/webm, and a fake ffmpeg-like converter writes a WAV file",
+    "expected_status": "audio_conversion_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend calls the converter with list args, passes the converted WAV path to local ASR, reports converted_mime_type audio/wav, and only fills the input after transcript success.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content", "base64 audio"]
+  },
+  {
+    "id": "local-asr-audio-conversion-failed",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready and the configured audio converter exits nonzero or writes no WAV output",
+    "expected_status": "audio_conversion_failed",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend returns 音频格式转换失败, skips local ASR transcription, cleans temp audio, and does not expose converter stdout/stderr.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content"]
+  },
+  {
+    "id": "local-asr-audio-conversion-timed-out",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready and the configured audio converter does not finish before the conversion timeout",
+    "expected_status": "audio_conversion_timed_out",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend returns 音频格式转换超时, skips local ASR transcription, cleans temp audio, and renderer keeps the input unchanged.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content"]
+  },
+  {
+    "id": "local-asr-audio-conversion-event-stream-privacy",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR transcription succeeds after audio conversion and appears in Event Stream",
+    "expected_status": "audio_conversion_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Event Stream and Debug Panel show safe conversion status, source MIME, target MIME, cleanup flags, and safe converter name only.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content", "base64 audio", "full transcript"]
+  },
+  {
     "id": "local-asr-real-whisper-optional-manual",
     "category": "voice_input_local_asr",
     "precondition": "User has locally prepared a real whisper.cpp binary and model outside the repo",
