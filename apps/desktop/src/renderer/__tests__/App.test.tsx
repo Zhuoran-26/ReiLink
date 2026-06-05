@@ -750,6 +750,8 @@ const localAsrTranscriptionResponse: LocalAsrTranscriptionResponse = {
   display_message: "本地语音识别完成",
   transcript: "Margit 怎么打",
   transcript_char_count: "Margit 怎么打".length,
+  language: "zh",
+  transcript_normalized_to_simplified: false,
   duration_ms: 3000,
   size_bytes: 16,
   mime_type: "audio/webm",
@@ -2150,6 +2152,7 @@ describe("App", () => {
   });
 
   it("records audio, calls Local ASR transcription, fills input, and does not auto send", async () => {
+    const simplifiedTranscript = "玛尔基特怎么打";
     localAsrStatusStore = {
       ...localAsrStatus,
       status: "local_asr_ready",
@@ -2163,6 +2166,13 @@ describe("App", () => {
       safe_binary_name: "whisper-cli",
       safe_model_name: "ggml-base.bin"
     };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: simplifiedTranscript,
+      transcript_char_count: simplifiedTranscript.length,
+      language: "zh",
+      transcript_normalized_to_simplified: true
+    };
     const audioMock = installAudioCaptureMock();
     render(<App />);
     await screen.findByText("已连接");
@@ -2174,8 +2184,11 @@ describe("App", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
 
-    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue("Margit 怎么打"));
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(simplifiedTranscript));
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写完成");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写完成，请确认后发送");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语言：zh");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("已规范为简体中文");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("临时音频已清理：是");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("格式：audio/webm");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前录音格式需要本地转换为 WAV");
@@ -2184,6 +2197,8 @@ describe("App", () => {
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转换器：ffmpeg");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("原始音频已清理：是");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转换音频已清理：是");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("模型取舍：ggml-base.bin");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).not.toHaveTextContent("/Users/aragoto");
     expect(audioMock.stopTrack).toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/voice-input/local-asr/transcribe"),
@@ -2193,15 +2208,45 @@ describe("App", () => {
       })
     );
     const fetchCalls = vi.mocked(fetch).mock.calls;
+    const transcribeCall = fetchCalls.find(([url]) => String(url).includes("/api/voice-input/local-asr/transcribe"));
+    expect(transcribeCall).toBeTruthy();
+    expect((transcribeCall?.[1]?.body as FormData).get("language")).toBe("zh-CN");
     expect(fetchCalls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
     expect(fetchCalls.some(([url]) => String(url).includes("/api/memory"))).toBe(false);
     expect(fetchCalls.some(([url]) => String(url).includes("/api/debug/prompt-preview"))).toBe(false);
     expect(fetchCalls.some(([url]) => String(url).includes("/api/game/context"))).toBe(false);
-    expect(screen.queryByText("Margit 怎么打")).not.toBeInTheDocument();
+    expect(screen.queryByText(simplifiedTranscript)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
-    expect(await screen.findByText("Margit 怎么打")).toBeInTheDocument();
+    expect(await screen.findByText(simplifiedTranscript)).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows a Local ASR timeout suggestion without filling input", async () => {
+    setLocalAsrReady();
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_timed_out",
+      available: false,
+      display_message: "本地语音识别超时，可以尝试更小模型或更短录音",
+      transcript: "",
+      transcript_char_count: 0,
+      conversion_status: "audio_conversion_not_needed",
+      conversion_required: false
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("语音输入：本地语音识别超时，可以尝试更小模型或更短录音")).toBeInTheDocument()
+    );
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("本地语音识别超时，可以尝试更小模型或更短录音");
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
   });
 
   it("shows Local ASR audio conversion not configured without filling input", async () => {
@@ -2266,7 +2311,7 @@ describe("App", () => {
       ...localAsrTranscriptionResponse,
       status: "local_asr_transcription_no_text",
       available: false,
-      display_message: "没有识别到文本",
+      display_message: "没有识别到可用文本",
       transcript: "",
       transcript_char_count: 0
     };
@@ -2277,12 +2322,13 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
 
-    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("没有识别到文本"));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("没有识别到可用文本"));
     expect(screen.getByLabelText("聊天输入")).toHaveValue("");
     expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
   });
 
   it("Local ASR transcription Event Stream summaries do not expose full transcript", async () => {
+    const privateTranscript = "玛尔基特怎么打";
     localAsrStatusStore = {
       ...localAsrStatus,
       status: "local_asr_ready",
@@ -2296,23 +2342,32 @@ describe("App", () => {
       safe_binary_name: "whisper-cli",
       safe_model_name: "ggml-base.bin"
     };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: privateTranscript,
+      transcript_char_count: privateTranscript.length,
+      language: "zh",
+      transcript_normalized_to_simplified: true
+    };
     installAudioCaptureMock();
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "录音并转写 / Record & Transcribe" }));
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
-    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue("Margit 怎么打"));
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     expect(eventStream).not.toBeNull();
     await waitFor(() => expect(eventStream).toHaveTextContent("本地语音识别开始"));
     expect(eventStream).toHaveTextContent("本地语音识别完成");
-    expect(eventStream).toHaveTextContent(`${"Margit 怎么打".length} 字`);
+    expect(eventStream).toHaveTextContent(`${privateTranscript.length} 字`);
+    expect(eventStream).toHaveTextContent("语言：zh");
+    expect(eventStream).toHaveTextContent("已规范为简体中文");
     expect(eventStream).toHaveTextContent("音频已转换为 WAV");
     expect(eventStream).toHaveTextContent("转为 audio/wav");
     expect(eventStream).toHaveTextContent("转换器：ffmpeg");
-    expect(eventStream).not.toHaveTextContent("Margit 怎么打");
+    expect(eventStream).not.toHaveTextContent(privateTranscript);
     expect(eventStream).not.toHaveTextContent("fake-webm-audio");
     expect(eventStream).not.toHaveTextContent("raw stdout");
     expect(eventStream).not.toHaveTextContent("raw stderr");
@@ -2339,7 +2394,9 @@ describe("App", () => {
     localAsrTranscriptionResponseStore = {
       ...localAsrTranscriptionResponse,
       transcript: privateTranscript,
-      transcript_char_count: privateTranscript.length
+      transcript_char_count: privateTranscript.length,
+      language: "zh",
+      transcript_normalized_to_simplified: true
     };
     installAudioCaptureMock();
     render(<App />);
@@ -2354,6 +2411,8 @@ describe("App", () => {
     expect(rawJson).not.toHaveTextContent("\"transcript\"");
     expect(rawJson).not.toHaveTextContent(privateTranscript);
     expect(screen.getByText("本地转写字数").closest("div")).toHaveTextContent(String(privateTranscript.length));
+    expect(screen.getByText("本地转写语言").closest("div")).toHaveTextContent("zh");
+    expect(screen.getByText("本地转写简体规范").closest("div")).toHaveTextContent("已规范为简体中文");
     expect(screen.getByText("本地转写格式").closest("div")).toHaveTextContent("audio/webm");
     expect(screen.getByText("本地转写格式提示").closest("div")).toHaveTextContent("当前录音格式需要本地转换为 WAV");
     expect(screen.getByText("本地转写转换状态").closest("div")).toHaveTextContent("音频已转换为 WAV");
@@ -2559,7 +2618,7 @@ describe("App", () => {
       ...localAsrTranscriptionResponse,
       status: "local_asr_transcription_no_text",
       available: false,
-      display_message: "没有识别到文本",
+      display_message: "没有识别到可用文本",
       transcript: "",
       transcript_char_count: 0
     };
@@ -2570,7 +2629,7 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
     await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
 
-    await waitFor(() => expect(screen.getByText("语音输入：没有识别到文本")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("语音输入：没有识别到可用文本")).toBeInTheDocument());
     expect(screen.getByLabelText("聊天输入")).toHaveValue("");
 
     localAsrTranscriptionResponseStore = {

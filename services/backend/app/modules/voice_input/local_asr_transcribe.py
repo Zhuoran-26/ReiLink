@@ -23,6 +23,7 @@ from app.schemas.api import LocalAsrTranscriptionResponse
 
 TRANSCRIPTION_TIMEOUT_SECONDS = 30
 MAX_TRANSCRIPT_CHARS = 500
+DEFAULT_ASR_LANGUAGE = "zh"
 
 _TIMESTAMP_PREFIX_RE = re.compile(
     r"^\s*(?:\[[^\]]*?-->\s*[^\]]*?\]|\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?\s*-->\s*\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\s*"
@@ -30,6 +31,95 @@ _TIMESTAMP_PREFIX_RE = re.compile(
 _WHITESPACE_RE = re.compile(r"\s+")
 _SAFE_LANGUAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,15}$")
 _SRT_INDEX_RE = re.compile(r"^\d+$")
+_SUPPORTED_ASR_LANGUAGES = {"zh", "en", "ja", "ko"}
+_CHINESE_LANGUAGE_ALIASES = {
+    "chinese",
+    "cmn",
+    "cmn-hans",
+    "cmn-hant",
+    "zh-cn",
+    "zh-hans",
+    "zh-hant",
+    "zh-tw",
+    "zh_cn",
+    "zh_hans",
+    "zh_hant",
+    "zh_tw",
+}
+_TRADITIONAL_PHRASE_REPLACEMENTS = (
+    ("瑪爾基特", "玛尔基特"),
+    ("怎麼", "怎么"),
+    ("這個", "这个"),
+    ("處理", "处理"),
+    ("第二階段", "第二阶段"),
+    ("二階段", "二阶段"),
+)
+_TRADITIONAL_CHAR_MAP = str.maketrans(
+    {
+        "瑪": "玛",
+        "爾": "尔",
+        "麼": "么",
+        "問": "问",
+        "這": "这",
+        "個": "个",
+        "處": "处",
+        "裡": "里",
+        "裏": "里",
+        "們": "们",
+        "後": "后",
+        "沒": "没",
+        "會": "会",
+        "為": "为",
+        "與": "与",
+        "開": "开",
+        "關": "关",
+        "聽": "听",
+        "說": "说",
+        "幫": "帮",
+        "讓": "让",
+        "過": "过",
+        "時": "时",
+        "間": "间",
+        "點": "点",
+        "長": "长",
+        "級": "级",
+        "階": "阶",
+        "段": "段",
+        "態": "态",
+        "務": "务",
+        "試": "试",
+        "錯": "错",
+        "誤": "误",
+        "語": "语",
+        "聲": "声",
+        "識": "识",
+        "錄": "录",
+        "轉": "转",
+        "檔": "档",
+        "體": "体",
+        "簡": "简",
+        "應": "应",
+        "現": "现",
+        "發": "发",
+        "復": "复",
+        "複": "复",
+        "擊": "击",
+        "劍": "剑",
+        "術": "术",
+        "龍": "龙",
+        "門": "门",
+        "內": "内",
+        "外": "外",
+        "風": "风",
+        "險": "险",
+        "數": "数",
+        "據": "据",
+        "資": "资",
+        "設": "设",
+        "狀": "状",
+        "啟": "启",
+    }
+)
 _LOG_PREFIXES = (
     "whisper_",
     "ggml_",
@@ -72,6 +162,7 @@ def transcribe_local_asr_audio(
     safe_mime_type = _safe_mime_type(mime_type)
     size_bytes = len(audio_bytes)
     safe_duration_ms = max(0, duration_ms)
+    safe_language = _safe_language(language)
     converter_configured, safe_converter_name = get_audio_converter_summary()
     conversion_required = conversion_required_for_mime(safe_mime_type)
     base_response = {
@@ -86,6 +177,8 @@ def transcribe_local_asr_audio(
         "safe_converter_name": safe_converter_name,
         "binary_name": config.safe_binary_name,
         "model_name": config.safe_model_name,
+        "language": safe_language,
+        "transcript_normalized_to_simplified": False,
     }
 
     if config.status != "local_asr_ready":
@@ -165,7 +258,7 @@ def transcribe_local_asr_audio(
                     model_path=model_path,
                     audio_path=conversion.prepared_path,
                     temp_dir=temp_dir,
-                    language=language,
+                    language=safe_language,
                     timeout_seconds=timeout_seconds,
                     base_response=converted_response,
                 )
@@ -190,6 +283,7 @@ def transcribe_local_asr_audio(
                 "display_message": "临时音频清理失败",
                 "transcript": "",
                 "transcript_char_count": 0,
+                "transcript_normalized_to_simplified": False,
                 "conversion_status": "audio_conversion_cleanup_failed",
                 "temporary_file_cleaned": bool(temp_dir is None or not temp_dir.exists()),
                 "temporary_input_cleaned": bool(temp_dir is None or not temp_dir.exists()),
@@ -277,7 +371,7 @@ def _run_transcription(
         return LocalAsrTranscriptionResponse(
             status="local_asr_transcription_timed_out",
             available=False,
-            display_message="本地语音识别超时",
+            display_message="本地语音识别超时，可以尝试更小模型或更短录音",
             temporary_file_cleaned=False,
             temporary_input_cleaned=False,
             temporary_converted_cleaned=_temporary_converted_cleaned_before_cleanup(base_response),
@@ -304,7 +398,7 @@ def _run_transcription(
             **base_response,
         )
 
-    transcript = _extract_transcript(
+    transcript, normalized_to_simplified = _extract_transcript(
         stdout=result.stdout,
         output_dir=temp_dir,
         sensitive_paths=(binary_path, model_path, audio_path, temp_dir),
@@ -323,7 +417,7 @@ def _run_transcription(
         return LocalAsrTranscriptionResponse(
             status="local_asr_transcription_no_text",
             available=False,
-            display_message="没有识别到文本",
+            display_message="没有识别到可用文本",
             temporary_file_cleaned=False,
             temporary_input_cleaned=False,
             temporary_converted_cleaned=_temporary_converted_cleaned_before_cleanup(base_response),
@@ -335,6 +429,7 @@ def _run_transcription(
         display_message="本地语音识别完成",
         transcript=transcript,
         transcript_char_count=len(transcript),
+        transcript_normalized_to_simplified=normalized_to_simplified,
         duration_ms=_response_int(base_response, "duration_ms"),
         size_bytes=_response_int(base_response, "size_bytes"),
         mime_type=_response_field(base_response, "mime_type"),
@@ -349,6 +444,7 @@ def _run_transcription(
         temporary_converted_cleaned=_temporary_converted_cleaned_before_cleanup(base_response),
         binary_name=_response_field(base_response, "binary_name"),
         model_name=_response_field(base_response, "model_name"),
+        language=_response_field(base_response, "language") or DEFAULT_ASR_LANGUAGE,
     )
 
 
@@ -357,21 +453,25 @@ def _build_command(binary_path: Path, model_path: Path, audio_path: Path, langua
     # Real binary compatibility still needs the manual QA checklist because flags and audio formats vary.
     command = [str(binary_path), "-m", str(model_path), "-f", str(audio_path), "-nt"]
     safe_language = _safe_language(language)
-    if safe_language:
-        command.extend(["-l", safe_language])
+    command.extend(["-l", safe_language])
     return command
 
 
-def _safe_language(language: str | None) -> str | None:
+def _safe_language(language: str | None) -> str:
     if not language:
-        return None
-    value = language.strip()
+        return DEFAULT_ASR_LANGUAGE
+    value = language.strip().lower()
     if not _SAFE_LANGUAGE_RE.match(value):
-        return None
-    return value
+        return DEFAULT_ASR_LANGUAGE
+    value = value.replace("_", "-")
+    if value in _CHINESE_LANGUAGE_ALIASES:
+        return DEFAULT_ASR_LANGUAGE
+    if value in _SUPPORTED_ASR_LANGUAGES:
+        return value
+    return DEFAULT_ASR_LANGUAGE
 
 
-def _extract_transcript(stdout: str | None, output_dir: Path, sensitive_paths: tuple[Path, ...]) -> str:
+def _extract_transcript(stdout: str | None, output_dir: Path, sensitive_paths: tuple[Path, ...]) -> tuple[str, bool]:
     candidates: list[str] = []
     if stdout:
         candidates.append(stdout)
@@ -381,7 +481,16 @@ def _extract_transcript(stdout: str | None, output_dir: Path, sensitive_paths: t
     for candidate in candidates:
         lines.extend(_clean_transcript_line(line, sensitive_values) for line in candidate.splitlines())
     transcript = _WHITESPACE_RE.sub(" ", " ".join(line for line in lines if line).strip())
-    return transcript[:MAX_TRANSCRIPT_CHARS]
+    simplified, normalized_to_simplified = _simplify_transcript(transcript)
+    return simplified[:MAX_TRANSCRIPT_CHARS], normalized_to_simplified
+
+
+def _simplify_transcript(text: str) -> tuple[str, bool]:
+    simplified = text
+    for traditional, simplified_phrase in _TRADITIONAL_PHRASE_REPLACEMENTS:
+        simplified = simplified.replace(traditional, simplified_phrase)
+    simplified = simplified.translate(_TRADITIONAL_CHAR_MAP).strip()
+    return simplified, simplified != text
 
 
 def _read_output_text_files(output_dir: Path) -> list[str]:

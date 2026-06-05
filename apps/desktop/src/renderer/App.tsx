@@ -73,6 +73,8 @@ type DemoResetAction =
 type LocalAsrTranscriptionPhase = "idle" | "recording" | "transcribing";
 type MainVoiceInputProvider = "local_asr" | "web_speech" | "unavailable";
 
+const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
+
 const idleStatus: GameStatus = {
   game_id: null,
   game_name: null,
@@ -315,6 +317,8 @@ const emptyLocalAsrTranscription: LocalAsrTranscriptionResponse = {
   display_message: "本地语音识别未配置",
   transcript: "",
   transcript_char_count: 0,
+  language: "zh",
+  transcript_normalized_to_simplified: false,
   duration_ms: 0,
   size_bytes: 0,
   mime_type: null,
@@ -939,6 +943,7 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "local_asr_transcription_started":
       return [
         event.status ? debugText(event.status) : "正在本地转写",
+        event.language ? `语言：${debugText(event.language)}` : "",
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
         audioFormatSummaryText(event.mime_type)
@@ -946,6 +951,8 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "local_asr_transcription_completed":
       return [
         `识别文本 ${event.character_count} 字`,
+        event.language ? `语言：${debugText(event.language)}` : "",
+        event.transcript_normalized_to_simplified ? "已规范为简体中文" : "",
         event.temporary_file_cleaned ? "已清理" : "未清理",
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
@@ -960,6 +967,8 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [
         debugText(event.reason ?? event.status),
         event.character_count ? `${event.character_count} 字` : "",
+        event.language ? `语言：${debugText(event.language)}` : "",
+        event.transcript_normalized_to_simplified ? "已规范为简体中文" : "",
         event.temporary_file_cleaned ? "已清理" : event.temporary_file_cleaned === false ? "未清理" : "",
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
@@ -1116,13 +1125,14 @@ const mainVoiceInputLocalAsrStatusText = (
   if (result.conversion_status === "audio_conversion_not_configured") return "音频转换工具未配置";
   if (result.conversion_status === "audio_conversion_failed") return "音频转换失败";
   if (result.conversion_status === "audio_conversion_timed_out") return "音频转换超时";
+  if (result.status === "local_asr_transcription_timed_out") return "本地语音识别超时，可以尝试更小模型或更短录音";
   const labels: Record<LocalAsrTranscriptionResponse["status"], string> = {
     local_asr_transcription_not_ready: "未配置本地 ASR",
     local_asr_transcription_started: "正在本地转写",
     local_asr_transcription_succeeded: "转写完成，请确认后发送",
     local_asr_transcription_failed: "本地转写失败",
-    local_asr_transcription_timed_out: "本地转写超时",
-    local_asr_transcription_no_text: "没有识别到文本",
+    local_asr_transcription_timed_out: "本地语音识别超时，可以尝试更小模型或更短录音",
+    local_asr_transcription_no_text: "没有识别到可用文本",
     local_asr_transcription_cleanup_failed: "临时音频清理失败",
     local_asr_transcription_error: "本地转写失败"
   };
@@ -1245,7 +1255,7 @@ const localAsrTranscriptionStatusText = (
     local_asr_transcription_succeeded: "转写完成",
     local_asr_transcription_failed: "转写失败",
     local_asr_transcription_timed_out: "转写超时",
-    local_asr_transcription_no_text: "没有识别到文本",
+    local_asr_transcription_no_text: "没有识别到可用文本",
     local_asr_transcription_cleanup_failed: "临时音频清理失败",
     local_asr_transcription_error: "转写失败"
   };
@@ -1264,8 +1274,9 @@ const localAsrTranscriptionHint = (
   if (!configReady) return localStatus.display_message;
   if (captureStatus.lastError) return captureStatus.lastError;
   if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
-  if (!result) return "录音并转写会把识别文本填入输入框，发送前仍可编辑。";
-  if (result.status === "local_asr_transcription_succeeded") return "转写完成，文本已填入输入框，仍需手动发送。";
+  if (!result) return "录音并转写会把识别文本填入输入框，发送前仍可编辑或删除。";
+  if (result.status === "local_asr_transcription_succeeded") return "转写完成，请确认后发送。文本已填入输入框，可编辑或删除，不会自动发送。";
+  if (result.status === "local_asr_transcription_timed_out") return "本地语音识别超时，可以尝试更小模型或更短录音。不会自动发送。";
   if (result.conversion_status === "audio_conversion_not_configured") {
     return "当前录音格式需要转换为 WAV，尚未配置音频转换工具。不会上传音频，也不会自动发送。";
   }
@@ -1852,11 +1863,12 @@ export function App() {
           type: "local_asr_transcription_started",
           timestamp: eventTimestamp(),
           status: "正在本地转写",
+          language: LOCAL_ASR_UI_LANGUAGE,
           duration_ms: recording.durationMs,
           size_bytes: recording.sizeBytes,
           mime_type: recording.mimeType
         });
-        void api.transcribeLocalAsr(recording.blob, recording.durationMs, "zh")
+        void api.transcribeLocalAsr(recording.blob, recording.durationMs, LOCAL_ASR_UI_LANGUAGE)
           .then((result) => {
             setLocalAsrTranscriptionResult(result);
             if (result.status === "local_asr_transcription_succeeded" && result.transcript.trim()) {
@@ -1866,6 +1878,8 @@ export function App() {
                 timestamp: eventTimestamp(),
                 status: result.status,
                 character_count: result.transcript_char_count,
+                language: result.language,
+                transcript_normalized_to_simplified: result.transcript_normalized_to_simplified,
                 duration_ms: result.duration_ms,
                 size_bytes: result.size_bytes,
                 mime_type: result.mime_type ?? undefined,
@@ -1889,6 +1903,8 @@ export function App() {
               status: result.status,
               reason: result.display_message,
               character_count: result.transcript_char_count,
+              language: result.language,
+              transcript_normalized_to_simplified: result.transcript_normalized_to_simplified,
               duration_ms: result.duration_ms,
               size_bytes: result.size_bytes,
               mime_type: result.mime_type ?? undefined,
@@ -1927,6 +1943,8 @@ export function App() {
               timestamp: eventTimestamp(),
               status: fallback.status,
               reason: fallback.display_message,
+              language: fallback.language,
+              transcript_normalized_to_simplified: fallback.transcript_normalized_to_simplified,
               duration_ms: fallback.duration_ms,
               size_bytes: fallback.size_bytes,
               mime_type: fallback.mime_type ?? undefined,
@@ -2947,6 +2965,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     {localAsrStatus.safe_model_name ? `模型：${debugText(localAsrStatus.safe_model_name)}` : ""}
                   </p>
                 )}
+                {localAsrStatus.safe_model_name && (
+                  <p className="settingHint">
+                    模型取舍：{debugText(localAsrStatus.safe_model_name)} 由用户自行配置，ReiLink 不内置模型。base 通常速度和准确率较均衡；tiny 更快但更不准，small / medium / large 可能更准但更慢或超时。
+                  </p>
+                )}
                 <div className="settingRow static">
                   <span>本地 ASR 检查</span>
                   <strong>{localAsrProbeStatusText(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</strong>
@@ -2992,6 +3015,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 {localAsrTranscriptionResult && (
                   <p className="settingHint">
                     {localAsrTranscriptionResult.transcript_char_count} 字
+                    {`。语言：${debugText(localAsrTranscriptionResult.language)}`}
+                    {localAsrTranscriptionResult.transcript_normalized_to_simplified ? "。已规范为简体中文" : ""}
                     {localAsrTranscriptionResult.duration_ms ? `。${localAsrTranscriptionResult.duration_ms} ms` : ""}
                     {localAsrTranscriptionResult.size_bytes ? `。${audioBytesText(localAsrTranscriptionResult.size_bytes)}` : ""}
                     {`。格式：${audioFormatSummaryText(localAsrTranscriptionResult.mime_type)}`}
@@ -3825,6 +3850,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{localAsrTranscriptionResult?.transcript_char_count ?? 0}</dd>
                       </div>
                       <div>
+                        <dt>本地转写语言</dt>
+                        <dd>{debugText(localAsrTranscriptionResult?.language)}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写简体规范</dt>
+                        <dd>{localAsrTranscriptionResult ? (localAsrTranscriptionResult.transcript_normalized_to_simplified ? "已规范为简体中文" : "未改写") : "无"}</dd>
+                      </div>
+                      <div>
                         <dt>本地转写时长</dt>
                         <dd>{localAsrTranscriptionResult ? `${localAsrTranscriptionResult.duration_ms} ms` : "无"}</dd>
                       </div>
@@ -4179,6 +4212,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                               audio_capture_phase: audioCaptureStatus.phase,
                               local_asr_transcription_phase: localAsrTranscriptionPhase,
                               local_asr_transcription_status: localAsrTranscriptionResult?.status ?? null,
+                              local_asr_language: localAsrTranscriptionResult?.language ?? null,
+                              local_asr_transcript_normalized_to_simplified:
+                                localAsrTranscriptionResult?.transcript_normalized_to_simplified ?? null,
                               local_asr_conversion_status: localAsrTranscriptionResult?.conversion_status ?? null,
                               local_asr_conversion_required: localAsrTranscriptionResult?.conversion_required ?? null,
                               local_asr_converter_configured: localAsrTranscriptionResult?.converter_configured ?? null
@@ -4227,6 +4263,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                                   available: localAsrTranscriptionResult.available,
                                   display_message: localAsrTranscriptionResult.display_message,
                                   transcript_char_count: localAsrTranscriptionResult.transcript_char_count,
+                                  language: localAsrTranscriptionResult.language,
+                                  transcript_normalized_to_simplified:
+                                    localAsrTranscriptionResult.transcript_normalized_to_simplified,
                                   duration_ms: localAsrTranscriptionResult.duration_ms,
                                   size_bytes: localAsrTranscriptionResult.size_bytes,
                                   mime_type: localAsrTranscriptionResult.mime_type,

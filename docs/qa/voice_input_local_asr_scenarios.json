@@ -340,13 +340,33 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full temp path"]
   },
   {
+    "id": "local-asr-language-zh-cn-normalized-to-zh",
+    "category": "voice_input_local_asr",
+    "precondition": "Renderer submits Local ASR language zh-CN and backend builds the whisper-like command",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend passes -l zh to the local ASR command, defaults unsafe or unsupported language to zh, and never passes raw unsupported language into subprocess args.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "shell=True", "en;rm -rf", "full binary path", "full model path"]
+  },
+  {
+    "id": "local-asr-transcript-simplified-normalization",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR returns a Traditional Chinese transcript such as 瑪爾基特怎麼打",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend trims and collapses whitespace, lightly normalizes ASR transcript to Simplified Chinese before the renderer fills input, and Event Stream only shows character count plus 已规范为简体中文.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full transcript", "raw prompt", "memory write"]
+  },
+  {
     "id": "local-asr-transcribe-no-text",
     "category": "voice_input_local_asr",
     "precondition": "Local ASR config is ready and the fake binary returns empty or log-only output",
     "expected_status": "local_asr_transcription_no_text",
     "should_auto_send": false,
     "should_upload_audio": false,
-    "expected_behavior": "UI shows 没有识别到文本 and does not change the input.",
+    "expected_behavior": "UI shows 没有识别到可用文本 and does not change the input.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full transcript", "audio content"]
   },
   {
@@ -356,7 +376,7 @@
     "expected_status": "local_asr_transcription_timed_out",
     "should_auto_send": false,
     "should_upload_audio": false,
-    "expected_behavior": "Backend returns 本地语音识别超时, cleans temp audio, and UI shows 转写超时.",
+    "expected_behavior": "Backend returns 本地语音识别超时，可以尝试更小模型或更短录音, cleans temp audio, and UI keeps the input unchanged.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full temp path"]
   },
   {

@@ -138,25 +138,30 @@
 - config not ready 时，转写按钮不可用；backend 返回 `local_asr_transcription_not_ready`，不运行 binary。
 - config ready 时，用户点击主聊天语音按钮或 Settings 的 `Record & Transcribe` 后才请求麦克风权限，录制短音频并上传到本机 backend transcription endpoint。
 - Backend transcription 写入系统临时目录 `reilink-local-asr-*`，必要时先做音频格式转换，再调用 configured local ASR binary，传入 model path 和可识别的 temp audio path，随后清理原始和转换后的临时音频。
+- Backend 默认使用安全语言 `zh` 调用 whisper-like CLI；renderer 可传 `zh-CN`，backend 会归一为 `zh`，不安全或不支持的 language 不会进入 subprocess command。
+- Local ASR transcript 在返回 renderer / 填入输入框前会 trim、折叠空白、去重复换行，并做轻量繁体到简体中文规范化；该规范化只作用于 ASR transcript，不改用户手打文本、assistant 回复、memory 或 knowledge pack。
+- 简体规范化示例：`瑪爾基特怎麼打` -> `玛尔基特怎么打`，`我想問一下這個 Boss 怎麼處理` -> `我想问一下这个 Boss 怎么处理`；英文、数字和已是简体的文本应保持合理不变。
 - WAV / PCM 输入不转换；browser 常见 `audio/webm` / `video/webm` / `audio/ogg` 等非 WAV 输入需要转换。
 - 音频转换工具由用户通过 `REILINK_AUDIO_CONVERTER_BINARY` 配置；当前项目不内置、不下载、不提交 ffmpeg 或第三方二进制。
 - 默认 converter command 使用 subprocess list args：`[converter, "-y", "-i", input_path, "-ar", "16000", "-ac", "1", output_wav_path]`；不使用 `shell=True`。
 - 未配置或不可用 converter 时，WebM/Ogg 转写返回 `audio_conversion_not_configured` 安全摘要，不调用 local ASR binary。
 - converter 失败或超时时返回 `audio_conversion_failed` / `audio_conversion_timed_out`，不显示 raw stdout / stderr / exception / 完整 converter path。
 - converter 成功时，response / UI 显示 `audio_conversion_succeeded`、source MIME、`converted_mime_type=audio/wav`、safe converter name 和原始/转换临时文件清理状态。
-- 默认 ASR command 使用 subprocess list args：`[binary, "-m", model_path, "-f", audio_path, "-nt"]`，可追加安全 language 参数；不使用 `shell=True`。
-- Transcription timeout 为 30 秒；timeout 时返回 `local_asr_transcription_timed_out` 或等价安全状态。
+- 默认 ASR command 使用 subprocess list args：`[binary, "-m", model_path, "-f", audio_path, "-nt", "-l", "zh"]`；不使用 `shell=True`。
+- Transcription timeout 为 30 秒；timeout 时返回 `local_asr_transcription_timed_out` 和 `本地语音识别超时，可以尝试更小模型或更短录音`。
 - Audio conversion timeout 为 10 秒；timeout 时不继续调用 local ASR。
 - fake binary smoke：配置 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`，fake binary 输出固定 transcript，确认输入框被回填。
-- 正常 transcript 只填入聊天输入框，用户可编辑；不会自动发送。
+- Settings 显示安全 model basename。`ggml-base.bin` 通常速度和准确率较均衡；tiny 更快但更不准，small / medium / large 可能更准但更慢或超时。ReiLink 不内置模型。
+- 真实准确率排查建议：尽量说短句、靠近麦克风、降低背景噪声；需要更高准确率时可尝试更大模型，但要接受更慢或超时风险。
+- 正常 transcript 只填入聊天输入框，用户可编辑或删除；不会自动发送，UI 应显示 `转写完成，请确认后发送`。
 - 未确认 transcript 不写 memory，不进入 prompt / retrieval / game context，也不触发 semantic/game extraction。
 - 主聊天语音按钮的 transcript 同样只填入输入框；用户手动点击发送后才进入 chat flow。
-- 空 transcript 返回 `local_asr_transcription_no_text`，UI 显示中文提示，不改输入框。
+- 空 transcript 返回 `local_asr_transcription_no_text`，UI 显示 `没有识别到可用文本`，不改输入框。
 - fake binary nonzero 返回 `local_asr_transcription_failed`，不显示 raw stdout / stderr。
 - subprocess OS error 返回 `local_asr_transcription_error`，不显示 raw exception。
 - cleanup succeeded 时 response / UI 显示临时音频已清理。
 - cleanup failed 时返回 `local_asr_transcription_cleanup_failed`，不显示 temp path、raw exception 或 transcript。
-- Event Stream 只显示 `本地语音识别开始`、`本地语音识别完成`、`本地语音识别失败`、字数、duration、size、MIME、conversion status、target MIME、cleanup 和安全 status。
+- Event Stream 只显示 `本地语音识别开始`、`本地语音识别完成`、`本地语音识别失败`、字数、language、是否 `已规范为简体中文`、duration、size、MIME、conversion status、target MIME、cleanup、安全 model / binary basename 和安全 status。
 - Event Stream、Debug Panel、Raw JSON 不显示完整 transcript、raw stdout、raw stderr、完整 binary/model/temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
 - packaged `.app` smoke 需要确认未配置时 Local Transcribe disabled；可选 fake binary / fake model smoke 确认 packaged app 仍不泄露 transcript 或路径。
 - Packaged `.app` 应包含麦克风用途说明：`ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。`
@@ -176,7 +181,7 @@
 - `Check Local ASR` 应返回 succeeded；失败或超时只显示中文安全状态。
 - `Audio Capture Test` 应录音成功，显示 duration、size、MIME，并清理临时音频。
 - audio conversion 应显示 `audio_conversion_succeeded`，或在 WAV / PCM 输入时显示 conversion not needed。
-- `Record & Transcribe` 应返回 transcript，并只填入输入框。
+- `Record & Transcribe` 应返回已 trim / 折叠空白 / 简体规范化后的 transcript，并只填入输入框。
 - 主聊天语音按钮应显示本地 ASR 可用；点击后录音、转写，并把 transcript 只填入主聊天输入框。
 - transcript 不自动发送；用户检查后才手动点击发送。
 - 未发送前不得写入 memory / prompt / knowledge retrieval / game context。
@@ -185,7 +190,7 @@
 
 #### Local ASR real compatibility QA
 
-本矩阵用于真实 whisper.cpp 兼容性准备，不要求把 whisper binary、模型文件、ffmpeg 或任何第三方二进制提交进仓库。当前 bridge 仍假设 whisper.cpp-like CLI：`-m <model>`、`-f <audio>`、`-nt` 和可选 `-l <language>`；真实兼容性必须在用户本机手动验证。
+本矩阵用于真实 whisper.cpp 兼容性准备，不要求把 whisper binary、模型文件、ffmpeg 或任何第三方二进制提交进仓库。当前 bridge 仍假设 whisper.cpp-like CLI：`-m <model>`、`-f <audio>`、`-nt` 和 `-l zh`；真实兼容性必须在用户本机手动验证。
 
 5.1 未配置：
 
@@ -197,7 +202,7 @@
 
 - 使用临时 fake executable 和临时 fake model file，不提交到 repo。
 - fake binary 可分别输出纯文本、timestamp 文本、带日志文本、空文本和超长文本。
-- 期望 config ready，probe succeeded，transcribe 返回 fake transcript 或 no_text。
+- 期望 config ready，probe succeeded，transcribe 返回已清洗 / 简体规范化的 fake transcript 或 no_text。
 - transcript 只填入输入框，不自动发送。
 - Event Stream / Debug / Raw JSON 不显示 full transcript、raw stdout/stderr、完整 binary/model/temp path。
 
@@ -207,10 +212,11 @@
 - 设置 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`。
 - 打开 dev app，运行 `Check Local ASR`，确认只显示安全文件名。
 - 运行 `Audio Capture Test`，记录安全 MIME summary，例如 `audio/webm`、`audio/wav` 或 `unknown`。
-- 运行 `Record & Transcribe`，检查 transcript 是否进入输入框且不会自动发送。
+- 运行 `Record & Transcribe`，检查 transcript 是否以简体规范化结果进入输入框且不会自动发送。
 - 运行主聊天语音按钮，确认 Web Speech 不可用时仍走 Local ASR，状态不是 `语音识别服务不可用`。
 - 检查 Event Stream 不显示完整 transcript。
 - 如果录音格式是 `audio/webm` / Ogg，检查未配置 converter 时是否显示 `尚未配置音频转换工具`；配置 `REILINK_AUDIO_CONVERTER_BINARY` 后再验证转换状态、target MIME 和清理状态。
+- 如果真实转写不准，先尝试更短录音、更近麦克风、更低噪声；再考虑从 tiny/base 调整到更大模型，同时观察是否触发 30 秒 timeout。
 
 5.4 packaged app：
 

@@ -254,8 +254,8 @@ Audio conversion strategy：
 Command strategy：
 
 - 默认使用 subprocess list args，不使用 `shell=True`。
-- 默认命令形状：`[binary, "-m", model_path, "-f", audio_path, "-nt"]`。
-- 如果 renderer 提供安全 language，例如 `zh`，追加 `["-l", language]`。
+- 默认命令形状：`[binary, "-m", model_path, "-f", audio_path, "-nt", "-l", "zh"]`。
+- renderer 的 `zh-CN` / `zh_Hans` 等中文 UI language 会归一为 `zh`；不安全或不支持的 language 回退 `zh`，不进入命令。
 - timeout 为 30 秒。
 - 测试使用 fake binary，不依赖真实 whisper、真实模型或真实麦克风。
 
@@ -263,20 +263,22 @@ Transcript 策略：
 
 - backend 可以解析 stdout，也会尝试读取 temp dir 下的 `.txt` / `.srt` / `.vtt` 输出文件。
 - 清洗明显 whisper timestamp 和日志行。
+- 对 transcript 做 trim、空白折叠和重复换行清理。
+- 默认做轻量繁体到简体中文规范化，例如 `瑪爾基特怎麼打` -> `玛尔基特怎么打`。
 - transcript 最长 500 字符。
-- 空文本返回 `local_asr_transcription_no_text`。
-- 如果输出无法安全解析，不把 raw output 原样返回给 UI。
+- 空文本返回 `local_asr_transcription_no_text`，显示 `没有识别到可用文本`。
+- 不做 LLM correction、翻译或术语纠错；如果输出无法安全解析，不把 raw output 原样返回给 UI。
 
 安全边界：
 
-- transcript 只回填输入框，用户发送前可编辑。
+- transcript 只回填输入框，用户发送前可编辑或删除。
 - 不自动发送。
 - 未确认 transcript 不进入 memory。
 - 未确认 transcript 不进入 prompt。
 - 未确认 transcript 不触发 knowledge retrieval。
 - 未确认 transcript 不触发 game context extraction。
-- Event Stream 只显示开始、完成、失败、字数、duration、size、MIME、conversion status、target MIME、cleanup status 和安全 status。
-- Debug Panel / Raw JSON 只显示 transcript char count，不显示完整 transcript。
+- Event Stream 只显示开始、完成、失败、字数、language、是否 `已规范为简体中文`、duration、size、MIME、conversion status、target MIME、cleanup status 和安全 status。
+- Debug Panel / Raw JSON 只显示 transcript char count、language 和简体规范化状态，不显示完整 transcript。
 - UI / response 不显示 raw stdout、raw stderr、raw exception、完整 binary path、完整 model path、完整 converter path、完整 temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
 
 临时文件策略：
@@ -290,7 +292,7 @@ Transcript 策略：
 
 真实 whisper.cpp / model / converter 的手动配置和可选 smoke 操作指南见 [`docs/local-asr-manual-setup.md`](local-asr-manual-setup.md)。该指南只描述用户本机准备和手动验证流程；它不代表 ReiLink 内置、下载或再分发模型、ASR binary 或 converter binary。
 
-当前 bridge 的假设是：用户配置的 local ASR binary 支持 whisper.cpp-like CLI，可以接受 `-m <model>`、`-f <audio>`、`-nt` 和可选 `-l <language>`，并能从 stdout 或同目录 `.txt` / `.srt` / `.vtt` 文件输出可解析文本。不同 whisper.cpp 版本、不同构建产物和不同 wrapper 可能使用不同参数或输出策略，因此 `local_asr_probe_succeeded` 只代表 binary 可以启动，不代表真实转写一定可用。
+当前 bridge 的假设是：用户配置的 local ASR binary 支持 whisper.cpp-like CLI，可以接受 `-m <model>`、`-f <audio>`、`-nt` 和 `-l zh`，并能从 stdout 或同目录 `.txt` / `.srt` / `.vtt` 文件输出可解析文本。renderer 可显示 / 提交 `zh-CN`，backend 会在进入 subprocess command 前归一为 `zh`。不同 whisper.cpp 版本、不同构建产物和不同 wrapper 可能使用不同参数或输出策略，因此 `local_asr_probe_succeeded` 只代表 binary 可以启动，不代表真实转写一定可用。
 
 用户需要自行准备：
 
@@ -315,8 +317,8 @@ export REILINK_AUDIO_CONVERTER_BINARY="/absolute/path/to/ffmpeg"
 2. 运行 CLI probe：点击 `检查本地 ASR / Check Local ASR` 或请求 `POST /api/voice-input/local-asr/probe`，确认 binary 可以启动；这一步不传模型、不传音频。
 3. 运行 Audio Capture Test：点击 `测试录音 / Test Recording`，确认 duration、size、MIME 和 cleanup status 正常。
 4. 如果录音格式是 WebM/Ogg，设置 `REILINK_AUDIO_CONVERTER_BINARY` 后再运行 local transcription bridge；未设置时应显示 `尚未配置音频转换工具` 且不调用 ASR。
-5. 运行 local transcription bridge：点击 `录音并转写 / Record & Transcribe`，确认 transcript 只进入输入框，不自动发送。
-6. 展开 Event Stream / Debug Panel / Raw JSON，确认只出现字数、MIME、conversion status、target MIME、duration、size、cleanup、safe binary/model/converter name，不出现完整 transcript、raw stdout/stderr、完整路径或音频内容。
+5. 运行 local transcription bridge：点击 `录音并转写 / Record & Transcribe`，确认 transcript 已 trim、折叠空白、必要时轻量繁转简，只进入输入框，不自动发送。
+6. 展开 Event Stream / Debug Panel / Raw JSON，确认只出现字数、language、是否 `已规范为简体中文`、MIME、conversion status、target MIME、duration、size、cleanup、safe binary/model/converter name，不出现完整 transcript、raw stdout/stderr、完整路径或音频内容。
 
 当前可能失败的原因：
 
@@ -325,8 +327,9 @@ export REILINK_AUDIO_CONVERTER_BINARY="/absolute/path/to/ffmpeg"
 - model path 不正确或 model 文件与 binary 不兼容。
 - binary 参数不兼容，例如不支持 `-nt`、`-m`、`-f` 或 `-l`。
 - binary 不可执行，或 packaged 环境下受权限、签名、隔离路径影响。
-- 30 秒 timeout 不足。
+- 30 秒 timeout 不足；UI 会提示 `本地语音识别超时，可以尝试更小模型或更短录音`。
 - 输出格式无法解析，或 transcript 混在 stderr / 特定输出文件中。
+- 模型取舍不合适：`ggml-base.bin` 通常速度和准确率较均衡，tiny 更快但更不准，small / medium / large 可能更准但更慢或超时。
 
 Audio Format Conversion v1 已实现为用户配置的本地 converter bridge：它把 browser-recorded audio 转为 whisper.cpp 更稳定接受的 WAV / PCM，但不内置 converter，不下载二进制，不提交 ffmpeg binary，也不把 raw converter output 暴露给 UI。
 
@@ -335,6 +338,7 @@ Audio Format Conversion v1 已实现为用户配置的本地 converter bridge：
 - 不上传音频到外部服务。
 - 临时音频在 backend 系统临时目录中创建并清理。
 - transcript 只填输入框，不自动发送。
+- ASR transcript 会在填入输入框前做 trim、空白折叠、重复换行清理和轻量繁体到简体中文规范化；这不影响用户手打文本、assistant 回复、memory 或 knowledge pack。
 - 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context extraction。
 - Event Stream / Debug / Raw JSON 不显示完整 transcript、raw subprocess output、完整路径、base64 audio、API key、`.env` 或 Authorization。
 

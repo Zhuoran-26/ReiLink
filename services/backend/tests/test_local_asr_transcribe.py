@@ -109,6 +109,8 @@ def test_transcription_succeeds_with_fake_binary_and_safe_command(monkeypatch, t
     assert data["available"] is True
     assert data["transcript"] == "Margit 怎么打"
     assert data["transcript_char_count"] == len("Margit 怎么打")
+    assert data["language"] == "zh"
+    assert data["transcript_normalized_to_simplified"] is False
     assert data["duration_ms"] == 3000
     assert data["size_bytes"] == len(b"fake-wav-audio")
     assert data["mime_type"] == "audio/wav"
@@ -131,6 +133,55 @@ def test_transcription_succeeds_with_fake_binary_and_safe_command(monkeypatch, t
     assert args[3] not in payload
     assert "fake-wav-audio" not in payload
     assert base64.b64encode(b"fake-wav-audio").decode("ascii") not in payload
+
+
+@pytest.mark.parametrize(
+    ("language", "expected_language"),
+    [
+        (None, "zh"),
+        ("", "zh"),
+        ("zh-CN", "zh"),
+        ("zh_CN", "zh"),
+        ("zh-Hans", "zh"),
+        ("ja", "ja"),
+        ("en;rm -rf /", "zh"),
+        ("../../zh", "zh"),
+    ],
+)
+def test_transcription_uses_safe_language_for_whisper_command(monkeypatch, tmp_path, language, expected_language):
+    binary, model = _ready_local_asr(monkeypatch, tmp_path, "#!/bin/sh\nexit 99\n")
+    seen: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        seen["kwargs"] = kwargs
+        return subprocess.CompletedProcess(command, 0, stdout="Margit 怎么打", stderr="raw stderr secret")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    response = transcribe_local_asr_audio(
+        b"fake audio",
+        "audio/wav",
+        duration_ms=100,
+        language=language,
+        temp_root=str(tmp_path),
+    )
+    command = seen["command"]
+    payload = json.dumps(response.model_dump(), ensure_ascii=False)
+
+    assert response.status == "local_asr_transcription_succeeded"
+    assert response.language == expected_language
+    assert isinstance(command, list)
+    assert command[0] == str(binary)
+    assert command[0:2] != ["sh", "-c"]
+    assert command[command.index("-m") + 1] == str(model)
+    assert command[-2:] == ["-l", expected_language]
+    if language:
+        assert language not in command or language == expected_language
+    assert seen["kwargs"].get("shell") is None
+    assert "raw stderr secret" not in payload
+    assert str(binary) not in payload
+    assert str(model) not in payload
 
 
 @pytest.mark.parametrize(
@@ -177,6 +228,27 @@ def test_transcription_ignores_srt_and_vtt_metadata_from_output_files(monkeypatc
 
     assert response.status == "local_asr_transcription_succeeded"
     assert response.transcript == "Margit 怎么打 别贪刀"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "expected", "normalized_to_simplified"),
+    [
+        ("  瑪爾基特怎麼打\n\n", "玛尔基特怎么打", True),
+        ("我想問一下這個 Boss 怎麼處理\n", "我想问一下这个 Boss 怎么处理", True),
+        ("Margit Boss 2 phase\n", "Margit Boss 2 phase", False),
+        ("玛尔基特怎么打\n", "玛尔基特怎么打", False),
+        ("Margit   Boss\n\n2\tphase\n", "Margit Boss 2 phase", False),
+    ],
+)
+def test_transcription_normalizes_transcript_text(monkeypatch, tmp_path, stdout, expected, normalized_to_simplified):
+    _ready_local_asr(monkeypatch, tmp_path, _fake_stdout_script(stdout))
+
+    response = transcribe_local_asr_audio(b"fake audio", "audio/wav", duration_ms=100, temp_root=str(tmp_path))
+
+    assert response.status == "local_asr_transcription_succeeded"
+    assert response.transcript == expected
+    assert response.transcript_char_count == len(expected)
+    assert response.transcript_normalized_to_simplified is normalized_to_simplified
 
 
 def test_transcription_uses_subprocess_args_without_shell(monkeypatch, tmp_path):
@@ -366,6 +438,7 @@ def test_transcription_returns_no_text_for_empty_or_log_output(monkeypatch, tmp_
 
     assert response.status == "local_asr_transcription_no_text"
     assert response.available is False
+    assert response.display_message == "没有识别到可用文本"
     assert response.transcript == ""
 
 
@@ -376,6 +449,7 @@ def test_transcription_returns_no_text_for_empty_stdout(monkeypatch, tmp_path):
 
     assert response.status == "local_asr_transcription_no_text"
     assert response.available is False
+    assert response.display_message == "没有识别到可用文本"
     assert response.transcript == ""
 
 
@@ -392,6 +466,7 @@ def test_transcription_timeout_is_safe(monkeypatch, tmp_path):
 
     assert response.status == "local_asr_transcription_timed_out"
     assert response.available is False
+    assert response.display_message == "本地语音识别超时，可以尝试更小模型或更短录音"
     assert "raw stdout" not in payload
     assert "raw stderr" not in payload
     assert str(binary) not in payload

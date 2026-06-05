@@ -170,6 +170,8 @@ export type LocalAsrTranscriptionResponse = {
   display_message: string;
   transcript: string;
   transcript_char_count: number;
+  language: string;
+  transcript_normalized_to_simplified: boolean;
   duration_ms: number;
   size_bytes: number;
   mime_type: string | null;
@@ -549,7 +551,7 @@ export const api = {
   localDataStatus: () => request<LocalDataStatus>("/api/local-data/status"),
   localAsrStatus: () => request<LocalAsrStatus>("/api/voice-input/local-asr/status"),
   probeLocalAsr: () => request<LocalAsrProbeResponse>("/api/voice-input/local-asr/probe", { method: "POST" }),
-  transcribeLocalAsr: (blob: Blob, durationMs: number, language = "zh") => {
+  transcribeLocalAsr: (blob: Blob, durationMs: number, language = "zh-CN") => {
     const mimeType = blob.type || "application/octet-stream";
     const body = new FormData();
     body.append("audio", blob, audioFileName(mimeType));

@@ -300,6 +300,8 @@ class LocalAsrTranscriptionResponse(BaseModel):
     display_message: str
     transcript: str = ""
     transcript_char_count: int = 0
+    language: str = "zh"
+    transcript_normalized_to_simplified: bool = False
     duration_ms: int = 0
     size_bytes: int = 0
     mime_type: str | None = None
