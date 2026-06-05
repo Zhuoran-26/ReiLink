@@ -80,7 +80,7 @@ dev/codex-reilink
 - User data dir：packaged app 使用 `~/Library/Application Support/ReiLink/data`。
 - Local Data Controls：Settings 中查看 / 打开本地数据目录，并复用 Demo Reset / reset controls。
 - Audio Capture / Temp File probe。
-- Local ASR staged foundation：feasibility plan、config detection、CLI probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge、whisper-like output parsing hardening。
+- Local ASR staged foundation：feasibility plan、config detection、CLI probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge、whisper-like output parsing hardening、manual setup guide。
 
 ### 当前 Voice / Local ASR 状态
 
@@ -90,7 +90,8 @@ dev/codex-reilink
 - Local ASR 是当前推进方向，已完成 staged foundation：feasibility plan、config detection、CLI probe、Audio Capture / Temp File probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge 和 whisper-like parsing QA。
 - Audio Format Conversion v1 已支持通过用户配置的 `REILINK_AUDIO_CONVERTER_BINARY` 把 WebM/Ogg 等录音格式转为 WAV；未配置或失败时安全短路，不调用 ASR。
 - Local ASR 当前不提交 whisper binary，不提交 model，不提交 ffmpeg / converter binary，不接入云 ASR 或商业 ASR。
-- 真实 whisper.cpp / model / converter 兼容性仍需手动 QA。
+- Local ASR manual setup guide 已新增；真实 whisper.cpp / model / converter 仍由用户手动配置，不随 app 内置。
+- 真实 whisper 手动 smoke 仍是 optional / manual，不是自动测试依赖。
 
 ### 当前 Knowledge Retrieval 状态
 
@@ -238,7 +239,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - User data dir: the packaged app uses `~/Library/Application Support/ReiLink/data`.
 - Local Data Controls: Settings can show / open the local data directory and reuse Demo Reset / reset controls.
 - Audio Capture / Temp File probe.
-- Local ASR staged foundation: feasibility plan, config detection, CLI probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, and whisper-like output parsing hardening.
+- Local ASR staged foundation: feasibility plan, config detection, CLI probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, whisper-like output parsing hardening, and manual setup guide.
 
 ### Current Voice / Local ASR Status
 
@@ -248,7 +249,8 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Local ASR is the current direction, with staged foundation complete: feasibility plan, config detection, CLI probe, Audio Capture / Temp File probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, and whisper-like parsing QA.
 - Audio Format Conversion v1 can use a user-configured `REILINK_AUDIO_CONVERTER_BINARY` to convert WebM/Ogg-style recordings to WAV; missing or failed converters short-circuit safely and do not call ASR.
 - Local ASR does not commit a whisper binary, model file, ffmpeg / converter binary, cloud ASR, or commercial ASR integration.
-- Real whisper.cpp / model / converter compatibility still needs manual QA.
+- The Local ASR manual setup guide has been added; real whisper.cpp / model / converter remains user-configured and is not bundled with the app.
+- Real whisper manual smoke remains optional / manual and is not an automated test dependency.
 
 ### Current Knowledge Retrieval Status
 

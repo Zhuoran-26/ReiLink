@@ -106,7 +106,7 @@
 
 ### 4. Voice Input v2 local ASR feasibility / 本地语音识别可行性
 
-设计文档见 `docs/voice-input-local-asr-spike.md`，机器可读场景见 `docs/qa/voice_input_local_asr_scenarios.json`。
+设计文档见 `docs/voice-input-local-asr-spike.md`，真实手动配置指南见 `docs/local-asr-manual-setup.md`，机器可读场景见 `docs/qa/voice_input_local_asr_scenarios.json`。
 
 - 当前 Web Speech Recognition 在 Electron packaged app 中可能暴露 API，但识别服务不可用；Voice Input v1 的预期是显示 `语音识别服务不可用` 或明确 unavailable fallback，不崩溃。
 - v1 仍保留输入框入口、安全 fallback、系统听写提示和“不自动发送”的边界。
@@ -162,6 +162,22 @@
 - 默认不上传外部服务，不保存音频，不自动发送 transcript。
 - 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
 - 当前配置检测不会产生音频或 transcript。Event Stream / Debug / Raw JSON 不显示完整 transcript、完整音频路径、raw subprocess output、API key、`.env`、Authorization、完整本地路径或 raw prompt。
+
+#### Real Local ASR optional smoke / 真实本地 ASR 可选冒烟
+
+本冒烟只用于开发者或用户本机手动验证真实 whisper.cpp / model / converter 链路，不是自动测试依赖，也不代表 ReiLink 内置模型、ASR binary 或 converter binary。详细配置步骤见 `docs/local-asr-manual-setup.md`。
+
+- 用户自行准备本地 whisper.cpp-compatible binary、model 文件和可选 converter；不要下载或提交到 repo。
+- 设置 `REILINK_LOCAL_ASR_BINARY`、`REILINK_LOCAL_ASR_MODEL`，如果录音不是 WAV / PCM，再设置 `REILINK_AUDIO_CONVERTER_BINARY`。
+- Settings -> Voice Input 中 config detection 应显示 ready；缺少文件或不可执行时只显示安全摘要。
+- `Check Local ASR` 应返回 succeeded；失败或超时只显示中文安全状态。
+- `Audio Capture Test` 应录音成功，显示 duration、size、MIME，并清理临时音频。
+- audio conversion 应显示 `audio_conversion_succeeded`，或在 WAV / PCM 输入时显示 conversion not needed。
+- `Record & Transcribe` 应返回 transcript，并只填入输入框。
+- transcript 不自动发送；用户检查后才手动点击发送。
+- 未发送前不得写入 memory / prompt / knowledge retrieval / game context。
+- Event Stream / Debug Panel 不显示完整 transcript、完整路径、raw stdout、raw stderr、API key、`.env` 或 Authorization。
+- packaged `.app` optional smoke 需要确认非黑屏、backend health ok、Voice Input / Local ASR 入口可见、环境变量可被当前启动方式传递，退出后没有 backend 残留。
 
 #### Local ASR real compatibility QA
 
@@ -395,5 +411,7 @@ Machine-readable scenarios live at:
 - `docs/qa/retrieval_scenarios.json`
 - `docs/qa/voice_input_scenarios.json`
 - `docs/qa/voice_input_local_asr_scenarios.json`
+
+Real Local ASR manual setup and optional smoke guidance lives at `docs/local-asr-manual-setup.md`.
 
 Use the Chinese checklist above as the source of truth for manual runs. Keep results short and concrete: pass/fail, exact app mode, exact commit, and any visible privacy issue.

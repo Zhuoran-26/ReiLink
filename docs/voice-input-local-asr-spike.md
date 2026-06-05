@@ -288,6 +288,8 @@ Transcript 策略：
 
 ## 1.10 Real whisper.cpp compatibility / 真实 whisper.cpp 兼容性
 
+真实 whisper.cpp / model / converter 的手动配置和可选 smoke 操作指南见 [`docs/local-asr-manual-setup.md`](local-asr-manual-setup.md)。该指南只描述用户本机准备和手动验证流程；它不代表 ReiLink 内置、下载或再分发模型、ASR binary 或 converter binary。
+
 当前 bridge 的假设是：用户配置的 local ASR binary 支持 whisper.cpp-like CLI，可以接受 `-m <model>`、`-f <audio>`、`-nt` 和可选 `-l <language>`，并能从 stdout 或同目录 `.txt` / `.srt` / `.vtt` 文件输出可解析文本。不同 whisper.cpp 版本、不同构建产物和不同 wrapper 可能使用不同参数或输出策略，因此 `local_asr_probe_succeeded` 只代表 binary 可以启动，不代表真实转写一定可用。
 
 用户需要自行准备：

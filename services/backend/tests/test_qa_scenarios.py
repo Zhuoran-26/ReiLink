@@ -9,6 +9,7 @@ VOICE_INPUT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_scenarios.
 VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_local_asr_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
+LOCAL_ASR_MANUAL_SETUP_PATH = REPO_ROOT / "docs" / "local-asr-manual-setup.md"
 ALLOWED_RETRIEVAL_STATUSES = {
     "used",
     "not_found",
@@ -224,6 +225,16 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         "local-asr-audio-conversion-failed",
         "local-asr-audio-conversion-timed-out",
         "local-asr-audio-conversion-event-stream-privacy",
+        "real-local-asr-config-ready",
+        "real-local-asr-probe-succeeded",
+        "real-audio-capture-succeeded",
+        "real-audio-conversion-succeeded",
+        "real-record-transcribe-fills-input",
+        "real-record-transcribe-does-not-auto-send",
+        "real-record-transcribe-no-context-pollution",
+        "real-local-asr-packaged-app-optional-smoke",
+        "real-local-asr-troubleshooting-no-text",
+        "real-local-asr-troubleshooting-timeout",
         "local-asr-real-whisper-optional-manual",
         "local-asr-packaged-real-whisper-optional-manual",
         "local-asr-transcribe-no-context-pollution",
@@ -239,19 +250,26 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         assert isinstance(item.get("should_auto_send"), bool)
         assert isinstance(item.get("should_upload_audio"), bool)
         assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        if "manual_only" in item:
+            assert isinstance(item["manual_only"], bool)
+        if item.get("manual_only") is True:
+            assert item["should_auto_send"] is False
+            assert item["should_upload_audio"] is False
 
 
 def test_readme_qa_links_point_to_existing_files():
     readme = README_PATH.read_text(encoding="utf-8")
     qa_doc = QA_DOC_PATH.read_text(encoding="utf-8")
+    local_asr_manual_setup = LOCAL_ASR_MANUAL_SETUP_PATH.read_text(encoding="utf-8")
     links = re.findall(
-        r"\((docs/(?:QA\.md|voice-input-local-asr-spike\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
+        r"\((docs/(?:QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
         readme,
     )
 
     assert {
         "docs/QA.md",
         "docs/voice-input-local-asr-spike.md",
+        "docs/local-asr-manual-setup.md",
         "docs/qa/retrieval_scenarios.json",
         "docs/qa/voice_input_scenarios.json",
         "docs/qa/voice_input_local_asr_scenarios.json",
@@ -260,4 +278,8 @@ def test_readme_qa_links_point_to_existing_files():
         assert (REPO_ROOT / link).is_file()
 
     assert "docs/voice-input-local-asr-spike.md" in qa_doc
+    assert "docs/local-asr-manual-setup.md" in qa_doc
     assert "docs/qa/voice_input_local_asr_scenarios.json" in qa_doc
+    assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup
+    assert "REILINK_LOCAL_ASR_MODEL" in local_asr_manual_setup
+    assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup

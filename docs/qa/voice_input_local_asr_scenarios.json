@@ -540,6 +540,116 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content", "base64 audio", "full transcript"]
   },
   {
+    "id": "real-local-asr-config-ready",
+    "category": "voice_input_local_asr",
+    "precondition": "User has prepared real local ASR binary and model outside the repo and launched ReiLink with REILINK_LOCAL_ASR_BINARY and REILINK_LOCAL_ASR_MODEL",
+    "expected_status": "local_asr_ready",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Settings and Debug Panel show Local ASR ready using safe filenames only; no model or binary is bundled or committed.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full audio path", "full transcript"]
+  },
+  {
+    "id": "real-local-asr-probe-succeeded",
+    "category": "voice_input_local_asr",
+    "precondition": "Real Local ASR config is ready and the user clicks Check Local ASR",
+    "expected_status": "local_asr_probe_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "CLI probe reports that the binary can start while explaining this does not prove model compatibility or transcript quality.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full audio path", "full transcript"]
+  },
+  {
+    "id": "real-audio-capture-succeeded",
+    "category": "voice_input_local_asr",
+    "precondition": "Real Local ASR optional smoke is running and the user clicks Audio Capture Test with microphone permission granted",
+    "expected_status": "audio_probe_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Audio Capture Test records short local audio, shows duration / size / MIME, cleans temporary audio, and does not transcribe or fill the input.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full audio path", "audio content", "base64 audio", "full transcript"]
+  },
+  {
+    "id": "real-audio-conversion-succeeded",
+    "category": "voice_input_local_asr",
+    "precondition": "Recorded MIME requires conversion and the user has configured REILINK_AUDIO_CONVERTER_BINARY to a local converter outside the repo",
+    "expected_status": "audio_conversion_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Record & Transcribe reports safe conversion status, converted_mime_type audio/wav, and cleanup flags before ASR receives the converted WAV.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full audio path", "audio content", "base64 audio", "full transcript"]
+  },
+  {
+    "id": "real-record-transcribe-fills-input",
+    "category": "voice_input_local_asr",
+    "precondition": "Real Local ASR config is ready, conversion is succeeded or not needed, and the user clicks Record & Transcribe",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "A real transcript fills the chat input for user review, with no automatic chat send.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full audio path", "full transcript"]
+  },
+  {
+    "id": "real-record-transcribe-does-not-auto-send",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Real Local ASR transcription succeeds and a transcript is visible in the chat input",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The user must manually click send; no chat request is made immediately after transcription success.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw prompt", "full audio path", "full transcript"]
+  },
+  {
+    "id": "real-record-transcribe-no-context-pollution",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Real Local ASR transcription succeeds but the user has not clicked send",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "No memory write, prompt preview refresh, knowledge retrieval, semantic extraction, or game context update is triggered before send.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw prompt", "full audio path", "full transcript"]
+  },
+  {
+    "id": "real-local-asr-packaged-app-optional-smoke",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Packaged app is launched with user-configured real Local ASR env, model, and optional converter outside the app bundle",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Packaged app is not a black screen, backend health is ok, Local ASR controls render, Record & Transcribe can fill input, and app quit leaves no self-started backend residue.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", ".app/Contents/Resources/data"]
+  },
+  {
+    "id": "real-local-asr-troubleshooting-no-text",
+    "category": "voice_input_local_asr",
+    "precondition": "Real Local ASR command completes but transcript parsing produces no safe text",
+    "expected_status": "local_asr_transcription_no_text",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI shows no-text troubleshooting guidance, keeps the input unchanged, and does not expose raw ASR output.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full audio path", "full transcript"]
+  },
+  {
+    "id": "real-local-asr-troubleshooting-timeout",
+    "category": "voice_input_local_asr",
+    "precondition": "Real Local ASR command or conversion does not finish before its timeout",
+    "expected_status": "local_asr_transcription_timed_out",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI shows timeout troubleshooting guidance, cleans temporary audio, skips auto-send, and does not expose raw subprocess output.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full audio path", "full transcript"]
+  },
+  {
     "id": "local-asr-real-whisper-optional-manual",
     "category": "voice_input_local_asr",
     "precondition": "User has locally prepared a real whisper.cpp binary and model outside the repo",
