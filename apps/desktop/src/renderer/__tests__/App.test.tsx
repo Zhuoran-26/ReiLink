@@ -2078,6 +2078,7 @@ describe("App", () => {
     await waitFor(() => expect(voiceInputSettings).toHaveTextContent("录音测试完成"));
     expect(voiceInputSettings).toHaveTextContent("临时音频已清理：是");
     expect(voiceInputSettings).toHaveTextContent("格式：audio/webm");
+    expect(voiceInputSettings).toHaveTextContent("当前录音格式可能需要后续转换为 WAV");
     expect(audioMock.stopTrack).toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/voice-input/audio/probe"),
@@ -2162,6 +2163,8 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue("Margit 怎么打"));
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写完成");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("临时音频已清理：是");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("格式：audio/webm");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前录音格式可能需要后续转换为 WAV");
     expect(audioMock.stopTrack).toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/voice-input/local-asr/transcribe"),
@@ -2284,6 +2287,29 @@ describe("App", () => {
     expect(rawJson).not.toHaveTextContent("\"transcript\"");
     expect(rawJson).not.toHaveTextContent(privateTranscript);
     expect(screen.getByText("本地转写字数").closest("div")).toHaveTextContent(String(privateTranscript.length));
+    expect(screen.getByText("本地转写格式").closest("div")).toHaveTextContent("audio/webm");
+    expect(screen.getByText("本地转写格式提示").closest("div")).toHaveTextContent("当前录音格式可能需要后续转换为 WAV");
+  });
+
+  it("shows safe audio format summaries without raw audio paths or subprocess output", async () => {
+    audioProbeResponseStore = {
+      ...audioProbeResponse,
+      mime_type: "audio/webm;codecs=opus"
+    };
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("录音测试完成"));
+    expect(voiceInputSettings).toHaveTextContent("格式：audio/webm");
+    expect(voiceInputSettings).toHaveTextContent("当前录音格式可能需要后续转换为 WAV");
+    expect(voiceInputSettings).not.toHaveTextContent("codecs=opus");
+    expect(voiceInputSettings).not.toHaveTextContent("/tmp");
+    expect(voiceInputSettings).not.toHaveTextContent("raw stdout");
+    expect(voiceInputSettings).not.toHaveTextContent("raw stderr");
   });
 
   it("stops active Voice Output when Local ASR transcription starts", async () => {

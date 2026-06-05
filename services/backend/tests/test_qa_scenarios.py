@@ -205,6 +205,15 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         "local-asr-transcribe-not-stored-before-send",
         "local-asr-transcribe-event-stream-no-transcript",
         "local-asr-packaged-fake-binary-optional-smoke",
+        "local-asr-transcribe-fake-whisper-plain-text",
+        "local-asr-transcribe-fake-whisper-timestamped",
+        "local-asr-transcribe-fake-whisper-noisy",
+        "local-asr-transcribe-fake-whisper-empty",
+        "local-asr-transcribe-fake-whisper-long",
+        "local-asr-audio-format-may-need-conversion",
+        "local-asr-real-whisper-optional-manual",
+        "local-asr-packaged-real-whisper-optional-manual",
+        "local-asr-transcribe-no-context-pollution",
     } <= {item.get("id") for item in scenarios}
     for item in scenarios:
         assert item.get("category") in {

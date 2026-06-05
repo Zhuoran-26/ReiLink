@@ -833,6 +833,18 @@ const audioBytesText = (sizeBytes: number) => {
   return `${(sizeBytes / 1024).toFixed(1)} KB`;
 };
 
+const audioFormatSummaryText = (mimeType: string | null | undefined) => {
+  const value = typeof mimeType === "string" ? mimeType.split(";")[0]?.trim().toLowerCase() : "";
+  if (!value) return "unknown";
+  return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(value) ? value : "unknown";
+};
+
+const audioFormatConversionHint = (mimeType: string | null | undefined) => {
+  const summary = audioFormatSummaryText(mimeType);
+  if (["audio/wav", "audio/wave", "audio/x-wav"].includes(summary) || summary.includes("pcm")) return "";
+  return "当前录音格式可能需要后续转换为 WAV";
+};
+
 const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
   if (source === "test_voice") return "测试语音";
   return "";
@@ -889,7 +901,7 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "audio_capture_started":
       return `最长 ${event.duration_ms ?? 0} ms`;
     case "audio_capture_completed":
-      return [`${event.duration_ms} ms`, audioBytesText(event.size_bytes), debugText(event.mime_type)].filter(Boolean).join(" / ");
+      return [`${event.duration_ms} ms`, audioBytesText(event.size_bytes), audioFormatSummaryText(event.mime_type)].filter(Boolean).join(" / ");
     case "audio_capture_stopped":
       return [audioCaptureReasonText(event.reason), event.duration_ms ? `${event.duration_ms} ms` : ""].filter(Boolean).join(" / ");
     case "audio_capture_error":
@@ -899,14 +911,14 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.temporary_file_cleaned ? "已清理" : "未清理",
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
-        debugText(event.mime_type)
+        audioFormatSummaryText(event.mime_type)
       ].filter(Boolean).join(" / ");
     case "local_asr_transcription_started":
       return [
         event.status ? debugText(event.status) : "正在本地转写",
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
-        debugText(event.mime_type)
+        audioFormatSummaryText(event.mime_type)
       ].filter(Boolean).join(" / ");
     case "local_asr_transcription_completed":
       return [
@@ -914,7 +926,7 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.temporary_file_cleaned ? "已清理" : "未清理",
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
-        debugText(event.mime_type),
+        audioFormatSummaryText(event.mime_type),
         event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
         event.model_name ? `模型：${debugText(event.model_name)}` : ""
       ].filter(Boolean).join(" / ");
@@ -925,7 +937,7 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.temporary_file_cleaned ? "已清理" : event.temporary_file_cleaned === false ? "未清理" : "",
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
-        debugText(event.mime_type),
+        audioFormatSummaryText(event.mime_type),
         event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
         event.model_name ? `模型：${debugText(event.model_name)}` : ""
       ].filter(Boolean).join(" / ");
@@ -2778,7 +2790,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     {localAsrTranscriptionResult.transcript_char_count} 字
                     {localAsrTranscriptionResult.duration_ms ? `。${localAsrTranscriptionResult.duration_ms} ms` : ""}
                     {localAsrTranscriptionResult.size_bytes ? `。${audioBytesText(localAsrTranscriptionResult.size_bytes)}` : ""}
-                    {localAsrTranscriptionResult.mime_type ? `。格式：${debugText(localAsrTranscriptionResult.mime_type)}` : ""}
+                    {`。格式：${audioFormatSummaryText(localAsrTranscriptionResult.mime_type)}`}
+                    {audioFormatConversionHint(localAsrTranscriptionResult.mime_type) ? `。${audioFormatConversionHint(localAsrTranscriptionResult.mime_type)}` : ""}
                     {`。临时音频已清理：${localAsrTranscriptionResult.temporary_file_cleaned ? "是" : "否"}`}
                     {localAsrTranscriptionResult.binary_name ? `。识别程序：${debugText(localAsrTranscriptionResult.binary_name)}` : ""}
                     {localAsrTranscriptionResult.model_name ? `。模型：${debugText(localAsrTranscriptionResult.model_name)}` : ""}
@@ -2802,7 +2815,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 {audioProbeResult && (
                   <p className="settingHint">
                     {audioBytesText(audioProbeResult.size_bytes)}。临时音频已清理：{audioProbeResult.temporary_file_cleaned ? "是" : "否"}
-                    {audioProbeResult.mime_type ? `。格式：${debugText(audioProbeResult.mime_type)}` : ""}
+                    {`。格式：${audioFormatSummaryText(audioProbeResult.mime_type)}`}
+                    {audioFormatConversionHint(audioProbeResult.mime_type) ? `。${audioFormatConversionHint(audioProbeResult.mime_type)}` : ""}
                   </p>
                 )}
                 <button
@@ -3598,7 +3612,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       </div>
                       <div>
                         <dt>本地转写格式</dt>
-                        <dd>{debugText(localAsrTranscriptionResult?.mime_type)}</dd>
+                        <dd>{localAsrTranscriptionResult ? audioFormatSummaryText(localAsrTranscriptionResult.mime_type) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写格式提示</dt>
+                        <dd>{localAsrTranscriptionResult ? debugText(audioFormatConversionHint(localAsrTranscriptionResult.mime_type), "无") : "无"}</dd>
                       </div>
                       <div>
                         <dt>本地转写临时音频清理</dt>
@@ -3622,7 +3640,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       </div>
                       <div>
                         <dt>录音格式</dt>
-                        <dd>{debugText(audioProbeResult?.mime_type)}</dd>
+                        <dd>{audioProbeResult ? audioFormatSummaryText(audioProbeResult.mime_type) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>录音格式提示</dt>
+                        <dd>{audioProbeResult ? debugText(audioFormatConversionHint(audioProbeResult.mime_type), "无") : "无"}</dd>
                       </div>
                       <div>
                         <dt>临时音频清理</dt>
@@ -3948,6 +3970,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                                   duration_ms: localAsrTranscriptionResult.duration_ms,
                                   size_bytes: localAsrTranscriptionResult.size_bytes,
                                   mime_type: localAsrTranscriptionResult.mime_type,
+                                  format_summary: audioFormatSummaryText(localAsrTranscriptionResult.mime_type),
+                                  format_warning: audioFormatConversionHint(localAsrTranscriptionResult.mime_type) || null,
                                   temporary_file_cleaned: localAsrTranscriptionResult.temporary_file_cleaned,
                                   binary_name: localAsrTranscriptionResult.binary_name,
                                   model_name: localAsrTranscriptionResult.model_name
@@ -3967,6 +3991,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                                   duration_ms: audioProbeResult.duration_ms,
                                   size_bytes: audioProbeResult.size_bytes,
                                   mime_type: audioProbeResult.mime_type,
+                                  format_summary: audioFormatSummaryText(audioProbeResult.mime_type),
+                                  format_warning: audioFormatConversionHint(audioProbeResult.mime_type) || null,
                                   temporary_file_cleaned: audioProbeResult.temporary_file_cleaned
                                 }
                               : null

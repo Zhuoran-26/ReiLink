@@ -156,6 +156,42 @@
 - 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
 - 当前配置检测不会产生音频或 transcript。Event Stream / Debug / Raw JSON 不显示完整 transcript、完整音频路径、raw subprocess output、API key、`.env`、Authorization、完整本地路径或 raw prompt。
 
+#### Local ASR real compatibility QA
+
+本矩阵用于真实 whisper.cpp 兼容性准备，不要求把 whisper binary、模型文件、ffmpeg 或任何第三方二进制提交进仓库。当前 bridge 仍假设 whisper.cpp-like CLI：`-m <model>`、`-f <audio>`、`-nt` 和可选 `-l <language>`；真实兼容性必须在用户本机手动验证。
+
+5.1 未配置：
+
+- 清空 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`。
+- Settings 显示 Local ASR not configured / 本地语音识别未配置。
+- `录音并转写 / Record & Transcribe` disabled，backend 不启动 binary。
+
+5.2 fake binary：
+
+- 使用临时 fake executable 和临时 fake model file，不提交到 repo。
+- fake binary 可分别输出纯文本、timestamp 文本、带日志文本、空文本和超长文本。
+- 期望 config ready，probe succeeded，transcribe 返回 fake transcript 或 no_text。
+- transcript 只填入输入框，不自动发送。
+- Event Stream / Debug / Raw JSON 不显示 full transcript、raw stdout/stderr、完整 binary/model/temp path。
+
+5.3 real whisper binary + model：
+
+- 用户本地自行准备真实 whisper.cpp binary 和 model，推荐模型目录：`~/Library/Application Support/ReiLink/models`。
+- 设置 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`。
+- 打开 dev app，运行 `Check Local ASR`，确认只显示安全文件名。
+- 运行 `Audio Capture Test`，记录安全 MIME summary，例如 `audio/webm`、`audio/wav` 或 `unknown`。
+- 运行 `Record & Transcribe`，检查 transcript 是否进入输入框且不会自动发送。
+- 检查 Event Stream 不显示完整 transcript。
+- 检查是否出现 `当前录音格式可能需要后续转换为 WAV`；如果真实 whisper 无法读取 `audio/webm`，后续拆 `Audio Format Conversion v1`。
+
+5.4 packaged app：
+
+- 未配置时安全 fallback，Local Transcribe disabled 或显示配置未就绪。
+- fake binary optional；real whisper optional manual。
+- 不显示完整路径、raw stdout / stderr、`.env`、API key 或 Authorization。
+- `Audio Capture Test`、`Record & Transcribe`、`Test Voice` 和 Knowledge Retrieval 入口仍可见。
+- 退出后 backend 无残留。
+
 ### 5. Knowledge Retrieval 回归检查
 
 #### Elden Ring 命中

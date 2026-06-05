@@ -264,7 +264,53 @@ Transcript 策略：
 - 成功、失败、超时和异常都尝试清理临时目录。
 - cleanup 失败返回 `local_asr_transcription_cleanup_failed`，并保持响应安全。
 
-## 1.10 后续实现任务拆分
+## 1.10 Real whisper.cpp compatibility / 真实 whisper.cpp 兼容性
+
+当前 bridge 的假设是：用户配置的 local ASR binary 支持 whisper.cpp-like CLI，可以接受 `-m <model>`、`-f <audio>`、`-nt` 和可选 `-l <language>`，并能从 stdout 或同目录 `.txt` / `.srt` / `.vtt` 文件输出可解析文本。不同 whisper.cpp 版本、不同构建产物和不同 wrapper 可能使用不同参数或输出策略，因此 `local_asr_probe_succeeded` 只代表 binary 可以启动，不代表真实转写一定可用。
+
+用户需要自行准备：
+
+- local whisper binary，例如本机编译或可信来源的 `whisper-cli`。
+- local model file，例如 `ggml-base.bin`。
+- 推荐模型目录：`~/Library/Application Support/ReiLink/models`。
+
+配置环境变量：
+
+```bash
+export REILINK_LOCAL_ASR_BINARY="/absolute/path/to/whisper-cli"
+export REILINK_LOCAL_ASR_MODEL="$HOME/Library/Application Support/ReiLink/models/ggml-base.bin"
+```
+
+不要把 whisper binary、模型文件或 ffmpeg binary 提交进 repo；不要下载或提交模型文件到源码目录；不要把模型、memory 或 session 写入 `.app`。
+
+手动验证顺序：
+
+1. 运行 config detection：打开 app 或请求 `GET /api/voice-input/local-asr/status`，确认状态为 `local_asr_ready`，UI 只显示安全文件名。
+2. 运行 CLI probe：点击 `检查本地 ASR / Check Local ASR` 或请求 `POST /api/voice-input/local-asr/probe`，确认 binary 可以启动；这一步不传模型、不传音频。
+3. 运行 Audio Capture Test：点击 `测试录音 / Test Recording`，确认 duration、size、MIME 和 cleanup status 正常。
+4. 运行 local transcription bridge：点击 `录音并转写 / Record & Transcribe`，确认 transcript 只进入输入框，不自动发送。
+5. 展开 Event Stream / Debug Panel / Raw JSON，确认只出现字数、MIME、duration、size、cleanup、safe binary/model name，不出现完整 transcript、raw stdout/stderr、完整路径或音频内容。
+
+当前可能失败的原因：
+
+- audio format 不兼容：Electron / Chromium `MediaRecorder` 常见输出可能是 `audio/webm`，真实 whisper.cpp 常见输入更偏向 WAV / PCM。
+- model path 不正确或 model 文件与 binary 不兼容。
+- binary 参数不兼容，例如不支持 `-nt`、`-m`、`-f` 或 `-l`。
+- binary 不可执行，或 packaged 环境下受权限、签名、隔离路径影响。
+- 30 秒 timeout 不足。
+- 输出格式无法解析，或 transcript 混在 stderr / 特定输出文件中。
+
+如果遇到 audio format 不兼容，后续需要单独拆 `Audio Format Conversion v1`：把 browser-recorded audio 转为 whisper.cpp 更稳定接受的 WAV / PCM。该任务会引入额外 binary、packaging、license 和用户配置问题；当前 v1.1 不实现格式转换，不接入 ffmpeg，不提交 ffmpeg binary。
+
+隐私边界保持不变：
+
+- 不上传音频到外部服务。
+- 临时音频在 backend 系统临时目录中创建并清理。
+- transcript 只填输入框，不自动发送。
+- 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context extraction。
+- Event Stream / Debug / Raw JSON 不显示完整 transcript、raw subprocess output、完整路径、base64 audio、API key、`.env` 或 Authorization。
+
+## 1.11 后续实现任务拆分
 
 1. Local ASR config detection v1
    - 当前已实现：读取 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`，检测 binary 是否存在且可执行、model 是否存在。
@@ -297,3 +343,8 @@ Transcript 策略：
 7. Local ASR QA / privacy polish v1
    - 目标：补齐机器可读场景、manual QA 和隐私回归。
    - 风险：完整 transcript、完整路径或 raw subprocess output 泄露。
+
+8. Audio Format Conversion v1
+   - 目标：如果真实 whisper.cpp 无法稳定读取 Electron `MediaRecorder` 输出，增加到 WAV / PCM 的本地转换路径。
+   - 当前边界：本任务不实现转换，不接入 ffmpeg，不提交任何转换 binary。
+   - 风险：额外 binary、packaging、license、性能、错误映射和用户配置复杂度。

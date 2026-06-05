@@ -3,6 +3,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -36,6 +37,10 @@ def _ready_local_asr(monkeypatch, tmp_path: Path, script: str):
     monkeypatch.setenv(BINARY_ENV, str(binary))
     monkeypatch.setenv(MODEL_ENV, str(model))
     return binary, model
+
+
+def _fake_stdout_script(stdout: str) -> str:
+    return "#!/usr/bin/env python3\nimport sys\nsys.stdout.write(" + repr(stdout) + ")\n"
 
 
 def test_transcription_not_ready_does_not_run_binary(monkeypatch):
@@ -102,6 +107,52 @@ def test_transcription_succeeds_with_fake_binary_and_safe_command(monkeypatch, t
     assert base64.b64encode(b"fake-webm-audio").decode("ascii") not in payload
 
 
+@pytest.mark.parametrize(
+    ("stdout", "expected"),
+    [
+        ("Margit 怎么打\n", "Margit 怎么打"),
+        ("[00:00:00.000 --> 00:00:02.000] Margit 怎么打\n", "Margit 怎么打"),
+        (
+            "[00:00:00.000 --> 00:00:01.200] Margit\n"
+            "[00:00:01.200 --> 00:00:02.500] 怎么打\n",
+            "Margit 怎么打",
+        ),
+        (
+            "whisper_init_from_file_with_params_no_state: loading model\n"
+            "system_info: n_threads = 4\n"
+            "[00:00:00.000 --> 00:00:02.000] Margit 怎么打\n",
+            "Margit 怎么打",
+        ),
+    ],
+)
+def test_transcription_parses_whisper_like_stdout_formats(monkeypatch, tmp_path, stdout, expected):
+    _ready_local_asr(monkeypatch, tmp_path, _fake_stdout_script(stdout))
+
+    response = transcribe_local_asr_audio(b"fake audio", "audio/webm", duration_ms=100, temp_root=str(tmp_path))
+
+    assert response.status == "local_asr_transcription_succeeded"
+    assert response.transcript == expected
+
+
+def test_transcription_ignores_srt_and_vtt_metadata_from_output_files(monkeypatch, tmp_path):
+    _ready_local_asr(
+        monkeypatch,
+        tmp_path,
+        (
+            "#!/usr/bin/env python3\n"
+            "from pathlib import Path\n"
+            "audio = Path(__import__('sys').argv[__import__('sys').argv.index('-f') + 1])\n"
+            "audio.with_suffix('.srt').write_text('1\\n00:00:00,000 --> 00:00:01,200\\nMargit\\n\\n2\\n00:00:01,200 --> 00:00:02,500\\n怎么打\\n', encoding='utf-8')\n"
+            "audio.with_suffix('.vtt').write_text('WEBVTT\\n\\n00:00:02.500 --> 00:00:03.000\\n别贪刀\\n', encoding='utf-8')\n"
+        ),
+    )
+
+    response = transcribe_local_asr_audio(b"fake audio", "audio/webm", duration_ms=100, temp_root=str(tmp_path))
+
+    assert response.status == "local_asr_transcription_succeeded"
+    assert response.transcript == "Margit 怎么打 别贪刀"
+
+
 def test_transcription_uses_subprocess_args_without_shell(monkeypatch, tmp_path):
     binary, model = _ready_local_asr(monkeypatch, tmp_path, "#!/bin/sh\nexit 99\n")
     seen: dict[str, object] = {}
@@ -154,6 +205,16 @@ def test_transcription_returns_no_text_for_empty_or_log_output(monkeypatch, tmp_
         tmp_path,
         "#!/bin/sh\necho 'whisper_init_from_file: private log'\necho 'total time = 1 ms'\n",
     )
+
+    response = transcribe_local_asr_audio(b"fake audio", "audio/webm", duration_ms=100, temp_root=str(tmp_path))
+
+    assert response.status == "local_asr_transcription_no_text"
+    assert response.available is False
+    assert response.transcript == ""
+
+
+def test_transcription_returns_no_text_for_empty_stdout(monkeypatch, tmp_path):
+    _ready_local_asr(monkeypatch, tmp_path, _fake_stdout_script(""))
 
     response = transcribe_local_asr_audio(b"fake audio", "audio/webm", duration_ms=100, temp_root=str(tmp_path))
 

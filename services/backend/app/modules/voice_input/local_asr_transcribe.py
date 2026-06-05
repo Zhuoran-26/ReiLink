@@ -22,6 +22,7 @@ _TIMESTAMP_PREFIX_RE = re.compile(
 )
 _WHITESPACE_RE = re.compile(r"\s+")
 _SAFE_LANGUAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,15}$")
+_SRT_INDEX_RE = re.compile(r"^\d+$")
 _LOG_PREFIXES = (
     "whisper_",
     "ggml_",
@@ -235,6 +236,8 @@ def _run_transcription(
 
 
 def _build_command(binary_path: Path, model_path: Path, audio_path: Path, language: str | None) -> list[str]:
+    # v1.1 assumes a whisper.cpp-like CLI: model path, input file path, and no-timestamps output.
+    # Real binary compatibility still needs the manual QA checklist because flags and audio formats vary.
     command = [str(binary_path), "-m", str(model_path), "-f", str(audio_path), "-nt"]
     safe_language = _safe_language(language)
     if safe_language:
@@ -292,6 +295,8 @@ def _clean_transcript_line(line: str, sensitive_values: tuple[str, ...]) -> str:
     if any(term in normalized for term in _SENSITIVE_TERMS):
         return ""
     if normalized.startswith(_LOG_PREFIXES):
+        return ""
+    if normalized == "webvtt" or _SRT_INDEX_RE.match(normalized):
         return ""
     if _looks_like_path_line(text):
         return ""

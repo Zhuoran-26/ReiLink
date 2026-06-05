@@ -428,5 +428,97 @@
     "should_upload_audio": false,
     "expected_behavior": "Packaged app can record and fill input from fake local ASR while Event Stream remains sanitized.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full temp path", ".app/Contents/Resources/data"]
+  },
+  {
+    "id": "local-asr-transcribe-fake-whisper-plain-text",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready and a fake whisper-like binary prints plain text",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend parses the plain transcript, cleans temp audio, and renderer only fills the input.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full temp path"]
+  },
+  {
+    "id": "local-asr-transcribe-fake-whisper-timestamped",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready and a fake whisper-like binary prints timestamped transcript lines",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend strips timestamp prefixes and joins multi-line text into a readable transcript.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "-->", "full temp path"]
+  },
+  {
+    "id": "local-asr-transcribe-fake-whisper-noisy",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready and a fake whisper-like binary prints whisper/system logs plus transcript",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend drops obvious log noise and only keeps the transcript text.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "whisper_init", "system_info", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "local-asr-transcribe-fake-whisper-empty",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config is ready and a fake whisper-like binary returns empty output",
+    "expected_status": "local_asr_transcription_no_text",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend returns no_text, renderer keeps the input unchanged, and no chat flow is triggered.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full transcript"]
+  },
+  {
+    "id": "local-asr-transcribe-fake-whisper-long",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR config is ready and a fake whisper-like binary returns a long transcript payload",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend truncates transcript to the configured length limit before returning it.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "long payload", "full temp path"]
+  },
+  {
+    "id": "local-asr-audio-format-may-need-conversion",
+    "category": "voice_input_local_asr",
+    "precondition": "Renderer captures audio with a MIME such as audio/webm",
+    "expected_status": "audio_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Settings and Debug Panel show a safe MIME summary and a gentle note that WAV conversion may be needed later.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
+  },
+  {
+    "id": "local-asr-real-whisper-optional-manual",
+    "category": "voice_input_local_asr",
+    "precondition": "User has locally prepared a real whisper.cpp binary and model outside the repo",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Manual QA verifies config detection, CLI probe, Record & Transcribe, safe UI summaries, and no auto-send; failures may indicate format, model, binary, timeout, or parser incompatibility.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full temp path"]
+  },
+  {
+    "id": "local-asr-packaged-real-whisper-optional-manual",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Packaged app is opened with optional real whisper.cpp binary and model env configured by the user",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Manual packaged QA verifies backend self-start, local ASR status, Record & Transcribe, sanitized Event Stream, and no backend residue after quit.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full temp path", ".app/Contents/Resources/data"]
+  },
+  {
+    "id": "local-asr-transcribe-no-context-pollution",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR transcription succeeds but the user has not clicked send",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The transcript only sits in the input and does not write memory, refresh prompt preview, trigger retrieval, or change game context.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "full transcript", "full temp path"]
   }
 ]
