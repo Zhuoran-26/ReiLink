@@ -33,6 +33,7 @@ import {
   GameStatus,
   LocalAsrProbeResponse,
   LocalAsrStatus,
+  LocalAsrTranscriptionResponse,
   LocalDataStatus,
   MemoryDebugResponse,
   PendingMemory,
@@ -68,6 +69,8 @@ type DemoResetAction =
   | "reset-memory"
   | "reset-proactive"
   | "reset-demo";
+
+type LocalAsrTranscriptionPhase = "idle" | "recording" | "transcribing";
 
 const idleStatus: GameStatus = {
   game_id: null,
@@ -303,6 +306,20 @@ const emptyLocalAsrStatus: LocalAsrStatus = {
   display_message: "本地语音识别未配置",
   safe_binary_name: null,
   safe_model_name: null
+};
+
+const emptyLocalAsrTranscription: LocalAsrTranscriptionResponse = {
+  status: "local_asr_transcription_not_ready",
+  available: false,
+  display_message: "本地语音识别未配置",
+  transcript: "",
+  transcript_char_count: 0,
+  duration_ms: 0,
+  size_bytes: 0,
+  mime_type: null,
+  temporary_file_cleaned: false,
+  binary_name: null,
+  model_name: null
 };
 
 const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
@@ -884,6 +901,34 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
         debugText(event.mime_type)
       ].filter(Boolean).join(" / ");
+    case "local_asr_transcription_started":
+      return [
+        event.status ? debugText(event.status) : "正在本地转写",
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.size_bytes ? audioBytesText(event.size_bytes) : "",
+        debugText(event.mime_type)
+      ].filter(Boolean).join(" / ");
+    case "local_asr_transcription_completed":
+      return [
+        `识别文本 ${event.character_count} 字`,
+        event.temporary_file_cleaned ? "已清理" : "未清理",
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.size_bytes ? audioBytesText(event.size_bytes) : "",
+        debugText(event.mime_type),
+        event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
+        event.model_name ? `模型：${debugText(event.model_name)}` : ""
+      ].filter(Boolean).join(" / ");
+    case "local_asr_transcription_error":
+      return [
+        debugText(event.reason ?? event.status),
+        event.character_count ? `${event.character_count} 字` : "",
+        event.temporary_file_cleaned ? "已清理" : event.temporary_file_cleaned === false ? "未清理" : "",
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.size_bytes ? audioBytesText(event.size_bytes) : "",
+        debugText(event.mime_type),
+        event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
+        event.model_name ? `模型：${debugText(event.model_name)}` : ""
+      ].filter(Boolean).join(" / ");
     default:
       return "event";
   }
@@ -918,7 +963,10 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     audio_capture_completed: "录音测试完成",
     audio_capture_stopped: "录音已停止",
     audio_capture_error: "录音测试失败",
-    audio_temp_file_cleaned: "临时音频已清理"
+    audio_temp_file_cleaned: "临时音频已清理",
+    local_asr_transcription_started: "本地语音识别开始",
+    local_asr_transcription_completed: "本地语音识别完成",
+    local_asr_transcription_error: "本地语音识别失败"
   };
   return labels[type];
 };
@@ -1034,6 +1082,47 @@ const audioProbeHint = (captureStatus: AudioCaptureStatus, uploading: boolean, r
   if (captureStatus.lastError) return captureStatus.lastError;
   if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
   if (!result) return `只测试麦克风录音和临时文件清理，不做语音识别。最长 ${Math.round(MAX_RECORDING_DURATION_MS / 1000)} 秒。`;
+  return result.display_message;
+};
+
+const localAsrTranscriptionStatusText = (
+  phase: LocalAsrTranscriptionPhase,
+  result: LocalAsrTranscriptionResponse | null,
+  configReady: boolean,
+  captureStatus: AudioCaptureStatus
+) => {
+  if (phase === "recording") return "正在录音";
+  if (phase === "transcribing") return "正在本地转写";
+  if (!configReady) return "配置未就绪";
+  if (!captureStatus.supported) return "当前环境不支持录音";
+  if (!result) return "未转写";
+  const labels: Record<LocalAsrTranscriptionResponse["status"], string> = {
+    local_asr_transcription_not_ready: "配置未就绪",
+    local_asr_transcription_started: "正在本地转写",
+    local_asr_transcription_succeeded: "转写完成",
+    local_asr_transcription_failed: "转写失败",
+    local_asr_transcription_timed_out: "转写超时",
+    local_asr_transcription_no_text: "没有识别到文本",
+    local_asr_transcription_cleanup_failed: "临时音频清理失败",
+    local_asr_transcription_error: "转写失败"
+  };
+  return labels[result.status] ?? "未转写";
+};
+
+const localAsrTranscriptionHint = (
+  phase: LocalAsrTranscriptionPhase,
+  result: LocalAsrTranscriptionResponse | null,
+  configReady: boolean,
+  captureStatus: AudioCaptureStatus,
+  localStatus: LocalAsrStatus
+) => {
+  if (phase === "recording") return "正在录制短音频。完成后会交给本机后端转写。";
+  if (phase === "transcribing") return "正在本机调用本地语音识别程序。不会自动发送。";
+  if (!configReady) return localStatus.display_message;
+  if (captureStatus.lastError) return captureStatus.lastError;
+  if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
+  if (!result) return "录音并转写会把识别文本填入输入框，发送前仍可编辑。";
+  if (result.status === "local_asr_transcription_succeeded") return "转写完成，文本已填入输入框，仍需手动发送。";
   return result.display_message;
 };
 
@@ -1227,6 +1316,8 @@ export function App() {
   const [audioCaptureStatus, setAudioCaptureStatus] = useState<AudioCaptureStatus>(() => audioCapture.getStatus());
   const [audioProbeResult, setAudioProbeResult] = useState<AudioProbeResponse | null>(null);
   const [audioProbeUploading, setAudioProbeUploading] = useState(false);
+  const [localAsrTranscriptionResult, setLocalAsrTranscriptionResult] = useState<LocalAsrTranscriptionResponse | null>(null);
+  const [localAsrTranscriptionPhase, setLocalAsrTranscriptionPhase] = useState<LocalAsrTranscriptionPhase>("idle");
   const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
@@ -1587,6 +1678,98 @@ export function App() {
           .finally(() => setAudioProbeUploading(false));
       }
     });
+  };
+
+  const runLocalAsrTranscription = async () => {
+    if (localAsrTranscriptionPhase === "recording") {
+      audioCapture.stop("user_stop");
+      return;
+    }
+    if (
+      localAsrStatus.status !== "local_asr_ready" ||
+      !audioCaptureStatus.supported ||
+      audioCaptureStatus.phase !== "idle" ||
+      localAsrTranscriptionPhase !== "idle"
+    ) {
+      return;
+    }
+    voiceOutput.stop("user_stop");
+    setLocalAsrTranscriptionResult(null);
+    setLocalAsrTranscriptionPhase("recording");
+    const started = await audioCapture.start({
+      durationMs: 3000,
+      onRecorded: (recording) => {
+        setLocalAsrTranscriptionPhase("transcribing");
+        eventBus.emit({
+          type: "local_asr_transcription_started",
+          timestamp: eventTimestamp(),
+          status: "正在本地转写",
+          duration_ms: recording.durationMs,
+          size_bytes: recording.sizeBytes,
+          mime_type: recording.mimeType
+        });
+        void api.transcribeLocalAsr(recording.blob, recording.durationMs, "zh")
+          .then((result) => {
+            setLocalAsrTranscriptionResult(result);
+            if (result.status === "local_asr_transcription_succeeded" && result.transcript.trim()) {
+              setInput((current) => appendTranscriptToInput(current, result.transcript));
+              eventBus.emit({
+                type: "local_asr_transcription_completed",
+                timestamp: eventTimestamp(),
+                status: result.status,
+                character_count: result.transcript_char_count,
+                duration_ms: result.duration_ms,
+                size_bytes: result.size_bytes,
+                mime_type: result.mime_type ?? undefined,
+                temporary_file_cleaned: result.temporary_file_cleaned,
+                binary_name: result.binary_name ?? undefined,
+                model_name: result.model_name ?? undefined
+              });
+              return;
+            }
+            eventBus.emit({
+              type: "local_asr_transcription_error",
+              timestamp: eventTimestamp(),
+              status: result.status,
+              reason: result.display_message,
+              character_count: result.transcript_char_count,
+              duration_ms: result.duration_ms,
+              size_bytes: result.size_bytes,
+              mime_type: result.mime_type ?? undefined,
+              temporary_file_cleaned: result.temporary_file_cleaned,
+              binary_name: result.binary_name ?? undefined,
+              model_name: result.model_name ?? undefined
+            });
+          })
+          .catch(() => {
+            const fallback: LocalAsrTranscriptionResponse = {
+              ...emptyLocalAsrTranscription,
+              status: "local_asr_transcription_error",
+              display_message: "本地语音识别失败",
+              duration_ms: recording.durationMs,
+              size_bytes: recording.sizeBytes,
+              mime_type: recording.mimeType,
+              binary_name: localAsrStatus.safe_binary_name,
+              model_name: localAsrStatus.safe_model_name
+            };
+            setLocalAsrTranscriptionResult(fallback);
+            eventBus.emit({
+              type: "local_asr_transcription_error",
+              timestamp: eventTimestamp(),
+              status: fallback.status,
+              reason: fallback.display_message,
+              duration_ms: fallback.duration_ms,
+              size_bytes: fallback.size_bytes,
+              mime_type: fallback.mime_type ?? undefined,
+              temporary_file_cleaned: fallback.temporary_file_cleaned,
+              binary_name: fallback.binary_name ?? undefined,
+              model_name: fallback.model_name ?? undefined
+            });
+          })
+          .finally(() => setLocalAsrTranscriptionPhase("idle"));
+      }
+    });
+    if (!started) setLocalAsrTranscriptionPhase("idle");
   };
 
   const updateBackendAutoStart = async (enabled: boolean) => {
@@ -2028,6 +2211,12 @@ export function App() {
   const displayGame = gameContext.active_game_display_name ?? gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
   const displayBoss = gameSessionDebug.current_boss?.name ?? null;
   const localAsrConfigReady = localAsrStatus.status === "local_asr_ready";
+  const localAsrTranscriptionBusy = localAsrTranscriptionPhase !== "idle";
+  const localAsrTranscriptionButtonDisabled = !localAsrConfigReady ||
+    !audioCaptureStatus.supported ||
+    audioProbeUploading ||
+    (audioCaptureStatus.phase !== "idle" && localAsrTranscriptionPhase !== "recording") ||
+    localAsrTranscriptionPhase === "transcribing";
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
   const detectedKnowledgeGameId = gameContext.detected_game.knowledge_game_id;
@@ -2563,6 +2752,47 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 >
                   <RefreshCw size={14} />
                   检查本地 ASR
+                </button>
+                <div className="settingRow static">
+                  <span>本地转写测试 / Local Transcribe Test</span>
+                  <strong>
+                    {localAsrTranscriptionStatusText(
+                      localAsrTranscriptionPhase,
+                      localAsrTranscriptionResult,
+                      localAsrConfigReady,
+                      audioCaptureStatus
+                    )}
+                  </strong>
+                </div>
+                <p className="settingHint">
+                  {localAsrTranscriptionHint(
+                    localAsrTranscriptionPhase,
+                    localAsrTranscriptionResult,
+                    localAsrConfigReady,
+                    audioCaptureStatus,
+                    localAsrStatus
+                  )}
+                </p>
+                {localAsrTranscriptionResult && (
+                  <p className="settingHint">
+                    {localAsrTranscriptionResult.transcript_char_count} 字
+                    {localAsrTranscriptionResult.duration_ms ? `。${localAsrTranscriptionResult.duration_ms} ms` : ""}
+                    {localAsrTranscriptionResult.size_bytes ? `。${audioBytesText(localAsrTranscriptionResult.size_bytes)}` : ""}
+                    {localAsrTranscriptionResult.mime_type ? `。格式：${debugText(localAsrTranscriptionResult.mime_type)}` : ""}
+                    {`。临时音频已清理：${localAsrTranscriptionResult.temporary_file_cleaned ? "是" : "否"}`}
+                    {localAsrTranscriptionResult.binary_name ? `。识别程序：${debugText(localAsrTranscriptionResult.binary_name)}` : ""}
+                    {localAsrTranscriptionResult.model_name ? `。模型：${debugText(localAsrTranscriptionResult.model_name)}` : ""}
+                  </p>
+                )}
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  aria-label={localAsrTranscriptionPhase === "recording" ? "停止本地转写录音 / Stop Local Transcribe Recording" : "录音并转写 / Record & Transcribe"}
+                  disabled={localAsrTranscriptionButtonDisabled}
+                  onClick={() => void runLocalAsrTranscription()}
+                >
+                  <Mic size={14} />
+                  {localAsrTranscriptionPhase === "recording" ? "停止录音" : localAsrTranscriptionBusy ? "正在转写" : "录音并转写"}
                 </button>
                 <div className="settingRow static">
                   <span>录音测试 / Audio Capture Test</span>
@@ -3330,6 +3560,51 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{localAsrProbe ? `${localAsrProbe.duration_ms} ms` : "无"}</dd>
                       </div>
                       <div>
+                        <dt>本地转写</dt>
+                        <dd>
+                          {localAsrTranscriptionStatusText(
+                            localAsrTranscriptionPhase,
+                            localAsrTranscriptionResult,
+                            localAsrConfigReady,
+                            audioCaptureStatus
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>本地转写说明</dt>
+                        <dd>
+                          {debugText(
+                            localAsrTranscriptionHint(
+                              localAsrTranscriptionPhase,
+                              localAsrTranscriptionResult,
+                              localAsrConfigReady,
+                              audioCaptureStatus,
+                              localAsrStatus
+                            )
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>本地转写字数</dt>
+                        <dd>{localAsrTranscriptionResult?.transcript_char_count ?? 0}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写时长</dt>
+                        <dd>{localAsrTranscriptionResult ? `${localAsrTranscriptionResult.duration_ms} ms` : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写大小</dt>
+                        <dd>{localAsrTranscriptionResult ? audioBytesText(localAsrTranscriptionResult.size_bytes) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写格式</dt>
+                        <dd>{debugText(localAsrTranscriptionResult?.mime_type)}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写临时音频清理</dt>
+                        <dd>{localAsrTranscriptionResult ? (localAsrTranscriptionResult.temporary_file_cleaned ? "是" : "否") : "无"}</dd>
+                      </div>
+                      <div>
                         <dt>录音测试</dt>
                         <dd>{audioProbeStatusText(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</dd>
                       </div>
@@ -3662,6 +3937,20 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                                   binary_name: localAsrProbe.binary_name,
                                   model_name: localAsrProbe.model_name,
                                   duration_ms: localAsrProbe.duration_ms
+                                }
+                              : null,
+                            transcription: localAsrTranscriptionResult
+                              ? {
+                                  status: localAsrTranscriptionResult.status,
+                                  available: localAsrTranscriptionResult.available,
+                                  display_message: localAsrTranscriptionResult.display_message,
+                                  transcript_char_count: localAsrTranscriptionResult.transcript_char_count,
+                                  duration_ms: localAsrTranscriptionResult.duration_ms,
+                                  size_bytes: localAsrTranscriptionResult.size_bytes,
+                                  mime_type: localAsrTranscriptionResult.mime_type,
+                                  temporary_file_cleaned: localAsrTranscriptionResult.temporary_file_cleaned,
+                                  binary_name: localAsrTranscriptionResult.binary_name,
+                                  model_name: localAsrTranscriptionResult.model_name
                                 }
                               : null
                           },

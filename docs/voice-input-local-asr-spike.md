@@ -194,7 +194,77 @@ Settings / Debug Panel / Event Stream 只显示 `未测试`、`正在录音`、`
 
 本阶段仍不会把任何 transcript 填入输入框，不自动发送，不写 memory / prompt，不触发 knowledge retrieval 或 game context extraction。下一步才可能是 Backend ASR Transcription Bridge。
 
-## 1.9 后续实现任务拆分
+## 1.9 Backend ASR Transcription Bridge v1
+
+Backend ASR Transcription Bridge v1 第一次把 renderer audio capture 与 backend-managed local ASR subprocess 连接起来。它仍然保持 push-to-talk：只有用户主动点击 `录音并转写 / Record & Transcribe` 后才请求麦克风权限、录制短音频并上传到本机 backend。
+
+流程：
+
+```text
+Renderer Record & Transcribe
+-> MediaRecorder 录制短音频
+-> POST /api/voice-input/local-asr/transcribe
+-> backend 写入系统临时目录 reilink-local-asr-*
+-> backend 调用 configured local ASR binary
+-> backend 清洗 stdout / output file transcript
+-> backend 删除临时音频和输出文件
+-> renderer 只把 transcript 回填输入框
+-> 用户手动点击发送后才进入 chat flow
+```
+
+Backend endpoint：
+
+- `POST /api/voice-input/local-asr/transcribe`
+- multipart field：`audio`
+- optional form fields：`language`、`duration_ms`、`mime_type`
+
+Backend status：
+
+- `local_asr_transcription_not_ready`
+- `local_asr_transcription_started`
+- `local_asr_transcription_succeeded`
+- `local_asr_transcription_failed`
+- `local_asr_transcription_timed_out`
+- `local_asr_transcription_no_text`
+- `local_asr_transcription_cleanup_failed`
+- `local_asr_transcription_error`
+
+Command strategy：
+
+- 默认使用 subprocess list args，不使用 `shell=True`。
+- 默认命令形状：`[binary, "-m", model_path, "-f", audio_path, "-nt"]`。
+- 如果 renderer 提供安全 language，例如 `zh`，追加 `["-l", language]`。
+- timeout 为 30 秒。
+- 测试使用 fake binary，不依赖真实 whisper、真实模型或真实麦克风。
+
+Transcript 策略：
+
+- backend 可以解析 stdout，也会尝试读取 temp dir 下的 `.txt` / `.srt` / `.vtt` 输出文件。
+- 清洗明显 whisper timestamp 和日志行。
+- transcript 最长 500 字符。
+- 空文本返回 `local_asr_transcription_no_text`。
+- 如果输出无法安全解析，不把 raw output 原样返回给 UI。
+
+安全边界：
+
+- transcript 只回填输入框，用户发送前可编辑。
+- 不自动发送。
+- 未确认 transcript 不进入 memory。
+- 未确认 transcript 不进入 prompt。
+- 未确认 transcript 不触发 knowledge retrieval。
+- 未确认 transcript 不触发 game context extraction。
+- Event Stream 只显示开始、完成、失败、字数、duration、size、MIME、cleanup status 和安全 status。
+- Debug Panel / Raw JSON 只显示 transcript char count，不显示完整 transcript。
+- UI / response 不显示 raw stdout、raw stderr、raw exception、完整 binary path、完整 model path、完整 temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
+
+临时文件策略：
+
+- backend 使用系统临时目录创建随机 `reilink-local-asr-*` 目录。
+- 临时文件名不包含 transcript。
+- 成功、失败、超时和异常都尝试清理临时目录。
+- cleanup 失败返回 `local_asr_transcription_cleanup_failed`，并保持响应安全。
+
+## 1.10 后续实现任务拆分
 
 1. Local ASR config detection v1
    - 当前已实现：读取 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`，检测 binary 是否存在且可执行、model 是否存在。
@@ -211,12 +281,14 @@ Settings / Debug Panel / Event Stream 只显示 `未测试`、`正在录音`、`
    - 当前边界：不调用 ASR，不转写，不保存音频，不把音频内容或路径显示到 UI / Event Stream / Debug Panel。
 
 4. Backend ASR subprocess bridge v1
-   - 目标：backend 调用 local ASR binary，返回 transcript。
-   - 风险：超时、并发、错误映射、模型路径配置。
+   - 当前已实现：backend 调用 local ASR binary，返回清洗后的 transcript 和安全摘要。
+   - 当前边界：不使用 shell，不返回 raw stdout/stderr/path，不保存音频。
+   - 风险：不同 whisper.cpp 版本 stdout 格式、模型兼容性、音频格式兼容性。
 
 5. Renderer push-to-talk local ASR integration v1
-   - 目标：把 transcript 填入输入框，不自动发送。
-   - 风险：状态同步、取消识别、Event Stream 隐私。
+   - 当前已实现：把 transcript 填入输入框，不自动发送。
+   - 当前边界：未确认 transcript 不进入 memory / prompt / retrieval / game context。
+   - 风险：真实麦克风权限、packaged app 权限提示、不同系统 MediaRecorder 格式。
 
 6. Packaged `.app` local ASR smoke v1
    - 目标：验证 packaged app 中配置检测、backend 自启动、用户模型目录和 fallback。

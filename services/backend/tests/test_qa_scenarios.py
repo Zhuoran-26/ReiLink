@@ -41,6 +41,14 @@ ALLOWED_LOCAL_ASR_STATUSES = {
     "local_asr_transcribing",
     "local_asr_completed",
     "local_asr_error",
+    "local_asr_transcription_not_ready",
+    "local_asr_transcription_started",
+    "local_asr_transcription_succeeded",
+    "local_asr_transcription_failed",
+    "local_asr_transcription_timed_out",
+    "local_asr_transcription_no_text",
+    "local_asr_transcription_cleanup_failed",
+    "local_asr_transcription_error",
 }
 
 
@@ -186,6 +194,17 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         "local-asr-temporary-audio-cleanup",
         "local-asr-event-stream-privacy",
         "local-asr-packaged-unavailable-fallback",
+        "local-asr-transcribe-not-ready-disabled",
+        "local-asr-transcribe-fake-binary-text",
+        "local-asr-transcribe-no-text",
+        "local-asr-transcribe-timed-out",
+        "local-asr-transcribe-nonzero-failed",
+        "local-asr-transcribe-cleanup-succeeded",
+        "local-asr-transcribe-cleanup-failed",
+        "local-asr-transcribe-not-auto-sent",
+        "local-asr-transcribe-not-stored-before-send",
+        "local-asr-transcribe-event-stream-no-transcript",
+        "local-asr-packaged-fake-binary-optional-smoke",
     } <= {item.get("id") for item in scenarios}
     for item in scenarios:
         assert item.get("category") in {

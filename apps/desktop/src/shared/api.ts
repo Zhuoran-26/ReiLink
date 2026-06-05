@@ -144,6 +144,30 @@ export type LocalAsrProbeResponse = {
   duration_ms: number;
 };
 
+export type LocalAsrTranscriptionStatusValue =
+  | "local_asr_transcription_not_ready"
+  | "local_asr_transcription_started"
+  | "local_asr_transcription_succeeded"
+  | "local_asr_transcription_failed"
+  | "local_asr_transcription_timed_out"
+  | "local_asr_transcription_no_text"
+  | "local_asr_transcription_cleanup_failed"
+  | "local_asr_transcription_error";
+
+export type LocalAsrTranscriptionResponse = {
+  status: LocalAsrTranscriptionStatusValue;
+  available: boolean;
+  display_message: string;
+  transcript: string;
+  transcript_char_count: number;
+  duration_ms: number;
+  size_bytes: number;
+  mime_type: string | null;
+  temporary_file_cleaned: boolean;
+  binary_name: string | null;
+  model_name: string | null;
+};
+
 export type AudioProbeStatusValue =
   | "audio_probe_not_supported"
   | "audio_probe_permission_denied"
@@ -463,6 +487,43 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function requestMultipart<T>(path: string, body: FormData): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    body
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let message = text || `Request failed: ${response.status}`;
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown };
+      if (typeof parsed.detail === "string") {
+        message = parsed.detail;
+      }
+    } catch {
+      // Keep the raw text as the safe diagnostic message.
+    }
+    throw new ApiRequestError(message, response.status, text, path);
+  }
+  return response.json() as Promise<T>;
+}
+
+const audioFileName = (mimeType: string) => {
+  const labels: Record<string, string> = {
+    "audio/webm": "recording.webm",
+    "video/webm": "recording.webm",
+    "audio/ogg": "recording.ogg",
+    "audio/wav": "recording.wav",
+    "audio/wave": "recording.wav",
+    "audio/x-wav": "recording.wav",
+    "audio/mpeg": "recording.mp3",
+    "audio/mp4": "recording.m4a",
+    "audio/aac": "recording.aac",
+    "audio/flac": "recording.flac"
+  };
+  return labels[mimeType] ?? "recording.audio";
+};
+
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
   setupStatus: () => request<SetupStatus>("/api/setup/status"),
@@ -470,6 +531,15 @@ export const api = {
   localDataStatus: () => request<LocalDataStatus>("/api/local-data/status"),
   localAsrStatus: () => request<LocalAsrStatus>("/api/voice-input/local-asr/status"),
   probeLocalAsr: () => request<LocalAsrProbeResponse>("/api/voice-input/local-asr/probe", { method: "POST" }),
+  transcribeLocalAsr: (blob: Blob, durationMs: number, language = "zh") => {
+    const mimeType = blob.type || "application/octet-stream";
+    const body = new FormData();
+    body.append("audio", blob, audioFileName(mimeType));
+    body.append("duration_ms", String(Math.max(0, Math.round(durationMs))));
+    body.append("mime_type", mimeType);
+    if (language.trim()) body.append("language", language.trim());
+    return requestMultipart<LocalAsrTranscriptionResponse>("/api/voice-input/local-asr/transcribe", body);
+  },
   probeAudio: (blob: Blob, durationMs: number) =>
     request<AudioProbeResponse>("/api/voice-input/audio/probe", {
       method: "POST",

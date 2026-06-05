@@ -15,6 +15,7 @@ import type {
   GameDetectionResponse,
   LocalAsrProbeResponse,
   LocalAsrStatus,
+  LocalAsrTranscriptionResponse,
   ProactiveCheckResponse,
   ProactiveStatusResponse,
   SetupStatus
@@ -743,10 +744,25 @@ const audioProbeResponse: AudioProbeResponse = {
   temporary_file_cleaned: true
 };
 
+const localAsrTranscriptionResponse: LocalAsrTranscriptionResponse = {
+  status: "local_asr_transcription_succeeded",
+  available: true,
+  display_message: "本地语音识别完成",
+  transcript: "Margit 怎么打",
+  transcript_char_count: "Margit 怎么打".length,
+  duration_ms: 3000,
+  size_bytes: 16,
+  mime_type: "audio/webm",
+  temporary_file_cleaned: true,
+  binary_name: "whisper-cli",
+  model_name: "ggml-base.bin"
+};
+
 let appSettingsStore = { ...appSettings };
 let localAsrStatusStore: LocalAsrStatus = { ...localAsrStatus };
 let localAsrProbeResponseStore: LocalAsrProbeResponse = { ...localAsrProbeResponse };
 let audioProbeResponseStore: AudioProbeResponse = { ...audioProbeResponse };
+let localAsrTranscriptionResponseStore: LocalAsrTranscriptionResponse = { ...localAsrTranscriptionResponse };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
 let omitVoiceOutputFromSettings = false;
@@ -980,6 +996,7 @@ const resetSettingsResponse = () => {
   localAsrStatusStore = { ...localAsrStatus };
   localAsrProbeResponseStore = { ...localAsrProbeResponse };
   audioProbeResponseStore = { ...audioProbeResponse };
+  localAsrTranscriptionResponseStore = { ...localAsrTranscriptionResponse };
   gameContextStore = { ...gameContext };
   proactiveStatusStore = { ...proactiveStatus };
   setupStatusStore = { ...setupStatus };
@@ -1125,6 +1142,9 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   }
   if (url.endsWith("/api/voice-input/audio/probe") && init?.method === "POST") {
     return Response.json(audioProbeResponseStore);
+  }
+  if (url.endsWith("/api/voice-input/local-asr/transcribe") && init?.method === "POST") {
+    return Response.json(localAsrTranscriptionResponseStore);
   }
   if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
   if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
@@ -2101,6 +2121,197 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("/tmp");
     expect(eventStream).not.toHaveTextContent("Authorization");
     expect(eventStream).not.toHaveTextContent(".env");
+  });
+
+  it("shows Local Transcribe disabled until Local ASR is ready", async () => {
+    installAudioCaptureMock();
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("本地转写测试 / Local Transcribe Test");
+    expect(voiceInputSettings).toHaveTextContent("配置未就绪");
+    expect(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" })).toBeDisabled();
+  });
+
+  it("records audio, calls Local ASR transcription, fills input, and does not auto send", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    const audioMock = installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("正在录音");
+
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue("Margit 怎么打"));
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写完成");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("临时音频已清理：是");
+    expect(audioMock.stopTrack).toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/transcribe"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(FormData)
+      })
+    );
+    const fetchCalls = vi.mocked(fetch).mock.calls;
+    expect(fetchCalls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/memory"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/debug/prompt-preview"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/game/context"))).toBe(false);
+    expect(screen.queryByText("Margit 怎么打")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    expect(await screen.findByText("Margit 怎么打")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("keeps empty Local ASR transcription out of the input", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_no_text",
+      available: false,
+      display_message: "没有识别到文本",
+      transcript: "",
+      transcript_char_count: 0
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("没有识别到文本"));
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("Local ASR transcription Event Stream summaries do not expose full transcript", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue("Margit 怎么打"));
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("本地语音识别开始"));
+    expect(eventStream).toHaveTextContent("本地语音识别完成");
+    expect(eventStream).toHaveTextContent(`${"Margit 怎么打".length} 字`);
+    expect(eventStream).not.toHaveTextContent("Margit 怎么打");
+    expect(eventStream).not.toHaveTextContent("raw stdout");
+    expect(eventStream).not.toHaveTextContent("raw stderr");
+    expect(eventStream).not.toHaveTextContent("/Users/aragoto");
+    expect(eventStream).not.toHaveTextContent("Authorization");
+    expect(eventStream).not.toHaveTextContent(".env");
+  });
+
+  it("Debug Panel does not show the full Local ASR transcript", async () => {
+    const privateTranscript = "本地转写私有文本";
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: privateTranscript,
+      transcript_char_count: privateTranscript.length
+    };
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
+
+    const rawJson = screen.getByText("原始 JSON").closest("details");
+    expect(rawJson).not.toBeNull();
+    expect(rawJson).toHaveTextContent("transcript_char_count");
+    expect(rawJson).not.toHaveTextContent("\"transcript\"");
+    expect(rawJson).not.toHaveTextContent(privateTranscript);
+    expect(screen.getByText("本地转写字数").closest("div")).toHaveTextContent(String(privateTranscript.length));
+  });
+
+  it("stops active Voice Output when Local ASR transcription starts", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试语音 / Test Voice" }));
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_stopped", reason: "user_stop" })])
+    );
   });
 
   it("starts SpeechRecognition when Voice Input is supported", async () => {

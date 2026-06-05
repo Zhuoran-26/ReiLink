@@ -271,6 +271,32 @@ class LocalAsrProbeResponse(BaseModel):
     duration_ms: int = 0
 
 
+LocalAsrTranscriptionStatus = Literal[
+    "local_asr_transcription_not_ready",
+    "local_asr_transcription_started",
+    "local_asr_transcription_succeeded",
+    "local_asr_transcription_failed",
+    "local_asr_transcription_timed_out",
+    "local_asr_transcription_no_text",
+    "local_asr_transcription_cleanup_failed",
+    "local_asr_transcription_error",
+]
+
+
+class LocalAsrTranscriptionResponse(BaseModel):
+    status: LocalAsrTranscriptionStatus
+    available: bool = False
+    display_message: str
+    transcript: str = ""
+    transcript_char_count: int = 0
+    duration_ms: int = 0
+    size_bytes: int = 0
+    mime_type: str | None = None
+    temporary_file_cleaned: bool = False
+    binary_name: str | None = None
+    model_name: str | None = None
+
+
 AudioProbeStatus = Literal[
     "audio_probe_not_supported",
     "audio_probe_permission_denied",

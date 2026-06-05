@@ -1,9 +1,15 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 
 from app.modules.voice_input.audio_probe import MAX_AUDIO_UPLOAD_BYTES, process_audio_probe
 from app.modules.voice_input.local_asr_config import get_local_asr_status
 from app.modules.voice_input.local_asr_probe import probe_local_asr_binary
-from app.schemas.api import AudioProbeResponse, LocalAsrProbeResponse, LocalAsrStatusResponse
+from app.modules.voice_input.local_asr_transcribe import transcribe_local_asr_audio
+from app.schemas.api import (
+    AudioProbeResponse,
+    LocalAsrProbeResponse,
+    LocalAsrStatusResponse,
+    LocalAsrTranscriptionResponse,
+)
 
 router = APIRouter(tags=["voice-input"])
 
@@ -16,6 +22,34 @@ def local_asr_status() -> LocalAsrStatusResponse:
 @router.post("/voice-input/local-asr/probe", response_model=LocalAsrProbeResponse)
 def local_asr_probe() -> LocalAsrProbeResponse:
     return probe_local_asr_binary()
+
+
+@router.post("/voice-input/local-asr/transcribe", response_model=LocalAsrTranscriptionResponse)
+async def local_asr_transcribe(
+    audio: UploadFile | None = File(default=None),
+    language: str | None = Form(default=None),
+    duration_ms: int = Form(default=0),
+    mime_type: str | None = Form(default=None),
+) -> LocalAsrTranscriptionResponse:
+    if audio is None:
+        return transcribe_local_asr_audio(b"", mime_type, duration_ms=duration_ms, language=language)
+    try:
+        body = await audio.read()
+    except Exception:
+        return LocalAsrTranscriptionResponse(
+            status="local_asr_transcription_error",
+            available=False,
+            display_message="录音上传失败",
+            duration_ms=max(0, duration_ms),
+            mime_type=_safe_header(mime_type or audio.content_type),
+            temporary_file_cleaned=True,
+        )
+    return transcribe_local_asr_audio(
+        body,
+        mime_type or audio.content_type,
+        duration_ms=duration_ms,
+        language=language,
+    )
 
 
 @router.post("/voice-input/audio/probe", response_model=AudioProbeResponse)

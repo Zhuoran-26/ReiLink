@@ -26,6 +26,32 @@ export type ReiLinkEvent =
   | { type: "audio_capture_completed"; timestamp: string; duration_ms: number; size_bytes: number; mime_type?: string }
   | { type: "audio_capture_stopped"; timestamp: string; reason?: string; duration_ms?: number }
   | { type: "audio_capture_error"; timestamp: string; reason?: string; status?: string }
-  | { type: "audio_temp_file_cleaned"; timestamp: string; duration_ms?: number; size_bytes?: number; mime_type?: string; temporary_file_cleaned: boolean };
+  | { type: "audio_temp_file_cleaned"; timestamp: string; duration_ms?: number; size_bytes?: number; mime_type?: string; temporary_file_cleaned: boolean }
+  | { type: "local_asr_transcription_started"; timestamp: string; duration_ms?: number; size_bytes?: number; mime_type?: string; status?: string }
+  | {
+      type: "local_asr_transcription_completed";
+      timestamp: string;
+      status: string;
+      character_count: number;
+      duration_ms?: number;
+      size_bytes?: number;
+      mime_type?: string;
+      temporary_file_cleaned?: boolean;
+      binary_name?: string;
+      model_name?: string;
+    }
+  | {
+      type: "local_asr_transcription_error";
+      timestamp: string;
+      status: string;
+      reason?: string;
+      character_count?: number;
+      duration_ms?: number;
+      size_bytes?: number;
+      mime_type?: string;
+      temporary_file_cleaned?: boolean;
+      binary_name?: string;
+      model_name?: string;
+    };
 
 export type ReiLinkEventType = ReiLinkEvent["type"];

@@ -132,6 +132,23 @@
 - Backend audio probe 写入系统临时目录，立即删除临时音频；清理失败时显示 `临时音频清理失败`，不暴露完整路径。
 - Audio Capture UI、Debug Panel 和 Event Stream 只显示录音时长、大小、MIME 和清理状态，不显示音频内容、base64、完整临时路径、raw exception、API key、`.env`、Authorization 或 raw prompt。
 - Audio Capture 不填入聊天输入框，不自动发送，不写 memory / prompt，不触发 knowledge retrieval 或 game context extraction。
+- Backend ASR Transcription Bridge v1 只在 Local ASR config status 为 `local_asr_ready` 时启用 `录音并转写 / Record & Transcribe`。
+- config not ready 时，转写按钮不可用；backend 返回 `local_asr_transcription_not_ready`，不运行 binary。
+- config ready 时，用户点击后才请求麦克风权限，录制短音频并上传到本机 backend transcription endpoint。
+- Backend transcription 写入系统临时目录 `reilink-local-asr-*`，调用 configured local ASR binary，传入 model path 和 temp audio path，随后清理临时音频。
+- 默认 ASR command 使用 subprocess list args：`[binary, "-m", model_path, "-f", audio_path, "-nt"]`，可追加安全 language 参数；不使用 `shell=True`。
+- Transcription timeout 为 30 秒；timeout 时返回 `local_asr_transcription_timed_out` 或等价安全状态。
+- fake binary smoke：配置 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`，fake binary 输出固定 transcript，确认输入框被回填。
+- 正常 transcript 只填入聊天输入框，用户可编辑；不会自动发送。
+- 未确认 transcript 不写 memory，不进入 prompt / retrieval / game context，也不触发 semantic/game extraction。
+- 空 transcript 返回 `local_asr_transcription_no_text`，UI 显示中文提示，不改输入框。
+- fake binary nonzero 返回 `local_asr_transcription_failed`，不显示 raw stdout / stderr。
+- subprocess OS error 返回 `local_asr_transcription_error`，不显示 raw exception。
+- cleanup succeeded 时 response / UI 显示临时音频已清理。
+- cleanup failed 时返回 `local_asr_transcription_cleanup_failed`，不显示 temp path、raw exception 或 transcript。
+- Event Stream 只显示 `本地语音识别开始`、`本地语音识别完成`、`本地语音识别失败`、字数、duration、size、MIME、cleanup 和安全 status。
+- Event Stream、Debug Panel、Raw JSON 不显示完整 transcript、raw stdout、raw stderr、完整 binary/model/temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
+- packaged `.app` smoke 需要确认未配置时 Local Transcribe disabled；可选 fake binary / fake model smoke 确认 packaged app 仍不泄露 transcript 或路径。
 - Packaged `.app` 应包含麦克风用途说明：`ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。`
 - Local ASR QA 后续重点是：转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
 - 用户临时替代方案：使用系统听写直接输入到聊天框。
