@@ -1028,6 +1028,22 @@ const resetSettingsResponse = () => {
   };
 };
 
+const setLocalAsrReady = () => {
+  localAsrStatusStore = {
+    ...localAsrStatus,
+    status: "local_asr_ready",
+    available: true,
+    binary_configured: true,
+    binary_present: true,
+    binary_executable: true,
+    model_configured: true,
+    model_present: true,
+    display_message: "本地语音识别配置已就绪",
+    safe_binary_name: "whisper-cli",
+    safe_model_name: "ggml-base.bin"
+  };
+};
+
 const setupStatusResponse = (url: string) => {
   if (url.endsWith("/api/setup/status")) return Response.json(setupStatusStore);
   return null;
@@ -1853,7 +1869,7 @@ describe("App", () => {
     expect(voiceInputSettings).toHaveTextContent("本地语音识别 / Local ASR");
     expect(voiceInputSettings).toHaveTextContent("未配置");
     expect(voiceInputSettings).toHaveTextContent("本地语音识别未配置");
-    expect(voiceInputSettings).toHaveTextContent("当前仍不会自动识别语音");
+    expect(voiceInputSettings).toHaveTextContent("未配置本地 ASR 时，主聊天语音按钮会回退到 Web Speech");
     expect(voiceInputSettings).toHaveTextContent("配置未就绪");
     expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeDisabled();
     expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto");
@@ -1886,30 +1902,20 @@ describe("App", () => {
     expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto/Library/Application Support/ReiLink/models");
   });
 
-  it("shows Local ASR ready without changing Voice Input fallback behavior", async () => {
-    localAsrStatusStore = {
-      ...localAsrStatus,
-      status: "local_asr_ready",
-      available: true,
-      binary_configured: true,
-      binary_present: true,
-      binary_executable: true,
-      model_configured: true,
-      model_present: true,
-      display_message: "本地语音识别配置已就绪",
-      safe_binary_name: "whisper-cli",
-      safe_model_name: "ggml-base.bin"
-    };
+  it("shows Local ASR ready and enables the main chat voice button", async () => {
+    setLocalAsrReady();
+    installAudioCaptureMock();
     render(<App />);
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
     expect(voiceInputSettings).toHaveTextContent("已就绪");
     expect(voiceInputSettings).toHaveTextContent("本地语音识别配置已就绪");
-    expect(voiceInputSettings).toHaveTextContent("当前仍不会自动识别语音");
+    expect(voiceInputSettings).toHaveTextContent("主聊天语音按钮会优先使用本地 ASR");
     expect(voiceInputSettings).toHaveTextContent("未检查");
     expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "开始语音 / Start Voice" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "开始本地语音 / Start Local ASR" })).toBeEnabled();
+    expect(screen.getByText("语音输入：本地语音识别可用")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
   });
 
@@ -2404,6 +2410,187 @@ describe("App", () => {
     );
   });
 
+  it("routes the main chat voice button through Local ASR when Web Speech is unavailable", async () => {
+    setLocalAsrReady();
+    const privateTranscript = "主按钮本地转写文本";
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: privateTranscript,
+      transcript_char_count: privateTranscript.length
+    };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    const audioMock = installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    const mainVoiceButton = await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" });
+    expect(mainVoiceButton).toBeEnabled();
+    expect(screen.getByText("语音输入：本地语音识别可用")).toBeInTheDocument();
+    expect(screen.queryByText("语音输入：语音识别服务不可用")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "测试语音 / Test Voice" }));
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(mainVoiceButton);
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" })).toBeEnabled();
+    expect(screen.getByText("语音输入：正在录音")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
+    expect(screen.getByText("语音输入：转写完成，请确认后发送")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/transcribe"),
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) })
+    );
+    const fetchCalls = vi.mocked(fetch).mock.calls;
+    expect(fetchCalls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/memory"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/debug/prompt-preview"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/game/context"))).toBe(false);
+    expect(screen.queryByText(privateTranscript)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("本地语音识别开始"));
+    expect(eventStream).toHaveTextContent("本地语音识别完成");
+    expect(eventStream).toHaveTextContent(`${privateTranscript.length} 字`);
+    expect(eventStream).not.toHaveTextContent(privateTranscript);
+    expect(eventStream).not.toHaveTextContent("/Users/aragoto");
+    expect(eventStream).not.toHaveTextContent("raw stdout");
+    expect(eventStream).not.toHaveTextContent("raw stderr");
+
+    expect(screen.getByText("主输入提供方").closest("div")).toHaveTextContent("local_asr");
+    expect(screen.getByText("主输入状态").closest("div")).toHaveTextContent("转写完成，请确认后发送");
+    const rawJson = screen.getByText("原始 JSON").closest("details");
+    expect(rawJson).not.toBeNull();
+    expect(rawJson).toHaveTextContent("main_provider");
+    expect(rawJson).toHaveTextContent("local_asr_conversion_status");
+    expect(rawJson).not.toHaveTextContent("\"transcript\"");
+    expect(rawJson).not.toHaveTextContent(privateTranscript);
+  });
+
+  it("keeps the main chat voice button on Local ASR when Web Speech reports service unavailable", async () => {
+    setLocalAsrReady();
+    installAudioCaptureMock();
+    installMediaDevicesMock("granted");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" });
+    act(() => {
+      voiceInput.start({ onFinalTranscript: vi.fn() });
+    });
+    act(() => {
+      recognition.instances[0].emitError("network");
+    });
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("服务不可用"));
+    expect(screen.getByRole("button", { name: "开始本地语音 / Start Local ASR" })).toBeEnabled();
+    expect(screen.getByText("语音输入：本地语音识别可用")).toBeInTheDocument();
+    expect(screen.queryByText("语音输入：语音识别服务不可用")).not.toBeInTheDocument();
+  });
+
+  it("falls back to Web Speech from the main chat voice button when Local ASR is not ready", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("Hollow Knight 怎么走", true);
+    });
+
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("Hollow Knight 怎么走");
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/transcribe"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("shows the main chat voice button as unavailable when Local ASR and Web Speech are both unavailable", async () => {
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("语音输入：未配置本地 ASR，Web Speech 不可用")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "开始语音 / Start Voice" })).toBeDisabled();
+  });
+
+  it("shows Local ASR conversion fallback from the main chat voice button without filling input", async () => {
+    setLocalAsrReady();
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_failed",
+      available: false,
+      display_message: "尚未配置音频转换工具",
+      transcript: "",
+      transcript_char_count: 0,
+      conversion_status: "audio_conversion_not_configured",
+      conversion_required: true,
+      converted_mime_type: null,
+      converter_configured: false,
+      safe_converter_name: null
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() => expect(screen.getByText("语音输入：音频转换工具未配置")).toBeInTheDocument());
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows no-text and failed Local ASR fallbacks from the main chat voice button", async () => {
+    setLocalAsrReady();
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_no_text",
+      available: false,
+      display_message: "没有识别到文本",
+      transcript: "",
+      transcript_char_count: 0
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() => expect(screen.getByText("语音输入：没有识别到文本")).toBeInTheDocument());
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_failed",
+      available: false,
+      display_message: "本地语音识别失败",
+      transcript: "",
+      transcript_char_count: 0,
+      conversion_status: "audio_conversion_not_needed",
+      conversion_required: false
+    };
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() => expect(screen.getByText("语音输入：本地转写失败")).toBeInTheDocument());
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+  });
+
   it("starts SpeechRecognition when Voice Input is supported", async () => {
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
@@ -2584,7 +2771,7 @@ describe("App", () => {
     expect(voiceInputSettings).toHaveTextContent("麦克风权限：已允许");
     expect(voiceInputSettings).toHaveTextContent("当前运行环境的语音识别服务不可用");
     expect(voiceInputSettings).toHaveTextContent("你仍然可以使用系统听写输入到文本框");
-    expect(screen.getByText(/语音输入：语音识别服务不可用/)).toBeInTheDocument();
+    expect(screen.getByText(/语音输入：未配置本地 ASR，Web Speech 服务不可用/)).toBeInTheDocument();
   });
 
   it("maps Voice Input no-speech and user stop errors to readable Chinese", async () => {

@@ -2,7 +2,7 @@
   {
     "id": "local-asr-web-speech-unavailable-fallback",
     "category": "voice_input_local_asr",
-    "precondition": "Electron exposes Web Speech Recognition but the recognition service is unavailable",
+    "precondition": "Local ASR is not ready and Electron exposes Web Speech Recognition but the recognition service is unavailable",
     "expected_status": "voice_input_web_speech_unavailable",
     "should_auto_send": false,
     "should_upload_audio": false,
@@ -679,6 +679,66 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The transcript only sits in the input and does not write memory, refresh prompt preview, trigger retrieval, or change game context.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "full transcript", "full temp path"]
+  },
+  {
+    "id": "main-voice-button-local-asr-ready",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR config status is local_asr_ready and browser Web Speech is unavailable",
+    "expected_status": "local_asr_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The main chat voice button is enabled, shows 本地语音识别可用, and does not show 语音识别服务不可用.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "full audio path"]
+  },
+  {
+    "id": "main-voice-button-local-asr-record-transcribe",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR is ready and the user clicks the main chat voice button",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The main chat button records push-to-talk audio, posts it to the local ASR transcription endpoint, fills the transcript into the input, and waits for manual send.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw prompt", "full transcript", "full audio path"]
+  },
+  {
+    "id": "main-voice-button-web-speech-fallback",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR is not ready and Web Speech Recognition is available",
+    "expected_status": "local_asr_not_configured",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The main chat voice button keeps the Web Speech fallback, fills final transcript into the input, and does not call the Local ASR transcription endpoint.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "full transcript", "full audio path"]
+  },
+  {
+    "id": "main-voice-button-unavailable-with-local-asr-not-ready",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR is not ready and Web Speech Recognition is unavailable or its service is unavailable",
+    "expected_status": "voice_input_web_speech_unavailable",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The main chat voice button is disabled or safely unavailable and distinguishes the Local ASR status from the Web Speech service state.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "full audio path"]
+  },
+  {
+    "id": "main-voice-button-local-asr-conversion-not-configured",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR is ready, renderer records WebM/Ogg audio, and no audio converter is configured",
+    "expected_status": "local_asr_transcription_failed",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The main chat voice status shows 音频转换工具未配置, does not call the local ASR binary, keeps the input unchanged, and does not auto-send.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw prompt", "full transcript", "full audio path", "full converter path"]
+  },
+  {
+    "id": "main-voice-button-local-asr-no-context-pollution",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Main chat Local ASR transcription succeeds but the user has not clicked send",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The unconfirmed transcript stays only in the input and does not write memory, refresh prompt preview, trigger retrieval, or change game context.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "full transcript", "full temp path"]
   }
 ]

@@ -2,13 +2,13 @@
 
 ## 中文
 
-Updated: 2026-06-05
+Updated: 2026-06-06
 
 ### 当前阶段
 
 当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并继续推进 Voice Output、Voice Input fallback、Local ASR staged foundation 与 Knowledge Retrieval QA。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并继续推进 Voice Output、Voice Input fallback、Local ASR 主聊天接入与 Knowledge Retrieval QA。
 
 v0.2-pre 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示、standalone runtime、本地数据目录、多游戏知识维护和 release readiness 更清晰、更稳定。
 
@@ -53,6 +53,7 @@ dev/codex-reilink
 - Hollow Knight sample knowledge pack。
 - Voice Output：`语音输出 / Voice Output`、Test Voice、rate / volume、中文语音优先和 Event Stream 安全摘要。
 - Voice Input v1 fallback：push-to-talk Web Speech UI、安全 fallback、不自动发送。
+- Main chat Local ASR voice input：Local ASR ready 时主聊天语音按钮优先走本地录音/转写，Web Speech 作为 fallback。
 - Event Bus / Event Stream。
 - Prompt Preview。
 - Debug Dashboard。
@@ -80,14 +81,15 @@ dev/codex-reilink
 - User data dir：packaged app 使用 `~/Library/Application Support/ReiLink/data`。
 - Local Data Controls：Settings 中查看 / 打开本地数据目录，并复用 Demo Reset / reset controls。
 - Audio Capture / Temp File probe。
-- Local ASR staged foundation：feasibility plan、config detection、CLI probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge、whisper-like output parsing hardening、manual setup guide。
+- Local ASR staged foundation and main chat integration：feasibility plan、config detection、CLI probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge、whisper-like output parsing hardening、manual setup guide、主聊天语音按钮 provider selection。
 
 ### 当前 Voice / Local ASR 状态
 
 - Voice Output 已完成并可用：支持 Test Voice、rate / volume、中文语音优先，`tts_started` 只在真实 `utterance.onstart` 后触发，`tts_completed` / `tts_error` 映射到安全中文摘要。
 - Voice Input v1 已完成 push-to-talk fallback：Web Speech transcript 只填入输入框，不自动发送；未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
-- Electron packaged 环境中的 Web Speech Recognition 服务不可靠，当前不作为稳定主路径。
-- Local ASR 是当前推进方向，已完成 staged foundation：feasibility plan、config detection、CLI probe、Audio Capture / Temp File probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge 和 whisper-like parsing QA。
+- Electron packaged 环境中的 Web Speech Recognition 服务不可靠，当前不作为稳定主路径；Local ASR ready 时主聊天语音按钮优先使用本地 ASR。
+- Local ASR 已接入主聊天语音按钮：provider selection 为 `local_asr` -> `web_speech` -> `unavailable`；本地转写成功后 transcript 只填入输入框，仍需手动发送。
+- Local ASR staged foundation 已完成：feasibility plan、config detection、CLI probe、Audio Capture / Temp File probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge 和 whisper-like parsing QA。
 - Audio Format Conversion v1 已支持通过用户配置的 `REILINK_AUDIO_CONVERTER_BINARY` 把 WebM/Ogg 等录音格式转为 WAV；未配置或失败时安全短路，不调用 ASR。
 - Local ASR 当前不提交 whisper binary，不提交 model，不提交 ffmpeg / converter binary，不接入云 ASR 或商业 ASR。
 - Local ASR manual setup guide 已新增；真实 whisper.cpp / model / converter 仍由用户手动配置，不随 app 内置。
@@ -161,13 +163,13 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-05
+Updated: 2026-06-06
 
 ### Current Stage
 
 Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while continuing Voice Output, Voice Input fallback, Local ASR staged foundation, and Knowledge Retrieval QA work.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while continuing Voice Output, Voice Input fallback, main-chat Local ASR integration, and Knowledge Retrieval QA work.
 
 The v0.2-pre focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, standalone runtime, local data directories, multi-game knowledge maintenance, and release readiness clearer and more stable.
 
@@ -212,6 +214,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Hollow Knight sample knowledge pack.
 - Voice Output: Voice Output settings, Test Voice, rate / volume, Chinese voice preference, and safe Event Stream summaries.
 - Voice Input v1 fallback: push-to-talk Web Speech UI, safe fallback, and no auto-send.
+- Main chat Local ASR voice input: when Local ASR is ready, the main chat voice button prefers local record/transcribe, with Web Speech kept as fallback.
 - Event Bus / Event Stream.
 - Prompt Preview.
 - Debug Dashboard.
@@ -239,14 +242,15 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - User data dir: the packaged app uses `~/Library/Application Support/ReiLink/data`.
 - Local Data Controls: Settings can show / open the local data directory and reuse Demo Reset / reset controls.
 - Audio Capture / Temp File probe.
-- Local ASR staged foundation: feasibility plan, config detection, CLI probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, whisper-like output parsing hardening, and manual setup guide.
+- Local ASR staged foundation and main chat integration: feasibility plan, config detection, CLI probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, whisper-like output parsing hardening, manual setup guide, and main chat voice provider selection.
 
 ### Current Voice / Local ASR Status
 
 - Voice Output is implemented and usable: Test Voice, rate / volume, Chinese voice preference, `tts_started` only after the real `utterance.onstart`, and safe Chinese Event Stream summaries.
 - Voice Input v1 push-to-talk fallback is implemented: Web Speech transcripts only fill the input and are not auto-sent; unconfirmed transcripts do not enter memory, prompt, knowledge retrieval, or game context.
-- Web Speech Recognition is not reliable in the packaged Electron runtime and is not the stable main path.
-- Local ASR is the current direction, with staged foundation complete: feasibility plan, config detection, CLI probe, Audio Capture / Temp File probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, and whisper-like parsing QA.
+- Web Speech Recognition is not reliable in the packaged Electron runtime and is not the stable main path; when Local ASR is ready, the main chat voice button prefers Local ASR.
+- Local ASR is wired into the main chat voice button: provider selection is `local_asr` -> `web_speech` -> `unavailable`; successful local transcripts only fill the input and still require manual send.
+- Local ASR staged foundation is complete: feasibility plan, config detection, CLI probe, Audio Capture / Temp File probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, and whisper-like parsing QA.
 - Audio Format Conversion v1 can use a user-configured `REILINK_AUDIO_CONVERTER_BINARY` to convert WebM/Ogg-style recordings to WAV; missing or failed converters short-circuit safely and do not call ASR.
 - Local ASR does not commit a whisper binary, model file, ffmpeg / converter binary, cloud ASR, or commercial ASR integration.
 - The Local ASR manual setup guide has been added; real whisper.cpp / model / converter remains user-configured and is not bundled with the app.

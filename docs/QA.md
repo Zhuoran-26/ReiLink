@@ -61,7 +61,7 @@
 
 ### 3. Voice Input push-to-talk 回归检查
 
-- 聊天输入区附近可见 `开始语音 / Start Voice`。
+- 聊天输入区附近可见主语音按钮；Web Speech fallback 时显示 `开始语音 / Start Voice`，Local ASR ready 时显示 `开始本地语音 / Start Local ASR`。
 - Settings Panel 可见 `语音输入 / Voice Input`。
 - Settings 显示本地语音识别是否可用、当前状态、语言、最近识别字数和最近错误。
 - Settings / Debug Panel 显示安全诊断摘要：`语音识别功能`、`麦克风权限`、`运行环境`。
@@ -92,7 +92,7 @@
 
 - 直接打开 packaged `ReiLink.app`，不是 dev renderer。
 - UI 非黑屏，backend 自启动。
-- `开始语音 / Start Voice` 和 `语音输入 / Voice Input` 可见。
+- 主语音按钮和 `语音输入 / Voice Input` 可见。
 - Settings 显示 `语音识别功能`、`麦克风权限` 和 `运行环境：打包应用`。
 - 如果 packaged 环境支持 Web Speech Recognition，点击开始后可进入听写状态，final transcript 填入输入框但不自动发送。
 - 如果 packaged 环境不支持 Web Speech Recognition，显示 `当前运行环境不支持本地语音识别`，并提示可使用系统听写，不崩溃。
@@ -108,7 +108,7 @@
 
 设计文档见 `docs/voice-input-local-asr-spike.md`，真实手动配置指南见 `docs/local-asr-manual-setup.md`，机器可读场景见 `docs/qa/voice_input_local_asr_scenarios.json`。
 
-- 当前 Web Speech Recognition 在 Electron packaged app 中可能暴露 API，但识别服务不可用；Voice Input v1 的预期是显示 `语音识别服务不可用` 或明确 unavailable fallback，不崩溃。
+- 当前 Web Speech Recognition 在 Electron packaged app 中可能暴露 API，但识别服务不可用；Local ASR ready 时主聊天语音按钮应走本地转写，Local ASR not ready 时才显示 `语音识别服务不可用` 或明确 unavailable fallback，不崩溃。
 - v1 仍保留输入框入口、安全 fallback、系统听写提示和“不自动发送”的边界。
 - 当前 Local ASR Config Detection v1 只检测配置，不执行 whisper / ASR binary，不录音，不转写，不上传音频，不下载模型，不把模型或用户数据写入 `.app`。
 - Local ASR 配置来源仅为 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`。
@@ -117,7 +117,7 @@
 - 缺少本地识别程序：配置了 binary 但文件不存在；UI 只显示安全文件名，不显示完整路径。
 - 识别程序不可执行：binary 文件存在但没有执行权限；UI 只显示中文状态和安全文件名，不显示完整路径。
 - 缺少本地语音模型：binary 可执行但 model 文件不存在；UI 只显示安全模型名，不显示完整路径。
-- 已就绪：binary 存在且可执行、model 存在；当前仍不会自动识别语音，也不会调用 whisper。
+- 已就绪：binary 存在且可执行、model 存在；主聊天语音按钮会优先使用 Local ASR，但仍只在用户点击后录音和转写。
 - Local ASR CLI Probe v1 只在配置已就绪时允许点击 `检查本地 ASR / Check Local ASR`；配置未就绪、缺少识别程序或缺少模型时按钮不可用。
 - Probe 只执行本地识别程序的 `--help` 或 `-h` 启动检查，超时时间短；成功只代表 binary 可以启动，不代表模型兼容，也不代表可以转写语音。
 - Probe 不录音，不读取音频，不传入音频路径，不传入模型路径，不创建临时音频文件，不上传音频。
@@ -132,9 +132,11 @@
 - Backend audio probe 写入系统临时目录，立即删除临时音频；清理失败时显示 `临时音频清理失败`，不暴露完整路径。
 - Audio Capture UI、Debug Panel 和 Event Stream 只显示录音时长、大小、MIME 和清理状态，不显示音频内容、base64、完整临时路径、raw exception、API key、`.env`、Authorization 或 raw prompt。
 - Audio Capture 不填入聊天输入框，不自动发送，不写 memory / prompt，不触发 knowledge retrieval 或 game context extraction。
-- Backend ASR Transcription Bridge v1 只在 Local ASR config status 为 `local_asr_ready` 时启用 `录音并转写 / Record & Transcribe`。
+- 主聊天语音按钮 provider selection：Local ASR ready 优先使用 `local_asr`；Local ASR not ready 且 Web Speech 可用时回退 `web_speech`；两者都不可用时显示安全 unavailable fallback。
+- Local ASR ready 时，主聊天语音按钮即使在 Web Speech service unavailable 的运行环境中也应可用，并显示 `本地语音识别可用`、`正在录音`、`正在本地转写` 或 `转写完成，请确认后发送`。
+- Backend ASR Transcription Bridge v1 只在 Local ASR config status 为 `local_asr_ready` 时启用主聊天语音按钮的本地转写路径和 `录音并转写 / Record & Transcribe`。
 - config not ready 时，转写按钮不可用；backend 返回 `local_asr_transcription_not_ready`，不运行 binary。
-- config ready 时，用户点击后才请求麦克风权限，录制短音频并上传到本机 backend transcription endpoint。
+- config ready 时，用户点击主聊天语音按钮或 Settings 的 `Record & Transcribe` 后才请求麦克风权限，录制短音频并上传到本机 backend transcription endpoint。
 - Backend transcription 写入系统临时目录 `reilink-local-asr-*`，必要时先做音频格式转换，再调用 configured local ASR binary，传入 model path 和可识别的 temp audio path，随后清理原始和转换后的临时音频。
 - WAV / PCM 输入不转换；browser 常见 `audio/webm` / `video/webm` / `audio/ogg` 等非 WAV 输入需要转换。
 - 音频转换工具由用户通过 `REILINK_AUDIO_CONVERTER_BINARY` 配置；当前项目不内置、不下载、不提交 ffmpeg 或第三方二进制。
@@ -148,6 +150,7 @@
 - fake binary smoke：配置 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`，fake binary 输出固定 transcript，确认输入框被回填。
 - 正常 transcript 只填入聊天输入框，用户可编辑；不会自动发送。
 - 未确认 transcript 不写 memory，不进入 prompt / retrieval / game context，也不触发 semantic/game extraction。
+- 主聊天语音按钮的 transcript 同样只填入输入框；用户手动点击发送后才进入 chat flow。
 - 空 transcript 返回 `local_asr_transcription_no_text`，UI 显示中文提示，不改输入框。
 - fake binary nonzero 返回 `local_asr_transcription_failed`，不显示 raw stdout / stderr。
 - subprocess OS error 返回 `local_asr_transcription_error`，不显示 raw exception。
@@ -157,7 +160,7 @@
 - Event Stream、Debug Panel、Raw JSON 不显示完整 transcript、raw stdout、raw stderr、完整 binary/model/temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
 - packaged `.app` smoke 需要确认未配置时 Local Transcribe disabled；可选 fake binary / fake model smoke 确认 packaged app 仍不泄露 transcript 或路径。
 - Packaged `.app` 应包含麦克风用途说明：`ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。`
-- Local ASR QA 后续重点是：转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
+- Local ASR QA 后续重点是：主聊天按钮 provider selection、转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
 - 用户临时替代方案：使用系统听写直接输入到聊天框。
 - 默认不上传外部服务，不保存音频，不自动发送 transcript。
 - 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
@@ -174,6 +177,7 @@
 - `Audio Capture Test` 应录音成功，显示 duration、size、MIME，并清理临时音频。
 - audio conversion 应显示 `audio_conversion_succeeded`，或在 WAV / PCM 输入时显示 conversion not needed。
 - `Record & Transcribe` 应返回 transcript，并只填入输入框。
+- 主聊天语音按钮应显示本地 ASR 可用；点击后录音、转写，并把 transcript 只填入主聊天输入框。
 - transcript 不自动发送；用户检查后才手动点击发送。
 - 未发送前不得写入 memory / prompt / knowledge retrieval / game context。
 - Event Stream / Debug Panel 不显示完整 transcript、完整路径、raw stdout、raw stderr、API key、`.env` 或 Authorization。
@@ -204,6 +208,7 @@
 - 打开 dev app，运行 `Check Local ASR`，确认只显示安全文件名。
 - 运行 `Audio Capture Test`，记录安全 MIME summary，例如 `audio/webm`、`audio/wav` 或 `unknown`。
 - 运行 `Record & Transcribe`，检查 transcript 是否进入输入框且不会自动发送。
+- 运行主聊天语音按钮，确认 Web Speech 不可用时仍走 Local ASR，状态不是 `语音识别服务不可用`。
 - 检查 Event Stream 不显示完整 transcript。
 - 如果录音格式是 `audio/webm` / Ogg，检查未配置 converter 时是否显示 `尚未配置音频转换工具`；配置 `REILINK_AUDIO_CONVERTER_BINARY` 后再验证转换状态、target MIME 和清理状态。
 
@@ -212,7 +217,7 @@
 - 未配置时安全 fallback，Local Transcribe disabled 或显示配置未就绪。
 - fake binary optional；real whisper optional manual。
 - 不显示完整路径、raw stdout / stderr、`.env`、API key 或 Authorization。
-- `Audio Capture Test`、`Record & Transcribe`、`Test Voice` 和 Knowledge Retrieval 入口仍可见。
+- `Audio Capture Test`、`Record & Transcribe`、主聊天语音按钮、`Test Voice` 和 Knowledge Retrieval 入口仍可见。
 - 退出后 backend 无残留。
 
 ### 5. Knowledge Retrieval 回归检查
@@ -373,7 +378,7 @@
 - backend 自启动，或复用健康外部 backend。
 - bundled knowledge resources 可用。
 - `语音输出 / Voice Output` 和 `测试语音 / Test Voice` 可见。
-- `语音输入 / Voice Input` 和 `开始语音 / Start Voice` 可见。
+- `语音输入 / Voice Input` 和主语音按钮可见。
 - Voice Input supported / unsupported / permission fallback 可读，不崩溃。
 - Knowledge Retrieval 可用。
 - Event Stream 不泄露敏感内容。
@@ -397,8 +402,8 @@
 
 - `below_threshold` 依赖当前知识包内容和评分阈值，手动测试时可优先用机器可读场景文件里的弱相关示例。
 - `no_pack` 依赖 catalog 中仍有 planned / unsupported 游戏；当前可用 `只狼` 做手动场景。
-- Voice Input v1 只使用 Web Speech Recognition，不接商业 ASR，不上传音频，不保存音频。真实识别取决于 dev / packaged Electron 的 Chromium runtime 是否暴露该 API，以及 macOS 麦克风权限。
-- 如果 Electron runtime 不支持 Web Speech Recognition，当前预期是明确 unavailable fallback；用户可临时使用系统听写输入到聊天框。Local ASR staged foundation 已接入 config detection、CLI probe、audio probe、backend transcription bridge 和 audio conversion bridge；真实 whisper.cpp / model / converter 兼容性仍属后续手动 QA。
+- Voice Input v1 保留 Web Speech fallback；Local ASR ready 时主聊天语音按钮优先走本地转写。不接商业 ASR，不上传外部服务，不保存音频。
+- 如果 Electron runtime 不支持 Web Speech Recognition，当前预期是 Local ASR ready 时主按钮仍可用；Local ASR not ready 时显示明确 unavailable fallback，用户可临时使用系统听写输入到聊天框。真实 whisper.cpp / model / converter 兼容性仍属后续手动 QA。
 - Voice Output 的真实播放取决于系统语音包和浏览器 speech synthesis 支持；失败必须被 UI 允许并可见，不应被视为崩溃。
 - Manual QA 不替代 automated tests；它用于 release 前的人眼回归与打包行为确认。
 

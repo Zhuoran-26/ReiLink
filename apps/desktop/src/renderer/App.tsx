@@ -71,6 +71,7 @@ type DemoResetAction =
   | "reset-demo";
 
 type LocalAsrTranscriptionPhase = "idle" | "recording" | "transcribing";
+type MainVoiceInputProvider = "local_asr" | "web_speech" | "unavailable";
 
 const idleStatus: GameStatus = {
   game_id: null,
@@ -1051,6 +1052,18 @@ const voiceInputRuntimeText = (status: VoiceInputStatus) => {
   return "未知";
 };
 
+const webSpeechVoiceInputAvailable = (status: VoiceInputStatus) =>
+  status.supported && !voiceInputServiceUnavailable(status);
+
+const mainVoiceInputProviderText = (provider: MainVoiceInputProvider) => {
+  const labels: Record<MainVoiceInputProvider, string> = {
+    local_asr: "local_asr",
+    web_speech: "web_speech",
+    unavailable: "unavailable"
+  };
+  return labels[provider];
+};
+
 const localAsrStatusText = (status: LocalAsrStatus) => {
   const labels: Record<LocalAsrStatus["status"], string> = {
     local_asr_not_configured: "未配置",
@@ -1063,11 +1076,101 @@ const localAsrStatusText = (status: LocalAsrStatus) => {
 };
 
 const localAsrStatusDetail = (status: LocalAsrStatus) => {
-  if (status.status === "local_asr_ready") return "本地语音识别配置已就绪。当前仍不会自动识别语音。";
-  if (status.status === "local_asr_binary_missing") return "未找到本地识别程序。当前仍可使用系统听写输入到文本框。";
-  if (status.status === "local_asr_binary_not_executable") return "本地识别程序不可执行。当前仍可使用系统听写输入到文本框。";
-  if (status.status === "local_asr_model_missing") return "未找到本地语音模型。当前仍可使用系统听写输入到文本框。";
-  return "当前仍不会自动识别语音。后续版本会使用本地 ASR。";
+  if (status.status === "local_asr_ready") return "本地语音识别配置已就绪。主聊天语音按钮会优先使用本地 ASR，转写后仍需手动发送。";
+  if (status.status === "local_asr_binary_missing") return "未找到本地识别程序。主聊天语音按钮会回退到 Web Speech，或显示不可用。";
+  if (status.status === "local_asr_binary_not_executable") return "本地识别程序不可执行。主聊天语音按钮会回退到 Web Speech，或显示不可用。";
+  if (status.status === "local_asr_model_missing") return "未找到本地语音模型。主聊天语音按钮会回退到 Web Speech，或显示不可用。";
+  return "未配置本地 ASR 时，主聊天语音按钮会回退到 Web Speech，或显示不可用。";
+};
+
+const mainVoiceInputLocalAsrUnavailableText = (status: LocalAsrStatus) => {
+  const labels: Record<LocalAsrStatus["status"], string> = {
+    local_asr_not_configured: "未配置本地 ASR",
+    local_asr_binary_missing: "缺少本地识别程序",
+    local_asr_binary_not_executable: "识别程序不可执行",
+    local_asr_model_missing: "缺少本地语音模型",
+    local_asr_ready: "本地语音识别可用"
+  };
+  return labels[status.status] ?? "未配置本地 ASR";
+};
+
+const selectMainVoiceInputProvider = (
+  localStatus: LocalAsrStatus,
+  webSpeechStatus: VoiceInputStatus
+): MainVoiceInputProvider => {
+  if (localStatus.status === "local_asr_ready") return "local_asr";
+  if (webSpeechVoiceInputAvailable(webSpeechStatus)) return "web_speech";
+  return "unavailable";
+};
+
+const mainVoiceInputLocalAsrStatusText = (
+  phase: LocalAsrTranscriptionPhase,
+  result: LocalAsrTranscriptionResponse | null,
+  captureStatus: AudioCaptureStatus
+) => {
+  if (phase === "recording") return "正在录音";
+  if (phase === "transcribing") return "正在本地转写";
+  if (!captureStatus.supported) return "当前环境缺少麦克风录音能力";
+  if (captureStatus.lastError) return captureStatus.lastError;
+  if (!result) return "本地语音识别可用";
+  if (result.conversion_status === "audio_conversion_not_configured") return "音频转换工具未配置";
+  if (result.conversion_status === "audio_conversion_failed") return "音频转换失败";
+  if (result.conversion_status === "audio_conversion_timed_out") return "音频转换超时";
+  const labels: Record<LocalAsrTranscriptionResponse["status"], string> = {
+    local_asr_transcription_not_ready: "未配置本地 ASR",
+    local_asr_transcription_started: "正在本地转写",
+    local_asr_transcription_succeeded: "转写完成，请确认后发送",
+    local_asr_transcription_failed: "本地转写失败",
+    local_asr_transcription_timed_out: "本地转写超时",
+    local_asr_transcription_no_text: "没有识别到文本",
+    local_asr_transcription_cleanup_failed: "临时音频清理失败",
+    local_asr_transcription_error: "本地转写失败"
+  };
+  return labels[result.status] ?? "本地转写失败";
+};
+
+const mainVoiceInputUnavailableStatusText = (localStatus: LocalAsrStatus, webSpeechStatus: VoiceInputStatus) => {
+  const localText = mainVoiceInputLocalAsrUnavailableText(localStatus);
+  if (!webSpeechStatus.supported) return `${localText}，Web Speech 不可用`;
+  if (voiceInputServiceUnavailable(webSpeechStatus)) return `${localText}，Web Speech 服务不可用`;
+  if (webSpeechStatus.lastError) return webSpeechStatus.lastError;
+  return localText;
+};
+
+const mainVoiceInputStatusText = (
+  provider: MainVoiceInputProvider,
+  webSpeechStatus: VoiceInputStatus,
+  localStatus: LocalAsrStatus,
+  localPhase: LocalAsrTranscriptionPhase,
+  localResult: LocalAsrTranscriptionResponse | null,
+  captureStatus: AudioCaptureStatus
+) => {
+  if (provider === "local_asr") return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus);
+  if (provider === "web_speech") return voiceInputPhaseText(webSpeechStatus);
+  return mainVoiceInputUnavailableStatusText(localStatus, webSpeechStatus);
+};
+
+const mainVoiceInputButtonLabel = (provider: MainVoiceInputProvider, webSpeechStatus: VoiceInputStatus, localPhase: LocalAsrTranscriptionPhase) => {
+  if (provider === "local_asr") {
+    return localPhase === "recording" ? "停止本地转写录音 / Stop Local ASR Recording" : "开始本地语音 / Start Local ASR";
+  }
+  return webSpeechStatus.phase === "idle" ? "开始语音 / Start Voice" : "停止识别 / Stop Listening";
+};
+
+const mainVoiceInputButtonTitle = (
+  provider: MainVoiceInputProvider,
+  webSpeechStatus: VoiceInputStatus,
+  localStatus: LocalAsrStatus,
+  localPhase: LocalAsrTranscriptionPhase,
+  localResult: LocalAsrTranscriptionResponse | null,
+  captureStatus: AudioCaptureStatus
+) => {
+  if (provider === "local_asr") {
+    if (localPhase === "recording") return "停止本地录音并开始转写";
+    return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus);
+  }
+  if (provider === "web_speech") return webSpeechStatus.phase === "idle" ? "开始语音输入" : "停止识别";
+  return mainVoiceInputUnavailableStatusText(localStatus, webSpeechStatus);
 };
 
 const localAsrProbeStatusText = (probe: LocalAsrProbeResponse | null, checking: boolean, configReady: boolean) => {
@@ -2291,6 +2394,36 @@ export function App() {
     audioProbeUploading ||
     (audioCaptureStatus.phase !== "idle" && localAsrTranscriptionPhase !== "recording") ||
     localAsrTranscriptionPhase === "transcribing";
+  const mainVoiceInputProvider = selectMainVoiceInputProvider(localAsrStatus, voiceInputStatus);
+  const mainVoiceInputUsesLocalAsr = mainVoiceInputProvider === "local_asr";
+  const mainVoiceInputUsesWebSpeech = mainVoiceInputProvider === "web_speech";
+  const mainVoiceInputStatus = mainVoiceInputStatusText(
+    mainVoiceInputProvider,
+    voiceInputStatus,
+    localAsrStatus,
+    localAsrTranscriptionPhase,
+    localAsrTranscriptionResult,
+    audioCaptureStatus
+  );
+  const mainVoiceInputDisabled = mainVoiceInputUsesLocalAsr
+    ? localAsrTranscriptionButtonDisabled
+    : !mainVoiceInputUsesWebSpeech || !webSpeechVoiceInputAvailable(voiceInputStatus);
+  const mainVoiceInputActive = mainVoiceInputUsesLocalAsr
+    ? localAsrTranscriptionPhase !== "idle"
+    : voiceInputStatus.phase !== "idle";
+  const mainVoiceInputLabel = mainVoiceInputButtonLabel(
+    mainVoiceInputProvider,
+    voiceInputStatus,
+    localAsrTranscriptionPhase
+  );
+  const mainVoiceInputTitle = mainVoiceInputButtonTitle(
+    mainVoiceInputProvider,
+    voiceInputStatus,
+    localAsrStatus,
+    localAsrTranscriptionPhase,
+    localAsrTranscriptionResult,
+    audioCaptureStatus
+  );
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
   const detectedKnowledgeGameId = gameContext.detected_game.knowledge_game_id;
@@ -2581,12 +2714,21 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 
             <form className="composer" onSubmit={sendMessage}>
               <button
-                className={`iconButton voiceInputButton ${voiceInputStatus.phase !== "idle" ? "active" : ""}`}
+                className={`iconButton voiceInputButton ${mainVoiceInputActive ? "active" : ""}`}
                 type="button"
-                aria-label={voiceInputStatus.phase === "idle" ? "开始语音 / Start Voice" : "停止识别 / Stop Listening"}
-                title={voiceInputStatus.supported ? (voiceInputStatus.phase === "idle" ? "开始语音输入" : "停止识别") : "当前运行环境不支持本地语音识别"}
-                disabled={!voiceInputStatus.supported}
-                onClick={voiceInputStatus.phase === "idle" ? startVoiceInput : stopVoiceInput}
+                aria-label={mainVoiceInputLabel}
+                title={mainVoiceInputTitle}
+                disabled={mainVoiceInputDisabled}
+                onClick={() => {
+                  if (mainVoiceInputUsesLocalAsr) {
+                    void runLocalAsrTranscription();
+                    return;
+                  }
+                  if (mainVoiceInputUsesWebSpeech) {
+                    if (voiceInputStatus.phase === "idle") startVoiceInput();
+                    else stopVoiceInput();
+                  }
+                }}
               >
                 <Mic size={18} />
               </button>
@@ -2601,7 +2743,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <span>{sending ? "发送中" : "发送"}</span>
               </button>
               <div className="voiceInputInlineStatus" role="status">
-                语音输入：{voiceInputPhaseText(voiceInputStatus)}
+                语音输入：{mainVoiceInputStatus}
                 {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
               </div>
             </form>
@@ -3566,6 +3708,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <h3>语音输入</h3>
                     <dl className="debugFacts">
                       <div>
+                        <dt>主输入提供方</dt>
+                        <dd>{mainVoiceInputProviderText(mainVoiceInputProvider)}</dd>
+                      </div>
+                      <div>
+                        <dt>主输入状态</dt>
+                        <dd>{mainVoiceInputStatus}</dd>
+                      </div>
+                      <div>
+                        <dt>主输入可用</dt>
+                        <dd><BooleanBadge value={!mainVoiceInputDisabled} /></dd>
+                      </div>
+                      <div>
                         <dt>本地语音识别</dt>
                         <dd>{voiceInputAvailabilityText(voiceInputStatus)}</dd>
                       </div>
@@ -4015,6 +4169,20 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             voice_volume: appSettings.voice_volume
                           },
                           voice_input: {
+                            main_provider: {
+                              selected: mainVoiceInputProviderText(mainVoiceInputProvider),
+                              status_text: mainVoiceInputStatus,
+                              button_enabled: !mainVoiceInputDisabled,
+                              local_asr_ready: localAsrConfigReady,
+                              web_speech_available: webSpeechVoiceInputAvailable(voiceInputStatus),
+                              audio_capture_supported: audioCaptureStatus.supported,
+                              audio_capture_phase: audioCaptureStatus.phase,
+                              local_asr_transcription_phase: localAsrTranscriptionPhase,
+                              local_asr_transcription_status: localAsrTranscriptionResult?.status ?? null,
+                              local_asr_conversion_status: localAsrTranscriptionResult?.conversion_status ?? null,
+                              local_asr_conversion_required: localAsrTranscriptionResult?.conversion_required ?? null,
+                              local_asr_converter_configured: localAsrTranscriptionResult?.converter_configured ?? null
+                            },
                             supported: voiceInputStatus.supported,
                             phase: voiceInputStatus.phase,
                             language: voiceInputStatus.language,

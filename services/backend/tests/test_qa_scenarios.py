@@ -238,6 +238,12 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         "local-asr-real-whisper-optional-manual",
         "local-asr-packaged-real-whisper-optional-manual",
         "local-asr-transcribe-no-context-pollution",
+        "main-voice-button-local-asr-ready",
+        "main-voice-button-local-asr-record-transcribe",
+        "main-voice-button-web-speech-fallback",
+        "main-voice-button-unavailable-with-local-asr-not-ready",
+        "main-voice-button-local-asr-conversion-not-configured",
+        "main-voice-button-local-asr-no-context-pollution",
     } <= {item.get("id") for item in scenarios}
     for item in scenarios:
         assert item.get("category") in {
