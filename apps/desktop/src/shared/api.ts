@@ -144,6 +144,27 @@ export type LocalAsrProbeResponse = {
   duration_ms: number;
 };
 
+export type AudioProbeStatusValue =
+  | "audio_probe_not_supported"
+  | "audio_probe_permission_denied"
+  | "audio_probe_recording_failed"
+  | "audio_probe_upload_failed"
+  | "audio_probe_succeeded"
+  | "audio_probe_file_too_large"
+  | "audio_probe_invalid_audio"
+  | "audio_probe_cleanup_failed"
+  | "audio_probe_error";
+
+export type AudioProbeResponse = {
+  status: AudioProbeStatusValue;
+  available: boolean;
+  display_message: string;
+  duration_ms: number;
+  size_bytes: number;
+  mime_type: string | null;
+  temporary_file_cleaned: boolean;
+};
+
 export type ProactiveTriggerType = "idle_silence" | "repeated_death" | "late_night" | "frustration_loop" | "none";
 
 export type ProactiveStatusResponse = {
@@ -449,6 +470,15 @@ export const api = {
   localDataStatus: () => request<LocalDataStatus>("/api/local-data/status"),
   localAsrStatus: () => request<LocalAsrStatus>("/api/voice-input/local-asr/status"),
   probeLocalAsr: () => request<LocalAsrProbeResponse>("/api/voice-input/local-asr/probe", { method: "POST" }),
+  probeAudio: (blob: Blob, durationMs: number) =>
+    request<AudioProbeResponse>("/api/voice-input/audio/probe", {
+      method: "POST",
+      headers: {
+        "Content-Type": blob.type || "application/octet-stream",
+        "X-ReiLink-Audio-Duration-Ms": String(Math.max(0, Math.round(durationMs)))
+      },
+      body: blob
+    }),
   updateSettings: (settings: AppSettingsUpdate) =>
     request<AppSettings>("/api/settings", {
       method: "POST",

@@ -21,6 +21,11 @@ export type ReiLinkEvent =
   | { type: "voice_input_completed"; timestamp: string; character_count: number; is_final?: boolean; language?: string }
   | { type: "voice_input_stopped"; timestamp: string; character_count?: number; reason?: string; status?: string; language?: string }
   | { type: "voice_input_error"; timestamp: string; character_count?: number; reason?: string; status?: string; language?: string }
-  | { type: "voice_input_unavailable"; timestamp: string; reason?: string; status?: string; language?: string };
+  | { type: "voice_input_unavailable"; timestamp: string; reason?: string; status?: string; language?: string }
+  | { type: "audio_capture_started"; timestamp: string; duration_ms?: number }
+  | { type: "audio_capture_completed"; timestamp: string; duration_ms: number; size_bytes: number; mime_type?: string }
+  | { type: "audio_capture_stopped"; timestamp: string; reason?: string; duration_ms?: number }
+  | { type: "audio_capture_error"; timestamp: string; reason?: string; status?: string }
+  | { type: "audio_temp_file_cleaned"; timestamp: string; duration_ms?: number; size_bytes?: number; mime_type?: string; temporary_file_cleaned: boolean };
 
 export type ReiLinkEventType = ReiLinkEvent["type"];

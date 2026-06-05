@@ -125,9 +125,17 @@
 - Probe UI 只显示 `未检查`、`正在检查`、`可以启动`、`启动失败`、`启动超时`、`配置未就绪` 等中文摘要和安全文件名。
 - Probe UI、Debug Panel、Raw JSON 不显示完整路径、raw stdout、raw stderr、raw exception、raw env、API key、`.env`、Authorization 或 raw prompt。
 - Packaged `.app` 中未配置时应安全显示配置未就绪；配置 fake binary / fake model 时可手动验证 `可以启动`，退出后 backend 无残留。
+- Audio Capture / Temp File v1 只在用户点击 `测试录音 / Test Recording` 后请求麦克风权限；权限拒绝时显示 `麦克风权限被拒绝` 或等价中文 fallback。
+- 录音测试默认录制短音频，最长不超过 5 秒；用户可点击 `停止录音 / Stop Recording` 提前停止。
+- Renderer 使用 `MediaRecorder` 生成音频 blob，只发送到本机 backend audio probe endpoint；不调用 whisper，不调用 local ASR binary，不调用云 ASR，不转写。
+- Backend audio probe 最大上传大小为 2MB；过大返回 `录音文件过大`，无效 MIME 或空数据返回 `录音数据无效`。
+- Backend audio probe 写入系统临时目录，立即删除临时音频；清理失败时显示 `临时音频清理失败`，不暴露完整路径。
+- Audio Capture UI、Debug Panel 和 Event Stream 只显示录音时长、大小、MIME 和清理状态，不显示音频内容、base64、完整临时路径、raw exception、API key、`.env`、Authorization 或 raw prompt。
+- Audio Capture 不填入聊天输入框，不自动发送，不写 memory / prompt，不触发 knowledge retrieval 或 game context extraction。
+- Packaged `.app` 应包含麦克风用途说明：`ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。`
 - Local ASR QA 后续重点是：转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
 - 用户临时替代方案：使用系统听写直接输入到聊天框。
-- 默认不上传音频，不保存音频，不自动发送 transcript。
+- 默认不上传外部服务，不保存音频，不自动发送 transcript。
 - 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
 - 当前配置检测不会产生音频或 transcript。Event Stream / Debug / Raw JSON 不显示完整 transcript、完整音频路径、raw subprocess output、API key、`.env`、Authorization、完整本地路径或 raw prompt。
 

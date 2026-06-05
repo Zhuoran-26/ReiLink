@@ -130,6 +130,126 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full audio path", "raw transcript"]
   },
   {
+    "id": "audio-capture-permission-denied",
+    "category": "voice_input_local_asr",
+    "precondition": "User clicks Test Recording and denies microphone permission",
+    "expected_status": "audio_probe_permission_denied",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI shows 麦克风权限被拒绝 and does not crash.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full audio path"]
+  },
+  {
+    "id": "audio-capture-recording-started",
+    "category": "voice_input_local_asr",
+    "precondition": "User clicks Test Recording and grants microphone permission",
+    "expected_status": "audio_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Renderer starts MediaRecorder only after the user click and shows 正在录音.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full audio path"]
+  },
+  {
+    "id": "audio-capture-recording-stopped",
+    "category": "voice_input_local_asr",
+    "precondition": "User stops Test Recording manually",
+    "expected_status": "audio_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Recorder stops, all audio tracks are stopped, and the blob is sent only to the local backend probe endpoint.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full audio path"]
+  },
+  {
+    "id": "audio-capture-max-duration",
+    "category": "voice_input_local_asr",
+    "precondition": "User does not stop Test Recording manually",
+    "expected_status": "audio_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Recording stops automatically at the maximum duration and does not become continuous listening.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full audio path"]
+  },
+  {
+    "id": "audio-capture-upload-succeeded",
+    "category": "voice_input_local_asr",
+    "precondition": "A small browser-recorded audio blob is posted to the backend audio probe endpoint",
+    "expected_status": "audio_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend writes the blob to a temp file, checks size and MIME summary, deletes the temp file, and returns a safe summary.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path", "raw exception"]
+  },
+  {
+    "id": "audio-capture-file-too-large",
+    "category": "voice_input_local_asr",
+    "precondition": "Audio probe upload exceeds the maximum size",
+    "expected_status": "audio_probe_file_too_large",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend returns 录音文件过大 and does not keep the uploaded audio.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
+  },
+  {
+    "id": "audio-capture-invalid-audio",
+    "category": "voice_input_local_asr",
+    "precondition": "Audio probe receives empty data or an unsupported MIME type",
+    "expected_status": "audio_probe_invalid_audio",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend returns 录音数据无效 without exposing the payload.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
+  },
+  {
+    "id": "audio-capture-temp-file-cleaned",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Audio probe writes a temp file",
+    "expected_status": "audio_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Temporary audio is deleted immediately and UI shows 临时音频已清理.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
+  },
+  {
+    "id": "audio-capture-cleanup-failed",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Backend cannot delete the temp audio file on the first cleanup attempt",
+    "expected_status": "audio_probe_cleanup_failed",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Backend returns 临时音频清理失败 with no temp path or raw exception.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path", "raw exception"]
+  },
+  {
+    "id": "audio-capture-no-transcription",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Audio capture probe succeeds",
+    "expected_status": "audio_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "No ASR is called, no transcript is produced, and the chat input remains unchanged.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "audio content", "base64 audio"]
+  },
+  {
+    "id": "audio-capture-no-auto-send",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Audio capture probe succeeds while the chat input is empty",
+    "expected_status": "audio_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "No chat request is sent, memory is not written, retrieval is not triggered, and game context extraction is not triggered.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "audio content", "base64 audio"]
+  },
+  {
+    "id": "audio-capture-privacy",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Audio capture lifecycle events are visible in Event Stream and Debug Panel",
+    "expected_status": "audio_probe_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI shows duration, size, MIME, and cleanup status only; it does not show paths or audio data.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path", "raw exception", "full local filesystem path"]
+  },
+  {
     "id": "local-asr-transcription-completed",
     "category": "voice_input_local_asr",
     "precondition": "Local ASR is ready and a short push-to-talk recording is transcribed",

@@ -49,6 +49,19 @@ test("mock backend chat flow works", async ({ page }) => {
       }
     })
   );
+  await page.route("**/api/voice-input/audio/probe", (route) =>
+    route.fulfill({
+      json: {
+        status: "audio_probe_succeeded",
+        available: true,
+        display_message: "录音测试完成，临时音频已清理",
+        duration_ms: 3000,
+        size_bytes: 16,
+        mime_type: "audio/webm",
+        temporary_file_cleaned: true
+      }
+    })
+  );
   await page.route("**/api/settings", (route) =>
     route.fulfill({
       json: {

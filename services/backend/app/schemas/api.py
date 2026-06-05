@@ -271,6 +271,29 @@ class LocalAsrProbeResponse(BaseModel):
     duration_ms: int = 0
 
 
+AudioProbeStatus = Literal[
+    "audio_probe_not_supported",
+    "audio_probe_permission_denied",
+    "audio_probe_recording_failed",
+    "audio_probe_upload_failed",
+    "audio_probe_succeeded",
+    "audio_probe_file_too_large",
+    "audio_probe_invalid_audio",
+    "audio_probe_cleanup_failed",
+    "audio_probe_error",
+]
+
+
+class AudioProbeResponse(BaseModel):
+    status: AudioProbeStatus
+    available: bool = False
+    display_message: str
+    duration_ms: int = 0
+    size_bytes: int = 0
+    mime_type: str | None = None
+    temporary_file_cleaned: bool = False
+
+
 class MemoryProvenanceItem(BaseModel):
     source: Literal["profile", "episode", "current_session"]
     field: str

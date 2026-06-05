@@ -99,17 +99,24 @@ describe("package-local standalone resources", () => {
     );
   });
 
-  it("adds a microphone usage description to packaged app metadata", async () => {
+  it("adds Chinese audio permission descriptions to packaged app metadata", async () => {
     const { setPlistString } = await loadPackageLocal();
     const plist = "<plist><dict></dict></plist>";
 
-    const result = setPlistString(
+    const microphoneResult = setPlistString(
       plist,
       "NSMicrophoneUsageDescription",
-      "ReiLink 使用麦克风进行本地按键语音输入。不会保存或上传音频。"
+      "ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。"
+    );
+    const audioCaptureResult = setPlistString(
+      plist,
+      "NSAudioCaptureUsageDescription",
+      "ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。"
     );
 
-    expect(result).toContain("<key>NSMicrophoneUsageDescription</key>");
-    expect(result).toContain("不会保存或上传音频");
+    expect(microphoneResult).toContain("<key>NSMicrophoneUsageDescription</key>");
+    expect(microphoneResult).toContain("用户主动触发的语音输入测试");
+    expect(audioCaptureResult).toContain("<key>NSAudioCaptureUsageDescription</key>");
+    expect(audioCaptureResult).toContain("用户主动触发的语音输入测试");
   });
 });

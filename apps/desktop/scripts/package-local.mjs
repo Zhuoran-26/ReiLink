@@ -17,6 +17,7 @@ const outputApp = path.join(outputDir, `${appName}.app`);
 const electronApp = path.join(desktopRoot, "node_modules", "electron", "dist", "Electron.app");
 const rendererDist = path.join(desktopRoot, "dist");
 const electronDist = path.join(desktopRoot, "dist-electron");
+const microphoneUsageDescription = "ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。";
 
 export async function packageLocal(options = {}) {
   const currentPlatform = options.platform ?? platform;
@@ -64,7 +65,8 @@ export async function packageLocal(options = {}) {
   plist = setPlistString(plist, "CFBundleName", appName);
   plist = setPlistString(plist, "CFBundleDisplayName", appName);
   plist = setPlistString(plist, "CFBundleIdentifier", "com.reilink.desktop");
-  plist = setPlistString(plist, "NSMicrophoneUsageDescription", "ReiLink 使用麦克风进行本地按键语音输入。不会保存或上传音频。");
+  plist = setPlistString(plist, "NSMicrophoneUsageDescription", microphoneUsageDescription);
+  plist = setPlistString(plist, "NSAudioCaptureUsageDescription", microphoneUsageDescription);
   await writeFile(plistPath, plist, "utf8");
 
   await chmod(path.join(outputApp, "Contents", "MacOS", "Electron"), 0o755).catch(() => undefined);

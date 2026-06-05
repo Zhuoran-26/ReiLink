@@ -25,6 +25,7 @@ import {
   api,
   ApiRequestError,
   AppSettings,
+  AudioProbeResponse,
   ChatDebugResponse,
   GameContextResponse,
   GameDetectionResponse,
@@ -44,6 +45,7 @@ import {
 } from "../shared/api";
 import type { ReiLinkEvent } from "../shared/events";
 import type { BackendRuntimeStatus } from "../shared/runtime";
+import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
 import { eventBus } from "./eventBus";
 import { voiceInput, type VoiceInputStatus } from "./voiceInput";
 import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
@@ -795,6 +797,25 @@ const voiceInputReasonText = (reason?: string, status?: string) => {
   return labels[reason] ?? "语音输入失败";
 };
 
+const audioCaptureReasonText = (reason?: string, status?: string) => {
+  const labels: Record<string, string> = {
+    not_supported: "当前环境不支持录音",
+    permission_denied: "麦克风权限被拒绝",
+    recording_failed: "录音失败",
+    user_stop: "用户停止",
+    max_duration: "达到最长录音时间",
+    unmount: "窗口关闭"
+  };
+  if (!reason && !status) return "无";
+  return labels[reason ?? ""] ?? debugText(status ?? reason);
+};
+
+const audioBytesText = (sizeBytes: number) => {
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return "0 KB";
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  return `${(sizeBytes / 1024).toFixed(1)} KB`;
+};
+
 const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
   if (source === "test_voice") return "测试语音";
   return "";
@@ -848,6 +869,21 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [voiceInputReasonText(event.reason, event.status), event.character_count ? `${event.character_count} 字` : "", event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
     case "voice_input_unavailable":
       return [voiceInputReasonText(event.reason, event.status), event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "audio_capture_started":
+      return `最长 ${event.duration_ms ?? 0} ms`;
+    case "audio_capture_completed":
+      return [`${event.duration_ms} ms`, audioBytesText(event.size_bytes), debugText(event.mime_type)].filter(Boolean).join(" / ");
+    case "audio_capture_stopped":
+      return [audioCaptureReasonText(event.reason), event.duration_ms ? `${event.duration_ms} ms` : ""].filter(Boolean).join(" / ");
+    case "audio_capture_error":
+      return audioCaptureReasonText(event.reason, event.status);
+    case "audio_temp_file_cleaned":
+      return [
+        event.temporary_file_cleaned ? "已清理" : "未清理",
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.size_bytes ? audioBytesText(event.size_bytes) : "",
+        debugText(event.mime_type)
+      ].filter(Boolean).join(" / ");
     default:
       return "event";
   }
@@ -877,7 +913,12 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     voice_input_completed: "语音输入完成",
     voice_input_stopped: "语音输入已停止",
     voice_input_error: "语音输入失败",
-    voice_input_unavailable: "语音输入不可用"
+    voice_input_unavailable: "语音输入不可用",
+    audio_capture_started: "录音测试开始",
+    audio_capture_completed: "录音测试完成",
+    audio_capture_stopped: "录音已停止",
+    audio_capture_error: "录音测试失败",
+    audio_temp_file_cleaned: "临时音频已清理"
   };
   return labels[type];
 };
@@ -960,6 +1001,40 @@ const localAsrProbeHint = (probe: LocalAsrProbeResponse | null, checking: boolea
   if (!configReady) return "配置就绪后才能检查本地 ASR。";
   if (!probe) return "检查只确认识别程序能否启动，不代表已经可以转写语音。";
   return probe.display_message;
+};
+
+const audioProbeStatusText = (
+  captureStatus: AudioCaptureStatus,
+  uploading: boolean,
+  result: AudioProbeResponse | null
+) => {
+  if (captureStatus.phase === "recording") return "正在录音";
+  if (uploading) return "正在上传临时音频";
+  if (!captureStatus.supported) return "当前环境不支持录音";
+  if (captureStatus.lastError === "麦克风权限被拒绝") return "权限被拒绝";
+  if (captureStatus.lastError) return "录音失败";
+  if (!result) return "未测试";
+  const labels: Record<AudioProbeResponse["status"], string> = {
+    audio_probe_not_supported: "当前环境不支持录音",
+    audio_probe_permission_denied: "权限被拒绝",
+    audio_probe_recording_failed: "录音失败",
+    audio_probe_upload_failed: "上传失败",
+    audio_probe_succeeded: "录音测试完成",
+    audio_probe_file_too_large: "录音文件过大",
+    audio_probe_invalid_audio: "录音无效",
+    audio_probe_cleanup_failed: "临时音频清理失败",
+    audio_probe_error: "录音失败"
+  };
+  return labels[result.status] ?? "未测试";
+};
+
+const audioProbeHint = (captureStatus: AudioCaptureStatus, uploading: boolean, result: AudioProbeResponse | null) => {
+  if (captureStatus.phase === "recording") return "正在录制短音频。不会转写，也不会自动发送。";
+  if (uploading) return "正在上传到本机后端做临时文件清理测试。";
+  if (captureStatus.lastError) return captureStatus.lastError;
+  if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
+  if (!result) return `只测试麦克风录音和临时文件清理，不做语音识别。最长 ${Math.round(MAX_RECORDING_DURATION_MS / 1000)} 秒。`;
+  return result.display_message;
 };
 
 const appendTranscriptToInput = (current: string, transcript: string) => {
@@ -1149,6 +1224,9 @@ export function App() {
   const [localAsrStatus, setLocalAsrStatus] = useState<LocalAsrStatus>(emptyLocalAsrStatus);
   const [localAsrProbe, setLocalAsrProbe] = useState<LocalAsrProbeResponse | null>(null);
   const [localAsrProbeChecking, setLocalAsrProbeChecking] = useState(false);
+  const [audioCaptureStatus, setAudioCaptureStatus] = useState<AudioCaptureStatus>(() => audioCapture.getStatus());
+  const [audioProbeResult, setAudioProbeResult] = useState<AudioProbeResponse | null>(null);
+  const [audioProbeUploading, setAudioProbeUploading] = useState(false);
   const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
@@ -1466,6 +1544,51 @@ export function App() {
     }
   };
 
+  const runAudioCaptureProbe = async () => {
+    if (audioCaptureStatus.phase === "recording") {
+      audioCapture.stop("user_stop");
+      return;
+    }
+    if (!audioCaptureStatus.supported || audioProbeUploading) return;
+    setAudioProbeResult(null);
+    await audioCapture.start({
+      durationMs: 3000,
+      onRecorded: (recording) => {
+        setAudioProbeUploading(true);
+        void api.probeAudio(recording.blob, recording.durationMs)
+          .then((result) => {
+            setAudioProbeResult(result);
+            eventBus.emit({
+              type: "audio_temp_file_cleaned",
+              timestamp: new Date().toISOString(),
+              duration_ms: result.duration_ms,
+              size_bytes: result.size_bytes,
+              mime_type: result.mime_type ?? undefined,
+              temporary_file_cleaned: result.temporary_file_cleaned
+            });
+          })
+          .catch(() => {
+            setAudioProbeResult({
+              status: "audio_probe_upload_failed",
+              available: false,
+              display_message: "录音上传失败",
+              duration_ms: recording.durationMs,
+              size_bytes: recording.sizeBytes,
+              mime_type: recording.mimeType,
+              temporary_file_cleaned: false
+            });
+            eventBus.emit({
+              type: "audio_capture_error",
+              timestamp: new Date().toISOString(),
+              reason: "upload_failed",
+              status: "录音上传失败"
+            });
+          })
+          .finally(() => setAudioProbeUploading(false));
+      }
+    });
+  };
+
   const updateBackendAutoStart = async (enabled: boolean) => {
     const runtime = window.reilinkRuntime;
     if (!runtime) return;
@@ -1567,6 +1690,14 @@ export function App() {
     return () => {
       unsubscribe();
       voiceInput.stop("unmount");
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = audioCapture.subscribe(setAudioCaptureStatus);
+    return () => {
+      unsubscribe();
+      audioCapture.stop("unmount");
     };
   }, []);
 
@@ -2433,6 +2564,27 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <RefreshCw size={14} />
                   检查本地 ASR
                 </button>
+                <div className="settingRow static">
+                  <span>录音测试 / Audio Capture Test</span>
+                  <strong>{audioProbeStatusText(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</strong>
+                </div>
+                <p className="settingHint">{audioProbeHint(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</p>
+                {audioProbeResult && (
+                  <p className="settingHint">
+                    {audioBytesText(audioProbeResult.size_bytes)}。临时音频已清理：{audioProbeResult.temporary_file_cleaned ? "是" : "否"}
+                    {audioProbeResult.mime_type ? `。格式：${debugText(audioProbeResult.mime_type)}` : ""}
+                  </p>
+                )}
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  aria-label={audioCaptureStatus.phase === "recording" ? "停止录音 / Stop Recording" : "测试录音 / Test Recording"}
+                  disabled={audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
+                  onClick={() => void runAudioCaptureProbe()}
+                >
+                  <Mic size={14} />
+                  {audioCaptureStatus.phase === "recording" ? "停止录音" : "测试录音"}
+                </button>
               </div>
               <label className="settingRow">
                 <span>自动启动本地后端</span>
@@ -3177,6 +3329,30 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dt>检查耗时</dt>
                         <dd>{localAsrProbe ? `${localAsrProbe.duration_ms} ms` : "无"}</dd>
                       </div>
+                      <div>
+                        <dt>录音测试</dt>
+                        <dd>{audioProbeStatusText(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</dd>
+                      </div>
+                      <div>
+                        <dt>录音测试说明</dt>
+                        <dd>{debugText(audioProbeHint(audioCaptureStatus, audioProbeUploading, audioProbeResult))}</dd>
+                      </div>
+                      <div>
+                        <dt>录音时长</dt>
+                        <dd>{audioProbeResult ? `${audioProbeResult.duration_ms} ms` : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>录音大小</dt>
+                        <dd>{audioProbeResult ? audioBytesText(audioProbeResult.size_bytes) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>录音格式</dt>
+                        <dd>{debugText(audioProbeResult?.mime_type)}</dd>
+                      </div>
+                      <div>
+                        <dt>临时音频清理</dt>
+                        <dd>{audioProbeResult ? (audioProbeResult.temporary_file_cleaned ? "是" : "否") : "无"}</dd>
+                      </div>
                     </dl>
                   </section>
 
@@ -3486,6 +3662,23 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                                   binary_name: localAsrProbe.binary_name,
                                   model_name: localAsrProbe.model_name,
                                   duration_ms: localAsrProbe.duration_ms
+                                }
+                              : null
+                          },
+                          audio_capture: {
+                            supported: audioCaptureStatus.supported,
+                            phase: audioCaptureStatus.phase,
+                            last_error: audioCaptureStatus.lastError,
+                            uploading: audioProbeUploading,
+                            probe: audioProbeResult
+                              ? {
+                                  status: audioProbeResult.status,
+                                  available: audioProbeResult.available,
+                                  display_message: audioProbeResult.display_message,
+                                  duration_ms: audioProbeResult.duration_ms,
+                                  size_bytes: audioProbeResult.size_bytes,
+                                  mime_type: audioProbeResult.mime_type,
+                                  temporary_file_cleaned: audioProbeResult.temporary_file_cleaned
                                 }
                               : null
                           },

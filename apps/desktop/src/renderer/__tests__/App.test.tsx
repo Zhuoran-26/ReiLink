@@ -4,11 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App, EventStreamPanel, INTERIM_PLACEHOLDERS } from "../App";
+import { audioCapture } from "../audioCapture";
 import { eventBus } from "../eventBus";
 import { voiceInput } from "../voiceInput";
 import { voiceOutput } from "../voiceOutput";
 import type {
   AppSettings,
+  AudioProbeResponse,
   GameContextResponse,
   GameDetectionResponse,
   LocalAsrProbeResponse,
@@ -731,9 +733,20 @@ const localAsrProbeResponse: LocalAsrProbeResponse = {
   duration_ms: 42
 };
 
+const audioProbeResponse: AudioProbeResponse = {
+  status: "audio_probe_succeeded",
+  available: true,
+  display_message: "录音测试完成，临时音频已清理",
+  duration_ms: 3000,
+  size_bytes: 16,
+  mime_type: "audio/webm",
+  temporary_file_cleaned: true
+};
+
 let appSettingsStore = { ...appSettings };
 let localAsrStatusStore: LocalAsrStatus = { ...localAsrStatus };
 let localAsrProbeResponseStore: LocalAsrProbeResponse = { ...localAsrProbeResponse };
+let audioProbeResponseStore: AudioProbeResponse = { ...audioProbeResponse };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
 let omitVoiceOutputFromSettings = false;
@@ -840,6 +853,32 @@ class MockSpeechRecognition {
   }
 }
 
+class MockMediaRecorder {
+  static instances: MockMediaRecorder[] = [];
+  static isTypeSupported = vi.fn(() => true);
+
+  state: RecordingState = "inactive";
+  mimeType: string;
+  stream: MediaStream;
+  ondataavailable: ((event: BlobEvent) => void) | null = null;
+  onstop: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  start = vi.fn(() => {
+    this.state = "recording";
+  });
+  stop = vi.fn(() => {
+    this.state = "inactive";
+    this.ondataavailable?.({ data: new Blob(["fake-webm-audio"], { type: this.mimeType }) } as BlobEvent);
+    this.onstop?.();
+  });
+
+  constructor(stream: MediaStream, options?: MediaRecorderOptions) {
+    this.stream = stream;
+    this.mimeType = options?.mimeType || "audio/webm";
+    MockMediaRecorder.instances.push(this);
+  }
+}
+
 const installSpeechRecognitionMock = (kind: "standard" | "webkit" = "standard") => {
   MockSpeechRecognition.instances = [];
   MockSpeechRecognition.startError = null;
@@ -868,6 +907,27 @@ const installMediaDevicesMock = (permission: "prompt" | "granted" | "denied" = "
       query: vi.fn(async () => ({ state: permission }))
     }
   });
+};
+
+const installAudioCaptureMock = (options: { permissionDenied?: boolean } = {}) => {
+  MockMediaRecorder.instances = [];
+  MockMediaRecorder.isTypeSupported = vi.fn(() => true);
+  const stop = vi.fn();
+  const stream = {
+    getTracks: vi.fn(() => [{ stop }])
+  } as unknown as MediaStream;
+  const getUserMedia = vi.fn(async () => {
+    if (options.permissionDenied) {
+      throw new DOMException("Permission denied", "NotAllowedError");
+    }
+    return stream;
+  });
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getUserMedia }
+  });
+  vi.stubGlobal("MediaRecorder", MockMediaRecorder);
+  return { getUserMedia, stopTrack: stop, stream, recorder: MockMediaRecorder };
 };
 
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
@@ -919,6 +979,7 @@ const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
   localAsrStatusStore = { ...localAsrStatus };
   localAsrProbeResponseStore = { ...localAsrProbeResponse };
+  audioProbeResponseStore = { ...audioProbeResponse };
   gameContextStore = { ...gameContext };
   proactiveStatusStore = { ...proactiveStatus };
   setupStatusStore = { ...setupStatus };
@@ -1062,6 +1123,9 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/voice-input/local-asr/probe") && init?.method === "POST") {
     return Response.json(localAsrProbeResponseStore);
   }
+  if (url.endsWith("/api/voice-input/audio/probe") && init?.method === "POST") {
+    return Response.json(audioProbeResponseStore);
+  }
   if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
   if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
   if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1100,6 +1164,7 @@ describe("App", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    audioCapture.resetForTest();
     voiceInput.resetForTest();
     voiceOutput.resetForTest();
     vi.restoreAllMocks();
@@ -1107,6 +1172,7 @@ describe("App", () => {
     Reflect.deleteProperty(window, "SpeechRecognition");
     Reflect.deleteProperty(window, "webkitSpeechRecognition");
     Reflect.deleteProperty(window, "reilinkRuntime");
+    Reflect.deleteProperty(window, "MediaRecorder");
     Reflect.deleteProperty(navigator, "mediaDevices");
     Reflect.deleteProperty(navigator, "permissions");
     eventBus.clear();
@@ -1949,6 +2015,92 @@ describe("App", () => {
 
     expect(input).toHaveValue("");
     expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows Audio Capture Test unavailable when MediaRecorder is missing", async () => {
+    installMediaDevicesMock("prompt");
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("录音测试 / Audio Capture Test");
+    expect(voiceInputSettings).toHaveTextContent("当前环境不支持录音");
+    expect(screen.getByRole("button", { name: "测试录音 / Test Recording" })).toBeDisabled();
+  });
+
+  it("shows readable Audio Capture permission denied errors", async () => {
+    installAudioCaptureMock({ permissionDenied: true });
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("权限被拒绝"));
+    expect(voiceInputSettings).toHaveTextContent("麦克风权限被拒绝");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "audio_capture_error", reason: "permission_denied" })])
+    );
+  });
+
+  it("records audio, stops tracks, uploads blob, and shows cleanup success", async () => {
+    const audioMock = installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
+    expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(MockMediaRecorder.instances).toHaveLength(1);
+    expect(MockMediaRecorder.instances[0].start).toHaveBeenCalled();
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("正在录音");
+
+    await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("录音测试完成"));
+    expect(voiceInputSettings).toHaveTextContent("临时音频已清理：是");
+    expect(voiceInputSettings).toHaveTextContent("格式：audio/webm");
+    expect(audioMock.stopTrack).toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/audio/probe"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(Blob),
+        headers: expect.objectContaining({ "Content-Type": "audio/webm" })
+      })
+    );
+  });
+
+  it("Audio Capture probe does not fill chat input or auto send", async () => {
+    installAudioCaptureMock();
+    render(<App />);
+
+    const input = await screen.findByLabelText("聊天输入");
+    await userEvent.click(screen.getByRole("button", { name: "测试录音 / Test Recording" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("录音测试完成"));
+
+    expect(input).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("Audio Capture Event Stream summaries do not expose audio content or paths", async () => {
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("录音测试完成"));
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("录音测试开始"));
+    expect(eventStream).toHaveTextContent("录音测试完成");
+    expect(eventStream).toHaveTextContent("临时音频已清理");
+    expect(eventStream).not.toHaveTextContent("fake-webm-audio");
+    expect(eventStream).not.toHaveTextContent("base64");
+    expect(eventStream).not.toHaveTextContent("/tmp");
+    expect(eventStream).not.toHaveTextContent("Authorization");
+    expect(eventStream).not.toHaveTextContent(".env");
   });
 
   it("starts SpeechRecognition when Voice Input is supported", async () => {
