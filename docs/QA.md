@@ -375,13 +375,13 @@
 - `below_threshold` 依赖当前知识包内容和评分阈值，手动测试时可优先用机器可读场景文件里的弱相关示例。
 - `no_pack` 依赖 catalog 中仍有 planned / unsupported 游戏；当前可用 `只狼` 做手动场景。
 - Voice Input v1 只使用 Web Speech Recognition，不接商业 ASR，不上传音频，不保存音频。真实识别取决于 dev / packaged Electron 的 Chromium runtime 是否暴露该 API，以及 macOS 麦克风权限。
-- 如果 Electron runtime 不支持 Web Speech Recognition，当前预期是明确 unavailable fallback；用户可临时使用系统听写输入到聊天框。后续可评估 whisper.cpp / 本地 whisper binary 等 local ASR，但不属于当前 v1.1。
+- 如果 Electron runtime 不支持 Web Speech Recognition，当前预期是明确 unavailable fallback；用户可临时使用系统听写输入到聊天框。Local ASR staged foundation 已接入 config detection、CLI probe、audio probe 和 backend transcription bridge，但真实 whisper.cpp / model 兼容性与 audio format conversion 仍属后续手动 QA / 实现任务。
 - Voice Output 的真实播放取决于系统语音包和浏览器 speech synthesis 支持；失败必须被 UI 允许并可见，不应被视为崩溃。
 - Manual QA 不替代 automated tests；它用于 release 前的人眼回归与打包行为确认。
 
 ## English
 
-This QA Pack is a reusable manual regression checklist for ReiLink before future Voice Input, Live2D, Overlay, and embedding RAG work. It focuses on the current foundations: local runtime, Voice Output, Knowledge Retrieval, Event Stream, Debug privacy, and packaged app smoke testing.
+This QA Pack is a reusable manual regression checklist for ReiLink before future Voice / Local ASR expansion, Live2D, Overlay, and embedding RAG work. It focuses on the current foundations: local runtime, Voice Output, Voice Input fallback, Local ASR staged foundation, Knowledge Retrieval, Event Stream, Debug privacy, and packaged app smoke testing.
 
 Machine-readable scenarios live at:
 
