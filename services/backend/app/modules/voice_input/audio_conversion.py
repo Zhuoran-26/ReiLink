@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.modules.voice_input.audio_probe import _safe_mime_type
+from app.modules.voice_input.local_asr_settings import CONVERTER_ENV, _safe_name, resolve_local_asr_settings
 
 
-CONVERTER_ENV = "REILINK_AUDIO_CONVERTER_BINARY"
 AUDIO_CONVERSION_TIMEOUT_SECONDS = 10
 
 _WAV_PCM_MIME_TYPES = {
@@ -40,12 +40,12 @@ def conversion_required_for_mime(mime_type: str | None) -> bool:
 
 
 def get_audio_converter_summary() -> tuple[bool, str | None]:
-    converter_path = _configured_converter_path()
-    if converter_path is None:
-        raw_path = os.environ.get(CONVERTER_ENV)
-        safe_name = Path(raw_path).name if raw_path else None
-        return False, safe_name or None
-    return True, converter_path.name
+    resolved_path = resolve_local_asr_settings().converter_path
+    if resolved_path is None:
+        return False, None
+    if not resolved_path.is_file() or not os.access(resolved_path, os.X_OK):
+        return False, _safe_name(resolved_path)
+    return True, resolved_path.name
 
 
 def prepare_audio_for_asr(
@@ -151,10 +151,9 @@ def prepare_audio_for_asr(
 
 
 def _configured_converter_path() -> Path | None:
-    raw_path = os.environ.get(CONVERTER_ENV)
-    if not raw_path:
+    candidate = resolve_local_asr_settings().converter_path
+    if candidate is None:
         return None
-    candidate = Path(raw_path).expanduser()
     if not candidate.is_file() or not os.access(candidate, os.X_OK):
         return None
     return candidate

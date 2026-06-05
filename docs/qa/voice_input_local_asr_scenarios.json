@@ -760,5 +760,114 @@
     "should_upload_audio": false,
     "expected_behavior": "The unconfirmed transcript stays only in the input and does not write memory, refresh prompt preview, trigger retrieval, or change game context.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "full transcript", "full temp path"]
+  },
+  {
+    "id": "local-asr-settings-ui-visible",
+    "category": "voice_input_local_asr",
+    "precondition": "No saved Local ASR user settings exist and env fallback is empty",
+    "expected_status": "local_asr_not_configured",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Settings -> Voice Input shows 本地 ASR 配置 / Local ASR Setup with binary, model, converter inputs and Save / Clear / Refresh controls.",
+    "forbidden_terms": [
+      ".env",
+      "Authorization",
+      "api_key",
+      "raw transcript",
+      "full local path"
+    ]
+  },
+  {
+    "id": "local-asr-settings-save-safe-summary",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "User enters local ASR binary, model, and converter paths in Local ASR Setup and clicks Save",
+    "expected_status": "local_asr_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Settings save calls the settings API, then the UI shows only safe basenames and a user_settings source; the full paths are not shown outside editing inputs.",
+    "forbidden_terms": [
+      ".env",
+      "Authorization",
+      "api_key",
+      "raw stdout",
+      "raw stderr",
+      "full binary path",
+      "full model path",
+      "full converter path"
+    ]
+  },
+  {
+    "id": "local-asr-settings-priority-over-env",
+    "category": "voice_input_local_asr",
+    "precondition": "Both saved user settings and Local ASR env fallback are present with different binary and model paths",
+    "expected_status": "local_asr_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Status, probe, transcription, and conversion use saved user settings first and report source user_settings with safe basenames only.",
+    "forbidden_terms": [
+      ".env",
+      "Authorization",
+      "api_key",
+      "raw env",
+      "full binary path",
+      "full model path",
+      "full converter path"
+    ]
+  },
+  {
+    "id": "local-asr-settings-clear-env-fallback",
+    "category": "voice_input_local_asr",
+    "precondition": "Saved user settings exist and env fallback is configured",
+    "expected_status": "local_asr_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Clear removes saved user settings and the next settings/status response falls back to env or none without exposing full env values.",
+    "forbidden_terms": [
+      ".env",
+      "Authorization",
+      "api_key",
+      "raw env",
+      "full binary path",
+      "full model path",
+      "full converter path"
+    ]
+  },
+  {
+    "id": "local-asr-settings-debug-raw-privacy",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR settings have been saved and status has been refreshed",
+    "expected_status": "local_asr_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Event Stream, Debug Panel, and Raw JSON include only booleans, source, and safe binary/model/converter basenames.",
+    "forbidden_terms": [
+      ".env",
+      "Authorization",
+      "api_key",
+      "raw stdout",
+      "raw stderr",
+      "full binary path",
+      "full model path",
+      "full converter path"
+    ]
+  },
+  {
+    "id": "local-asr-packaged-settings-persisted",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Packaged app is opened without shell Local ASR env, user saves Local ASR paths in Settings, closes, and reopens the app",
+    "expected_status": "local_asr_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Packaged app reloads Local ASR settings from the user data directory, remains non-black-screen, and keeps Debug/Event/Raw surfaces free of full paths.",
+    "forbidden_terms": [
+      ".env",
+      "Authorization",
+      "api_key",
+      "raw stdout",
+      "raw stderr",
+      "full binary path",
+      "full model path",
+      "full converter path"
+    ]
   }
 ]

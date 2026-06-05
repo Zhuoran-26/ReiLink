@@ -14,6 +14,7 @@ import type {
   GameContextResponse,
   GameDetectionResponse,
   LocalAsrProbeResponse,
+  LocalAsrSettings,
   LocalAsrStatus,
   LocalAsrTranscriptionResponse,
   ProactiveCheckResponse,
@@ -722,7 +723,21 @@ const localAsrStatus: LocalAsrStatus = {
   model_present: false,
   display_message: "本地语音识别未配置",
   safe_binary_name: null,
-  safe_model_name: null
+  safe_model_name: null,
+  converter_configured: false,
+  safe_converter_name: null,
+  source: "none"
+};
+
+const localAsrSettings: LocalAsrSettings = {
+  configured: false,
+  binary_configured: false,
+  model_configured: false,
+  converter_configured: false,
+  safe_binary_name: null,
+  safe_model_name: null,
+  safe_converter_name: null,
+  source: "none"
 };
 
 const localAsrProbeResponse: LocalAsrProbeResponse = {
@@ -770,6 +785,7 @@ const localAsrTranscriptionResponse: LocalAsrTranscriptionResponse = {
 
 let appSettingsStore = { ...appSettings };
 let localAsrStatusStore: LocalAsrStatus = { ...localAsrStatus };
+let localAsrSettingsStore: LocalAsrSettings = { ...localAsrSettings };
 let localAsrProbeResponseStore: LocalAsrProbeResponse = { ...localAsrProbeResponse };
 let audioProbeResponseStore: AudioProbeResponse = { ...audioProbeResponse };
 let localAsrTranscriptionResponseStore: LocalAsrTranscriptionResponse = { ...localAsrTranscriptionResponse };
@@ -1004,6 +1020,7 @@ const setChatScroll = (
 const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
   localAsrStatusStore = { ...localAsrStatus };
+  localAsrSettingsStore = { ...localAsrSettings };
   localAsrProbeResponseStore = { ...localAsrProbeResponse };
   audioProbeResponseStore = { ...audioProbeResponse };
   localAsrTranscriptionResponseStore = { ...localAsrTranscriptionResponse };
@@ -1042,7 +1059,21 @@ const setLocalAsrReady = () => {
     model_present: true,
     display_message: "本地语音识别配置已就绪",
     safe_binary_name: "whisper-cli",
-    safe_model_name: "ggml-base.bin"
+    safe_model_name: "ggml-base.bin",
+    converter_configured: true,
+    safe_converter_name: "ffmpeg",
+    source: "user_settings"
+  };
+  localAsrSettingsStore = {
+    ...localAsrSettings,
+    configured: true,
+    binary_configured: true,
+    model_configured: true,
+    converter_configured: true,
+    safe_binary_name: "whisper-cli",
+    safe_model_name: "ggml-base.bin",
+    safe_converter_name: "ffmpeg",
+    source: "user_settings"
   };
 };
 
@@ -1088,6 +1119,58 @@ const settingsResponse = (url: string, init?: RequestInit) => {
     return Response.json(settingsPayload());
   }
   if (url.endsWith("/api/settings")) return Response.json(settingsPayload());
+  return null;
+};
+
+const safePathName = (value: unknown) => {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return value.trim().split(/[\\/]/).filter(Boolean).pop() ?? "已配置";
+};
+
+const localAsrSettingsResponse = (url: string, init?: RequestInit) => {
+  if (url.endsWith("/api/voice-input/local-asr/settings") && init?.method === "PUT") {
+    const body = JSON.parse(String(init.body ?? "{}")) as {
+      local_asr_binary_path?: string | null;
+      local_asr_model_path?: string | null;
+      audio_converter_binary_path?: string | null;
+    };
+    const safeBinaryName = safePathName(body.local_asr_binary_path) ?? localAsrSettingsStore.safe_binary_name;
+    const safeModelName = safePathName(body.local_asr_model_path) ?? localAsrSettingsStore.safe_model_name;
+    const safeConverterName = safePathName(body.audio_converter_binary_path) ?? localAsrSettingsStore.safe_converter_name;
+    localAsrSettingsStore = {
+      configured: Boolean(safeBinaryName && safeModelName),
+      binary_configured: Boolean(safeBinaryName),
+      model_configured: Boolean(safeModelName),
+      converter_configured: Boolean(safeConverterName),
+      safe_binary_name: safeBinaryName,
+      safe_model_name: safeModelName,
+      safe_converter_name: safeConverterName,
+      source: safeBinaryName || safeModelName || safeConverterName ? "user_settings" : "none"
+    };
+    localAsrStatusStore = {
+      ...localAsrStatusStore,
+      status: safeBinaryName && safeModelName ? "local_asr_ready" : "local_asr_not_configured",
+      available: Boolean(safeBinaryName && safeModelName),
+      binary_configured: Boolean(safeBinaryName),
+      binary_present: Boolean(safeBinaryName),
+      binary_executable: Boolean(safeBinaryName),
+      model_configured: Boolean(safeModelName),
+      model_present: Boolean(safeModelName),
+      converter_configured: Boolean(safeConverterName),
+      safe_binary_name: safeBinaryName,
+      safe_model_name: safeModelName,
+      safe_converter_name: safeConverterName,
+      source: localAsrSettingsStore.source,
+      display_message: safeBinaryName && safeModelName ? "本地语音识别配置已就绪" : "本地语音识别未配置"
+    };
+    return Response.json(localAsrSettingsStore);
+  }
+  if (url.endsWith("/api/voice-input/local-asr/settings") && init?.method === "DELETE") {
+    localAsrSettingsStore = { ...localAsrSettings };
+    localAsrStatusStore = { ...localAsrStatus };
+    return Response.json(localAsrSettingsStore);
+  }
+  if (url.endsWith("/api/voice-input/local-asr/settings")) return Response.json(localAsrSettingsStore);
   return null;
 };
 
@@ -1160,6 +1243,8 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   if (proactive) return proactive;
   const setup = setupStatusResponse(url);
   if (setup) return setup;
+  const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+  if (localAsrSettingsValue) return localAsrSettingsValue;
   if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
   if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
   if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
@@ -1877,6 +1962,134 @@ describe("App", () => {
     expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto");
     expect(voiceInputSettings).not.toHaveTextContent("REILINK_LOCAL_ASR_BINARY");
     expect(voiceInputSettings).not.toHaveTextContent("REILINK_LOCAL_ASR_MODEL");
+  });
+
+  it("shows Local ASR setup controls with safe settings summary", async () => {
+    render(<App />);
+
+    const setup = await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+
+    expect(setup).toHaveTextContent("本地 ASR 配置 / Local ASR Setup");
+    expect(setup).toHaveTextContent("未配置");
+    expect(setup).toHaveTextContent("识别程序：未配置");
+    expect(setup).toHaveTextContent("模型：未配置");
+    expect(setup).toHaveTextContent("转换工具：未配置");
+    expect(screen.getByLabelText("本地识别程序 / ASR Binary")).toBeInTheDocument();
+    expect(screen.getByLabelText("模型文件 / Model File")).toBeInTheDocument();
+    expect(screen.getByLabelText("音频转换工具 / Audio Converter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存配置 / Save" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "清除配置 / Clear" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "重新检测 / Refresh Status" })).toBeEnabled();
+  });
+
+  it("saves Local ASR paths, shows basenames, and keeps debug surfaces safe", async () => {
+    const binaryPath = "/Users/aragoto/private/whisper-cli";
+    const modelPath = "/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin";
+    const converterPath = "/Users/aragoto/tools/ffmpeg";
+    render(<App />);
+
+    await userEvent.type(await screen.findByLabelText("本地识别程序 / ASR Binary"), binaryPath);
+    await userEvent.type(screen.getByLabelText("模型文件 / Model File"), modelPath);
+    await userEvent.type(screen.getByLabelText("音频转换工具 / Audio Converter"), converterPath);
+    await userEvent.click(screen.getByRole("button", { name: "保存配置 / Save" }));
+
+    const setup = await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+    await waitFor(() => expect(setup).toHaveTextContent("本地 ASR 配置已保存"));
+    expect(setup).toHaveTextContent("用户配置");
+    expect(setup).toHaveTextContent("识别程序：whisper-cli");
+    expect(setup).toHaveTextContent("模型：ggml-base.bin");
+    expect(setup).toHaveTextContent("转换工具：ffmpeg");
+    expect(screen.getByLabelText("本地识别程序 / ASR Binary")).toHaveValue("");
+    expect(screen.getByLabelText("模型文件 / Model File")).toHaveValue("");
+    expect(screen.getByLabelText("音频转换工具 / Audio Converter")).toHaveValue("");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/settings"),
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          local_asr_binary_path: binaryPath,
+          local_asr_model_path: modelPath,
+          audio_converter_binary_path: converterPath
+        })
+      })
+    );
+
+    const rawJson = screen.getByText("原始 JSON").closest("details");
+    expect(rawJson).not.toBeNull();
+    expect(rawJson).toHaveTextContent("safe_converter_name");
+    expect(rawJson).toHaveTextContent("whisper-cli");
+    expect(rawJson).toHaveTextContent("ggml-base.bin");
+    expect(rawJson).toHaveTextContent("ffmpeg");
+    const debugSummary = screen.getByText("配置摘要").closest("div");
+    expect(debugSummary).toHaveTextContent("whisper-cli");
+    expect(debugSummary).toHaveTextContent("ggml-base.bin");
+    expect(debugSummary).toHaveTextContent("ffmpeg");
+    const combinedSafeSurface = [
+      setup.textContent,
+      rawJson?.textContent,
+      debugSummary?.textContent,
+      JSON.stringify(eventBus.getRecentEvents(50))
+    ].join("\n");
+    expect(combinedSafeSurface).not.toContain(binaryPath);
+    expect(combinedSafeSurface).not.toContain(modelPath);
+    expect(combinedSafeSurface).not.toContain(converterPath);
+  });
+
+  it("clears Local ASR settings and refreshes local status", async () => {
+    setLocalAsrReady();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "清除配置 / Clear" }));
+
+    const setup = await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+    await waitFor(() => expect(setup).toHaveTextContent("本地 ASR 配置已清除"));
+    expect(setup).toHaveTextContent("识别程序：未配置");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeDisabled();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/settings"),
+      expect.objectContaining({ method: "DELETE" })
+    );
+  });
+
+  it("refreshes Local ASR settings and status on demand", async () => {
+    render(<App />);
+    await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+    const initialSettingsCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/api/voice-input/local-asr/settings")
+    ).length;
+    localAsrSettingsStore = {
+      ...localAsrSettings,
+      configured: true,
+      binary_configured: true,
+      model_configured: true,
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin",
+      source: "env"
+    };
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin",
+      source: "env"
+    };
+
+    await userEvent.click(screen.getByRole("button", { name: "重新检测 / Refresh Status" }));
+
+    const setup = screen.getByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+    await waitFor(() => expect(setup).toHaveTextContent("本地 ASR 状态已刷新"));
+    expect(setup).toHaveTextContent("环境变量");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeEnabled();
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/api/voice-input/local-asr/settings")
+    ).length).toBeGreaterThan(initialSettingsCalls);
   });
 
   it("shows Local ASR model missing with safe file names only", async () => {
@@ -3595,6 +3808,10 @@ describe("App", () => {
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return Promise.resolve(localAsrSettingsValue);
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) {
           return Promise.resolve(Response.json(localAsrStatusStore));
         }
@@ -3660,6 +3877,10 @@ describe("App", () => {
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return Promise.resolve(localAsrSettingsValue);
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) {
           return Promise.resolve(Response.json(localAsrStatusStore));
         }
@@ -3732,6 +3953,10 @@ describe("App", () => {
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return Promise.resolve(localAsrSettingsValue);
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) {
           return Promise.resolve(Response.json(localAsrStatusStore));
         }
@@ -3908,6 +4133,10 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, status: "idle", game_id: null, game_name: null });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
@@ -3950,6 +4179,10 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "sekiro", game_name: "只狼" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
@@ -3997,6 +4230,10 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "hollow_knight", game_name: "空洞骑士" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
@@ -4045,6 +4282,10 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
@@ -4094,6 +4335,10 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: null, game_name: "星之门遗迹" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
@@ -4134,6 +4379,10 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
@@ -4211,6 +4460,10 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
         if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);

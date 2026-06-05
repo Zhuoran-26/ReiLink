@@ -14,6 +14,7 @@ This guide is for optional, manual verification of ReiLink Local ASR with a user
 - Before the user clicks send, the transcript does not enter memory, prompt preview, knowledge retrieval, or game context.
 - Local ASR uses `zh` as the backend whisper language by default. UI language may show `zh-CN`; the backend normalizes that to `zh` before launching the local CLI.
 - ASR transcripts are trimmed, whitespace-collapsed, and lightly normalized from Traditional Chinese to Simplified Chinese before they fill the input. This only applies to ASR transcripts.
+- Local ASR paths can be saved from Settings into the backend user data directory. They are not written into the repo, `.env`, or packaged `.app`.
 
 ## 2. Prerequisites / 前置条件
 
@@ -53,7 +54,24 @@ Do not place model files or binaries inside:
 
 Do not commit model files, whisper binaries, converter binaries, or local path configuration.
 
-## 4. Environment Variables / 环境变量
+## 4. Configuration Sources / 配置来源
+
+Recommended path:
+
+1. Open Settings -> Voice Input.
+2. In `本地 ASR 配置 / Local ASR Setup`, enter the local ASR binary path, model path, and optional audio converter path.
+3. Click `保存配置 / Save`.
+4. Click `重新检测 / Refresh Status`.
+
+The saved file lives under the backend user data directory as:
+
+```text
+<settings.data_dir>/local_asr_settings.json
+```
+
+It stores only the user-provided path strings. The save action does not execute, download, or copy any binary or model.
+
+Environment variables are still supported as fallback when no saved user setting exists.
 
 Configure these in the shell or app launch environment you use for ReiLink:
 
@@ -68,11 +86,12 @@ Notes:
 - `REILINK_LOCAL_ASR_BINARY` should point to an executable ASR CLI.
 - `REILINK_LOCAL_ASR_MODEL` should point to an existing local model file.
 - `REILINK_AUDIO_CONVERTER_BINARY` is optional for WAV / PCM input, but usually needed for browser-recorded WebM / Ogg.
-- ReiLink UI and Debug Panel show safe filenames, not full configured paths.
+- Saved user settings take priority over env fallback. Clearing saved settings returns ReiLink to env fallback or unconfigured state.
+- ReiLink UI, Debug Panel, Raw JSON, and Event Stream show safe filenames, not full configured paths.
 - Do not paste full local paths into public issues, screenshots, logs, or docs.
 - Do not commit these environment variables, model files, or binary files.
 
-For packaged `.app` runs, environment variable propagation can differ from a dev shell. Launch the app from an environment where these variables are present, or use your own local launcher outside the repo. Do not edit the packaged `.app` to store paths.
+For packaged `.app` runs, Settings persistence is preferred because environment variable propagation can differ from a dev shell. Do not edit the packaged `.app` to store paths.
 
 ## 5. Verification Flow / 验证流程
 
@@ -80,24 +99,26 @@ Run these steps in order:
 
 1. Start ReiLink.
 2. Open Settings -> Voice Input.
-3. Check Local ASR config status:
+3. In `本地 ASR 配置 / Local ASR Setup`, save or confirm the safe basenames for:
    - binary configured
    - model configured
+   - converter configured when needed
+4. Check Local ASR config status:
    - ready / missing / not executable
-4. Click `Check Local ASR`.
+5. Click `Check Local ASR`.
    - Expected: the local ASR binary can start.
    - This only proves the binary launches. It does not prove model compatibility or transcription quality.
-5. Click `Audio Capture Test`.
+6. Click `Audio Capture Test`.
    - Expected: recording completes, duration / size / MIME are shown, and temporary audio is cleaned.
-6. If the recorded MIME is WebM / Ogg and `Record & Transcribe` reports conversion not configured, set `REILINK_AUDIO_CONVERTER_BINARY` and restart ReiLink from that environment.
+7. If the recorded MIME is WebM / Ogg and `Record & Transcribe` reports conversion not configured, save an audio converter path in Settings or configure `REILINK_AUDIO_CONVERTER_BINARY` fallback.
    - Expected conversion status: `audio_conversion_succeeded`, or `audio_conversion_not_needed` for WAV / PCM.
-7. Click `Record & Transcribe`.
+8. Click `Record & Transcribe`.
    - Expected: the cleaned transcript fills the chat input.
    - Expected: Traditional Chinese output, if any, is lightly normalized to Simplified Chinese before it appears in the input.
    - Expected: ReiLink does not auto-send the transcript.
-8. Review, edit, or delete the transcript manually.
-9. Click send only when you decide the transcript should enter chat.
-10. Expand Event Stream / Debug Panel and confirm:
+9. Review, edit, or delete the transcript manually.
+10. Click send only when you decide the transcript should enter chat.
+11. Expand Event Stream / Debug Panel and confirm:
     - no full transcript
     - no full binary / model / converter / audio path
     - no raw stdout / stderr
@@ -107,13 +128,13 @@ Run these steps in order:
 
 | Status | Meaning | What to check |
 | --- | --- | --- |
-| `local_asr_not_configured` | Local ASR env is missing or incomplete. | Set both local ASR binary and model environment variables in the app launch environment. |
-| `local_asr_binary_missing` | The configured binary file was not found. | Check that the file exists locally and the app was launched with the intended env. |
+| `local_asr_not_configured` | Local ASR user settings and env fallback are missing or incomplete. | Save both local ASR binary and model paths in Settings, or set both environment variables in the app launch environment. |
+| `local_asr_binary_missing` | The configured binary file was not found. | Check that the file exists locally and that Settings or env fallback points to the intended file. |
 | `local_asr_binary_not_executable` | The configured binary exists but cannot execute. | Check local file permissions and macOS security prompts. |
 | `local_asr_model_missing` | The configured model file was not found. | Check that the model file exists locally and is not inside the repo or `.app`. |
 | `local_asr_probe_failed` | The binary started but probe returned failure. | Check whether the binary supports a help-style launch and is compatible with ReiLink's current assumptions. |
 | `local_asr_probe_timed_out` | The probe did not finish in time. | Try a lighter binary, check whether the binary is blocked by the system, or run manual CLI checks outside ReiLink. |
-| `audio_conversion_not_configured` | Recorded audio needs conversion but no usable converter is configured. | Set `REILINK_AUDIO_CONVERTER_BINARY` to a local ffmpeg-like executable and restart ReiLink from that environment. |
+| `audio_conversion_not_configured` | Recorded audio needs conversion but no usable converter is configured. | Save a local ffmpeg-like executable path in Settings, or set `REILINK_AUDIO_CONVERTER_BINARY` fallback. |
 | `audio_conversion_failed` | Converter started but did not produce a usable WAV file. | Check converter compatibility and whether it can read the recorded MIME format. |
 | `audio_conversion_timed_out` | Converter exceeded the conversion timeout. | Try a faster converter, shorter recording, or a lower-load machine. |
 | `local_asr_transcription_no_text` | ASR completed but no safe transcript was parsed. | Check microphone input, model language fit, model quality, and output format compatibility. ReiLink shows `没有识别到可用文本`. |
@@ -140,8 +161,9 @@ Accuracy tips:
 - Transcript only fills the input.
 - Transcript normalization is local and limited to ASR transcript cleanup. It does not modify typed user text, assistant replies, memory, or knowledge files.
 - Before the user clicks send, transcript does not enter memory, prompt preview, knowledge retrieval, or game context.
+- Full paths may appear in Settings editing inputs and `<settings.data_dir>/local_asr_settings.json`; they should not appear in Event Stream, Debug Panel, Raw JSON, chat, screenshots, or docs.
 - Event Stream does not show the full transcript.
-- Event Stream / Debug Panel may show safe character count, duration, MIME, conversion status, cleanup status, safe binary/model basename, language, and whether the transcript was `已规范为简体中文`.
+- Event Stream / Debug Panel may show safe character count, duration, MIME, conversion status, cleanup status, safe binary/model/converter basename, language, and whether the transcript was `已规范为简体中文`.
 - Debug Panel does not show raw stdout / stderr, raw exception, full transcript, or full local paths.
 
 ## 8. Known Limitations / 已知限制
@@ -149,7 +171,7 @@ Accuracy tips:
 - Real whisper.cpp CLI flags can differ between versions and builds.
 - ReiLink currently assumes a whisper.cpp-like command shape.
 - Audio conversion requires a user-configured local converter.
-- Packaged `.app` environment variables may not match a dev shell environment.
+- Saved Settings are preferred for packaged `.app`; environment variables may not match a dev shell environment.
 - Larger models can be slow.
 - Lower-performance machines can hit transcription or conversion timeouts.
 - Different microphones, permissions, and system privacy settings can affect recording.

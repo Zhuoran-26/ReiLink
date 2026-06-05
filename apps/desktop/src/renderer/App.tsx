@@ -32,6 +32,8 @@ import {
   GameSessionDebugResponse,
   GameStatus,
   LocalAsrProbeResponse,
+  LocalAsrSettings,
+  LocalAsrSettingsUpdate,
   LocalAsrStatus,
   LocalAsrTranscriptionResponse,
   LocalDataStatus,
@@ -72,6 +74,11 @@ type DemoResetAction =
 
 type LocalAsrTranscriptionPhase = "idle" | "recording" | "transcribing";
 type MainVoiceInputProvider = "local_asr" | "web_speech" | "unavailable";
+type LocalAsrSettingsDraft = {
+  local_asr_binary_path: string;
+  local_asr_model_path: string;
+  audio_converter_binary_path: string;
+};
 
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
 
@@ -308,7 +315,27 @@ const emptyLocalAsrStatus: LocalAsrStatus = {
   model_present: false,
   display_message: "本地语音识别未配置",
   safe_binary_name: null,
-  safe_model_name: null
+  safe_model_name: null,
+  converter_configured: false,
+  safe_converter_name: null,
+  source: "none"
+};
+
+const emptyLocalAsrSettings: LocalAsrSettings = {
+  configured: false,
+  binary_configured: false,
+  model_configured: false,
+  converter_configured: false,
+  safe_binary_name: null,
+  safe_model_name: null,
+  safe_converter_name: null,
+  source: "none"
+};
+
+const emptyLocalAsrSettingsDraft: LocalAsrSettingsDraft = {
+  local_asr_binary_path: "",
+  local_asr_model_path: "",
+  audio_converter_binary_path: ""
 };
 
 const emptyLocalAsrTranscription: LocalAsrTranscriptionResponse = {
@@ -1084,6 +1111,24 @@ const localAsrStatusText = (status: LocalAsrStatus) => {
   return labels[status.status] ?? "未配置";
 };
 
+const localAsrSourceText = (source: LocalAsrSettings["source"]) => {
+  const labels: Record<LocalAsrSettings["source"], string> = {
+    user_settings: "用户配置",
+    env: "环境变量",
+    none: "未配置"
+  };
+  return labels[source] ?? "未配置";
+};
+
+const localAsrSafeNameText = (name: string | null | undefined) => debugText(name, "未配置");
+
+const localAsrSettingsSummaryText = (settings: LocalAsrSettings) =>
+  [
+    `识别程序：${localAsrSafeNameText(settings.safe_binary_name)}`,
+    `模型：${localAsrSafeNameText(settings.safe_model_name)}`,
+    `转换工具：${localAsrSafeNameText(settings.safe_converter_name)}`
+  ].join("。");
+
 const localAsrStatusDetail = (status: LocalAsrStatus) => {
   if (status.status === "local_asr_ready") return "本地语音识别配置已就绪。主聊天语音按钮会优先使用本地 ASR，转写后仍需手动发送。";
   if (status.status === "local_asr_binary_missing") return "未找到本地识别程序。主聊天语音按钮会回退到 Web Speech，或显示不可用。";
@@ -1470,6 +1515,10 @@ export function App() {
   const [setupStatus, setSetupStatus] = useState<SetupStatus>(emptySetupStatus);
   const [localDataStatus, setLocalDataStatus] = useState<LocalDataStatus>(emptyLocalDataStatus);
   const [localAsrStatus, setLocalAsrStatus] = useState<LocalAsrStatus>(emptyLocalAsrStatus);
+  const [localAsrSettings, setLocalAsrSettings] = useState<LocalAsrSettings>(emptyLocalAsrSettings);
+  const [localAsrSettingsDraft, setLocalAsrSettingsDraft] = useState<LocalAsrSettingsDraft>(emptyLocalAsrSettingsDraft);
+  const [localAsrSettingsBusy, setLocalAsrSettingsBusy] = useState("");
+  const [localAsrSettingsMessage, setLocalAsrSettingsMessage] = useState("");
   const [localAsrProbe, setLocalAsrProbe] = useState<LocalAsrProbeResponse | null>(null);
   const [localAsrProbeChecking, setLocalAsrProbeChecking] = useState(false);
   const [audioCaptureStatus, setAudioCaptureStatus] = useState<AudioCaptureStatus>(() => audioCapture.getStatus());
@@ -1719,6 +1768,7 @@ export function App() {
         )
       );
       setLocalDataStatus(await api.localDataStatus());
+      setLocalAsrSettings(await api.localAsrSettings());
       const currentLocalAsrStatus = await api.localAsrStatus();
       setLocalAsrStatus(currentLocalAsrStatus);
       if (currentLocalAsrStatus.status !== "local_asr_ready") setLocalAsrProbe(null);
@@ -1772,6 +1822,76 @@ export function App() {
       setLastError(productErrorText(error, "设置更新失败"));
     } finally {
       setSettingsBusy("");
+    }
+  };
+
+  const refreshLocalAsrSetup = async (message = "本地 ASR 状态已刷新") => {
+    setLocalAsrSettingsBusy("refresh");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const currentSettings = await api.localAsrSettings();
+      const currentStatus = await api.localAsrStatus();
+      setLocalAsrSettings(currentSettings);
+      setLocalAsrStatus(currentStatus);
+      if (currentStatus.status !== "local_asr_ready") setLocalAsrProbe(null);
+      setLocalAsrSettingsMessage(message);
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "本地 ASR 配置刷新失败"));
+    } finally {
+      setLocalAsrSettingsBusy("");
+    }
+  };
+
+  const saveLocalAsrSettings = async () => {
+    const payload: LocalAsrSettingsUpdate = {};
+    const binaryPath = localAsrSettingsDraft.local_asr_binary_path.trim();
+    const modelPath = localAsrSettingsDraft.local_asr_model_path.trim();
+    const converterPath = localAsrSettingsDraft.audio_converter_binary_path.trim();
+    if (binaryPath) payload.local_asr_binary_path = binaryPath;
+    if (modelPath) payload.local_asr_model_path = modelPath;
+    if (converterPath) payload.audio_converter_binary_path = converterPath;
+    if (Object.keys(payload).length === 0) {
+      setLocalAsrSettingsMessage("请输入要保存的路径；清除请使用 Clear。");
+      return;
+    }
+    setLocalAsrSettingsBusy("save");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const updated = await api.updateLocalAsrSettings(payload);
+      setLocalAsrSettings(updated);
+      setLocalAsrSettingsDraft(emptyLocalAsrSettingsDraft);
+      const currentStatus = await api.localAsrStatus();
+      setLocalAsrStatus(currentStatus);
+      if (currentStatus.status !== "local_asr_ready") setLocalAsrProbe(null);
+      setLocalAsrSettingsMessage("本地 ASR 配置已保存");
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "本地 ASR 配置保存失败"));
+    } finally {
+      setLocalAsrSettingsBusy("");
+    }
+  };
+
+  const clearLocalAsrSettings = async () => {
+    setLocalAsrSettingsBusy("clear");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const updated = await api.clearLocalAsrSettings();
+      setLocalAsrSettings(updated);
+      setLocalAsrSettingsDraft(emptyLocalAsrSettingsDraft);
+      const currentStatus = await api.localAsrStatus();
+      setLocalAsrStatus(currentStatus);
+      if (currentStatus.status !== "local_asr_ready") setLocalAsrProbe(null);
+      setLocalAsrSettingsMessage("本地 ASR 配置已清除");
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "本地 ASR 配置清除失败"));
+    } finally {
+      setLocalAsrSettingsBusy("");
     }
   };
 
@@ -2958,6 +3078,100 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 </div>
                 <p className="settingHint">{localAsrStatus.display_message}</p>
                 <p className="settingHint">{localAsrStatusDetail(localAsrStatus)}</p>
+                <div className="localAsrSetupPanel" role="group" aria-label="本地 ASR 配置 / Local ASR Setup">
+                  <div className="settingRow static">
+                    <span>本地 ASR 配置 / Local ASR Setup</span>
+                    <strong>{localAsrSourceText(localAsrSettings.source)}</strong>
+                  </div>
+                  <p className="settingHint">{localAsrSettingsSummaryText(localAsrSettings)}</p>
+                  <label className="localAsrPathField">
+                    <span>本地识别程序 / ASR Binary</span>
+                    <input
+                      aria-label="本地识别程序 / ASR Binary"
+                      autoComplete="off"
+                      disabled={localAsrSettingsBusy !== ""}
+                      placeholder="/opt/homebrew/bin/whisper-cli"
+                      spellCheck={false}
+                      type="text"
+                      value={localAsrSettingsDraft.local_asr_binary_path}
+                      onChange={(event) =>
+                        setLocalAsrSettingsDraft((current) => ({
+                          ...current,
+                          local_asr_binary_path: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="localAsrPathField">
+                    <span>模型文件 / Model File</span>
+                    <input
+                      aria-label="模型文件 / Model File"
+                      autoComplete="off"
+                      disabled={localAsrSettingsBusy !== ""}
+                      placeholder="~/Library/Application Support/ReiLink/models/ggml-base.bin"
+                      spellCheck={false}
+                      type="text"
+                      value={localAsrSettingsDraft.local_asr_model_path}
+                      onChange={(event) =>
+                        setLocalAsrSettingsDraft((current) => ({
+                          ...current,
+                          local_asr_model_path: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="localAsrPathField">
+                    <span>音频转换工具 / Audio Converter</span>
+                    <input
+                      aria-label="音频转换工具 / Audio Converter"
+                      autoComplete="off"
+                      disabled={localAsrSettingsBusy !== ""}
+                      placeholder="/opt/homebrew/bin/ffmpeg"
+                      spellCheck={false}
+                      type="text"
+                      value={localAsrSettingsDraft.audio_converter_binary_path}
+                      onChange={(event) =>
+                        setLocalAsrSettingsDraft((current) => ({
+                          ...current,
+                          audio_converter_binary_path: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="localAsrSetupActions">
+                    <button
+                      className="smallButton quiet"
+                      type="button"
+                      aria-label="保存配置 / Save"
+                      disabled={localAsrSettingsBusy !== ""}
+                      onClick={() => void saveLocalAsrSettings()}
+                    >
+                      <FileText size={14} />
+                      保存配置
+                    </button>
+                    <button
+                      className="smallButton quiet"
+                      type="button"
+                      aria-label="清除配置 / Clear"
+                      disabled={localAsrSettingsBusy !== ""}
+                      onClick={() => void clearLocalAsrSettings()}
+                    >
+                      <X size={14} />
+                      清除配置
+                    </button>
+                    <button
+                      className="smallButton quiet"
+                      type="button"
+                      aria-label="重新检测 / Refresh Status"
+                      disabled={localAsrSettingsBusy !== ""}
+                      onClick={() => void refreshLocalAsrSetup()}
+                    >
+                      <RefreshCw size={14} />
+                      重新检测
+                    </button>
+                  </div>
+                  {localAsrSettingsMessage && <p className="settingHint">{localAsrSettingsMessage}</p>}
+                </div>
                 {(localAsrStatus.safe_binary_name || localAsrStatus.safe_model_name) && (
                   <p className="settingHint">
                     {localAsrStatus.safe_binary_name ? `识别程序：${debugText(localAsrStatus.safe_binary_name)}` : ""}
@@ -3803,9 +4017,21 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{debugText(localAsrStatus.safe_model_name)}</dd>
                       </div>
                       <div>
+                        <dt>音频转换工具</dt>
+                        <dd>{debugText(localAsrSettings.safe_converter_name ?? localAsrStatus.safe_converter_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>配置来源</dt>
+                        <dd>{localAsrSourceText(localAsrSettings.source)}</dd>
+                      </div>
+                      <div>
+                        <dt>配置摘要</dt>
+                        <dd>{debugText(localAsrSettingsSummaryText(localAsrSettings))}</dd>
+                      </div>
+                      <div>
                         <dt>配置状态</dt>
                         <dd>
-                          binary {localAsrStatus.binary_configured ? "已配置" : "未配置"} / model {localAsrStatus.model_configured ? "已配置" : "未配置"}
+                          binary {localAsrStatus.binary_configured ? "已配置" : "未配置"} / model {localAsrStatus.model_configured ? "已配置" : "未配置"} / converter {localAsrSettings.converter_configured ? "已配置" : "未配置"}
                         </dd>
                       </div>
                       <div>
@@ -4244,9 +4470,22 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             binary_executable: localAsrStatus.binary_executable,
                             model_configured: localAsrStatus.model_configured,
                             model_present: localAsrStatus.model_present,
+                            converter_configured: localAsrStatus.converter_configured,
+                            source: localAsrStatus.source,
                             display_message: localAsrStatus.display_message,
                             safe_binary_name: localAsrStatus.safe_binary_name,
                             safe_model_name: localAsrStatus.safe_model_name,
+                            safe_converter_name: localAsrStatus.safe_converter_name,
+                            settings: {
+                              configured: localAsrSettings.configured,
+                              binary_configured: localAsrSettings.binary_configured,
+                              model_configured: localAsrSettings.model_configured,
+                              converter_configured: localAsrSettings.converter_configured,
+                              source: localAsrSettings.source,
+                              safe_binary_name: localAsrSettings.safe_binary_name,
+                              safe_model_name: localAsrSettings.safe_model_name,
+                              safe_converter_name: localAsrSettings.safe_converter_name
+                            },
                             probe: localAsrProbe
                               ? {
                                   status: localAsrProbe.status,

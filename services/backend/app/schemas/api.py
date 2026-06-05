@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictStr
 
 SupportStatus = Literal["supported", "detected_only", "planned", "unsupported"]
 
@@ -239,6 +239,25 @@ LocalAsrStatus = Literal[
     "local_asr_ready",
 ]
 
+LocalAsrSettingsSource = Literal["user_settings", "env", "none"]
+
+
+class LocalAsrSettingsResponse(BaseModel):
+    configured: bool = False
+    binary_configured: bool = False
+    model_configured: bool = False
+    converter_configured: bool = False
+    safe_binary_name: str | None = None
+    safe_model_name: str | None = None
+    safe_converter_name: str | None = None
+    source: LocalAsrSettingsSource = "none"
+
+
+class LocalAsrSettingsUpdate(BaseModel):
+    local_asr_binary_path: StrictStr | None = None
+    local_asr_model_path: StrictStr | None = None
+    audio_converter_binary_path: StrictStr | None = None
+
 
 class LocalAsrStatusResponse(BaseModel):
     status: LocalAsrStatus
@@ -251,6 +270,9 @@ class LocalAsrStatusResponse(BaseModel):
     display_message: str
     safe_binary_name: str | None = None
     safe_model_name: str | None = None
+    converter_configured: bool = False
+    safe_converter_name: str | None = None
+    source: LocalAsrSettingsSource = "none"
 
 
 LocalAsrProbeStatus = Literal[

@@ -3,10 +3,17 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from app.modules.voice_input.audio_probe import MAX_AUDIO_UPLOAD_BYTES, process_audio_probe
 from app.modules.voice_input.local_asr_config import get_local_asr_status
 from app.modules.voice_input.local_asr_probe import probe_local_asr_binary
+from app.modules.voice_input.local_asr_settings import (
+    clear_local_asr_settings,
+    get_local_asr_settings_summary,
+    update_local_asr_settings,
+)
 from app.modules.voice_input.local_asr_transcribe import transcribe_local_asr_audio
 from app.schemas.api import (
     AudioProbeResponse,
     LocalAsrProbeResponse,
+    LocalAsrSettingsResponse,
+    LocalAsrSettingsUpdate,
     LocalAsrStatusResponse,
     LocalAsrTranscriptionResponse,
 )
@@ -17,6 +24,21 @@ router = APIRouter(tags=["voice-input"])
 @router.get("/voice-input/local-asr/status", response_model=LocalAsrStatusResponse)
 def local_asr_status() -> LocalAsrStatusResponse:
     return get_local_asr_status()
+
+
+@router.get("/voice-input/local-asr/settings", response_model=LocalAsrSettingsResponse)
+def local_asr_settings() -> LocalAsrSettingsResponse:
+    return get_local_asr_settings_summary()
+
+
+@router.put("/voice-input/local-asr/settings", response_model=LocalAsrSettingsResponse)
+def save_local_asr_settings(update: LocalAsrSettingsUpdate) -> LocalAsrSettingsResponse:
+    return update_local_asr_settings(update)
+
+
+@router.delete("/voice-input/local-asr/settings", response_model=LocalAsrSettingsResponse)
+def delete_local_asr_settings() -> LocalAsrSettingsResponse:
+    return clear_local_asr_settings()
 
 
 @router.post("/voice-input/local-asr/probe", response_model=LocalAsrProbeResponse)

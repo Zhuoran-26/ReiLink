@@ -115,6 +115,25 @@ export type LocalAsrStatusValue =
   | "local_asr_model_missing"
   | "local_asr_ready";
 
+export type LocalAsrSettingsSource = "user_settings" | "env" | "none";
+
+export type LocalAsrSettings = {
+  configured: boolean;
+  binary_configured: boolean;
+  model_configured: boolean;
+  converter_configured: boolean;
+  safe_binary_name: string | null;
+  safe_model_name: string | null;
+  safe_converter_name: string | null;
+  source: LocalAsrSettingsSource;
+};
+
+export type LocalAsrSettingsUpdate = {
+  local_asr_binary_path?: string | null;
+  local_asr_model_path?: string | null;
+  audio_converter_binary_path?: string | null;
+};
+
 export type LocalAsrStatus = {
   status: LocalAsrStatusValue;
   available: boolean;
@@ -126,6 +145,9 @@ export type LocalAsrStatus = {
   display_message: string;
   safe_binary_name: string | null;
   safe_model_name: string | null;
+  converter_configured: boolean;
+  safe_converter_name: string | null;
+  source: LocalAsrSettingsSource;
 };
 
 export type LocalAsrProbeStatusValue =
@@ -550,6 +572,16 @@ export const api = {
   settings: () => request<AppSettings>("/api/settings"),
   localDataStatus: () => request<LocalDataStatus>("/api/local-data/status"),
   localAsrStatus: () => request<LocalAsrStatus>("/api/voice-input/local-asr/status"),
+  localAsrSettings: () => request<LocalAsrSettings>("/api/voice-input/local-asr/settings"),
+  updateLocalAsrSettings: (settings: LocalAsrSettingsUpdate) =>
+    request<LocalAsrSettings>("/api/voice-input/local-asr/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings)
+    }),
+  clearLocalAsrSettings: () =>
+    request<LocalAsrSettings>("/api/voice-input/local-asr/settings", {
+      method: "DELETE"
+    }),
   probeLocalAsr: () => request<LocalAsrProbeResponse>("/api/voice-input/local-asr/probe", { method: "POST" }),
   transcribeLocalAsr: (blob: Blob, durationMs: number, language = "zh-CN") => {
     const mimeType = blob.type || "application/octet-stream";

@@ -245,7 +245,7 @@ Audio conversion strategy：
 
 - WAV / PCM 输入不转换，直接传给 local ASR。
 - `audio/webm`、`video/webm`、`audio/ogg` 等 browser-recorded 非 WAV 输入需要转换。
-- converter 由用户通过 `REILINK_AUDIO_CONVERTER_BINARY` 配置；ReiLink 不内置、不下载、不提交 ffmpeg 或第三方二进制。
+- converter 由用户通过 Settings 或 `REILINK_AUDIO_CONVERTER_BINARY` fallback 配置；ReiLink 不内置、不下载、不提交 ffmpeg 或第三方二进制。
 - 默认转换命令形状：`[converter, "-y", "-i", input_path, "-ar", "16000", "-ac", "1", output_wav_path]`。
 - converter timeout 为 10 秒。
 - converter 未配置、失败或超时时，不继续调用 local ASR binary。
@@ -288,7 +288,27 @@ Transcript 策略：
 - 成功、失败、超时和异常都尝试清理临时目录中的原始音频、转换音频和 ASR 输出文件。
 - cleanup 失败返回 `local_asr_transcription_cleanup_failed`，并保持响应安全。
 
-## 1.10 Real whisper.cpp compatibility / 真实 whisper.cpp 兼容性
+## 1.10 Local ASR Settings Persistence / Setup UI v1
+
+Local ASR Setup UI v1 让用户在 Settings -> Voice Input 中保存本地 ASR binary、model 和 audio converter 路径。后端保存到 `settings.data_dir/local_asr_settings.json`，不写入 repo、`.env` 或 packaged `.app`。
+
+解析优先级：
+
+```text
+saved user settings
+-> REILINK_LOCAL_ASR_BINARY / REILINK_LOCAL_ASR_MODEL / REILINK_AUDIO_CONVERTER_BINARY fallback
+-> none
+```
+
+API：
+
+- `GET /api/voice-input/local-asr/settings`：只返回 configured booleans、`source` 和 safe basename。
+- `PUT /api/voice-input/local-asr/settings`：保存用户输入的路径字符串；空字符串清除对应字段；不执行、不下载、不复制。
+- `DELETE /api/voice-input/local-asr/settings`：清除用户 settings，并回落到 env fallback 或 none。
+
+`GET /status`、`POST /probe`、`POST /transcribe` 和 audio conversion 都使用同一 resolved settings。完整路径只允许出现在 Settings 编辑输入框和本地 settings JSON 文件中；Event Stream、Debug Panel、Raw JSON、chat 和文档示例不显示真实用户路径。
+
+## 1.11 Real whisper.cpp compatibility / 真实 whisper.cpp 兼容性
 
 真实 whisper.cpp / model / converter 的手动配置和可选 smoke 操作指南见 [`docs/local-asr-manual-setup.md`](local-asr-manual-setup.md)。该指南只描述用户本机准备和手动验证流程；它不代表 ReiLink 内置、下载或再分发模型、ASR binary 或 converter binary。
 
@@ -301,7 +321,7 @@ Transcript 策略：
 - 可选 audio converter，例如用户本机自行安装的 ffmpeg-like executable。
 - 推荐模型目录：`~/Library/Application Support/ReiLink/models`。
 
-配置环境变量：
+优先在 Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 保存路径。环境变量仍可作为 fallback：
 
 ```bash
 export REILINK_LOCAL_ASR_BINARY="/absolute/path/to/whisper-cli"
@@ -316,7 +336,7 @@ export REILINK_AUDIO_CONVERTER_BINARY="/absolute/path/to/ffmpeg"
 1. 运行 config detection：打开 app 或请求 `GET /api/voice-input/local-asr/status`，确认状态为 `local_asr_ready`，UI 只显示安全文件名。
 2. 运行 CLI probe：点击 `检查本地 ASR / Check Local ASR` 或请求 `POST /api/voice-input/local-asr/probe`，确认 binary 可以启动；这一步不传模型、不传音频。
 3. 运行 Audio Capture Test：点击 `测试录音 / Test Recording`，确认 duration、size、MIME 和 cleanup status 正常。
-4. 如果录音格式是 WebM/Ogg，设置 `REILINK_AUDIO_CONVERTER_BINARY` 后再运行 local transcription bridge；未设置时应显示 `尚未配置音频转换工具` 且不调用 ASR。
+4. 如果录音格式是 WebM/Ogg，通过 Settings 或 `REILINK_AUDIO_CONVERTER_BINARY` fallback 配置 converter 后再运行 local transcription bridge；未设置时应显示 `尚未配置音频转换工具` 且不调用 ASR。
 5. 运行 local transcription bridge：点击 `录音并转写 / Record & Transcribe`，确认 transcript 已 trim、折叠空白、必要时轻量繁转简，只进入输入框，不自动发送。
 6. 展开 Event Stream / Debug Panel / Raw JSON，确认只出现字数、language、是否 `已规范为简体中文`、MIME、conversion status、target MIME、duration、size、cleanup、safe binary/model/converter name，不出现完整 transcript、raw stdout/stderr、完整路径或音频内容。
 
@@ -342,10 +362,10 @@ Audio Format Conversion v1 已实现为用户配置的本地 converter bridge：
 - 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context extraction。
 - Event Stream / Debug / Raw JSON 不显示完整 transcript、raw subprocess output、完整路径、base64 audio、API key、`.env` 或 Authorization。
 
-## 1.11 后续实现任务拆分
+## 1.12 后续实现任务拆分
 
 1. Local ASR config detection v1
-   - 当前已实现：读取 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`，检测 binary 是否存在且可执行、model 是否存在。
+   - 当前已实现：解析 Settings 用户配置，fallback 到 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL`，检测 binary 是否存在且可执行、model 是否存在。
    - 当前状态：`local_asr_not_configured`、`local_asr_binary_missing`、`local_asr_binary_not_executable`、`local_asr_model_missing`、`local_asr_ready`。
    - 当前边界：只做配置检测，不调用 whisper 或任何 ASR binary，不录音，不转写，不上传音频，不下载模型，不把模型或用户数据写入 `.app`。
    - UI 只显示中文摘要和安全文件名，不显示完整路径、raw env、raw subprocess output、API key、`.env` 或 raw prompt。
@@ -377,6 +397,11 @@ Audio Format Conversion v1 已实现为用户配置的本地 converter bridge：
    - 风险：完整 transcript、完整路径或 raw subprocess output 泄露。
 
 8. Audio Format Conversion v1
-   - 当前已实现：通过 `REILINK_AUDIO_CONVERTER_BINARY` 配置本地 ffmpeg-like converter，把 WebM/Ogg 等录音格式转为 16 kHz mono WAV。
+   - 当前已实现：通过 Settings 用户配置或 `REILINK_AUDIO_CONVERTER_BINARY` fallback 配置本地 ffmpeg-like converter，把 WebM/Ogg 等录音格式转为 16 kHz mono WAV。
    - 当前边界：不内置、不下载、不提交任何转换 binary；未配置时安全短路且不调用 ASR。
    - 风险：额外 binary、packaging、license、性能、错误映射和用户配置复杂度。
+
+9. Local ASR Settings Persistence / Setup UI v1
+   - 当前已实现：Settings 中保存、清除、刷新本地 ASR binary / model / converter 路径；API 只返回 safe basename。
+   - 当前边界：保存不执行路径；完整路径只在编辑输入框和本地 settings JSON 中出现。
+   - 风险：用户输入错误路径、packaged app 重启持久化验证、不同启动方式的 env fallback 差异。

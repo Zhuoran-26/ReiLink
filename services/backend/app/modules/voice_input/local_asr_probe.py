@@ -1,7 +1,8 @@
 import subprocess
 import time
 
-from app.modules.voice_input.local_asr_config import BINARY_ENV, MODEL_ENV, _configured_path, get_local_asr_status
+from app.modules.voice_input.local_asr_config import get_local_asr_status
+from app.modules.voice_input.local_asr_settings import resolve_local_asr_settings
 from app.schemas.api import LocalAsrProbeResponse
 
 
@@ -22,7 +23,7 @@ def probe_local_asr_binary(timeout_seconds: int = PROBE_TIMEOUT_SECONDS) -> Loca
             duration_ms=_elapsed_ms(started_at),
         )
 
-    binary_path = _configured_path(BINARY_ENV)
+    binary_path = resolve_local_asr_settings().binary_path
     if binary_path is None:
         return LocalAsrProbeResponse(
             status="local_asr_probe_not_ready",

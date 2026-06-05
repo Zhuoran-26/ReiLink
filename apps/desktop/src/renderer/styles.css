@@ -925,6 +925,58 @@ button {
   overflow-wrap: anywhere;
 }
 
+.localAsrSetupPanel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid rgba(145, 164, 213, 0.12);
+  padding-top: 10px;
+}
+
+.localAsrPathField {
+  display: grid;
+  gap: 6px;
+  color: #99a5bf;
+  font-size: 12px;
+}
+
+.localAsrPathField span {
+  color: #dce4f6;
+  font-weight: 620;
+}
+
+.localAsrPathField input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(150, 169, 218, 0.2);
+  border-radius: 10px;
+  outline: none;
+  padding: 0 9px;
+  color: #edf2fb;
+  background: rgba(9, 12, 24, 0.78);
+}
+
+.localAsrPathField input:focus {
+  border-color: rgba(180, 158, 255, 0.46);
+  box-shadow: 0 0 0 3px rgba(141, 116, 221, 0.13);
+}
+
+.localAsrPathField input:disabled {
+  opacity: 0.64;
+}
+
+.localAsrSetupActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.localAsrSetupActions .smallButton {
+  min-width: 0;
+  justify-content: center;
+  white-space: normal;
+}
+
 .settingRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 126px;
@@ -1322,6 +1374,10 @@ button {
   }
 
   .demoResetActions {
+    grid-template-columns: 1fr;
+  }
+
+  .localAsrSetupActions {
     grid-template-columns: 1fr;
   }
 }

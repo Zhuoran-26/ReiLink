@@ -17,7 +17,8 @@ from app.modules.voice_input.audio_conversion import (
     get_audio_converter_summary,
     prepare_audio_for_asr,
 )
-from app.modules.voice_input.local_asr_config import BINARY_ENV, MODEL_ENV, _configured_path, get_local_asr_status
+from app.modules.voice_input.local_asr_config import get_local_asr_status
+from app.modules.voice_input.local_asr_settings import resolve_local_asr_settings
 from app.schemas.api import LocalAsrTranscriptionResponse
 
 
@@ -159,6 +160,7 @@ def transcribe_local_asr_audio(
     temp_root: str | None = None,
 ) -> LocalAsrTranscriptionResponse:
     config = get_local_asr_status()
+    resolved = resolve_local_asr_settings()
     safe_mime_type = _safe_mime_type(mime_type)
     size_bytes = len(audio_bytes)
     safe_duration_ms = max(0, duration_ms)
@@ -212,8 +214,8 @@ def transcribe_local_asr_audio(
             **base_response,
         )
 
-    binary_path = _configured_path(BINARY_ENV)
-    model_path = _configured_path(MODEL_ENV)
+    binary_path = resolved.binary_path
+    model_path = resolved.model_path
     if binary_path is None or model_path is None:
         return LocalAsrTranscriptionResponse(
             status="local_asr_transcription_not_ready",
