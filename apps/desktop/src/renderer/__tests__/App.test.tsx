@@ -3725,6 +3725,30 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("API key");
   });
 
+  it("shows a safe Overlay suppression summary in Event Stream", () => {
+    render(
+      <EventStreamPanel
+        events={[
+          {
+            type: "overlay_visibility_suppressed",
+            timestamp: new Date().toISOString(),
+            reason: "main_window_active"
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).toHaveTextContent("悬浮层暂时隐藏");
+    expect(eventStream).toHaveTextContent("主窗口前台，悬浮层暂时隐藏");
+    expect(eventStream).not.toHaveTextContent("main_window_active");
+    expect(eventStream).not.toHaveTextContent(".env");
+    expect(eventStream).not.toHaveTextContent("/Users/aragoto");
+    expect(eventStream).not.toHaveTextContent("raw stderr");
+  });
+
   it("shows an empty Event Stream state when there are no events", () => {
     render(<EventStreamPanel events={[]} open onOpenChange={() => undefined} />);
 

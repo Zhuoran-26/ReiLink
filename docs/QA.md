@@ -297,13 +297,15 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - 开启后出现独立 Electron overlay window；窗口应是透明、无边框、always-on-top、skipTaskbar。
 - Overlay 整体是半透明短消息层，不应像普通桌面通知窗口。
 - Overlay 不抢主窗口焦点；开启、更新内容和关闭时主聊天输入仍可继续使用。
+- ReiLink 主窗口或 Settings 位于前台时，Overlay 即使已开启也应暂时隐藏，不遮挡 Settings、select、slider、button 或 macOS 关闭 / 最小化 / 全屏按钮。
+- 切换到其他 app 或游戏窗口后，如果 `overlay_enabled=true`，Overlay 可以重新显示；切回 ReiLink 主窗口后应再次自动隐藏。
 - Overlay 不接收输入，不显示输入框、按钮、debug 面板、Raw JSON、memory 或 prompt。
 - 没有消息时显示克制 placeholder，例如 `Rei 正安静待机。`。
 - assistant 最终回复完成后，Overlay 只显示截断后的 Rei 短摘要；不要显示完整 assistant reply。
 - proactive short hint 可作为 Rei 短消息显示；不影响主窗口聊天流程。
 - Overlay 最多显示最近 1～3 条安全短消息，每条消息应保留 `Rei` 小标识或等价头像占位。
 - 关闭 Overlay 后悬浮窗消失，主窗口聊天和 Voice Output / Voice Input / Knowledge Retrieval 不受影响。
-- Event Stream 可显示 `悬浮层开关变化`、`悬浮层设置变化`、`悬浮层位置更新`、`悬浮层显示`、`悬浮层隐藏`、`悬浮层内容更新` 或等价中文安全摘要。
+- Event Stream 可显示 `悬浮层开关变化`、`悬浮层设置变化`、`悬浮层位置更新`、`悬浮层显示`、`悬浮层隐藏`、`悬浮层暂时隐藏`、`悬浮层内容更新` 或等价中文安全摘要。
 - Event Stream 只显示来源、消息数量、字符数、窗口状态、位置预设和透明度数值，不显示完整 assistant reply、完整用户输入、memory、raw prompt、API key、`.env`、Authorization、完整路径、完整 transcript、raw stdout 或 raw stderr。
 - Debug Raw JSON 的 settings 可显示 overlay 开关、位置、透明度和消息数量，不显示 overlay 消息文本。
 - Dev smoke 至少覆盖：启动不黑屏、Settings 中 Overlay 配置可见、默认关闭、开启后窗口出现、位置切换生效、透明度变化可读、消息数量限制生效、不抢焦点、不接收输入、发送消息后显示短摘要、关闭后隐藏、Event Stream 安全事件可见。

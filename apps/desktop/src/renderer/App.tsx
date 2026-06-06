@@ -980,6 +980,8 @@ const eventSummary = (event: ReiLinkEvent) => {
       return overlayPositionText(event.position);
     case "overlay_window_hidden":
       return "悬浮层已隐藏";
+    case "overlay_visibility_suppressed":
+      return "主窗口前台，悬浮层暂时隐藏";
     case "overlay_content_updated":
       return [
         event.source ? debugText(event.source) : "",
@@ -1086,6 +1088,7 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     overlay_window_shown: "悬浮层显示",
     overlay_window_moved: "悬浮层位置更新",
     overlay_window_hidden: "悬浮层隐藏",
+    overlay_visibility_suppressed: "悬浮层暂时隐藏",
     overlay_content_updated: "悬浮层内容更新",
     overlay_error: "悬浮层失败",
     tts_started: "语音开始播放",
@@ -2362,7 +2365,9 @@ export function App() {
       eventBus.emit(
         state.visible
           ? { type: "overlay_window_shown", timestamp: eventTimestamp(), message_count: state.messages.length }
-          : { type: "overlay_window_hidden", timestamp: eventTimestamp() }
+          : enabled
+            ? { type: "overlay_visibility_suppressed", timestamp: eventTimestamp(), reason: "main_window_active" }
+            : { type: "overlay_window_hidden", timestamp: eventTimestamp() }
       );
       if (enabled && state.messages.length === 0 && lastOverlayContentRef.current && runtime.updateOverlayContent) {
         const updated = await runtime.updateOverlayContent(lastOverlayContentRef.current);

@@ -80,6 +80,16 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "memory", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
+    "id": "overlay-main-window-foreground-suppressed",
+    "category": "overlay",
+    "precondition": "Overlay is enabled while the ReiLink main window or Settings remains foreground",
+    "expected_status": "overlay_visibility_suppressed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay remains enabled but is hidden while ReiLink is the active app, so Settings controls and macOS window buttons stay visible and operable; it can reappear after switching away from ReiLink.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
     "id": "overlay-disable-hides-window",
     "category": "overlay",
     "precondition": "Overlay is currently enabled and visible",

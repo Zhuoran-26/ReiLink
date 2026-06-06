@@ -72,6 +72,7 @@ ALLOWED_OVERLAY_STATUSES = {
     "overlay_setting_persisted",
     "overlay_settings_changed",
     "overlay_window_moved",
+    "overlay_visibility_suppressed",
     "overlay_events_safe",
 }
 
@@ -330,6 +331,7 @@ def test_overlay_scenarios_have_required_fields():
         "overlay-position-preset-moves-window",
         "overlay-opacity-background-readable",
         "overlay-message-count-limit",
+        "overlay-main-window-foreground-suppressed",
         "overlay-disable-hides-window",
         "overlay-settings-persist-after-restart",
         "overlay-event-stream-safe",

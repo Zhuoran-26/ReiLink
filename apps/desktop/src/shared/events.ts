@@ -21,6 +21,7 @@ export type ReiLinkEvent =
   | { type: "overlay_window_shown"; timestamp: string; message_count: number }
   | { type: "overlay_window_moved"; timestamp: string; position: OverlayPosition }
   | { type: "overlay_window_hidden"; timestamp: string }
+  | { type: "overlay_visibility_suppressed"; timestamp: string; reason: "main_window_active" }
   | { type: "overlay_content_updated"; timestamp: string; source?: OverlayMessageSource; character_count: number; message_count: number }
   | { type: "overlay_error"; timestamp: string; reason: string }
   | { type: "tts_started"; timestamp: string; character_count: number; source?: "assistant_reply" | "test_voice" }

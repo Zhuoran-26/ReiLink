@@ -11,6 +11,12 @@ type OverlayBounds = {
 
 type OverlayWorkArea = OverlayBounds;
 
+export type OverlayVisibilityContext = {
+  overlayEnabled: boolean;
+  mainWindowFocused: boolean;
+  appActive: boolean;
+};
+
 const OVERLAY_WINDOW_WIDTH = 360;
 const OVERLAY_WINDOW_HEIGHT = 168;
 const OVERLAY_EDGE_MARGIN = 44;
@@ -49,6 +55,12 @@ export const calculateOverlayBounds = (
     y: clampToWorkArea(preferredY, yMin, yMax)
   };
 };
+
+export const shouldOverlayBeVisible = ({
+  overlayEnabled,
+  mainWindowFocused,
+  appActive
+}: OverlayVisibilityContext) => overlayEnabled && !mainWindowFocused && !appActive;
 
 export const createOverlayWindowOptions = (bounds: OverlayBounds, preloadPath: string): BrowserWindowConstructorOptions => ({
   ...bounds,

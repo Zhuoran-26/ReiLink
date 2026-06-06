@@ -4,7 +4,12 @@ import path from "node:path";
 
 import { BackendRuntimeManager } from "./backendRuntime.js";
 import { openLocalDataDir } from "./localData.js";
-import { calculateOverlayBounds, configureOverlayWindowForClickThrough, createOverlayWindowOptions } from "./overlayWindow.js";
+import {
+  calculateOverlayBounds,
+  configureOverlayWindowForClickThrough,
+  createOverlayWindowOptions,
+  shouldOverlayBeVisible
+} from "./overlayWindow.js";
 import {
   createOverlayMessage,
   createOverlayState,
@@ -94,8 +99,25 @@ const overlayBounds = () => {
   return calculateOverlayBounds(workArea, overlayConfig.position);
 };
 
-const showOverlayWindow = () => {
-  if (!overlayEnabled) return overlayState();
+const isMainWindowFocused = () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused());
+
+const shouldShowOverlayWindow = () =>
+  shouldOverlayBeVisible({
+    overlayEnabled,
+    mainWindowFocused: isMainWindowFocused(),
+    appActive: app.isReady() && app.isActive()
+  });
+
+const hideOverlayWindow = () => {
+  if (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()) {
+    overlayWindow.hide();
+  }
+  return broadcastOverlayState();
+};
+
+const applyOverlayVisibility = (createIfNeeded = true) => {
+  if (!shouldShowOverlayWindow()) return hideOverlayWindow();
+  if (!createIfNeeded && (!overlayWindow || overlayWindow.isDestroyed())) return broadcastOverlayState();
   const window = createOverlayWindow();
   window.setBounds(overlayBounds());
   if (!window.isVisible()) {
@@ -105,11 +127,10 @@ const showOverlayWindow = () => {
   return broadcastOverlayState();
 };
 
-const hideOverlayWindow = () => {
-  if (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()) {
-    overlayWindow.hide();
-  }
-  return broadcastOverlayState();
+const scheduleOverlayVisibilityRefresh = () => {
+  setTimeout(() => {
+    applyOverlayVisibility();
+  }, 80);
 };
 
 const createOverlayWindow = () => {
@@ -127,10 +148,7 @@ const createOverlayWindow = () => {
   void overlayWindow.loadURL(overlayRendererUrl()).then(() => {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send("overlay:state", overlayState());
-      if (overlayEnabled) {
-        overlayWindow.showInactive();
-        broadcastOverlayState();
-      }
+      applyOverlayVisibility(false);
     }
   });
   return overlayWindow;
@@ -138,7 +156,7 @@ const createOverlayWindow = () => {
 
 const setOverlayEnabled = (enabled: boolean) => {
   overlayEnabled = enabled;
-  return enabled ? showOverlayWindow() : hideOverlayWindow();
+  return enabled ? applyOverlayVisibility() : hideOverlayWindow();
 };
 
 const setOverlayConfig = (config: OverlayConfigUpdate) => {
@@ -157,12 +175,7 @@ const updateOverlayContent = (content: OverlayContentUpdate) => {
   const nextMessage = createOverlayMessage(content, `overlay-${Date.now()}`);
   overlayMessages = [...overlayMessages, nextMessage].slice(-OVERLAY_MAX_MESSAGES);
   overlayUpdatedAt = nextMessage.timestamp;
-  if (overlayEnabled) {
-    const window = createOverlayWindow();
-    window.webContents.send("overlay:state", overlayState());
-    if (!window.isVisible()) window.showInactive();
-  }
-  return broadcastOverlayState();
+  return applyOverlayVisibility();
 };
 
 const createWindow = () => {
@@ -197,6 +210,12 @@ const createWindow = () => {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.close();
     }
+  });
+  win.on("focus", () => {
+    applyOverlayVisibility(false);
+  });
+  win.on("blur", () => {
+    scheduleOverlayVisibilityRefresh();
   });
 
   const devUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:5173";
@@ -245,4 +264,5 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  applyOverlayVisibility(false);
 });

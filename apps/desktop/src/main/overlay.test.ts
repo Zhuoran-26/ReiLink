@@ -12,7 +12,12 @@ import {
   OVERLAY_MAX_MESSAGE_LENGTH,
   sanitizeOverlayText
 } from "../shared/overlay";
-import { calculateOverlayBounds, configureOverlayWindowForClickThrough, createOverlayWindowOptions } from "./overlayWindow";
+import {
+  calculateOverlayBounds,
+  configureOverlayWindowForClickThrough,
+  createOverlayWindowOptions,
+  shouldOverlayBeVisible
+} from "./overlayWindow";
 
 describe("overlay content safety", () => {
   it("redacts sensitive text and truncates long content", () => {
@@ -102,6 +107,29 @@ describe("overlay content safety", () => {
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(workArea.width - 24);
       expect(bounds.y + bounds.height).toBeLessThanOrEqual(workArea.height - 24);
     }
+  });
+
+  it("suppresses Overlay while the ReiLink main window or app is foreground", () => {
+    expect(shouldOverlayBeVisible({
+      overlayEnabled: true,
+      mainWindowFocused: true,
+      appActive: true
+    })).toBe(false);
+    expect(shouldOverlayBeVisible({
+      overlayEnabled: true,
+      mainWindowFocused: false,
+      appActive: true
+    })).toBe(false);
+    expect(shouldOverlayBeVisible({
+      overlayEnabled: true,
+      mainWindowFocused: false,
+      appActive: false
+    })).toBe(true);
+    expect(shouldOverlayBeVisible({
+      overlayEnabled: false,
+      mainWindowFocused: false,
+      appActive: false
+    })).toBe(false);
   });
 
   it("builds a non-focusable click-through overlay window configuration", () => {
