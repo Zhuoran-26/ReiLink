@@ -2,30 +2,30 @@
 
 > Local-first AI game companion runtime for low-interruption, context-aware gameplay support.
 
-简体中文 | [English](README.en.md)
+[简体中文](README.md) | English
 
 [![Status](https://img.shields.io/badge/status-pre--release-6b5cff)](docs/PROJECT_STATUS.md)
-[![Platform](https://img.shields.io/badge/platform-macOS-111827)](#quick-start--快速启动)
+[![Platform](https://img.shields.io/badge/platform-macOS-111827)](#quick-start)
 [![Desktop](https://img.shields.io/badge/desktop-Electron-47848f)](https://www.electronjs.org/)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688)](https://fastapi.tiangolo.com/)
-[![Language](https://img.shields.io/badge/language-TypeScript%20%2F%20Python-3178c6)](#architecture--架构)
+[![Language](https://img.shields.io/badge/language-TypeScript%20%2F%20Python-3178c6)](#architecture)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-ReiLink 是一个面向单机游戏玩家的中文 AI companion 桌面应用。它把当前游戏状态、玩家对话、已确认记忆、本地知识包和低打扰语音交互放在同一个 local-first runtime 里，让 companion 能在游戏时提供克制、上下文相关的回应。
+ReiLink is a Chinese-first desktop AI companion runtime for single-player games. It combines active game state, player dialogue, confirmed memory, local knowledge packs, and low-interruption voice interaction into one local-first application.
 
-ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona + LLM 生成；game context、memory 和 knowledge layer 只提供辅助上下文。当前 companion persona 是原创 Rei-like minimal 风格，不使用 Evangelion、Rei Ayanami、NERV 或任何官方 IP 元素。
+ReiLink is not a generic chatbot and not a guide-site clone. Final replies remain LLM-first through persona + model generation; game context, memory, and knowledge retrieval provide supporting context only. The current companion persona is an original Rei-like minimal style and does not use Evangelion, Rei Ayanami, NERV, or any official IP elements.
 
 ## Table Of Contents
 
 - [Why ReiLink](#why-reilink)
-- [Current Status](#current-status--当前状态)
+- [Current Status](#current-status)
 - [Highlights](#highlights)
 - [Feature Matrix](#feature-matrix)
-- [Architecture](#architecture--架构)
+- [Architecture](#architecture)
 - [Voice Interaction MVP](#voice-interaction-mvp)
 - [Knowledge Retrieval](#knowledge-retrieval)
 - [Privacy & Local-first Design](#privacy--local-first-design)
-- [Quick Start](#quick-start--快速启动)
+- [Quick Start](#quick-start)
 - [Local ASR Setup](#local-asr-setup)
 - [Packaging](#packaging)
 - [Documentation](#documentation)
@@ -46,7 +46,7 @@ Most game companions drift into either generic chat or static guide lookup. ReiL
 
 The project is currently portfolio / pre-release oriented. It is suitable for local demos, code review, and product/runtime iteration, not a commercial installer.
 
-## Current Status / 当前状态
+## Current Status
 
 - Current public pre-release line: `reilink-v0.2-pre`.
 - Active development branch: `dev/codex-reilink`.
@@ -54,7 +54,7 @@ The project is currently portfolio / pre-release oriented. It is suitable for lo
 - Knowledge Retrieval v1 is implemented with local keyword retrieval, grounding / gating, explicit game-name switching, and casual-chat isolation.
 - macOS packaged app runtime has been smoke-tested repeatedly, but the project is still pre-release.
 
-See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the detailed state of the project.
+See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the detailed project state.
 
 ## Highlights
 
@@ -86,7 +86,7 @@ See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the detailed state of
 | Live2D | Avatar layer | Planned | Not implemented. |
 | Embedding / Hybrid RAG | Vector or hybrid retrieval | Planned | Current retrieval is keyword-based. |
 
-## Architecture / 架构
+## Architecture
 
 ReiLink uses an [Electron](https://www.electronjs.org/) desktop shell, a [React](https://react.dev/) / [TypeScript](https://www.typescriptlang.org/) / [Vite](https://vite.dev/) renderer, and a local [FastAPI](https://fastapi.tiangolo.com/) backend. Packaged builds use [PyInstaller](https://pyinstaller.org/) for the backend binary. The diagrams below use [Mermaid](https://mermaid.js.org/) and render directly on GitHub.
 
@@ -115,7 +115,7 @@ ReiLink's voice work is deliberately conservative: optional voice output, user-t
 - Optional and off by default.
 - Uses local browser / system `speechSynthesis`.
 - No commercial TTS provider is integrated.
-- Supports `测试语音 / Test Voice`, rate, volume, Stop Voice, and cancellation on new messages / disable / unmount.
+- Supports Test Voice, rate, volume, Stop Voice, and cancellation on new messages / disable / unmount.
 - Event Stream records sanitized lifecycle summaries only.
 - Known limitation: system voices may pronounce names such as "Rei" unnaturally and are not character-grade voice acting.
 
@@ -154,7 +154,7 @@ See [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) for setup
 
 Current retrieval is local keyword retrieval, not embedding/vector search.
 
-- Supported sample packs: Elden Ring / 艾尔登法环 and Hollow Knight / 空洞骑士.
+- Supported sample packs: Elden Ring and Hollow Knight.
 - Retrieval statuses include `used`, `not_found`, `below_threshold`, `no_pack`, and `not_game_related`.
 - Grounding / gating keeps low-relevance snippets out of prompts.
 - Casual chat does not force knowledge injection.
@@ -171,7 +171,7 @@ Knowledge packs live under [`data/knowledge/games`](data/knowledge/games). Autho
 - Local ASR audio is short-lived and cleaned after processing.
 - Event Stream / Debug / Raw JSON avoid raw prompts, full transcripts, raw subprocess output, API keys, full local paths, audio content, and base64 audio.
 
-## Quick Start / 快速启动
+## Quick Start
 
 ### 1. Requirements
 

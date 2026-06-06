@@ -9,6 +9,7 @@ VOICE_INPUT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_scenarios.
 VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_local_asr_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
+README_EN_PATH = REPO_ROOT / "README.en.md"
 PROJECT_STATUS_PATH = REPO_ROOT / "docs" / "PROJECT_STATUS.md"
 LOCAL_ASR_MANUAL_SETUP_PATH = REPO_ROOT / "docs" / "local-asr-manual-setup.md"
 VOICE_MVP_RELEASE_NOTES_PATH = REPO_ROOT / "docs" / "release-notes" / "reilink-voice-mvp.md"
@@ -326,15 +327,18 @@ def test_voice_input_local_asr_release_regression_scenarios_are_present():
 
 def test_readme_qa_links_point_to_existing_files():
     readme = README_PATH.read_text(encoding="utf-8")
+    readme_en = README_EN_PATH.read_text(encoding="utf-8")
     qa_doc = QA_DOC_PATH.read_text(encoding="utf-8")
     project_status = PROJECT_STATUS_PATH.read_text(encoding="utf-8")
     local_asr_manual_setup = LOCAL_ASR_MANUAL_SETUP_PATH.read_text(encoding="utf-8")
     voice_mvp_release_notes = VOICE_MVP_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
     links = re.findall(
         r"\((docs/(?:PROJECT_STATUS\.md|QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|release-notes/reilink-voice-mvp\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
-        readme,
+        f"{readme}\n{readme_en}",
     )
 
+    assert "README.en.md" in readme
+    assert "README.md" in readme_en
     assert {
         "docs/PROJECT_STATUS.md",
         "docs/QA.md",
