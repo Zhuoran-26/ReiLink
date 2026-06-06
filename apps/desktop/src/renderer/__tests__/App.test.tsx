@@ -22,6 +22,7 @@ import type {
   SetupStatus
 } from "../../shared/api";
 import type { BackendRuntimeStatus, ReilinkRuntimeBridge } from "../../shared/runtime";
+import type { OverlayState } from "../../shared/overlay";
 
 const runningStatus = {
   game_id: "elden_ring",
@@ -668,6 +669,7 @@ const appSettings: AppSettings = {
   proactive_companion: "off",
   proactive_sensitivity: "low",
   auto_game_detection: "on",
+  overlay_enabled: "off",
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -974,7 +976,16 @@ const installAudioCaptureMock = (options: { permissionDenied?: boolean } = {}) =
 
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
   let status = { ...initialStatus };
+  let overlayState: OverlayState = {
+    enabled: false,
+    visible: false,
+    messages: [],
+    max_messages: 3,
+    max_message_length: 96,
+    updated_at: null
+  };
   const listeners = new Set<(nextStatus: BackendRuntimeStatus) => void>();
+  const overlayListeners = new Set<(nextState: typeof overlayState) => void>();
   const bridge: ReilinkRuntimeBridge = {
     getBackendStatus: vi.fn(async () => status),
     setBackendAutoStart: vi.fn(async (enabled: boolean) => {
@@ -989,9 +1000,35 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
       return status;
     }),
     openLocalDataDir: vi.fn(async () => ({ ok: true, path: status.user_data_dir, error: null })),
+    getOverlayStatus: vi.fn(async () => overlayState),
+    setOverlayEnabled: vi.fn(async (enabled: boolean) => {
+      overlayState = { ...overlayState, enabled, visible: enabled };
+      for (const listener of overlayListeners) listener(overlayState);
+      return overlayState;
+    }),
+    updateOverlayContent: vi.fn(async (content) => {
+      const message = {
+        id: `overlay-${overlayState.messages.length}`,
+        speaker: "Rei" as const,
+        text: content.text,
+        source: content.source ?? "assistant_reply",
+        timestamp: content.timestamp ?? new Date().toISOString()
+      };
+      overlayState = {
+        ...overlayState,
+        messages: [...overlayState.messages, message].slice(-3),
+        updated_at: message.timestamp
+      };
+      for (const listener of overlayListeners) listener(overlayState);
+      return overlayState;
+    }),
     onBackendStatus: vi.fn((callback: (nextStatus: BackendRuntimeStatus) => void) => {
       listeners.add(callback);
       return () => listeners.delete(callback);
+    }),
+    onOverlayState: vi.fn((callback: (nextState: typeof overlayState) => void) => {
+      overlayListeners.add(callback);
+      return () => overlayListeners.delete(callback);
     })
   };
   Object.defineProperty(window, "reilinkRuntime", {
@@ -1229,6 +1266,7 @@ const chatResponse = {
   sources: ["data/elden_ring/bosses.json"],
   timestamp: new Date().toISOString()
 };
+let chatResponseStore = { ...chatResponse };
 
 const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   const debugAction = debugActionResponse(url, init);
@@ -1268,7 +1306,7 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
   if (url.endsWith("/api/chat") && init?.method === "POST") {
     if (chatFailureResponse) return chatFailureResponse();
-    return Response.json(chatResponse);
+    return Response.json(chatResponseStore);
   }
   return new Response("missing", { status: 404 });
 };
@@ -1277,6 +1315,7 @@ describe("App", () => {
   beforeEach(() => {
     let uuid = 0;
     resetSettingsResponse();
+    chatResponseStore = { ...chatResponse };
     eventBus.clear();
     scrollToMock = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
       const top = typeof options === "number" ? options : options?.top;
@@ -1353,6 +1392,8 @@ describe("App", () => {
     expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
+    expect(screen.getByLabelText("Overlay / 游戏悬浮层")).toHaveValue("off");
+    expect(screen.getByText("默认关闭。开启后只显示 1～3 条 Rei 短消息，不接收输入。")).toBeInTheDocument();
     expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
     expect(screen.getByText(/当前状态：已关闭/)).toBeInTheDocument();
     expect(screen.getByText(/本地语音：不可用/)).toBeInTheDocument();
@@ -1451,6 +1492,51 @@ describe("App", () => {
 
     await waitFor(() => expect(runtime.bridge.setBackendAutoStart).toHaveBeenCalledWith(false));
     expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("off");
+  });
+
+  it("syncs the Overlay setting through the Electron runtime bridge", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(false));
+    vi.mocked(runtime.bridge.setOverlayEnabled).mockClear();
+
+    await userEvent.selectOptions(await screen.findByLabelText("Overlay / 游戏悬浮层"), "on");
+
+    await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(true));
+    expect(screen.getByLabelText("Overlay / 游戏悬浮层")).toHaveValue("on");
+    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_enabled_changed")).toBe(true);
+    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_window_shown")).toBe(true);
+  });
+
+  it("sends only a sanitized short assistant summary to Overlay", async () => {
+    appSettingsStore = { ...appSettingsStore, overlay_enabled: "on" };
+    chatResponseStore = {
+      ...chatResponse,
+      reply: "这是一条很长的回复，包含 /Users/aragoto/Desktop/ReiLink/services/backend/.env 和 API key，还有后面很多很多不该完整显示的文字。先停一下，看动作，再试一次。继续观察距离、翻滚时机、精力条、走位和节奏，这些内容都不应该完整塞进悬浮层。",
+      reply_segments: [
+        "这是一条很长的回复，包含 /Users/aragoto/Desktop/ReiLink/services/backend/.env 和 API key，还有后面很多很多不该完整显示的文字。先停一下，看动作，再试一次。继续观察距离、翻滚时机、精力条、走位和节奏，这些内容都不应该完整塞进悬浮层。"
+      ]
+    };
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(true));
+    await userEvent.type(await screen.findByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    await waitFor(() => expect(runtime.bridge.updateOverlayContent).toHaveBeenCalled());
+    const content = vi.mocked(runtime.bridge.updateOverlayContent).mock.calls.at(-1)?.[0];
+    expect(content?.text.length).toBeLessThanOrEqual(96);
+    expect(content?.text).toContain("…");
+    expect(content?.text).not.toContain("/Users/aragoto");
+    expect(content?.text).not.toContain(".env");
+    expect(content?.text).not.toContain("API key");
+    expect(eventBus.getRecentEvents().some((event) =>
+      event.type === "overlay_content_updated" &&
+      event.character_count <= 96 &&
+      event.message_count === 1
+    )).toBe(true);
   });
 
   it("opens the local data directory through the runtime bridge", async () => {
@@ -1745,6 +1831,14 @@ describe("App", () => {
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),
         expect.objectContaining({ method: "POST", body: JSON.stringify({ model_preference: "pro" }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Overlay / 游戏悬浮层"), "on");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ overlay_enabled: "on" }) })
       )
     );
 

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "overlay-default-off",
+    "category": "overlay",
+    "precondition": "Fresh app settings or an older settings file without overlay_enabled",
+    "expected_status": "overlay_disabled",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Settings shows Overlay / 游戏悬浮层 with value 关闭, and no overlay window is visible.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-enable-shows-window",
+    "category": "overlay",
+    "precondition": "Desktop app is running and backend settings are loaded",
+    "expected_status": "overlay_visible",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Switching Overlay to 开启 creates a transparent frameless always-on-top window near the right middle-lower area without stealing focus.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-placeholder-quiet",
+    "category": "overlay",
+    "precondition": "Overlay is enabled and there is no recent safe assistant or proactive message",
+    "expected_status": "overlay_placeholder",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay shows a restrained idle placeholder such as Rei 正安静待机。 without showing debug content.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "memory", "debug", "full transcript"]
+  },
+  {
+    "id": "overlay-assistant-summary-truncated",
+    "category": "overlay_privacy",
+    "precondition": "Overlay is enabled and an assistant reply has completed",
+    "expected_status": "overlay_content_updated",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay shows only a 1-3 message Rei bubble list using truncated safe summaries, with the latest assistant summary visible.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "memory", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-proactive-summary",
+    "category": "overlay",
+    "precondition": "Overlay is enabled and proactive companion emits a safe short message",
+    "expected_status": "overlay_content_updated",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay may show the proactive safe short message as a Rei bubble without affecting the main chat flow.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "memory", "debug", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-disable-hides-window",
+    "category": "overlay",
+    "precondition": "Overlay is currently enabled and visible",
+    "expected_status": "overlay_hidden",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Switching Overlay to 关闭 hides the overlay window and does not change main chat messages.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript"]
+  },
+  {
+    "id": "overlay-settings-persist-after-restart",
+    "category": "overlay",
+    "precondition": "Overlay setting has been changed and the app is restarted",
+    "expected_status": "overlay_setting_persisted",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay enabled state is restored from app settings after restart; default remains off for fresh settings.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full local path"]
+  },
+  {
+    "id": "overlay-event-stream-safe",
+    "category": "overlay_privacy",
+    "precondition": "Overlay has been enabled, updated, and disabled at least once",
+    "expected_status": "overlay_events_safe",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Event Stream shows overlay lifecycle summaries, message counts, and character counts only.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "overlay-packaged-dev-smoke",
+    "category": "overlay_packaged",
+    "precondition": "Desktop app is opened in dev or packaged smoke mode",
+    "expected_status": "overlay_visible",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Main window is not black, Settings contains Overlay, enabling it opens a separate overlay window, and disabling it hides the window.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
+  }
+]

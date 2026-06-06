@@ -10,6 +10,7 @@ BACKEND = ROOT / "services" / "backend"
 os.environ["LLM_PROVIDER"] = "mock"
 
 sys.path.insert(0, str(BACKEND))
+sys.path.append(str(ROOT))
 
 
 @pytest.fixture(autouse=True)

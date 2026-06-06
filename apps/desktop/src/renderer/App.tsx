@@ -47,6 +47,7 @@ import {
   UserProfileMemory
 } from "../shared/api";
 import type { ReiLinkEvent } from "../shared/events";
+import { sanitizeOverlayText, type OverlayContentUpdate, type OverlayMessageSource } from "../shared/overlay";
 import type { BackendRuntimeStatus } from "../shared/runtime";
 import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
 import { eventBus } from "./eventBus";
@@ -412,6 +413,7 @@ const defaultAppSettings: AppSettings = {
   proactive_companion: "off",
   proactive_sensitivity: "low",
   auto_game_detection: "on",
+  overlay_enabled: "off",
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -432,6 +434,7 @@ const normalizeAppSettings = (
 });
 
 const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSettings, patch: Partial<AppSettings> = {}) => ({
+  overlay_enabled: hasAppSetting(settings, "overlay_enabled") ? settings.overlay_enabled : patch.overlay_enabled ?? previous.overlay_enabled,
   voice_output: hasAppSetting(settings, "voice_output") ? settings.voice_output : patch.voice_output ?? previous.voice_output,
   voice_rate: hasAppSetting(settings, "voice_rate") ? settings.voice_rate : patch.voice_rate ?? previous.voice_rate,
   voice_volume: hasAppSetting(settings, "voice_volume") ? settings.voice_volume : patch.voice_volume ?? previous.voice_volume
@@ -934,6 +937,20 @@ const eventSummary = (event: ReiLinkEvent) => {
       return debugText(event.status);
     case "runtime_status_changed":
       return [debugText(event.backend_source), knowledgeSourceText(event.knowledge_source as BackendRuntimeStatus["knowledge_source"])].join(" / ");
+    case "overlay_enabled_changed":
+      return [event.enabled ? "已开启" : "已关闭", event.visible ? "窗口可见" : "窗口隐藏"].join(" / ");
+    case "overlay_window_shown":
+      return `显示 ${event.message_count} 条短消息`;
+    case "overlay_window_hidden":
+      return "悬浮层已隐藏";
+    case "overlay_content_updated":
+      return [
+        event.source ? debugText(event.source) : "",
+        `${event.character_count} 字`,
+        `${event.message_count} 条`
+      ].filter(Boolean).join(" / ");
+    case "overlay_error":
+      return debugText(event.reason);
     case "tts_started":
       return [voiceEventSourceText(event.source), `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_completed":
@@ -1027,6 +1044,11 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     model_routed: "模型路由完成",
     backend_status_changed: "后端状态变化",
     runtime_status_changed: "运行来源变化",
+    overlay_enabled_changed: "悬浮层开关变化",
+    overlay_window_shown: "悬浮层显示",
+    overlay_window_hidden: "悬浮层隐藏",
+    overlay_content_updated: "悬浮层内容更新",
+    overlay_error: "悬浮层失败",
     tts_started: "语音开始播放",
     tts_completed: "语音播放完成",
     tts_stopped: "语音已停止",
@@ -1532,6 +1554,7 @@ export function App() {
   const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
   const [debugActionBusy, setDebugActionBusy] = useState("");
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState("");
   const [backendRuntimeBusy, setBackendRuntimeBusy] = useState(false);
   const [localDataBusy, setLocalDataBusy] = useState("");
@@ -1566,6 +1589,8 @@ export function App() {
   const lastGameSessionEventRef = useRef<string | null>(null);
   const lastKnowledgeEventRef = useRef<string | null>(null);
   const lastModelRouteEventRef = useRef<string | null>(null);
+  const lastOverlayEnabledRef = useRef<boolean | null>(null);
+  const lastOverlayContentRef = useRef<OverlayContentUpdate | null>(null);
   const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
 
   const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
@@ -1767,6 +1792,7 @@ export function App() {
           voiceSettingFallback(currentSettings, previous)
         )
       );
+      setSettingsLoaded(true);
       setLocalDataStatus(await api.localDataStatus());
       setLocalAsrSettings(await api.localAsrSettings());
       const currentLocalAsrStatus = await api.localAsrStatus();
@@ -1791,6 +1817,7 @@ export function App() {
       emitDebugSnapshotEvents(currentGameContext, currentGameSessionDebug, currentChatDebug, currentProviderDebug);
     } catch (error) {
       setBackendStatus("disconnected");
+      setSettingsLoaded(false);
       emitBackendStatusChanged("disconnected");
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "后端未连接"));
@@ -2106,6 +2133,34 @@ export function App() {
     }
   };
 
+  const emitOverlayError = useCallback((reason: string) => {
+    eventBus.emit({ type: "overlay_error", timestamp: eventTimestamp(), reason });
+  }, []);
+
+  const pushOverlayContent = useCallback(async (text: string, source: OverlayMessageSource) => {
+    const update: OverlayContentUpdate = {
+      text: sanitizeOverlayText(text),
+      source,
+      timestamp: eventTimestamp()
+    };
+    lastOverlayContentRef.current = update;
+    if (appSettings.overlay_enabled !== "on") return;
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.updateOverlayContent) return;
+    try {
+      const state = await runtime.updateOverlayContent(update);
+      eventBus.emit({
+        type: "overlay_content_updated",
+        timestamp: eventTimestamp(),
+        source,
+        character_count: update.text.length,
+        message_count: state.messages.length
+      });
+    } catch {
+      emitOverlayError("overlay_content_update_failed");
+    }
+  }, [appSettings.overlay_enabled, emitOverlayError]);
+
   const openLocalDataDirectory = async () => {
     const runtime = window.reilinkRuntime;
     if (!runtime?.openLocalDataDir) {
@@ -2206,6 +2261,41 @@ export function App() {
   }, [appSettings.voice_output]);
 
   useEffect(() => {
+    if (!settingsLoaded) return;
+    const enabled = appSettings.overlay_enabled === "on";
+    if (lastOverlayEnabledRef.current === enabled) return;
+    lastOverlayEnabledRef.current = enabled;
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.setOverlayEnabled) {
+      if (enabled) emitOverlayError("overlay_runtime_unavailable");
+      return;
+    }
+    void runtime.setOverlayEnabled(enabled).then(async (state) => {
+      eventBus.emit({
+        type: "overlay_enabled_changed",
+        timestamp: eventTimestamp(),
+        enabled,
+        visible: state.visible
+      });
+      eventBus.emit(
+        state.visible
+          ? { type: "overlay_window_shown", timestamp: eventTimestamp(), message_count: state.messages.length }
+          : { type: "overlay_window_hidden", timestamp: eventTimestamp() }
+      );
+      if (enabled && state.messages.length === 0 && lastOverlayContentRef.current && runtime.updateOverlayContent) {
+        const updated = await runtime.updateOverlayContent(lastOverlayContentRef.current);
+        eventBus.emit({
+          type: "overlay_content_updated",
+          timestamp: eventTimestamp(),
+          source: lastOverlayContentRef.current.source,
+          character_count: lastOverlayContentRef.current.text.length,
+          message_count: updated.messages.length
+        });
+      }
+    }).catch(() => emitOverlayError(enabled ? "overlay_show_failed" : "overlay_hide_failed"));
+  }, [appSettings.overlay_enabled, emitOverlayError, settingsLoaded]);
+
+  useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
 
@@ -2267,13 +2357,14 @@ export function App() {
           trigger_type: response.trigger_type,
           text: response.message
         });
+        void pushOverlayContent(response.message, "proactive");
       }
       setProactiveStatus(await api.proactiveStatus());
     } catch (error) {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "主动陪伴检查失败"));
     }
-  }, [appSettings.proactive_companion, backendStatus, input, queueMessageAutoScroll, sending]);
+  }, [appSettings.proactive_companion, backendStatus, input, pushOverlayContent, queueMessageAutoScroll, sending]);
 
   useEffect(() => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on") return undefined;
@@ -2336,6 +2427,7 @@ export function App() {
         });
       }
       eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
+      void pushOverlayContent(segments.join(" "), "assistant_reply");
       if (appSettings.voice_output === "on" && !spokenAssistantReplyIdsRef.current.has(replyMessageId)) {
         spokenAssistantReplyIdsRef.current.add(replyMessageId);
         voiceOutput.speak(segments.join("\n"), {
@@ -2970,6 +3062,24 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="pro">高质量</option>
                 </select>
               </label>
+              <div className="voiceOutputPanel" role="group" aria-label="Overlay 设置">
+                <label className="settingRow">
+                  <span>Overlay / 游戏悬浮层</span>
+                  <select
+                    aria-label="Overlay / 游戏悬浮层"
+                    disabled={settingsBusy !== ""}
+                    value={appSettings.overlay_enabled}
+                    onChange={(event) =>
+                      void updateAppSettings({ overlay_enabled: event.target.value as AppSettings["overlay_enabled"] })
+                    }
+                  >
+                    <option value="off">关闭</option>
+                    <option value="on">开启</option>
+                  </select>
+                </label>
+                <p className="settingHint">默认关闭。开启后只显示 1～3 条 Rei 短消息，不接收输入。</p>
+                <p className="settingHint">不显示调试信息、路径、密钥或完整回复。</p>
+              </div>
               <div className="voiceOutputPanel" role="group" aria-label="语音输出设置">
                 <label className="settingRow">
                   <span>语音输出 / Voice Output</span>
@@ -4423,6 +4533,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             proactive_companion: appSettings.proactive_companion,
                             proactive_sensitivity: appSettings.proactive_sensitivity,
                             auto_game_detection: appSettings.auto_game_detection,
+                            overlay_enabled: appSettings.overlay_enabled,
                             voice_output: appSettings.voice_output,
                             voice_rate: appSettings.voice_rate,
                             voice_volume: appSettings.voice_volume

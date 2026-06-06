@@ -20,6 +20,13 @@ body {
     linear-gradient(145deg, #10131f 0%, #070a12 56%, #0d111c 100%);
 }
 
+body.overlayBody {
+  min-width: 0;
+  min-height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
 button,
 input,
 select {
@@ -38,6 +45,67 @@ button {
   background:
     linear-gradient(90deg, rgba(95, 78, 160, 0.08), transparent 28%),
     radial-gradient(circle at 45% 20%, rgba(122, 141, 210, 0.12), transparent 34%);
+}
+
+.overlayRoot {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 10px;
+  color: rgba(240, 244, 252, 0.94);
+  pointer-events: none;
+}
+
+.overlayBubbleLayer {
+  width: min(340px, calc(100vw - 20px));
+  max-height: calc(100vh - 20px);
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(220, 230, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(11, 15, 24, 0.48);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(12px);
+}
+
+.overlayBubbleRow {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.overlayAvatar {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(230, 236, 255, 0.26);
+  border-radius: 50%;
+  background: rgba(238, 243, 255, 0.18);
+  color: rgba(247, 249, 255, 0.9);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.overlayBubble {
+  min-width: 0;
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid rgba(239, 244, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(239, 244, 255, 0.18);
+  color: rgba(248, 250, 255, 0.94);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .appSidebar {
