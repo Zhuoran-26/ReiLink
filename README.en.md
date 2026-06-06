@@ -116,20 +116,22 @@ flowchart LR
     Agent --> Retrieval["Knowledge Retrieval"]
     Agent --> Router["Model Router"]
     API --> ASR["Local ASR Bridge"]
+    ASRSettings["Local ASR Settings"] --> ASR
+    ASR --> TempAudio["Temporary Audio Files<br/>default cleanup"]
     ASR --> Converter["Audio Converter<br/>ffmpeg-compatible"]
     ASR --> Whisper["Local ASR Binary<br/>whisper.cpp-compatible"]
   end
 
   Retrieval --> Packs["Bundled Knowledge Packs"]
   Memory --> UserData["Local User Data"]
-  ASR --> UserData
+  UserData --> ASRSettings
   Router --> DeepSeek["DeepSeek-compatible API"]
 
   Packs -. "read-only resource" .-> Runtime
   UserData -. "local persistence" .-> Runtime
 ```
 
-The renderer owns interaction, audio capture, system TTS, and safe event display. The backend owns the Agent runtime, knowledge retrieval, memory, game context, model routing, Local ASR subprocess boundaries, and user data directories.
+The renderer owns interaction, audio capture, system TTS, and safe event display. The backend owns the Agent runtime, knowledge retrieval, memory, game context, model routing, Local ASR subprocess boundaries, and user data directories. Local ASR settings are stored in Local User Data. Local ASR uses temporary audio files and cleans them by default after processing. Transcript only fills the input box; it does not automatically enter memory, prompt, knowledge retrieval, or game context.
 
 ## Agent Turn Flow
 
@@ -145,6 +147,8 @@ flowchart TD
   MC --> PM["Pending memory<br/>written only after accept"]
   KR --> KG["Top-k local snippets"]
 
+  Persona["Persona"] --> Prompt["Prompt assembly"]
+  LongMemory["Confirmed Memory<br/>long-term memory"] --> Prompt
   CTX --> Prompt["Prompt assembly"]
   KG --> Prompt
   Prompt --> Router["Model routing<br/>fast / pro / auto"]
@@ -155,10 +159,10 @@ flowchart TD
   Reply --> TTS["Optional voice output"]
   Reply --> ES["Event Stream<br/>safe summary"]
 
-  PM -. "after user confirmation" .-> LongMemory["Long-term memory"]
+  PM -. "after user confirmation" .-> LongMemory
 ```
 
-Memory is not written automatically. Knowledge is injected only when relevant. Casual chat does not force retrieval. Event Stream shows safe summaries only.
+Prompt assembly includes persona, confirmed memory, current turn context, and relevant knowledge snippets. Memory is not written automatically. Knowledge is injected only when relevant. Casual chat does not force retrieval. Event Stream shows safe summaries only.
 
 ## Voice Interaction MVP
 
@@ -211,6 +215,8 @@ sequenceDiagram
 ```
 
 Before the user confirms sending, transcript does not enter memory, prompt, knowledge retrieval, or game context extraction.
+
+If ASR is not configured, the converter is not configured, transcription fails, times out, or returns no text, the flow fails safely: it does not auto-send, does not write to memory / prompt / retrieval / game context, and Event Stream / Debug show safe summaries only.
 
 See [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) for setup and [`docs/QA.md`](docs/QA.md) for release regression checks.
 
@@ -328,6 +334,8 @@ Packaged resources are read-only. Memory, session, settings, logs, and Local ASR
 ## Roadmap
 
 ### v0.2 Runtime Foundation
+
+The current development line has largely completed this MVP foundation.
 
 - Voice Output MVP.
 - Local ASR Voice Input MVP.

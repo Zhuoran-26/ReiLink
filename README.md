@@ -116,20 +116,22 @@ flowchart LR
     Agent --> Retrieval["Knowledge Retrieval"]
     Agent --> Router["Model Router"]
     API --> ASR["Local ASR Bridge"]
+    ASRSettings["Local ASR Settings"] --> ASR
+    ASR --> TempAudio["Temporary Audio Files<br/>默认处理后清理"]
     ASR --> Converter["Audio Converter<br/>ffmpeg-compatible"]
     ASR --> Whisper["Local ASR Binary<br/>whisper.cpp-compatible"]
   end
 
   Retrieval --> Packs["Bundled Knowledge Packs"]
   Memory --> UserData["Local User Data"]
-  ASR --> UserData
+  UserData --> ASRSettings
   Router --> DeepSeek["DeepSeek-compatible API"]
 
   Packs -. "只读资源" .-> Runtime
   UserData -. "本地保存" .-> Runtime
 ```
 
-Renderer 负责用户交互、语音录制、系统 TTS 和安全事件展示。Backend 负责 Agent runtime、knowledge retrieval、memory、game context、model routing、Local ASR subprocess 边界和用户数据目录。Local-first 指本地用户数据、本地记忆、本地设置、本地知识包、音频处理和 Local ASR 优先保存在本机；LLM 推理目前仍可通过用户配置的 DeepSeek-compatible provider 完成。
+Renderer 负责用户交互、语音录制、系统 TTS 和安全事件展示。Backend 负责 Agent runtime、knowledge retrieval、memory、game context、model routing、Local ASR subprocess 边界和用户数据目录。Local ASR settings 保存在 Local User Data 中；Local ASR 使用短时 temporary audio files，默认处理后清理。transcript 只回填输入框，不会自动进入 memory、prompt、knowledge retrieval 或 game context。Local-first 指本地用户数据、本地记忆、本地设置、本地知识包、音频处理和 Local ASR 优先保存在本机；LLM 推理目前仍可通过用户配置的 DeepSeek-compatible provider 完成。
 
 ## Agent 回答链路
 
@@ -145,6 +147,8 @@ flowchart TD
   MC --> PM["待确认记忆<br/>用户 accept 后才写入"]
   KR --> KG["Top-k 本地知识片段"]
 
+  Persona["Persona"] --> Prompt["Prompt 组装"]
+  LongMemory["Confirmed Memory<br/>长期记忆"] --> Prompt
   CTX --> Prompt["Prompt 组装"]
   KG --> Prompt
   Prompt --> Router["模型路由<br/>fast / pro / auto"]
@@ -155,10 +159,10 @@ flowchart TD
   Reply --> TTS["可选语音输出"]
   Reply --> ES["Event Stream<br/>安全摘要"]
 
-  PM -. "用户确认后" .-> LongMemory["长期记忆"]
+  PM -. "用户确认后" .-> LongMemory
 ```
 
-Memory 不会自动写入；knowledge 只有相关时注入；闲聊不会强行触发 retrieval；Event Stream 只展示安全摘要。
+Prompt 会同时使用 persona、confirmed memory、当前回合上下文和相关 knowledge snippets。Memory 不会自动写入；knowledge 只有相关时注入；闲聊不会强行触发 retrieval；Event Stream 只展示安全摘要。
 
 ## Voice Interaction MVP
 
@@ -211,6 +215,8 @@ sequenceDiagram
 ```
 
 在用户确认发送前，transcript 不会进入 memory、prompt、knowledge retrieval 或 game context extraction。
+
+如果 ASR 未配置、converter 未配置、转写失败、超时或没有文本，流程会安全失败：不会自动发送，不会写入 memory / prompt / retrieval / game context，Event Stream / Debug 只显示安全摘要。
 
 详细配置见 [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md)，发布回归见 [`docs/QA.md`](docs/QA.md)。
 
@@ -327,6 +333,8 @@ packaged resources 是只读资源。memory、session、settings、logs 和 Loca
 ## 路线图
 
 ### v0.2 Runtime Foundation
+
+当前开发线已基本完成该阶段的 MVP 能力。
 
 - Voice Output MVP。
 - Local ASR Voice Input MVP。
