@@ -1,6 +1,6 @@
 # ReiLink
 
-> Local-first AI game companion runtime for low-interruption, context-aware gameplay support.
+> A local-first AI game companion desktop runtime.
 
 [简体中文](README.md) | English
 
@@ -11,20 +11,21 @@
 [![Language](https://img.shields.io/badge/language-TypeScript%20%2F%20Python-3178c6)](#architecture)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-ReiLink is a Chinese-first desktop AI companion runtime for single-player games. It combines active game state, player dialogue, confirmed memory, local knowledge packs, and low-interruption voice interaction into one local-first application.
+ReiLink is a Chinese-first AI companion runtime for single-player game players. It brings game context, player dialogue, confirmed memory, local knowledge packs, voice input/output, and safe runtime events into one desktop app.
 
-ReiLink is not a generic chatbot and not a guide-site clone. Final replies remain LLM-first through persona + model generation; game context, memory, and knowledge retrieval provide supporting context only. The current companion persona is an original Rei-like minimal style and does not use Evangelion, Rei Ayanami, NERV, or any official IP elements.
+ReiLink is not a generic chatbot and not a guide-site clone. Final replies remain persona + LLM generated; game context, memory, and knowledge retrieval only provide supporting context. The current companion persona is an original Rei-like minimal style and does not use Evangelion, Rei Ayanami, NERV, or any official IP elements.
 
 ## Table Of Contents
 
-- [Why ReiLink](#why-reilink)
+- [What Is ReiLink?](#what-is-reilink)
 - [Current Status](#current-status)
 - [Highlights](#highlights)
 - [Feature Matrix](#feature-matrix)
 - [Architecture](#architecture)
+- [Agent Turn Flow](#agent-turn-flow)
 - [Voice Interaction MVP](#voice-interaction-mvp)
 - [Knowledge Retrieval](#knowledge-retrieval)
-- [Privacy & Local-first Design](#privacy--local-first-design)
+- [Local-first And Privacy](#local-first-and-privacy)
 - [Quick Start](#quick-start)
 - [Local ASR Setup](#local-asr-setup)
 - [Packaging](#packaging)
@@ -33,143 +34,209 @@ ReiLink is not a generic chatbot and not a guide-site clone. Final replies remai
 - [Known Limitations](#known-limitations)
 - [License](#license)
 
-## Why ReiLink
+## What Is ReiLink?
 
-Most game companions drift into either generic chat or static guide lookup. ReiLink explores a quieter middle ground:
+Most game companions drift toward either generic chat or static guide lookup. ReiLink explores a quieter middle ground:
 
-- keep the player in control during gameplay;
-- preserve a restrained, low-emotion companion style;
-- use factual local knowledge without turning replies into wiki dumps;
-- keep memory explicit and confirmable;
-- keep voice input transcript-first, editable, and user-confirmed;
-- keep sensitive runtime data local.
+- the player controls input, sending, and memory writes;
+- the companion stays restrained, low-emotion, and low-interruption;
+- local knowledge provides factual context only when relevant;
+- long-term memory is written only after user confirmation;
+- voice input is transcript-first, editable, and manually sent;
+- user data, settings, knowledge packs, and audio handling stay local-first.
 
-The project is currently portfolio / pre-release oriented. It is suitable for local demos, code review, and product/runtime iteration, not a commercial installer.
+The project is currently built for local demos, portfolio presentation, code review, and product/runtime iteration. It is not a commercial installer.
 
 ## Current Status
 
-- Current public pre-release line: `reilink-v0.2-pre`.
-- Active development branch: `dev/codex-reilink`.
-- Voice Interaction MVP is implemented: optional local system TTS, Local ASR main-chat input, transcript-first user confirmation, Local ASR Settings persistence, and release regression coverage.
-- Knowledge Retrieval v1 is implemented with local keyword retrieval, grounding / gating, explicit game-name switching, and casual-chat isolation.
-- macOS packaged app runtime has been smoke-tested repeatedly, but the project is still pre-release.
+- Current development milestone: **Voice Interaction MVP / Local ASR v1 packaged configurable MVP**.
+- The `dev/codex-reilink` branch contains the latest Voice, Local ASR, and Knowledge Retrieval work.
+- The current development line includes Voice Output, Local ASR voice input, the main chat voice button, persisted Local ASR Settings, Knowledge Retrieval, and QA regression scenarios.
+- Public release tags may lag behind the dev branch. GitHub updates, release tags, push, and merge still require manual review.
+- The macOS packaged app has been smoke-tested repeatedly, but ReiLink remains pre-release.
 
-See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the detailed project state.
+See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for detailed project state.
 
 ## Highlights
 
 - Chinese-first AI companion chat with an original minimal persona.
-- [DeepSeek](https://api-docs.deepseek.com/) compatible provider and model routing (`fast` / `pro` / `auto`).
-- Confirmable memory: long-term memory is written only after user acceptance.
-- Game context and manual current-game override.
-- Local knowledge packs for [Elden Ring sample knowledge](data/knowledge/games/elden_ring) and [Hollow Knight sample knowledge](data/knowledge/games/hollow_knight).
-- Knowledge Retrieval v1: keyword retrieval, top-k snippets, grounding / gating, and explicit cross-game query isolation.
-- Voice Output MVP: optional local system TTS with sanitized lifecycle events.
-- Voice Input MVP: Local ASR path with user-configured [whisper.cpp](https://github.com/ggerganov/whisper.cpp) compatible binary, model, and [ffmpeg](https://ffmpeg.org/) style converter.
-- Event Stream and Debug Panel with privacy guardrails.
-- Standalone macOS app packaging with bundled backend binary and read-only resources.
+- [DeepSeek](https://api-docs.deepseek.com/) compatible provider and `fast` / `pro` / `auto` model routing.
+- Confirmable Memory: long-term memory is written only after user acceptance.
+- Game Context: current game, boss, progression, frustration state, and manual current-game override.
+- Local sample knowledge packs for [Elden Ring](data/knowledge/games/elden_ring) and [Hollow Knight](data/knowledge/games/hollow_knight).
+- Knowledge Retrieval v1: local keyword retrieval, top-k snippets, grounding/gating, explicit game-name switching, and casual-chat isolation.
+- Voice Output MVP: optional system TTS with sanitized Event Stream summaries.
+- Voice Input MVP: Local ASR through user-configured [whisper.cpp](https://github.com/ggerganov/whisper.cpp) compatible binary, model, and [ffmpeg](https://ffmpeg.org/) compatible converter.
+- Event Stream / Debug Panel: safe summaries without raw prompts, API keys, full paths, or full transcripts.
+- macOS packaged app runtime foundation: bundled backend binary, bundled knowledge resources, and user data outside the `.app`.
 
 ## Feature Matrix
 
 | Area | Capability | Status | Notes |
 | --- | --- | --- | --- |
-| Persona / Dialogue | Original Rei-like minimal persona, LLM-first replies | Done | No official IP elements. |
-| Model Provider | DeepSeek-compatible provider and model routing | Done | Local config required for real provider use. |
-| Memory | Pending memory confirmation | Done | User acceptance required before long-term memory write. |
-| Game Context | Session state, local detector, manual override | MVP | Lightweight local detection; manual override remains important. |
-| Knowledge Retrieval | Keyword retrieval, grounding / gating, explicit game switching | MVP | Sample packs only, not a complete guide library. |
-| Voice Output | Local system TTS, Test Voice, rate / volume, Stop Voice | MVP | System voices are not character-grade voice acting. |
-| Voice Input / Local ASR | Main chat Local ASR, transcript cleanup, no auto-send | MVP | Manual setup required; no bundled whisper/model/ffmpeg. |
-| Event Stream / Debug | Safe lifecycle summaries and debug surfaces | Done | Avoids raw prompt, API keys, full paths, full transcript. |
-| Packaging | macOS local packaged app with bundled backend/resources | MVP | Unsigned local build; no installer/updater yet. |
-| Overlay | Gameplay overlay | Planned | Not implemented. |
+| Persona | Original Rei-like minimal companion | MVP | Original persona, no official IP elements. |
+| Dialogue | LLM-first reply generation | Done | Game context / memory / knowledge provide context only. |
+| Memory | Pending memory confirmation | Done | Accepted memories only. |
+| Game Context | Boss / deaths / frustration / session | MVP | Rule-first with limited LLM semantic fallback. |
+| Knowledge Retrieval | Local keyword retrieval | MVP | No embeddings, vector DB, or hybrid retrieval yet. |
+| Voice Output | System TTS | MVP | Optional, not character-grade voice acting. |
+| Voice Input | Local ASR | MVP | User-managed binary, model, and converter required. |
+| Event Stream | Safe lifecycle events | Done | No raw prompt, API key, full path, or full transcript. |
+| Packaging | macOS `.app` | MVP | User data stays outside the `.app`; unsigned local build. |
+| Overlay | In-game overlay | Planned | Not implemented. |
 | Live2D | Avatar layer | Planned | Not implemented. |
-| Embedding / Hybrid RAG | Vector or hybrid retrieval | Planned | Current retrieval is keyword-based. |
+| Embedding / Hybrid RAG | Vector / hybrid retrieval | Planned | Current retrieval is keyword-based. |
 
 ## Architecture
 
-ReiLink uses an [Electron](https://www.electronjs.org/) desktop shell, a [React](https://react.dev/) / [TypeScript](https://www.typescriptlang.org/) / [Vite](https://vite.dev/) renderer, and a local [FastAPI](https://fastapi.tiangolo.com/) backend. Packaged builds use [PyInstaller](https://pyinstaller.org/) for the backend binary. The diagrams below use [Mermaid](https://mermaid.js.org/) and render directly on GitHub.
+ReiLink uses an [Electron](https://www.electronjs.org/) desktop shell, a [React](https://react.dev/) / [TypeScript](https://www.typescriptlang.org/) / [Vite](https://vite.dev/) renderer, and a local [FastAPI](https://fastapi.tiangolo.com/) backend. Packaged builds use [PyInstaller](https://pyinstaller.org/) for the backend binary. Diagrams use [Mermaid](https://mermaid.js.org/) and render directly on GitHub.
 
 ```mermaid
 flowchart LR
-  Player[Player] --> Desktop[Electron Desktop]
-  Desktop --> Renderer[React Renderer]
-  Renderer --> Backend[FastAPI Backend]
-  Backend --> Dialogue[Dialogue Agent]
-  Dialogue --> Persona[Persona]
-  Dialogue --> Memory[Memory]
-  Dialogue --> Game[Game Context]
-  Dialogue --> Knowledge[Knowledge Retrieval]
-  Dialogue --> Provider[DeepSeek Provider]
-  Backend --> LocalData[Local User Data]
+  Player["Player"] --> UI["React Renderer<br/>Chat / Settings / Debug"]
+  UI --> Events["Event Bus<br/>Safe event summaries"]
+  UI --> VoiceOut["Voice Output<br/>System TTS"]
+  UI --> Audio["Voice Input<br/>MediaRecorder"]
+
+  subgraph Desktop["Electron Desktop"]
+    UI
+    Events
+    VoiceOut
+    Audio
+  end
+
+  UI --> API["FastAPI Backend"]
+  Audio --> API
+
+  subgraph Runtime["Backend Runtime"]
+    API --> Agent["Dialogue Agent"]
+    Agent --> Persona["Persona"]
+    Agent --> Memory["Confirmed Memory"]
+    Agent --> Game["Game Context"]
+    Agent --> Retrieval["Knowledge Retrieval"]
+    Agent --> Router["Model Router"]
+    API --> ASR["Local ASR Bridge"]
+    ASR --> Converter["Audio Converter<br/>ffmpeg-compatible"]
+    ASR --> Whisper["Local ASR Binary<br/>whisper.cpp-compatible"]
+  end
+
+  Retrieval --> Packs["Bundled Knowledge Packs"]
+  Memory --> UserData["Local User Data"]
+  ASR --> UserData
+  Router --> DeepSeek["DeepSeek-compatible API"]
+
+  Packs -. "read-only resource" .-> Runtime
+  UserData -. "local persistence" .-> Runtime
 ```
 
-The renderer owns UI, push-to-talk interaction, speech synthesis, and local audio capture. The backend owns dialogue orchestration, provider calls, local data, knowledge retrieval, Local ASR subprocess boundaries, and packaged runtime checks.
+The renderer owns interaction, audio capture, system TTS, and safe event display. The backend owns the Agent runtime, knowledge retrieval, memory, game context, model routing, Local ASR subprocess boundaries, and user data directories.
+
+## Agent Turn Flow
+
+ReiLink does not send user text straight into a generic chatbot. Each turn prepares game context, memory candidates, local knowledge, prompt assembly, model routing, and safe output surfaces.
+
+```mermaid
+flowchart TD
+  U["User message"] --> GC["Game context extraction"]
+  U --> MC["Memory candidate detection"]
+  U --> KR["Local knowledge retrieval"]
+
+  GC --> CTX["Current turn context"]
+  MC --> PM["Pending memory<br/>written only after accept"]
+  KR --> KG["Top-k local snippets"]
+
+  CTX --> Prompt["Prompt assembly"]
+  KG --> Prompt
+  Prompt --> Router["Model routing<br/>fast / pro / auto"]
+  Router --> LLM["DeepSeek-compatible Provider"]
+  LLM --> Reply["Rei reply"]
+
+  Reply --> UI2["Chat UI"]
+  Reply --> TTS["Optional voice output"]
+  Reply --> ES["Event Stream<br/>safe summary"]
+
+  PM -. "after user confirmation" .-> LongMemory["Long-term memory"]
+```
+
+Memory is not written automatically. Knowledge is injected only when relevant. Casual chat does not force retrieval. Event Stream shows safe summaries only.
 
 ## Voice Interaction MVP
 
-ReiLink's voice work is deliberately conservative: optional voice output, user-triggered voice input, and transcript-first confirmation. It is not a fully natural voice assistant.
+Voice Interaction MVP is intentionally conservative: optional voice output, user-triggered voice input, and transcript-first confirmation. It is not a full natural voice assistant.
 
 ### Voice Output
 
+- Uses local system `speechSynthesis`.
 - Optional and off by default.
-- Uses local browser / system `speechSynthesis`.
 - No commercial TTS provider is integrated.
-- Supports Test Voice, rate, volume, Stop Voice, and cancellation on new messages / disable / unmount.
-- Event Stream records sanitized lifecycle summaries only.
-- Known limitation: system voices may pronounce names such as "Rei" unnaturally and are not character-grade voice acting.
+- Supports Test Voice, rate, volume, and Stop Voice.
+- Event Stream records safe lifecycle summaries only.
+- Known limitation: system voices are not character-grade and may pronounce "Rei" or game terms unnaturally.
 
-### Voice Input
+### Voice Input / Local ASR
 
-- Web Speech remains a fallback, but it is not reliable in packaged Electron.
-- Local ASR is the stable path when configured.
-- User configures an ASR binary, model, and converter in Settings.
-- ReiLink does not bundle or download whisper binaries, models, ffmpeg, or third-party executables.
-- Transcript fills the input box only.
-- User confirms and sends manually.
-- No cloud ASR.
-- No wake word or continuous listening.
+- Web Speech fallback is unreliable in packaged Electron.
+- Local ASR is the current stable path.
+- Users configure the ASR binary, model, and converter in Settings.
+- Transcript fills the input box only, then the user sends manually.
+- No cloud ASR upload.
 - No audio retention by default.
-- Before confirmation, transcript does not enter memory, prompt preview, knowledge retrieval, semantic extraction, or game context.
+- No wake word or continuous listening.
+- Before confirmation, transcript does not enter memory, prompt, knowledge retrieval, or game context extraction.
 
 ```mermaid
 sequenceDiagram
-  participant User
-  participant Renderer as Electron Renderer
+  participant User as User
+  participant UI as Renderer
   participant Backend as FastAPI Backend
+  participant Settings as Local ASR Settings
+  participant Converter as Audio Converter
   participant ASR as Local ASR Binary
-  User->>Renderer: Record voice
-  Renderer->>Backend: Upload short audio
-  Backend->>Backend: Convert to WAV if needed
+
+  User->>UI: Click main chat voice button
+  UI->>UI: Record short audio
+  UI->>Backend: Upload audio blob
+  Backend->>Settings: Resolve ASR / model / converter settings
+  Backend->>Backend: Write temporary audio
+  alt WebM / Ogg input
+    Backend->>Converter: Convert to 16kHz mono WAV
+    Converter-->>Backend: Return WAV
+  end
   Backend->>ASR: Run local transcription
-  ASR-->>Backend: Transcript
-  Backend-->>Renderer: Safe transcript response
-  Renderer->>Renderer: Fill input box
-  User->>Renderer: Confirm and send
+  ASR-->>Backend: transcript output
+  Backend->>Backend: Clean temporary files
+  Backend-->>UI: Return safe transcript response
+  UI->>UI: Fill editable input box
+  User->>UI: Confirm and send manually
 ```
+
+Before the user confirms sending, transcript does not enter memory, prompt, knowledge retrieval, or game context extraction.
 
 See [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) for setup and [`docs/QA.md`](docs/QA.md) for release regression checks.
 
 ## Knowledge Retrieval
 
-Current retrieval is local keyword retrieval, not embedding/vector search.
+Current retrieval is local keyword retrieval, not embedding or vector search.
 
 - Supported sample packs: Elden Ring and Hollow Knight.
 - Retrieval statuses include `used`, `not_found`, `below_threshold`, `no_pack`, and `not_game_related`.
-- Grounding / gating keeps low-relevance snippets out of prompts.
+- Grounding/gating keeps low-relevance snippets out of prompts.
 - Casual chat does not force knowledge injection.
-- Explicit game names from the user take priority over current game context.
+- Explicit game names from user messages take priority over current game context.
 
 Knowledge packs live under [`data/knowledge/games`](data/knowledge/games). Authoring guidance is in [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md).
 
-## Privacy & Local-first Design
+## Local-first And Privacy
 
-- Local memory, session, settings, and logs are written to the user data directory, not the packaged app resources.
-- Packaged app user data lives under `~/Library/Application Support/ReiLink/data`.
-- API keys and local environment files are not bundled into the app.
+Local-first means local user data, memory, settings, knowledge packs, audio handling, and Local ASR are kept on the device. LLM inference can still use a configured provider such as DeepSeek.
+
+- Local memory, session, settings, and logs are written to the user data directory, not packaged app resources.
+- Packaged app user data directory: `~/Library/Application Support/ReiLink/data`.
+- Local ASR settings example path: `~/Library/Application Support/ReiLink/data/local_asr_settings.json`.
+- API keys and local environment files are not bundled into the `.app`.
 - Pending memory requires user confirmation.
-- Local ASR audio is short-lived and cleaned after processing.
-- Event Stream / Debug / Raw JSON avoid raw prompts, full transcripts, raw subprocess output, API keys, full local paths, audio content, and base64 audio.
+- Local ASR audio is short-lived temporary data and is cleaned after processing.
+- Event Stream / Debug / Raw JSON avoids raw prompts, full transcripts, raw subprocess output, API keys, full local paths, audio content, and base64 audio.
 
 ## Quick Start
 
@@ -177,9 +244,9 @@ Knowledge packs live under [`data/knowledge/games`](data/knowledge/games). Autho
 
 - macOS for the current packaged app path.
 - Python backend environment.
-- Node.js / npm for the desktop app.
-- Optional provider credentials for real LLM replies.
-- Optional local ASR tools for voice input: whisper.cpp-compatible binary, model file, and converter.
+- Node.js / npm desktop environment.
+- Optional real LLM provider credentials.
+- Optional Local ASR tools: whisper.cpp-compatible binary, compatible model file, and converter.
 
 ### 2. Backend / Desktop Dev
 
@@ -191,11 +258,11 @@ make dev-backend
 make dev-desktop
 ```
 
-`make dev` intentionally does not manage long-running processes; run backend and desktop in separate terminals.
+`make dev` does not manage long-running processes. Start backend and desktop separately.
 
 ### 3. Provider Setup
 
-Configure your LLM provider in the local backend environment. Do not commit real keys or local environment files. `LLM_PROVIDER=mock` can be used for no-key local demos.
+Configure the LLM provider in the local backend environment. Do not commit real keys or local environment files. `LLM_PROVIDER=mock` can be used for no-key local demos.
 
 Health checks:
 
@@ -206,15 +273,13 @@ curl http://127.0.0.1:8000/api/setup/status
 
 ### 4. Optional Local ASR Setup
 
-For real Local ASR, prepare user-managed local tools outside the repo and outside the packaged app:
+Real Local ASR requires user-managed local tools outside the repo and outside the packaged app:
 
 - whisper.cpp-compatible CLI binary
 - compatible local model file
-- ffmpeg-like converter for browser-recorded WebM/Ogg input
+- ffmpeg-like converter for browser WebM / Ogg recordings
 
-Then configure paths from Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup`.
-
-Detailed guide: [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md).
+Then configure the paths from Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup`. See [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md).
 
 ### 5. Packaging
 
@@ -223,15 +288,9 @@ make package-backend
 make package-desktop
 ```
 
-The local unsigned macOS app is generated under `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`.
+The local unsigned macOS app is generated at `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`.
 
 ## Local ASR Setup
-
-Local ASR settings are saved under the backend user data directory as:
-
-```text
-~/Library/Application Support/ReiLink/data/local_asr_settings.json
-```
 
 Configuration priority:
 
@@ -239,18 +298,18 @@ Configuration priority:
 2. Local ASR environment fallback.
 3. Unconfigured safe fallback.
 
-The settings API returns safe booleans, source, and basenames only; full paths are only stored locally and may appear in user editing inputs.
+The Settings API returns configured booleans, source, and basenames only. Full paths are stored only in local configuration or shown in user-edited inputs. ReiLink does not bundle, auto-fetch, or ship whisper binaries, models, ffmpeg, or third-party executables.
 
 ## Packaging
 
 Packaged app backend priority:
 
 1. Healthy external backend on `127.0.0.1:8000`.
-2. Configured backend binary.
-3. Bundled backend binary.
+2. User-configured backend binary.
+3. Bundled backend binary inside the `.app`.
 4. Repo-local fallback in development.
 
-Packaged resources are read-only. User data, memory, session, settings, and logs stay outside the app bundle. The current macOS app is unsigned and does not include installer, notarization, auto-update, or Windows/Linux packaging.
+Packaged resources are read-only. Memory, session, settings, logs, and Local ASR settings live outside the `.app`. The current macOS app is an unsigned local build without installer, notarization, auto updater, or Windows / Linux packaging.
 
 ## Documentation
 
@@ -261,14 +320,14 @@ Packaged resources are read-only. User data, memory, session, settings, and logs
 | [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) | Real Local ASR setup and smoke flow. |
 | [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Local ASR design background and implementation notes. |
 | [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Voice Interaction MVP release notes draft. |
-| [`docs/qa/retrieval_scenarios.json`](docs/qa/retrieval_scenarios.json) | Machine-readable Knowledge Retrieval scenarios. |
+| [`docs/qa/retrieval_scenarios.json`](docs/qa/retrieval_scenarios.json) | Machine-readable Knowledge Retrieval regression scenarios. |
 | [`docs/qa/voice_input_scenarios.json`](docs/qa/voice_input_scenarios.json) | Machine-readable Voice Input fallback scenarios. |
 | [`docs/qa/voice_input_local_asr_scenarios.json`](docs/qa/voice_input_local_asr_scenarios.json) | Machine-readable Local ASR release regression scenarios. |
 | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Common startup and runtime troubleshooting. |
 
 ## Roadmap
 
-### Completed / MVP
+### v0.2 Runtime Foundation
 
 - Voice Output MVP.
 - Local ASR Voice Input MVP.
@@ -276,35 +335,44 @@ Packaged resources are read-only. User data, memory, session, settings, and logs
 - Event Stream / Debug privacy guardrails.
 - Packaged app runtime foundation.
 
-### Near-term
+### v0.2.x Stabilization
 
-- Native file picker for Local ASR setup.
+- Local ASR native file picker.
 - Local ASR setup helper.
-- ASR accuracy and timeout tuning.
-- More robust knowledge packs.
+- ASR accuracy / timeout tuning.
+- More robust QA regression flows.
+
+### v0.3 Gameplay Presence
+
 - Overlay v1.
+- Better gameplay session awareness.
+- Low-interruption proactive companion display.
+
+### v0.4 Character Presence
+
+- Live2D avatar layer.
+- Character state machine.
+- More natural local character TTS exploration.
 
 ### Later
 
-- Live2D avatar.
-- Character-grade local TTS or more natural local voice output.
 - Embedding / hybrid retrieval.
 - More games and richer knowledge packs.
-- Installer / updater work.
+- Installer / updater.
 
 ## Known Limitations
 
 - Pre-release / portfolio-oriented project.
 - macOS-first.
-- No installer, code signing, notarization, or auto updater yet.
+- No installer, code signing, notarization, or auto updater.
 - No cloud account or sync.
 - No bundled whisper binary, model, ffmpeg, or third-party executable.
-- System TTS may sound unnatural and is not character voice acting.
+- System TTS may sound unnatural and is not character-grade voice acting.
 - Local ASR accuracy depends on model size, microphone quality, noise, and hardware.
 - No wake word or continuous listening.
 - No Overlay yet.
 - No Live2D yet.
-- No embedding/vector database/hybrid retrieval yet.
+- No embedding, vector DB, or hybrid retrieval yet.
 - Knowledge packs are samples, not complete guide libraries.
 - Current packaged app is a local unsigned development build.
 

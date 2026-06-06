@@ -1,187 +1,253 @@
 # ReiLink
 
-> Local-first AI game companion runtime for low-interruption, context-aware gameplay support.
+> 本地优先的 AI 游戏陪伴 Agent 桌面应用。
 
 简体中文 | [English](README.en.md)
 
 [![Status](https://img.shields.io/badge/status-pre--release-6b5cff)](docs/PROJECT_STATUS.md)
-[![Platform](https://img.shields.io/badge/platform-macOS-111827)](#quick-start--快速启动)
+[![Platform](https://img.shields.io/badge/platform-macOS-111827)](#快速开始)
 [![Desktop](https://img.shields.io/badge/desktop-Electron-47848f)](https://www.electronjs.org/)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688)](https://fastapi.tiangolo.com/)
-[![Language](https://img.shields.io/badge/language-TypeScript%20%2F%20Python-3178c6)](#architecture--架构)
+[![Language](https://img.shields.io/badge/language-TypeScript%20%2F%20Python-3178c6)](#架构概览)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-ReiLink 是一个面向单机游戏玩家的中文 AI companion 桌面应用。它把当前游戏状态、玩家对话、已确认记忆、本地知识包和低打扰语音交互放在同一个 local-first runtime 里，让 companion 能在游戏时提供克制、上下文相关的回应。
+ReiLink 是面向单机游戏玩家的中文 AI 游戏陪伴运行时。它把当前游戏状态、玩家对话、已确认记忆、本地知识包、语音输入输出和调试事件放在同一个桌面应用里，让 companion 在游戏时提供低打扰、上下文相关、克制的回应。
 
 ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona + LLM 生成；game context、memory 和 knowledge layer 只提供辅助上下文。当前 companion persona 是原创 Rei-like minimal 风格，不使用 Evangelion、Rei Ayanami、NERV 或任何官方 IP 元素。
 
-## Table Of Contents
+## 目录
 
-- [Why ReiLink](#why-reilink)
-- [Current Status](#current-status--当前状态)
-- [Highlights](#highlights)
-- [Feature Matrix](#feature-matrix)
-- [Architecture](#architecture--架构)
+- [ReiLink 是什么](#reilink-是什么)
+- [当前状态](#当前状态)
+- [核心亮点](#核心亮点)
+- [功能矩阵](#功能矩阵)
+- [架构概览](#架构概览)
+- [Agent 回答链路](#agent-回答链路)
 - [Voice Interaction MVP](#voice-interaction-mvp)
-- [Knowledge Retrieval](#knowledge-retrieval)
-- [Privacy & Local-first Design](#privacy--local-first-design)
-- [Quick Start](#quick-start--快速启动)
-- [Local ASR Setup](#local-asr-setup)
-- [Packaging](#packaging)
-- [Documentation](#documentation)
-- [Roadmap](#roadmap)
-- [Known Limitations](#known-limitations)
+- [Knowledge Retrieval / 本地知识检索](#knowledge-retrieval--本地知识检索)
+- [Local-first 与隐私边界](#local-first-与隐私边界)
+- [快速开始](#快速开始)
+- [Local ASR 配置](#local-asr-配置)
+- [打包与运行时说明](#打包与运行时说明)
+- [文档入口](#文档入口)
+- [路线图](#路线图)
+- [已知限制](#已知限制)
 - [License](#license)
 
-## Why ReiLink
+## ReiLink 是什么
 
-Most game companions drift into either generic chat or static guide lookup. ReiLink explores a quieter middle ground:
+很多游戏 companion 容易落到两个极端：要么只是普通聊天机器人，要么只是静态攻略查询。ReiLink 想探索中间地带：
 
-- keep the player in control during gameplay;
-- preserve a restrained, low-emotion companion style;
-- use factual local knowledge without turning replies into wiki dumps;
-- keep memory explicit and confirmable;
-- keep voice input transcript-first, editable, and user-confirmed;
-- keep sensitive runtime data local.
+- 玩家始终掌控输入、发送和记忆写入；
+- companion 保持低情绪、低打扰、短句风格；
+- 本地知识只在相关时提供事实上下文，不把回复变成 wiki dump；
+- 记忆必须经过用户确认；
+- 语音输入是 transcript-first，可编辑、可删除、确认后才发送；
+- 用户数据、设置、知识包和音频处理尽量保留在本机。
 
-The project is currently portfolio / pre-release oriented. It is suitable for local demos, code review, and product/runtime iteration, not a commercial installer.
+当前项目面向本地演示、作品集展示和 runtime / product iteration，不是正式商业安装包。
 
-## Current Status / 当前状态
+## 当前状态
 
-- Current public pre-release line: `reilink-v0.2-pre`.
-- Active development branch: `dev/codex-reilink`.
-- Voice Interaction MVP is implemented: optional local system TTS, Local ASR main-chat input, transcript-first user confirmation, Local ASR Settings persistence, and release regression coverage.
-- Knowledge Retrieval v1 is implemented with local keyword retrieval, grounding / gating, explicit game-name switching, and casual-chat isolation.
-- macOS packaged app runtime has been smoke-tested repeatedly, but the project is still pre-release.
+- 当前开发里程碑：**Voice Interaction MVP / Local ASR v1 packaged configurable MVP**。
+- `dev/codex-reilink` 分支包含最新 Voice / Local ASR / Knowledge Retrieval 进展。
+- 当前开发线已完成：Voice Output、Local ASR 语音输入、主聊天语音按钮、Local ASR Settings 持久化、Knowledge Retrieval 与 QA 回归清单。
+- 公开 release tag 可能滞后于当前 dev 分支；GitHub 更新、release tag、push、merge 仍需要人工 review 后进行。
+- macOS packaged app 已做多轮 smoke，但项目仍处于 pre-release。
 
-See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the detailed state of the project.
+详细状态见 [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)。
 
-## Highlights
+## 核心亮点
 
-- Chinese-first AI companion chat with an original minimal persona.
-- [DeepSeek](https://api-docs.deepseek.com/) compatible provider and model routing (`fast` / `pro` / `auto`).
-- Confirmable memory: long-term memory is written only after user acceptance.
-- Game context and manual current-game override.
-- Local knowledge packs for [Elden Ring sample knowledge](data/knowledge/games/elden_ring) and [Hollow Knight sample knowledge](data/knowledge/games/hollow_knight).
-- Knowledge Retrieval v1: keyword retrieval, top-k snippets, grounding / gating, and explicit cross-game query isolation.
-- Voice Output MVP: optional local system TTS with sanitized lifecycle events.
-- Voice Input MVP: Local ASR path with user-configured [whisper.cpp](https://github.com/ggerganov/whisper.cpp) compatible binary, model, and [ffmpeg](https://ffmpeg.org/) style converter.
-- Event Stream and Debug Panel with privacy guardrails.
-- Standalone macOS app packaging with bundled backend binary and read-only resources.
+- 中文优先的 AI companion chat，原创 minimal persona。
+- [DeepSeek](https://api-docs.deepseek.com/) compatible provider 与 `fast` / `pro` / `auto` 模型路由。
+- Confirmable Memory：长期记忆只在用户接受后写入。
+- Game Context：当前游戏、Boss、进度、挫败状态和手动当前游戏覆盖。
+- 本地知识包：包含 [Elden Ring sample knowledge](data/knowledge/games/elden_ring) 与 [Hollow Knight sample knowledge](data/knowledge/games/hollow_knight)。
+- Knowledge Retrieval v1：本地 keyword retrieval、top-k snippets、grounding / gating、显式游戏名切换和闲聊隔离。
+- Voice Output MVP：系统 TTS，可选开启，安全 Event Stream 生命周期摘要。
+- Voice Input MVP：用户配置 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) compatible binary、model 和 [ffmpeg](https://ffmpeg.org/) compatible converter 后走 Local ASR。
+- Event Stream / Debug Panel：展示安全摘要，不展示 raw prompt、API key、完整路径或完整 transcript。
+- macOS packaged app runtime foundation：bundled backend binary、bundled knowledge resources、用户数据写到 app 外部。
 
-## Feature Matrix
+## 功能矩阵
 
-| Area | Capability | Status | Notes |
+| 范围 | 能力 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| Persona / Dialogue | Original Rei-like minimal persona, LLM-first replies | Done | No official IP elements. |
-| Model Provider | DeepSeek-compatible provider and model routing | Done | Local config required for real provider use. |
-| Memory | Pending memory confirmation | Done | User acceptance required before long-term memory write. |
-| Game Context | Session state, local detector, manual override | MVP | Lightweight local detection; manual override remains important. |
-| Knowledge Retrieval | Keyword retrieval, grounding / gating, explicit game switching | MVP | Sample packs only, not a complete guide library. |
-| Voice Output | Local system TTS, Test Voice, rate / volume, Stop Voice | MVP | System voices are not character-grade voice acting. |
-| Voice Input / Local ASR | Main chat Local ASR, transcript cleanup, no auto-send | MVP | Manual setup required; no bundled whisper/model/ffmpeg. |
-| Event Stream / Debug | Safe lifecycle summaries and debug surfaces | Done | Avoids raw prompt, API keys, full paths, full transcript. |
-| Packaging | macOS local packaged app with bundled backend/resources | MVP | Unsigned local build; no installer/updater yet. |
-| Overlay | Gameplay overlay | Planned | Not implemented. |
-| Live2D | Avatar layer | Planned | Not implemented. |
-| Embedding / Hybrid RAG | Vector or hybrid retrieval | Planned | Current retrieval is keyword-based. |
+| Persona | 原创 minimal companion | MVP | 原创 Rei-like persona，不使用官方 IP。 |
+| Dialogue | LLM-first 回复生成 | 已完成 | Game context / memory / knowledge 只提供上下文。 |
+| Memory | 待确认记忆写入 | 已完成 | 只有用户接受后的记忆会进入长期记忆。 |
+| Game Context | Boss / deaths / frustration / session | MVP | Rule-first，必要时结合 LLM semantic fallback。 |
+| Knowledge Retrieval | 本地 keyword retrieval | MVP | 暂无 embeddings / vector DB / hybrid retrieval。 |
+| Voice Output | 系统 TTS | MVP | 可选开启，不是角色级配音。 |
+| Voice Input | Local ASR | MVP | 需要用户手动配置 binary / model / converter。 |
+| Event Stream | 安全生命周期事件 | 已完成 | 不显示 raw prompt、API key、完整路径、完整 transcript。 |
+| Packaging | macOS `.app` | MVP | 用户数据写在 `.app` 外部；当前为未签名本地构建。 |
+| Overlay | 游戏内 overlay | 计划中 | 尚未实现。 |
+| Live2D | Avatar layer | 计划中 | 尚未实现。 |
+| Embedding / Hybrid RAG | Vector / hybrid retrieval | 计划中 | 当前 retrieval 是 keyword-based。 |
 
-## Architecture / 架构
+## 架构概览
 
-ReiLink uses an [Electron](https://www.electronjs.org/) desktop shell, a [React](https://react.dev/) / [TypeScript](https://www.typescriptlang.org/) / [Vite](https://vite.dev/) renderer, and a local [FastAPI](https://fastapi.tiangolo.com/) backend. Packaged builds use [PyInstaller](https://pyinstaller.org/) for the backend binary. The diagrams below use [Mermaid](https://mermaid.js.org/) and render directly on GitHub.
+ReiLink 使用 [Electron](https://www.electronjs.org/) desktop shell、[React](https://react.dev/) / [TypeScript](https://www.typescriptlang.org/) / [Vite](https://vite.dev/) renderer，以及本地 [FastAPI](https://fastapi.tiangolo.com/) backend。packaged app 通过 [PyInstaller](https://pyinstaller.org/) 打包 backend binary。下方图表使用 [Mermaid](https://mermaid.js.org/)，可在 GitHub README 直接渲染。
 
 ```mermaid
 flowchart LR
-  Player[Player] --> Desktop[Electron Desktop]
-  Desktop --> Renderer[React Renderer]
-  Renderer --> Backend[FastAPI Backend]
-  Backend --> Dialogue[Dialogue Agent]
-  Dialogue --> Persona[Persona]
-  Dialogue --> Memory[Memory]
-  Dialogue --> Game[Game Context]
-  Dialogue --> Knowledge[Knowledge Retrieval]
-  Dialogue --> Provider[DeepSeek Provider]
-  Backend --> LocalData[Local User Data]
+  Player["玩家"] --> UI["React Renderer<br/>聊天 / 设置 / 调试"]
+  UI --> Events["Event Bus<br/>安全事件摘要"]
+  UI --> VoiceOut["Voice Output<br/>系统 TTS"]
+  UI --> Audio["Voice Input<br/>MediaRecorder"]
+
+  subgraph Desktop["Electron Desktop"]
+    UI
+    Events
+    VoiceOut
+    Audio
+  end
+
+  UI --> API["FastAPI Backend"]
+  Audio --> API
+
+  subgraph Runtime["Backend Runtime"]
+    API --> Agent["Dialogue Agent"]
+    Agent --> Persona["Persona"]
+    Agent --> Memory["Confirmed Memory"]
+    Agent --> Game["Game Context"]
+    Agent --> Retrieval["Knowledge Retrieval"]
+    Agent --> Router["Model Router"]
+    API --> ASR["Local ASR Bridge"]
+    ASR --> Converter["Audio Converter<br/>ffmpeg-compatible"]
+    ASR --> Whisper["Local ASR Binary<br/>whisper.cpp-compatible"]
+  end
+
+  Retrieval --> Packs["Bundled Knowledge Packs"]
+  Memory --> UserData["Local User Data"]
+  ASR --> UserData
+  Router --> DeepSeek["DeepSeek-compatible API"]
+
+  Packs -. "只读资源" .-> Runtime
+  UserData -. "本地保存" .-> Runtime
 ```
 
-The renderer owns UI, push-to-talk interaction, speech synthesis, and local audio capture. The backend owns dialogue orchestration, provider calls, local data, knowledge retrieval, Local ASR subprocess boundaries, and packaged runtime checks.
+Renderer 负责用户交互、语音录制、系统 TTS 和安全事件展示。Backend 负责 Agent runtime、knowledge retrieval、memory、game context、model routing、Local ASR subprocess 边界和用户数据目录。Local-first 指本地用户数据、本地记忆、本地设置、本地知识包、音频处理和 Local ASR 优先保存在本机；LLM 推理目前仍可通过用户配置的 DeepSeek-compatible provider 完成。
+
+## Agent 回答链路
+
+ReiLink 的一次回复不是“用户消息直接丢给 chatbot”。它会先整理游戏上下文、记忆候选、本地知识和模型路由，再组装 prompt。
+
+```mermaid
+flowchart TD
+  U["用户消息"] --> GC["游戏上下文提取"]
+  U --> MC["记忆候选检测"]
+  U --> KR["本地知识检索"]
+
+  GC --> CTX["当前回合上下文"]
+  MC --> PM["待确认记忆<br/>用户 accept 后才写入"]
+  KR --> KG["Top-k 本地知识片段"]
+
+  CTX --> Prompt["Prompt 组装"]
+  KG --> Prompt
+  Prompt --> Router["模型路由<br/>fast / pro / auto"]
+  Router --> LLM["DeepSeek-compatible Provider"]
+  LLM --> Reply["Rei 回复"]
+
+  Reply --> UI2["聊天界面"]
+  Reply --> TTS["可选语音输出"]
+  Reply --> ES["Event Stream<br/>安全摘要"]
+
+  PM -. "用户确认后" .-> LongMemory["长期记忆"]
+```
+
+Memory 不会自动写入；knowledge 只有相关时注入；闲聊不会强行触发 retrieval；Event Stream 只展示安全摘要。
 
 ## Voice Interaction MVP
 
-ReiLink's voice work is deliberately conservative: optional voice output, user-triggered voice input, and transcript-first confirmation. It is not a fully natural voice assistant.
+ReiLink 的 Voice Interaction MVP 是保守路线：可选语音输出、用户触发语音输入、transcript-first 确认发送。它不是完整自然语音助手。
 
 ### Voice Output
 
-- Optional and off by default.
-- Uses local browser / system `speechSynthesis`.
-- No commercial TTS provider is integrated.
-- Supports `测试语音 / Test Voice`, rate, volume, Stop Voice, and cancellation on new messages / disable / unmount.
-- Event Stream records sanitized lifecycle summaries only.
-- Known limitation: system voices may pronounce names such as "Rei" unnaturally and are not character-grade voice acting.
+- 使用本机系统 `speechSynthesis`。
+- 可选开启，默认关闭。
+- 不接商业 TTS provider。
+- 支持 Test Voice、rate、volume、Stop Voice。
+- Event Stream 只记录安全生命周期摘要。
+- 已知限制：声音不够角色化，可能念错 Rei 或游戏专有名词。
 
-### Voice Input
+### Voice Input / Local ASR
 
-- Web Speech remains a fallback, but it is not reliable in packaged Electron.
-- Local ASR is the stable path when configured.
-- User configures an ASR binary, model, and converter in Settings.
-- ReiLink does not bundle or download whisper binaries, models, ffmpeg, or third-party executables.
-- Transcript fills the input box only.
-- User confirms and sends manually.
-- No cloud ASR.
-- No wake word or continuous listening.
-- No audio retention by default.
-- Before confirmation, transcript does not enter memory, prompt preview, knowledge retrieval, semantic extraction, or game context.
+- Web Speech fallback 在 Electron packaged app 中不可靠。
+- Local ASR 是当前稳定主路径。
+- 用户在 Settings 配置 ASR binary、model 和 converter。
+- transcript 只填入输入框，用户确认后才发送。
+- 不上传音频到云 ASR。
+- 默认不保存音频。
+- 不做 wake word / continuous listening。
+- 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context extraction。
 
 ```mermaid
 sequenceDiagram
-  participant User
-  participant Renderer as Electron Renderer
+  participant User as 用户
+  participant UI as Renderer
   participant Backend as FastAPI Backend
+  participant Settings as Local ASR Settings
+  participant Converter as Audio Converter
   participant ASR as Local ASR Binary
-  User->>Renderer: Record voice
-  Renderer->>Backend: Upload short audio
-  Backend->>Backend: Convert to WAV if needed
-  Backend->>ASR: Run local transcription
-  ASR-->>Backend: Transcript
-  Backend-->>Renderer: Safe transcript response
-  Renderer->>Renderer: Fill input box
-  User->>Renderer: Confirm and send
+
+  User->>UI: 点击主聊天语音按钮
+  UI->>UI: 录制短音频
+  UI->>Backend: 上传 audio blob
+  Backend->>Settings: 解析 ASR / model / converter 配置
+  Backend->>Backend: 写入临时音频
+  alt WebM / Ogg 输入
+    Backend->>Converter: 转换为 16kHz mono WAV
+    Converter-->>Backend: 返回 WAV
+  end
+  Backend->>ASR: 本地转写
+  ASR-->>Backend: transcript output
+  Backend->>Backend: 清理临时文件
+  Backend-->>UI: 返回安全 transcript response
+  UI->>UI: 填入可编辑输入框
+  User->>UI: 用户确认后手动发送
 ```
 
-See [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) for setup and [`docs/QA.md`](docs/QA.md) for release regression checks.
+在用户确认发送前，transcript 不会进入 memory、prompt、knowledge retrieval 或 game context extraction。
 
-## Knowledge Retrieval
+详细配置见 [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md)，发布回归见 [`docs/QA.md`](docs/QA.md)。
 
-Current retrieval is local keyword retrieval, not embedding/vector search.
+## Knowledge Retrieval / 本地知识检索
 
-- Supported sample packs: Elden Ring / 艾尔登法环 and Hollow Knight / 空洞骑士.
-- Retrieval statuses include `used`, `not_found`, `below_threshold`, `no_pack`, and `not_game_related`.
-- Grounding / gating keeps low-relevance snippets out of prompts.
-- Casual chat does not force knowledge injection.
-- Explicit game names from the user take priority over current game context.
+当前 retrieval 是本地 keyword retrieval，不是 embedding / vector search。
 
-Knowledge packs live under [`data/knowledge/games`](data/knowledge/games). Authoring guidance is in [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md).
+- 支持 sample packs：Elden Ring / 艾尔登法环、Hollow Knight / 空洞骑士。
+- 状态包括 `used`、`not_found`、`below_threshold`、`no_pack`、`not_game_related`。
+- grounding / gating 会阻止低相关知识注入 prompt。
+- 闲聊不会强行注入 knowledge。
+- 用户显式游戏名优先于 current game context。
 
-## Privacy & Local-first Design
+知识包位于 [`data/knowledge/games`](data/knowledge/games)，新增知识包规范见 [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md)。
 
-- Local memory, session, settings, and logs are written to the user data directory, not the packaged app resources.
-- Packaged app user data lives under `~/Library/Application Support/ReiLink/data`.
-- API keys and local environment files are not bundled into the app.
-- Pending memory requires user confirmation.
-- Local ASR audio is short-lived and cleaned after processing.
-- Event Stream / Debug / Raw JSON avoid raw prompts, full transcripts, raw subprocess output, API keys, full local paths, audio content, and base64 audio.
+## Local-first 与隐私边界
 
-## Quick Start / 快速启动
+- 本地 memory、session、settings、logs 写入用户数据目录，不写入 packaged app resources。
+- packaged app 用户数据目录：`~/Library/Application Support/ReiLink/data`。
+- Local ASR settings 示例路径：`~/Library/Application Support/ReiLink/data/local_asr_settings.json`。
+- API keys 和本地环境文件不会打包进 `.app`。
+- Pending memory 必须由用户确认。
+- Local ASR 音频是短时临时文件，处理后清理。
+- Event Stream / Debug / Raw JSON 不展示 raw prompt、完整 transcript、raw subprocess output、API key、完整本地路径、audio content 或 base64 audio。
+- Local-first 指本地数据、本地设置、本地知识包和本地 ASR 优先留在本机；不代表当前所有 LLM 推理都离线。
 
-### 1. Requirements
+## 快速开始
 
-- macOS for the current packaged app path.
-- Python backend environment.
-- Node.js / npm for the desktop app.
-- Optional provider credentials for real LLM replies.
-- Optional local ASR tools for voice input: whisper.cpp-compatible binary, model file, and converter.
+### 1. 环境要求
 
-### 2. Backend / Desktop Dev
+- macOS：当前 packaged app 路径以 macOS 为主。
+- Python backend 环境。
+- Node.js / npm desktop 环境。
+- 可选：真实 LLM provider 凭据。
+- 可选：Local ASR 所需 whisper.cpp-compatible binary、model file、converter。
+
+### 2. Backend / Desktop 开发模式
 
 ```bash
 make install-backend
@@ -191,122 +257,123 @@ make dev-backend
 make dev-desktop
 ```
 
-`make dev` intentionally does not manage long-running processes; run backend and desktop in separate terminals.
+`make dev` 不管理长进程；请分别启动 backend 和 desktop。
 
-### 3. Provider Setup
+### 3. Provider 配置
 
-Configure your LLM provider in the local backend environment. Do not commit real keys or local environment files. `LLM_PROVIDER=mock` can be used for no-key local demos.
+在本地 backend 环境配置 LLM provider。不要提交真实 key 或本地环境文件。无 key 本地演示可使用 `LLM_PROVIDER=mock`。
 
-Health checks:
+健康检查：
 
 ```bash
 curl http://127.0.0.1:8000/api/health
 curl http://127.0.0.1:8000/api/setup/status
 ```
 
-### 4. Optional Local ASR Setup
+### 4. 可选 Local ASR 配置
 
-For real Local ASR, prepare user-managed local tools outside the repo and outside the packaged app:
+真实 Local ASR 需要用户自行准备本地工具，并放在 repo 和 packaged app 外部：
 
 - whisper.cpp-compatible CLI binary
 - compatible local model file
-- ffmpeg-like converter for browser-recorded WebM/Ogg input
+- 用于 browser WebM / Ogg 录音的 ffmpeg-like converter
 
-Then configure paths from Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup`.
+然后在 Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 中填入路径。详细步骤见 [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md)。
 
-Detailed guide: [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md).
-
-### 5. Packaging
+### 5. 打包
 
 ```bash
 make package-backend
 make package-desktop
 ```
 
-The local unsigned macOS app is generated under `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`.
+本地未签名 macOS app 会生成在 `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`。
 
-## Local ASR Setup
+## Local ASR 配置
 
-Local ASR settings are saved under the backend user data directory as:
+配置优先级：
 
-```text
-~/Library/Application Support/ReiLink/data/local_asr_settings.json
-```
+1. Settings 用户配置。
+2. Local ASR 环境变量 fallback。
+3. 未配置安全 fallback。
 
-Configuration priority:
+Settings API 只返回 configured booleans、source 和 basename；完整路径只保存在本地配置文件中，或出现在用户主动编辑的输入框中。ReiLink 不内置、不自动获取，也不会随项目提供 whisper binary、model、ffmpeg 或第三方可执行文件。
 
-1. Settings user configuration.
-2. Local ASR environment fallback.
-3. Unconfigured safe fallback.
+## 打包与运行时说明
 
-The settings API returns safe booleans, source, and basenames only; full paths are only stored locally and may appear in user editing inputs.
+packaged app backend 优先级：
 
-## Packaging
+1. `127.0.0.1:8000` 上健康的外部 backend。
+2. 用户配置的 backend binary。
+3. `.app` 内 bundled backend binary。
+4. dev 模式下 repo-local fallback。
 
-Packaged app backend priority:
+packaged resources 是只读资源。memory、session、settings、logs 和 Local ASR settings 都保存在 `.app` 外部。当前 macOS app 是本地未签名构建，不包含 installer、notarization、auto updater 或 Windows / Linux 打包。
 
-1. Healthy external backend on `127.0.0.1:8000`.
-2. Configured backend binary.
-3. Bundled backend binary.
-4. Repo-local fallback in development.
+## 文档入口
 
-Packaged resources are read-only. User data, memory, session, settings, and logs stay outside the app bundle. The current macOS app is unsigned and does not include installer, notarization, auto-update, or Windows/Linux packaging.
-
-## Documentation
-
-| Document | Purpose |
+| 文档 | 用途 |
 | --- | --- |
-| [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) | Current project state and scope. |
-| [`docs/QA.md`](docs/QA.md) | Manual QA and release regression checklist. |
-| [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) | Real Local ASR setup and smoke flow. |
-| [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Local ASR design background and implementation notes. |
-| [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Voice Interaction MVP release notes draft. |
-| [`docs/qa/retrieval_scenarios.json`](docs/qa/retrieval_scenarios.json) | Machine-readable Knowledge Retrieval scenarios. |
-| [`docs/qa/voice_input_scenarios.json`](docs/qa/voice_input_scenarios.json) | Machine-readable Voice Input fallback scenarios. |
-| [`docs/qa/voice_input_local_asr_scenarios.json`](docs/qa/voice_input_local_asr_scenarios.json) | Machine-readable Local ASR release regression scenarios. |
-| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Common startup and runtime troubleshooting. |
+| [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) | 当前项目状态与范围。 |
+| [`docs/QA.md`](docs/QA.md) | 手动 QA 与 release regression checklist。 |
+| [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) | 真实 Local ASR 配置与 smoke flow。 |
+| [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Local ASR 设计背景与实现说明。 |
+| [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Voice Interaction MVP release notes 草稿。 |
+| [`docs/qa/retrieval_scenarios.json`](docs/qa/retrieval_scenarios.json) | Knowledge Retrieval 机器可读回归场景。 |
+| [`docs/qa/voice_input_scenarios.json`](docs/qa/voice_input_scenarios.json) | Voice Input fallback 机器可读回归场景。 |
+| [`docs/qa/voice_input_local_asr_scenarios.json`](docs/qa/voice_input_local_asr_scenarios.json) | Local ASR release regression 场景。 |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | 常见启动和运行问题。 |
 
-## Roadmap
+## 路线图
 
-### Completed / MVP
+### v0.2 Runtime Foundation
 
-- Voice Output MVP.
-- Local ASR Voice Input MVP.
-- Knowledge Retrieval v1.
-- Event Stream / Debug privacy guardrails.
-- Packaged app runtime foundation.
+- Voice Output MVP。
+- Local ASR Voice Input MVP。
+- Knowledge Retrieval v1。
+- Event Stream / Debug privacy guardrails。
+- Packaged app runtime foundation。
 
-### Near-term
+### v0.2.x Stabilization
 
-- Native file picker for Local ASR setup.
-- Local ASR setup helper.
-- ASR accuracy and timeout tuning.
-- More robust knowledge packs.
-- Overlay v1.
+- Local ASR native file picker。
+- Local ASR setup helper。
+- ASR accuracy / timeout tuning。
+- More robust QA regression flows。
+
+### v0.3 Gameplay Presence
+
+- Overlay v1。
+- 更好的游戏会话感知。
+- 低打扰 proactive companion display。
+
+### v0.4 Character Presence
+
+- Live2D avatar layer。
+- Character state machine。
+- 更自然的本地角色 TTS 探索。
 
 ### Later
 
-- Live2D avatar.
-- Character-grade local TTS or more natural local voice output.
-- Embedding / hybrid retrieval.
-- More games and richer knowledge packs.
-- Installer / updater work.
+- Embedding / hybrid retrieval。
+- More games and richer knowledge packs。
+- Installer / updater。
 
-## Known Limitations
+## 已知限制
 
-- Pre-release / portfolio-oriented project.
-- macOS-first.
-- No installer, code signing, notarization, or auto updater yet.
-- No cloud account or sync.
-- No bundled whisper binary, model, ffmpeg, or third-party executable.
-- System TTS may sound unnatural and is not character voice acting.
-- Local ASR accuracy depends on model size, microphone quality, noise, and hardware.
-- No wake word or continuous listening.
-- No Overlay yet.
-- No Live2D yet.
-- No embedding/vector database/hybrid retrieval yet.
-- Knowledge packs are samples, not complete guide libraries.
-- Current packaged app is a local unsigned development build.
+- Pre-release / portfolio-oriented project。
+- macOS-first。
+- 还没有 installer、code signing、notarization 或 auto updater。
+- 没有 cloud account / sync。
+- 不内置 whisper binary、model、ffmpeg 或第三方可执行文件。
+- 系统 TTS 可能不够自然，也不是角色级配音。
+- Local ASR 准确率取决于模型大小、麦克风、环境噪音和硬件性能。
+- 不做 wake word / continuous listening。
+- 还没有 Overlay。
+- 还没有 Live2D。
+- 还没有 embedding / vector DB / hybrid retrieval。
+- 知识包仍是 samples，不是完整攻略库。
+- 当前 packaged app 是本地未签名开发构建。
 
 ## License
 
