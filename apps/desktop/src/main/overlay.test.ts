@@ -1,9 +1,11 @@
 import {
   createOverlayMessage,
   createOverlayState,
+  normalizeOverlayContentUpdate,
   OVERLAY_MAX_MESSAGE_LENGTH,
   sanitizeOverlayText
 } from "../shared/overlay";
+import { configureOverlayWindowForClickThrough, createOverlayWindowOptions } from "./overlayWindow";
 
 describe("overlay content safety", () => {
   it("redacts sensitive text and truncates long content", () => {
@@ -19,6 +21,21 @@ describe("overlay content safety", () => {
     expect(text).not.toContain("raw stderr");
   });
 
+  it("redacts local paths with spaces before IPC payloads reach the overlay", () => {
+    const update = normalizeOverlayContentUpdate({
+      text: "模型在 /Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin，stdout 里还有 transcript。",
+      source: "unknown",
+      timestamp: { raw: "bad" }
+    });
+
+    expect(update.source).toBe("assistant_reply");
+    expect(update.timestamp).toBeUndefined();
+    expect(update.text).not.toContain("/Users/aragoto");
+    expect(update.text).not.toContain("Application Support");
+    expect(update.text).not.toContain("stdout");
+    expect(update.text).not.toContain("transcript");
+  });
+
   it("keeps only the latest three safe messages in state", () => {
     const messages = [0, 1, 2, 3].map((index) =>
       createOverlayMessage({ text: `message ${index}`, source: "assistant_reply" }, `id-${index}`)
@@ -29,5 +46,35 @@ describe("overlay content safety", () => {
     expect(state.messages.map((message) => message.text)).toEqual(["message 1", "message 2", "message 3"]);
     expect(state.max_messages).toBe(3);
     expect(state.visible).toBe(true);
+  });
+
+  it("builds a non-focusable click-through overlay window configuration", () => {
+    const options = createOverlayWindowOptions({ width: 360, height: 168, x: 100, y: 200 }, "/tmp/preload.cjs");
+
+    expect(options.transparent).toBe(true);
+    expect(options.frame).toBe(false);
+    expect(options.alwaysOnTop).toBe(true);
+    expect(options.skipTaskbar).toBe(true);
+    expect(options.focusable).toBe(false);
+    expect(options.show).toBe(false);
+    expect(options.webPreferences).toMatchObject({
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: "/tmp/preload.cjs"
+    });
+  });
+
+  it("explicitly configures click-through mouse behavior", () => {
+    const window = {
+      setAlwaysOnTop: vi.fn(),
+      setIgnoreMouseEvents: vi.fn(),
+      setVisibleOnAllWorkspaces: vi.fn()
+    };
+
+    configureOverlayWindowForClickThrough(window as unknown as Parameters<typeof configureOverlayWindowForClickThrough>[0]);
+
+    expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(true);
+    expect(window.setAlwaysOnTop).toHaveBeenCalledWith(true, "floating");
+    expect(window.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, { visibleOnFullScreen: true });
   });
 });

@@ -1513,9 +1513,9 @@ describe("App", () => {
     appSettingsStore = { ...appSettingsStore, overlay_enabled: "on" };
     chatResponseStore = {
       ...chatResponse,
-      reply: "这是一条很长的回复，包含 /Users/aragoto/Desktop/ReiLink/services/backend/.env 和 API key，还有后面很多很多不该完整显示的文字。先停一下，看动作，再试一次。继续观察距离、翻滚时机、精力条、走位和节奏，这些内容都不应该完整塞进悬浮层。",
+      reply: "这是一条很长的回复，包含 /Users/aragoto/Desktop/ReiLink/services/backend/.env 和 API key，还有后面很多很多不该完整显示的文字。先停一下，看动作，再试一次。继续观察距离、翻滚时机、精力条、走位和节奏，这些内容都不应该完整塞进悬浮层。继续追加很多很多很多很多很多很多很多安全但冗长的内容。",
       reply_segments: [
-        "这是一条很长的回复，包含 /Users/aragoto/Desktop/ReiLink/services/backend/.env 和 API key，还有后面很多很多不该完整显示的文字。先停一下，看动作，再试一次。继续观察距离、翻滚时机、精力条、走位和节奏，这些内容都不应该完整塞进悬浮层。"
+        "这是一条很长的回复，包含 /Users/aragoto/Desktop/ReiLink/services/backend/.env 和 API key，还有后面很多很多不该完整显示的文字。先停一下，看动作，再试一次。继续观察距离、翻滚时机、精力条、走位和节奏，这些内容都不应该完整塞进悬浮层。继续追加很多很多很多很多很多很多很多安全但冗长的内容。"
       ]
     };
     const runtime = installRuntimeBridge(backendRuntimeStatus);
@@ -3617,6 +3617,30 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("not_game_related");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
+  });
+
+  it("sanitizes Overlay error summaries in Event Stream", () => {
+    render(
+      <EventStreamPanel
+        events={[
+          {
+            type: "overlay_error",
+            timestamp: new Date().toISOString(),
+            reason: "raw stderr from /Users/aragoto/Library/Application Support/ReiLink/.env with API key"
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).toHaveTextContent("悬浮层失败");
+    expect(eventStream).not.toHaveTextContent("raw stderr");
+    expect(eventStream).not.toHaveTextContent("/Users/aragoto");
+    expect(eventStream).not.toHaveTextContent("Application Support");
+    expect(eventStream).not.toHaveTextContent(".env");
+    expect(eventStream).not.toHaveTextContent("API key");
   });
 
   it("shows an empty Event Stream state when there are no events", () => {

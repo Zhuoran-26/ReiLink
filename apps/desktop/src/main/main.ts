@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { BackendRuntimeManager } from "./backendRuntime.js";
 import { openLocalDataDir } from "./localData.js";
+import { configureOverlayWindowForClickThrough, createOverlayWindowOptions } from "./overlayWindow.js";
 import {
   createOverlayMessage,
   createOverlayState,
@@ -112,29 +113,8 @@ const hideOverlayWindow = () => {
 const createOverlayWindow = () => {
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
   const bounds = overlayBounds();
-  overlayWindow = new BrowserWindow({
-    ...bounds,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    focusable: false,
-    show: false,
-    hasShadow: false,
-    backgroundColor: "#00000000",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  });
-  overlayWindow.setIgnoreMouseEvents(true);
-  overlayWindow.setAlwaysOnTop(true, "floating");
-  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWindow = new BrowserWindow(createOverlayWindowOptions(bounds, path.join(__dirname, "preload.cjs")));
+  configureOverlayWindowForClickThrough(overlayWindow);
   overlayWindow.on("closed", () => {
     overlayWindow = null;
     broadcastOverlayState();

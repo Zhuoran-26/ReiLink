@@ -950,7 +950,7 @@ const eventSummary = (event: ReiLinkEvent) => {
         `${event.message_count} 条`
       ].filter(Boolean).join(" / ");
     case "overlay_error":
-      return debugText(event.reason);
+      return sanitizeOverlayText(event.reason, 48);
     case "tts_started":
       return [voiceEventSourceText(event.source), `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_completed":

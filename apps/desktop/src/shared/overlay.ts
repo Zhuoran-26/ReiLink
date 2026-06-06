@@ -31,10 +31,12 @@ const SENSITIVE_PATTERNS = [
   /api[_\s-]*key/gi,
   /authorization/gi,
   /\.env/gi,
-  /raw\s*(prompt|json|stdout|stderr)/gi,
+  /raw\s*(prompt|json|stdout|stderr|exception)/gi,
+  /stdout/gi,
+  /stderr/gi,
   /transcript/gi,
-  /\/users\/[^\s，。；,;]+/gi,
-  /[a-z]:\\[^\s，。；,;]+/gi
+  /\/(?:users|applications|volumes|tmp|private\/var)\/[^，。；,;\n\r]+/gi,
+  /[a-z]:\\[^，。；,;\n\r]+/gi
 ];
 
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, " ").trim();
@@ -55,17 +57,34 @@ export const sanitizeOverlayText = (value: unknown, maxLength = OVERLAY_MAX_MESS
   return text || OVERLAY_PLACEHOLDER_TEXT;
 };
 
+export const normalizeOverlayContentUpdate = (
+  update: unknown,
+  maxLength = OVERLAY_MAX_MESSAGE_LENGTH
+): OverlayContentUpdate => {
+  const record = typeof update === "object" && update !== null ? update as Record<string, unknown> : {};
+  const source = record.source === "proactive" || record.source === "placeholder" ? record.source : "assistant_reply";
+  const timestamp = typeof record.timestamp === "string" && record.timestamp.length <= 64 ? record.timestamp : undefined;
+  return {
+    text: sanitizeOverlayText(record.text, maxLength),
+    source,
+    timestamp
+  };
+};
+
 export const createOverlayMessage = (
   update: OverlayContentUpdate,
   id: string,
   maxLength = OVERLAY_MAX_MESSAGE_LENGTH
-): OverlayMessage => ({
-  id,
-  speaker: "Rei",
-  text: sanitizeOverlayText(update.text, maxLength),
-  source: update.source === "proactive" ? "proactive" : update.source === "placeholder" ? "placeholder" : "assistant_reply",
-  timestamp: update.timestamp || new Date().toISOString()
-});
+): OverlayMessage => {
+  const safeUpdate = normalizeOverlayContentUpdate(update, maxLength);
+  return {
+    id,
+    speaker: "Rei",
+    text: safeUpdate.text,
+    source: safeUpdate.source ?? "assistant_reply",
+    timestamp: safeUpdate.timestamp || new Date().toISOString()
+  };
+};
 
 export const createOverlayState = (
   enabled: boolean,
