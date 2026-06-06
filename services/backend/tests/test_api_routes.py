@@ -343,7 +343,13 @@ def test_debug_chat_returns_last_latency_fields():
         "matched_topics",
         "snippets_count",
         "snippet_titles",
+        "snippet_previews",
+        "matched_terms",
+        "result_scores",
         "knowledge_used_in_prompt",
+        "knowledge_retrieval_status",
+        "knowledge_not_used_reason",
+        "knowledge_retrieval_min_score",
     } <= data.keys()
     assert data["knowledge_matched"] is False
     assert data["snippets_count"] == 0
@@ -497,7 +503,16 @@ def test_prompt_preview_shows_knowledge_summary():
     assert knowledge["supported_games_count"] == 2
     assert knowledge["snippets_count"] > 0
     assert knowledge["snippet_titles"]
+    assert knowledge["snippet_previews"]
+    assert knowledge["matched_terms"]
+    assert knowledge["result_scores"]
     assert knowledge["knowledge_used_in_prompt"] is True
+    assert knowledge["retrieval_status"] == "used"
+    assert knowledge["not_used_reason"] is None
+    serialized = json.dumps(knowledge, ensure_ascii=False)
+    assert "api_key" not in serialized.lower()
+    assert ".env" not in serialized
+    assert "/Users/" not in serialized
     assert knowledge["fallback_reason"] is None
 
 
@@ -529,6 +544,7 @@ def test_prompt_preview_shows_hollow_knight_knowledge_summary():
     assert knowledge["knowledge_pack_status"] == "sample"
     assert "beginner_tip" in knowledge["coverage"]
     assert knowledge["knowledge_used_in_prompt"] is True
+    assert knowledge["retrieval_status"] == "used"
     assert knowledge["snippets_count"] > 0
     assert any("螳螂领主" in title for title in knowledge["snippet_titles"])
     assert "螳螂领主" in knowledge["matched_topics"]

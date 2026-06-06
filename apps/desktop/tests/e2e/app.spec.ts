@@ -21,6 +21,64 @@ test("mock backend chat flow works", async ({ page }) => {
       }
     })
   );
+  await page.route("**/api/voice-input/local-asr/status", (route) =>
+    route.fulfill({
+      json: {
+        status: "local_asr_not_configured",
+        available: false,
+        binary_configured: false,
+        binary_present: false,
+        binary_executable: false,
+        model_configured: false,
+        model_present: false,
+        display_message: "本地语音识别未配置",
+        safe_binary_name: null,
+        safe_model_name: null,
+        converter_configured: false,
+        safe_converter_name: null,
+        source: "none"
+      }
+    })
+  );
+  await page.route("**/api/voice-input/local-asr/settings", (route) =>
+    route.fulfill({
+      json: {
+        configured: false,
+        binary_configured: false,
+        model_configured: false,
+        converter_configured: false,
+        safe_binary_name: null,
+        safe_model_name: null,
+        safe_converter_name: null,
+        source: "none"
+      }
+    })
+  );
+  await page.route("**/api/voice-input/local-asr/probe", (route) =>
+    route.fulfill({
+      json: {
+        status: "local_asr_probe_not_ready",
+        available: false,
+        display_message: "本地语音识别配置未就绪，未执行检查",
+        binary_name: null,
+        model_name: null,
+        duration_ms: 0
+      }
+    })
+  );
+  await page.route("**/api/voice-input/audio/probe", (route) =>
+    route.fulfill({
+      json: {
+        status: "audio_probe_succeeded",
+        available: true,
+        display_message: "录音测试完成，临时音频已清理",
+        duration_ms: 3000,
+        size_bytes: 16,
+        mime_type: "audio/webm",
+        temporary_file_cleaned: true
+      }
+    })
+  );
   await page.route("**/api/settings", (route) =>
     route.fulfill({
       json: {
@@ -304,7 +362,13 @@ test("mock backend chat flow works", async ({ page }) => {
         matched_topics: ["margit", "boss_strategy"],
         snippets_count: 2,
         snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
-        knowledge_used_in_prompt: true
+        snippet_previews: ["Margit 很多攻击会故意延迟。保持中距离。", "如果伤害明显不够，可以先强化武器。"],
+        matched_terms: ["margit", "恶兆妖鬼"],
+        result_scores: [18, 14],
+        knowledge_used_in_prompt: true,
+        knowledge_retrieval_status: "used",
+        knowledge_not_used_reason: null,
+        knowledge_retrieval_min_score: 8
       }
     })
   );
@@ -409,7 +473,7 @@ test("mock backend chat flow works", async ({ page }) => {
   );
 
   await page.goto("/");
-  await expect(page.getByText("已连接")).toBeVisible();
+  await expect(page.getByText("已连接", { exact: true })).toBeVisible();
   await expect(page.getByText("游戏：艾尔登法环")).toBeVisible();
   await page.getByLabel("聊天输入").fill("Margit 怎么打?");
   await page.getByRole("button", { name: /发送/i }).click();

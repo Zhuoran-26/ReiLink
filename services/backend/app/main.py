@@ -12,6 +12,7 @@ from app.api.routes_proactive import router as proactive_router
 from app.api.routes_setup import router as setup_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_voice import router as voice_router
+from app.api.routes_voice_input import router as voice_input_router
 from app.core.config import settings
 from app.modules.dialogue_agent.providers import log_provider_state
 
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(setup_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
     app.include_router(voice_router, prefix="/api")
+    app.include_router(voice_input_router, prefix="/api")
     return app
 
 

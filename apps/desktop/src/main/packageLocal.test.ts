@@ -10,6 +10,7 @@ type PackageLocalModule = {
     platform?: string;
   }) => Promise<{ backendBinaryPath: string; knowledgeGamesPath: string; runtimeResourcesPath: string }>;
   validateStandaloneResources: (options: { resourcesRoot: string; platform?: string }) => Promise<void>;
+  setPlistString: (plistText: string, key: string, value: string) => string;
 };
 
 const loadPackageLocal = async () =>
@@ -96,5 +97,26 @@ describe("package-local standalone resources", () => {
     await expect(validateStandaloneResources({ resourcesRoot, platform: "darwin" })).rejects.toThrow(
       "Packaged standalone resource is missing"
     );
+  });
+
+  it("adds Chinese audio permission descriptions to packaged app metadata", async () => {
+    const { setPlistString } = await loadPackageLocal();
+    const plist = "<plist><dict></dict></plist>";
+
+    const microphoneResult = setPlistString(
+      plist,
+      "NSMicrophoneUsageDescription",
+      "ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。"
+    );
+    const audioCaptureResult = setPlistString(
+      plist,
+      "NSAudioCaptureUsageDescription",
+      "ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。"
+    );
+
+    expect(microphoneResult).toContain("<key>NSMicrophoneUsageDescription</key>");
+    expect(microphoneResult).toContain("用户主动触发的语音输入测试");
+    expect(audioCaptureResult).toContain("<key>NSAudioCaptureUsageDescription</key>");
+    expect(audioCaptureResult).toContain("用户主动触发的语音输入测试");
   });
 });

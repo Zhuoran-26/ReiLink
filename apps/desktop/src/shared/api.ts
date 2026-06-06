@@ -108,6 +108,129 @@ export type LocalDataStatus = {
   writable: boolean;
 };
 
+export type LocalAsrStatusValue =
+  | "local_asr_not_configured"
+  | "local_asr_binary_missing"
+  | "local_asr_binary_not_executable"
+  | "local_asr_model_missing"
+  | "local_asr_ready";
+
+export type LocalAsrSettingsSource = "user_settings" | "env" | "none";
+
+export type LocalAsrSettings = {
+  configured: boolean;
+  binary_configured: boolean;
+  model_configured: boolean;
+  converter_configured: boolean;
+  safe_binary_name: string | null;
+  safe_model_name: string | null;
+  safe_converter_name: string | null;
+  source: LocalAsrSettingsSource;
+};
+
+export type LocalAsrSettingsUpdate = {
+  local_asr_binary_path?: string | null;
+  local_asr_model_path?: string | null;
+  audio_converter_binary_path?: string | null;
+};
+
+export type LocalAsrStatus = {
+  status: LocalAsrStatusValue;
+  available: boolean;
+  binary_configured: boolean;
+  binary_present: boolean;
+  binary_executable: boolean;
+  model_configured: boolean;
+  model_present: boolean;
+  display_message: string;
+  safe_binary_name: string | null;
+  safe_model_name: string | null;
+  converter_configured: boolean;
+  safe_converter_name: string | null;
+  source: LocalAsrSettingsSource;
+};
+
+export type LocalAsrProbeStatusValue =
+  | "local_asr_probe_not_ready"
+  | "local_asr_probe_succeeded"
+  | "local_asr_probe_failed"
+  | "local_asr_probe_timed_out"
+  | "local_asr_probe_error";
+
+export type LocalAsrProbeResponse = {
+  status: LocalAsrProbeStatusValue;
+  available: boolean;
+  display_message: string;
+  binary_name: string | null;
+  model_name: string | null;
+  duration_ms: number;
+};
+
+export type LocalAsrTranscriptionStatusValue =
+  | "local_asr_transcription_not_ready"
+  | "local_asr_transcription_started"
+  | "local_asr_transcription_succeeded"
+  | "local_asr_transcription_failed"
+  | "local_asr_transcription_timed_out"
+  | "local_asr_transcription_no_text"
+  | "local_asr_transcription_cleanup_failed"
+  | "local_asr_transcription_error";
+
+export type AudioConversionStatusValue =
+  | "audio_conversion_not_needed"
+  | "audio_conversion_needed"
+  | "audio_conversion_not_configured"
+  | "audio_conversion_succeeded"
+  | "audio_conversion_failed"
+  | "audio_conversion_timed_out"
+  | "audio_conversion_invalid_input"
+  | "audio_conversion_cleanup_failed";
+
+export type LocalAsrTranscriptionResponse = {
+  status: LocalAsrTranscriptionStatusValue;
+  available: boolean;
+  display_message: string;
+  transcript: string;
+  transcript_char_count: number;
+  language: string;
+  transcript_normalized_to_simplified: boolean;
+  duration_ms: number;
+  size_bytes: number;
+  mime_type: string | null;
+  audio_format: string | null;
+  conversion_status: AudioConversionStatusValue;
+  conversion_required: boolean;
+  converted_mime_type: string | null;
+  converter_configured: boolean;
+  safe_converter_name: string | null;
+  temporary_file_cleaned: boolean;
+  temporary_input_cleaned: boolean;
+  temporary_converted_cleaned: boolean;
+  binary_name: string | null;
+  model_name: string | null;
+};
+
+export type AudioProbeStatusValue =
+  | "audio_probe_not_supported"
+  | "audio_probe_permission_denied"
+  | "audio_probe_recording_failed"
+  | "audio_probe_upload_failed"
+  | "audio_probe_succeeded"
+  | "audio_probe_file_too_large"
+  | "audio_probe_invalid_audio"
+  | "audio_probe_cleanup_failed"
+  | "audio_probe_error";
+
+export type AudioProbeResponse = {
+  status: AudioProbeStatusValue;
+  available: boolean;
+  display_message: string;
+  duration_ms: number;
+  size_bytes: number;
+  mime_type: string | null;
+  temporary_file_cleaned: boolean;
+};
+
 export type ProactiveTriggerType = "idle_silence" | "repeated_death" | "late_night" | "frustration_loop" | "none";
 
 export type ProactiveStatusResponse = {
@@ -242,7 +365,13 @@ export type ChatDebugResponse = {
   matched_topics: string[];
   snippets_count: number;
   snippet_titles: string[];
+  snippet_previews: string[];
+  matched_terms: string[];
+  result_scores: number[];
   knowledge_used_in_prompt: boolean;
+  knowledge_retrieval_status: "used" | "not_found" | "below_threshold" | "no_pack" | "not_game_related";
+  knowledge_not_used_reason: string | null;
+  knowledge_retrieval_min_score: number;
 };
 
 export type GameSessionDebugResponse = {
@@ -354,6 +483,9 @@ export type AppSettings = {
   proactive_companion: "on" | "off";
   proactive_sensitivity: "low" | "normal" | "high";
   auto_game_detection: "on" | "off";
+  voice_output: "on" | "off";
+  voice_rate: number;
+  voice_volume: number;
   onboarding_completed: boolean;
   onboarding_last_seen_at: string | null;
 };
@@ -397,11 +529,78 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function requestMultipart<T>(path: string, body: FormData): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    body
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let message = text || `Request failed: ${response.status}`;
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown };
+      if (typeof parsed.detail === "string") {
+        message = parsed.detail;
+      }
+    } catch {
+      // Keep the raw text as the safe diagnostic message.
+    }
+    throw new ApiRequestError(message, response.status, text, path);
+  }
+  return response.json() as Promise<T>;
+}
+
+const audioFileName = (mimeType: string) => {
+  const labels: Record<string, string> = {
+    "audio/webm": "recording.webm",
+    "video/webm": "recording.webm",
+    "audio/ogg": "recording.ogg",
+    "audio/wav": "recording.wav",
+    "audio/wave": "recording.wav",
+    "audio/x-wav": "recording.wav",
+    "audio/mpeg": "recording.mp3",
+    "audio/mp4": "recording.m4a",
+    "audio/aac": "recording.aac",
+    "audio/flac": "recording.flac"
+  };
+  return labels[mimeType] ?? "recording.audio";
+};
+
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
   setupStatus: () => request<SetupStatus>("/api/setup/status"),
   settings: () => request<AppSettings>("/api/settings"),
   localDataStatus: () => request<LocalDataStatus>("/api/local-data/status"),
+  localAsrStatus: () => request<LocalAsrStatus>("/api/voice-input/local-asr/status"),
+  localAsrSettings: () => request<LocalAsrSettings>("/api/voice-input/local-asr/settings"),
+  updateLocalAsrSettings: (settings: LocalAsrSettingsUpdate) =>
+    request<LocalAsrSettings>("/api/voice-input/local-asr/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings)
+    }),
+  clearLocalAsrSettings: () =>
+    request<LocalAsrSettings>("/api/voice-input/local-asr/settings", {
+      method: "DELETE"
+    }),
+  probeLocalAsr: () => request<LocalAsrProbeResponse>("/api/voice-input/local-asr/probe", { method: "POST" }),
+  transcribeLocalAsr: (blob: Blob, durationMs: number, language = "zh-CN") => {
+    const mimeType = blob.type || "application/octet-stream";
+    const body = new FormData();
+    body.append("audio", blob, audioFileName(mimeType));
+    body.append("duration_ms", String(Math.max(0, Math.round(durationMs))));
+    body.append("mime_type", mimeType);
+    if (language.trim()) body.append("language", language.trim());
+    return requestMultipart<LocalAsrTranscriptionResponse>("/api/voice-input/local-asr/transcribe", body);
+  },
+  probeAudio: (blob: Blob, durationMs: number) =>
+    request<AudioProbeResponse>("/api/voice-input/audio/probe", {
+      method: "POST",
+      headers: {
+        "Content-Type": blob.type || "application/octet-stream",
+        "X-ReiLink-Audio-Duration-Ms": String(Math.max(0, Math.round(durationMs)))
+      },
+      body: blob
+    }),
   updateSettings: (settings: AppSettingsUpdate) =>
     request<AppSettings>("/api/settings", {
       method: "POST",

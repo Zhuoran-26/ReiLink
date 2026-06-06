@@ -266,6 +266,15 @@ button {
   color: #b4a6ff;
 }
 
+.stopVoiceButton {
+  cursor: pointer;
+}
+
+.stopVoiceButton:hover {
+  border-color: rgba(180, 158, 255, 0.38);
+  background: rgba(41, 38, 70, 0.78);
+}
+
 .connection.connected {
   color: #9de8bd;
   border-color: rgba(112, 211, 154, 0.34);
@@ -588,6 +597,14 @@ button {
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+.voiceInputInlineStatus {
+  grid-column: 2 / 4;
+  min-height: 18px;
+  color: #aeb8d3;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .composer input {
   width: 100%;
   min-width: 0;
@@ -628,6 +645,12 @@ button {
 .iconButton.soft {
   color: #d3dcf0;
   background: rgba(24, 30, 48, 0.54);
+}
+
+.iconButton.voiceInputButton.active {
+  color: #ffffff;
+  border-color: rgba(104, 202, 179, 0.56);
+  background: rgba(45, 99, 91, 0.7);
 }
 
 .iconButton:hover,
@@ -742,7 +765,8 @@ button {
   gap: 10px;
 }
 
-.gameContextControl {
+.gameContextControl,
+.voiceOutputPanel {
   display: grid;
   gap: 10px;
   border: 1px solid rgba(145, 164, 213, 0.14);
@@ -901,6 +925,58 @@ button {
   overflow-wrap: anywhere;
 }
 
+.localAsrSetupPanel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid rgba(145, 164, 213, 0.12);
+  padding-top: 10px;
+}
+
+.localAsrPathField {
+  display: grid;
+  gap: 6px;
+  color: #99a5bf;
+  font-size: 12px;
+}
+
+.localAsrPathField span {
+  color: #dce4f6;
+  font-weight: 620;
+}
+
+.localAsrPathField input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(150, 169, 218, 0.2);
+  border-radius: 10px;
+  outline: none;
+  padding: 0 9px;
+  color: #edf2fb;
+  background: rgba(9, 12, 24, 0.78);
+}
+
+.localAsrPathField input:focus {
+  border-color: rgba(180, 158, 255, 0.46);
+  box-shadow: 0 0 0 3px rgba(141, 116, 221, 0.13);
+}
+
+.localAsrPathField input:disabled {
+  opacity: 0.64;
+}
+
+.localAsrSetupActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.localAsrSetupActions .smallButton {
+  min-width: 0;
+  justify-content: center;
+  white-space: normal;
+}
+
 .settingRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 126px;
@@ -913,6 +989,12 @@ button {
 .settingRow span {
   color: #dce4f6;
   font-weight: 620;
+}
+
+.settingRow strong {
+  color: #edf2fb;
+  font-size: 12px;
+  text-align: right;
 }
 
 .settingRow select {
@@ -929,6 +1011,27 @@ button {
 .settingRow select:focus {
   border-color: rgba(180, 158, 255, 0.46);
   box-shadow: 0 0 0 3px rgba(141, 116, 221, 0.13);
+}
+
+.rangeControl {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+}
+
+.rangeControl input {
+  width: 100%;
+  min-width: 0;
+  accent-color: #9aa9ff;
+}
+
+.rangeControl strong {
+  color: #edf2fb;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: right;
 }
 
 .settingHint,
@@ -1113,6 +1216,61 @@ button {
   color: #dce4f6;
 }
 
+.eventStreamSection {
+  padding: 0;
+}
+
+.eventStreamSection summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 0 10px;
+  color: #dce4f6;
+  font-weight: 680;
+}
+
+.eventStreamSection summary::marker {
+  color: #78849e;
+}
+
+.eventStreamList {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0 10px 10px;
+  list-style: none;
+}
+
+.eventStreamList li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 150px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  color: #b8c2d8;
+}
+
+.eventStreamTime {
+  color: #78849e;
+  font-variant-numeric: tabular-nums;
+}
+
+.eventStreamType {
+  color: #dce4f6;
+  overflow-wrap: anywhere;
+}
+
+.eventStreamSummary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.eventStreamEmpty {
+  grid-column: 1 / -1;
+}
+
 .debugJson {
   max-height: 240px;
   overflow: auto;
@@ -1216,6 +1374,10 @@ button {
   }
 
   .demoResetActions {
+    grid-template-columns: 1fr;
+  }
+
+  .localAsrSetupActions {
     grid-template-columns: 1fr;
   }
 }

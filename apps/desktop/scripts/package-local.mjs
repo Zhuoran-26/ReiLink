@@ -17,6 +17,7 @@ const outputApp = path.join(outputDir, `${appName}.app`);
 const electronApp = path.join(desktopRoot, "node_modules", "electron", "dist", "Electron.app");
 const rendererDist = path.join(desktopRoot, "dist");
 const electronDist = path.join(desktopRoot, "dist-electron");
+const microphoneUsageDescription = "ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。";
 
 export async function packageLocal(options = {}) {
   const currentPlatform = options.platform ?? platform;
@@ -64,6 +65,8 @@ export async function packageLocal(options = {}) {
   plist = setPlistString(plist, "CFBundleName", appName);
   plist = setPlistString(plist, "CFBundleDisplayName", appName);
   plist = setPlistString(plist, "CFBundleIdentifier", "com.reilink.desktop");
+  plist = setPlistString(plist, "NSMicrophoneUsageDescription", microphoneUsageDescription);
+  plist = setPlistString(plist, "NSAudioCaptureUsageDescription", microphoneUsageDescription);
   await writeFile(plistPath, plist, "utf8");
 
   await chmod(path.join(outputApp, "Contents", "MacOS", "Electron"), 0o755).catch(() => undefined);
@@ -161,7 +164,7 @@ export function backendBinaryNameForPlatform(targetPlatform = platform) {
   return targetPlatform === "win32" ? "reilink-backend.exe" : "reilink-backend";
 }
 
-function setPlistString(plistText, key, value) {
+export function setPlistString(plistText, key, value) {
   const pattern = new RegExp(`(<key>${key}</key>\\s*<string>)([^<]*)(</string>)`);
   if (!pattern.test(plistText)) {
     return plistText.replace("</dict>", `\t<key>${key}</key>\n\t<string>${value}</string>\n</dict>`);

@@ -207,6 +207,9 @@ class GameCatalog:
             if switch_match.game:
                 return _match_result(switch_match.game, "user_switch", switch_match.confidence, supported_count)
             return _unknown_game_match(switch_match.display_name, "user_switch", supported_count)
+        explicit_query_match = self._match_explicit_user_game_query(user_message, games)
+        if explicit_query_match:
+            return _match_result(explicit_query_match, "user_message", 0.9, supported_count)
         detector_match = self._match_detected_game(detected_game, games, supported_count)
         if detector_match:
             return detector_match
@@ -314,6 +317,15 @@ class GameCatalog:
 
     def _match_by_any_catalog_name(self, text: str, games: list[GameCatalogEntry]) -> GameCatalogEntry | None:
         return self._match_by_primary_name(text, games) or self._match_by_catalog_alias(text, games)
+
+    def _match_explicit_user_game_query(self, text: str, games: list[GameCatalogEntry]) -> GameCatalogEntry | None:
+        if not text.strip():
+            return None
+        for game in games:
+            for name in _catalog_names(game):
+                if _value_in_text(text, name) and _is_explicit_game_query(text, name):
+                    return game
+        return None
 
     def _match_by_content_alias(self, text: str, games: list[GameCatalogEntry]) -> GameCatalogEntry | None:
         if not text.strip():
@@ -517,6 +529,65 @@ def _clean_switch_target(value: str) -> str | None:
     if len(text) < 2:
         return None
     return text
+
+
+_EXPLICIT_GAME_QUERY_SIGNALS = (
+    "怎么打",
+    "怎麼打",
+    "怎么躲",
+    "怎麼躲",
+    "打法",
+    "攻略",
+    "注意",
+    "在哪",
+    "哪里",
+    "哪裡",
+    "路线",
+    "路線",
+    "地图",
+    "地圖",
+    "护符",
+    "護符",
+    "回血",
+    "装备",
+    "裝備",
+    "boss",
+    "卡在",
+    "卡住",
+    "打不过",
+    "打不過",
+    "有什么",
+    "有什麼",
+)
+
+_GAME_POSSESSIVE_CONNECTORS = (
+    "里",
+    "裡",
+    "裏",
+    "里的",
+    "裡的",
+    "裏的",
+    "里面",
+    "裡面",
+    "裏面",
+    "中",
+    "的",
+)
+
+
+def _catalog_names(game: GameCatalogEntry) -> list[str]:
+    return _dedupe([game.game_id, game.knowledge_game_id or "", game.display_name, *game.aliases])
+
+
+def _is_explicit_game_query(text: str, game_name: str) -> bool:
+    compact_text = _compact(_normalize(text))
+    compact_name = _compact(_normalize(game_name))
+    if len(compact_name) < 2 or compact_name not in compact_text:
+        return False
+    suffix = compact_text.split(compact_name, maxsplit=1)[1]
+    if any(suffix.startswith(_compact(_normalize(connector))) for connector in _GAME_POSSESSIVE_CONNECTORS):
+        return True
+    return any(_compact(_normalize(signal)) in compact_text for signal in _EXPLICIT_GAME_QUERY_SIGNALS)
 
 
 def _value_in_text(text: str | None, value: str | None) -> bool:

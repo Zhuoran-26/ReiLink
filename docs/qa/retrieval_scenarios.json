@@ -1,0 +1,201 @@
+[
+  {
+    "id": "elden-ring-margit-used",
+    "category": "knowledge_retrieval",
+    "game_context": "elden_ring",
+    "input": "Margit 怎么打？",
+    "expected_status": "used",
+    "expected_game": "elden_ring",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "elden-ring-waterfowl-used",
+    "category": "knowledge_retrieval",
+    "game_context": "elden_ring",
+    "input": "水鸟乱舞怎么躲？",
+    "expected_status": "used",
+    "expected_game": "elden_ring",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "hollow-knight-hornet-used",
+    "category": "knowledge_retrieval",
+    "game_context": "hollow_knight",
+    "input": "Hornet 怎么打？",
+    "expected_status": "used",
+    "expected_game": "hollow_knight",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "hollow-knight-greenpath-used",
+    "category": "knowledge_retrieval",
+    "game_context": "hollow_knight",
+    "input": "Hollow Knight 里 Greenpath 要注意什么？",
+    "expected_status": "used",
+    "expected_game": "hollow_knight",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "cross-game-hollow-knight-possessive-used",
+    "category": "knowledge_retrieval",
+    "game_context": "elden_ring",
+    "input": "Hollow Knight 里的 Hornet 怎么打？",
+    "expected_status": "used",
+    "expected_game": "hollow_knight",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "cross-game-hollow-knight-chinese-possessive-used",
+    "category": "knowledge_retrieval",
+    "game_context": "elden_ring",
+    "input": "空洞骑士里的 Hornet 怎么打？",
+    "expected_status": "used",
+    "expected_game": "hollow_knight",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "cross-game-elden-ring-possessive-used",
+    "category": "knowledge_retrieval",
+    "game_context": "hollow_knight",
+    "input": "Elden Ring 里的 Margit 怎么打？",
+    "expected_status": "used",
+    "expected_game": "elden_ring",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "cross-game-elden-ring-fahuan-used",
+    "category": "knowledge_retrieval",
+    "game_context": "hollow_knight",
+    "input": "法环 Margit 怎么打？",
+    "expected_status": "used",
+    "expected_game": "elden_ring",
+    "should_inject_knowledge": true,
+    "expected_event_summary": "已使用本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "casual-tired-not-game-related",
+    "category": "knowledge_retrieval",
+    "game_context": "elden_ring",
+    "input": "今天有点累",
+    "expected_status": "not_game_related",
+    "expected_game": "elden_ring",
+    "should_inject_knowledge": false,
+    "expected_event_summary": "这次不是游戏知识问题",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "casual-you-there-not-game-related",
+    "category": "knowledge_retrieval",
+    "game_context": "elden_ring",
+    "input": "你在吗",
+    "expected_status": "not_game_related",
+    "expected_game": "elden_ring",
+    "should_inject_knowledge": false,
+    "expected_event_summary": "这次不是游戏知识问题",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "casual-thanks-not-game-related",
+    "category": "knowledge_retrieval",
+    "game_context": "hollow_knight",
+    "input": "谢谢",
+    "expected_status": "not_game_related",
+    "expected_game": "hollow_knight",
+    "should_inject_knowledge": false,
+    "expected_event_summary": "这次不是游戏知识问题",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "weak-thing-below-threshold",
+    "category": "knowledge_retrieval",
+    "game_context": "elden_ring",
+    "input": "这个东西怎么弄",
+    "expected_status": "below_threshold",
+    "expected_game": "elden_ring",
+    "should_inject_knowledge": false,
+    "expected_event_summary": "相关性不足，未使用",
+    "manual_note": "If the current sample pack has no weak positive match, verify the behavior through backend unit coverage or a temporary weak-match fixture.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "weak-next-step-below-threshold",
+    "category": "knowledge_retrieval",
+    "game_context": "hollow_knight",
+    "input": "我不知道下一步怎么办",
+    "expected_status": "below_threshold",
+    "expected_game": "hollow_knight",
+    "should_inject_knowledge": false,
+    "expected_event_summary": "相关性不足，未使用",
+    "manual_note": "If there is no weak positive match in the sample pack, confirm that no knowledge is injected and use backend fixture coverage for exact below_threshold.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "elden-ring-missing-topic-not-found",
+    "category": "knowledge_retrieval",
+    "game_context": "elden_ring",
+    "input": "艾尔登法环里完全不存在的月光蘑菇钥匙在哪？",
+    "expected_status": "not_found",
+    "expected_game": "elden_ring",
+    "should_inject_knowledge": false,
+    "expected_event_summary": "未命中本地知识",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "sekiro-no-pack",
+    "category": "knowledge_retrieval",
+    "game_context": "none",
+    "input": "我在玩只狼，弦一郎怎么打？",
+    "expected_status": "no_pack",
+    "expected_game": "sekiro",
+    "should_inject_knowledge": false,
+    "expected_event_summary": "没有可用知识包",
+    "manual_only": true,
+    "manual_note": "Depends on the current catalog keeping Sekiro as planned without a knowledge pack.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "voice-test-starts-and-completes",
+    "category": "voice_output",
+    "input": "Click 测试语音 / Test Voice",
+    "expected_events": ["语音开始播放", "语音播放完成"],
+    "expected_controls": ["测试语音 / Test Voice", "停止语音 / Stop Voice"],
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt", "你好，我是 Rei。语音输出测试。"]
+  },
+  {
+    "id": "voice-assistant-reply-stops-on-new-message",
+    "category": "voice_output",
+    "input": "Enable Voice Output, send a chat message, then send another message while speech is playing",
+    "expected_events": ["语音开始播放", "语音已停止"],
+    "expected_controls": ["语音输出 / Voice Output", "停止语音 / Stop Voice"],
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt"]
+  },
+  {
+    "id": "event-stream-privacy-no-secrets",
+    "category": "event_stream_privacy",
+    "input": "Open Event Stream after chat, voice, and knowledge events",
+    "expected_events": ["用户发送消息", "Rei 开始回复", "使用游戏知识"],
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt", "DEEPSEEK_API_KEY"]
+  },
+  {
+    "id": "debug-raw-json-privacy-no-internal-payload",
+    "category": "event_stream_privacy",
+    "input": "Open Debug Panel and Raw JSON",
+    "expected_controls": ["调试面板", "原始 JSON"],
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw_prompt", "DEEPSEEK_API_KEY"]
+  }
+]

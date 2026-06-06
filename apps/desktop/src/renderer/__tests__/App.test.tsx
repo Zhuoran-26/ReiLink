@@ -3,11 +3,20 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { App, INTERIM_PLACEHOLDERS } from "../App";
+import { App, EventStreamPanel, INTERIM_PLACEHOLDERS } from "../App";
+import { audioCapture } from "../audioCapture";
+import { eventBus } from "../eventBus";
+import { voiceInput } from "../voiceInput";
+import { voiceOutput } from "../voiceOutput";
 import type {
   AppSettings,
+  AudioProbeResponse,
   GameContextResponse,
   GameDetectionResponse,
+  LocalAsrProbeResponse,
+  LocalAsrSettings,
+  LocalAsrStatus,
+  LocalAsrTranscriptionResponse,
   ProactiveCheckResponse,
   ProactiveStatusResponse,
   SetupStatus
@@ -252,7 +261,13 @@ const chatDebug = {
   matched_topics: ["margit", "boss_strategy"],
   snippets_count: 2,
   snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
-  knowledge_used_in_prompt: true
+  snippet_previews: ["Margit 很多攻击会故意延迟。保持中距离。", "如果伤害明显不够，可以先强化武器。"],
+  matched_terms: ["margit", "恶兆妖鬼"],
+  result_scores: [18, 14],
+  knowledge_used_in_prompt: true,
+  knowledge_retrieval_status: "used",
+  knowledge_not_used_reason: null,
+  knowledge_retrieval_min_score: 8
 };
 
 const unsupportedChatDebug = {
@@ -279,7 +294,13 @@ const unsupportedChatDebug = {
   matched_topics: [],
   snippets_count: 0,
   snippet_titles: [],
-  knowledge_used_in_prompt: false
+  snippet_previews: [],
+  matched_terms: [],
+  result_scores: [],
+  knowledge_used_in_prompt: false,
+  knowledge_retrieval_status: "no_pack",
+  knowledge_not_used_reason: "no_supported_knowledge",
+  knowledge_retrieval_min_score: 8
 };
 
 const hollowKnightChatDebug = {
@@ -307,7 +328,13 @@ const hollowKnightChatDebug = {
   matched_topics: ["螳螂领主", "boss_strategy"],
   snippets_count: 1,
   snippet_titles: ["螳螂领主：节奏观察"],
-  knowledge_used_in_prompt: true
+  snippet_previews: ["螳螂领主的威胁主要来自连续冲刺和下劈。"],
+  matched_terms: ["螳螂领主"],
+  result_scores: [18],
+  knowledge_used_in_prompt: true,
+  knowledge_retrieval_status: "used",
+  knowledge_not_used_reason: null,
+  knowledge_retrieval_min_score: 8
 };
 
 const unknownChatDebug = {
@@ -409,6 +436,9 @@ const promptPreview = {
     snippets_count: 2,
     snippet_titles: ["恶兆妖鬼 Margit：延迟攻击", "恶兆妖鬼 Margit：战前准备"],
     knowledge_used_in_prompt: true,
+    retrieval_status: "used",
+    not_used_reason: null,
+    retrieval_min_score: 8,
     confidence: 0.83,
     fallback_reason: null
   },
@@ -447,6 +477,9 @@ const unsupportedPromptPreview = {
     snippets_count: 0,
     snippet_titles: [],
     knowledge_used_in_prompt: false,
+    retrieval_status: "no_pack",
+    not_used_reason: "no_supported_knowledge",
+    retrieval_min_score: 8,
     confidence: 0,
     fallback_reason: "no_supported_knowledge"
   }
@@ -480,6 +513,9 @@ const hollowKnightPromptPreview = {
     snippets_count: 1,
     snippet_titles: ["螳螂领主：节奏观察"],
     knowledge_used_in_prompt: true,
+    retrieval_status: "used",
+    not_used_reason: null,
+    retrieval_min_score: 8,
     confidence: 0.83,
     fallback_reason: null
   }
@@ -503,6 +539,7 @@ const unknownPromptPreview = {
     knowledge_pack_status: "unknown",
     coverage: [],
     last_updated: "unknown",
+    not_used_reason: "unknown_game",
     fallback_reason: "unknown_game"
   }
 };
@@ -631,6 +668,9 @@ const appSettings: AppSettings = {
   proactive_companion: "off",
   proactive_sensitivity: "low",
   auto_game_detection: "on",
+  voice_output: "off",
+  voice_rate: 1,
+  voice_volume: 1,
   onboarding_completed: true,
   onboarding_last_seen_at: "2026-06-01T12:00:00.000Z"
 };
@@ -673,10 +713,264 @@ const localDataStatus = {
   writable: true
 } as const;
 
+const localAsrStatus: LocalAsrStatus = {
+  status: "local_asr_not_configured",
+  available: false,
+  binary_configured: false,
+  binary_present: false,
+  binary_executable: false,
+  model_configured: false,
+  model_present: false,
+  display_message: "本地语音识别未配置",
+  safe_binary_name: null,
+  safe_model_name: null,
+  converter_configured: false,
+  safe_converter_name: null,
+  source: "none"
+};
+
+const localAsrSettings: LocalAsrSettings = {
+  configured: false,
+  binary_configured: false,
+  model_configured: false,
+  converter_configured: false,
+  safe_binary_name: null,
+  safe_model_name: null,
+  safe_converter_name: null,
+  source: "none"
+};
+
+const localAsrProbeResponse: LocalAsrProbeResponse = {
+  status: "local_asr_probe_succeeded",
+  available: true,
+  display_message: "本地语音识别程序可以启动",
+  binary_name: "whisper-cli",
+  model_name: "ggml-base.bin",
+  duration_ms: 42
+};
+
+const audioProbeResponse: AudioProbeResponse = {
+  status: "audio_probe_succeeded",
+  available: true,
+  display_message: "录音测试完成，临时音频已清理",
+  duration_ms: 3000,
+  size_bytes: 16,
+  mime_type: "audio/webm",
+  temporary_file_cleaned: true
+};
+
+const localAsrTranscriptionResponse: LocalAsrTranscriptionResponse = {
+  status: "local_asr_transcription_succeeded",
+  available: true,
+  display_message: "本地语音识别完成",
+  transcript: "Margit 怎么打",
+  transcript_char_count: "Margit 怎么打".length,
+  language: "zh",
+  transcript_normalized_to_simplified: false,
+  duration_ms: 3000,
+  size_bytes: 16,
+  mime_type: "audio/webm",
+  audio_format: "audio/webm",
+  conversion_status: "audio_conversion_succeeded",
+  conversion_required: true,
+  converted_mime_type: "audio/wav",
+  converter_configured: true,
+  safe_converter_name: "ffmpeg",
+  temporary_file_cleaned: true,
+  temporary_input_cleaned: true,
+  temporary_converted_cleaned: true,
+  binary_name: "whisper-cli",
+  model_name: "ggml-base.bin"
+};
+
 let appSettingsStore = { ...appSettings };
+let localAsrStatusStore: LocalAsrStatus = { ...localAsrStatus };
+let localAsrSettingsStore: LocalAsrSettings = { ...localAsrSettings };
+let localAsrProbeResponseStore: LocalAsrProbeResponse = { ...localAsrProbeResponse };
+let audioProbeResponseStore: AudioProbeResponse = { ...audioProbeResponse };
+let localAsrTranscriptionResponseStore: LocalAsrTranscriptionResponse = { ...localAsrTranscriptionResponse };
 let gameContextStore = { ...gameContext };
 let chatFailureResponse: (() => Response) | null = null;
+let omitVoiceOutputFromSettings = false;
 let scrollToMock: ReturnType<typeof vi.fn>;
+
+class MockSpeechSynthesisUtterance {
+  text: string;
+  rate = 1;
+  volume = 1;
+  voice: SpeechSynthesisVoice | null = null;
+  lang = "";
+  onstart: ((event: SpeechSynthesisEvent) => void) | null = null;
+  onend: ((event: SpeechSynthesisEvent) => void) | null = null;
+  onerror: ((event: SpeechSynthesisErrorEvent) => void) | null = null;
+
+  constructor(text: string) {
+    this.text = text;
+  }
+}
+
+const mockVoice = (lang: string, name = lang): SpeechSynthesisVoice =>
+  ({
+    default: false,
+    lang,
+    localService: true,
+    name,
+    voiceURI: name
+  }) as SpeechSynthesisVoice;
+
+const installSpeechSynthesisMock = (voices: SpeechSynthesisVoice[] = []) => {
+  const listeners = new Set<() => void>();
+  const speak = vi.fn();
+  const cancel = vi.fn();
+  const resume = vi.fn();
+  const getVoices = vi.fn(() => voices);
+  const setVoices = (nextVoices: SpeechSynthesisVoice[]) => {
+    voices = nextVoices;
+    for (const listener of listeners) listener();
+  };
+  vi.stubGlobal("SpeechSynthesisUtterance", MockSpeechSynthesisUtterance);
+  Object.defineProperty(window, "speechSynthesis", {
+    configurable: true,
+    value: {
+      speak,
+      cancel,
+      resume,
+      getVoices,
+      paused: false,
+      pending: false,
+      speaking: false,
+      addEventListener: vi.fn((event: string, listener: () => void) => {
+        if (event === "voiceschanged") listeners.add(listener);
+      }),
+      removeEventListener: vi.fn((event: string, listener: () => void) => {
+        if (event === "voiceschanged") listeners.delete(listener);
+      }),
+      onvoiceschanged: null
+    }
+  });
+  return { speak, cancel, resume, getVoices, setVoices };
+};
+
+type MockRecognitionResult = {
+  isFinal: boolean;
+  0: { transcript: string };
+  length: number;
+};
+
+class MockSpeechRecognition {
+  static instances: MockSpeechRecognition[] = [];
+  static startError: Error | null = null;
+
+  lang = "";
+  interimResults = false;
+  continuous = false;
+  onstart: (() => void) | null = null;
+  onresult: ((event: { resultIndex: number; results: MockRecognitionResult[] }) => void) | null = null;
+  onerror: ((event: { error: string }) => void) | null = null;
+  onend: (() => void) | null = null;
+  start = vi.fn(() => {
+    if (MockSpeechRecognition.startError) throw MockSpeechRecognition.startError;
+    this.onstart?.();
+  });
+  stop = vi.fn(() => {
+    this.onend?.();
+  });
+  abort = vi.fn(() => {
+    this.onend?.();
+  });
+
+  constructor() {
+    MockSpeechRecognition.instances.push(this);
+  }
+
+  emitResult(transcript: string, isFinal = true) {
+    this.onresult?.({
+      resultIndex: 0,
+      results: [{ 0: { transcript }, length: 1, isFinal }]
+    });
+  }
+
+  emitError(error: string) {
+    this.onerror?.({ error });
+  }
+}
+
+class MockMediaRecorder {
+  static instances: MockMediaRecorder[] = [];
+  static isTypeSupported = vi.fn(() => true);
+
+  state: RecordingState = "inactive";
+  mimeType: string;
+  stream: MediaStream;
+  ondataavailable: ((event: BlobEvent) => void) | null = null;
+  onstop: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  start = vi.fn(() => {
+    this.state = "recording";
+  });
+  stop = vi.fn(() => {
+    this.state = "inactive";
+    this.ondataavailable?.({ data: new Blob(["fake-webm-audio"], { type: this.mimeType }) } as BlobEvent);
+    this.onstop?.();
+  });
+
+  constructor(stream: MediaStream, options?: MediaRecorderOptions) {
+    this.stream = stream;
+    this.mimeType = options?.mimeType || "audio/webm";
+    MockMediaRecorder.instances.push(this);
+  }
+}
+
+const installSpeechRecognitionMock = (kind: "standard" | "webkit" = "standard") => {
+  MockSpeechRecognition.instances = [];
+  MockSpeechRecognition.startError = null;
+  if (kind === "standard") {
+    vi.stubGlobal("SpeechRecognition", MockSpeechRecognition);
+    Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: MockSpeechRecognition });
+    Reflect.deleteProperty(window, "webkitSpeechRecognition");
+  } else {
+    vi.stubGlobal("webkitSpeechRecognition", MockSpeechRecognition);
+    Object.defineProperty(window, "webkitSpeechRecognition", { configurable: true, value: MockSpeechRecognition });
+    Reflect.deleteProperty(window, "SpeechRecognition");
+  }
+  return MockSpeechRecognition;
+};
+
+const installMediaDevicesMock = (permission: "prompt" | "granted" | "denied" = "prompt") => {
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn()
+    }
+  });
+  Object.defineProperty(navigator, "permissions", {
+    configurable: true,
+    value: {
+      query: vi.fn(async () => ({ state: permission }))
+    }
+  });
+};
+
+const installAudioCaptureMock = (options: { permissionDenied?: boolean } = {}) => {
+  MockMediaRecorder.instances = [];
+  MockMediaRecorder.isTypeSupported = vi.fn(() => true);
+  const stop = vi.fn();
+  const stream = {
+    getTracks: vi.fn(() => [{ stop }])
+  } as unknown as MediaStream;
+  const getUserMedia = vi.fn(async () => {
+    if (options.permissionDenied) {
+      throw new DOMException("Permission denied", "NotAllowedError");
+    }
+    return stream;
+  });
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getUserMedia }
+  });
+  vi.stubGlobal("MediaRecorder", MockMediaRecorder);
+  return { getUserMedia, stopTrack: stop, stream, recorder: MockMediaRecorder };
+};
 
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
   let status = { ...initialStatus };
@@ -725,10 +1019,16 @@ const setChatScroll = (
 
 const resetSettingsResponse = () => {
   appSettingsStore = { ...appSettings };
+  localAsrStatusStore = { ...localAsrStatus };
+  localAsrSettingsStore = { ...localAsrSettings };
+  localAsrProbeResponseStore = { ...localAsrProbeResponse };
+  audioProbeResponseStore = { ...audioProbeResponse };
+  localAsrTranscriptionResponseStore = { ...localAsrTranscriptionResponse };
   gameContextStore = { ...gameContext };
   proactiveStatusStore = { ...proactiveStatus };
   setupStatusStore = { ...setupStatus };
   chatFailureResponse = null;
+  omitVoiceOutputFromSettings = false;
   proactiveCheckStore = {
     should_send: false,
     trigger_type: "none",
@@ -744,6 +1044,36 @@ const resetSettingsResponse = () => {
     requires_user_activity_after_proactive: false,
     block_reason: "disabled",
     active_candidate_triggers: [] as string[]
+  };
+};
+
+const setLocalAsrReady = () => {
+  localAsrStatusStore = {
+    ...localAsrStatus,
+    status: "local_asr_ready",
+    available: true,
+    binary_configured: true,
+    binary_present: true,
+    binary_executable: true,
+    model_configured: true,
+    model_present: true,
+    display_message: "本地语音识别配置已就绪",
+    safe_binary_name: "whisper-cli",
+    safe_model_name: "ggml-base.bin",
+    converter_configured: true,
+    safe_converter_name: "ffmpeg",
+    source: "user_settings"
+  };
+  localAsrSettingsStore = {
+    ...localAsrSettings,
+    configured: true,
+    binary_configured: true,
+    model_configured: true,
+    converter_configured: true,
+    safe_binary_name: "whisper-cli",
+    safe_model_name: "ggml-base.bin",
+    safe_converter_name: "ffmpeg",
+    source: "user_settings"
   };
 };
 
@@ -775,11 +1105,72 @@ const gameContextResponse = (url: string, init?: RequestInit) => {
 };
 
 const settingsResponse = (url: string, init?: RequestInit) => {
+  const settingsPayload = () => {
+    if (!omitVoiceOutputFromSettings) return appSettingsStore;
+    const legacySettings = { ...appSettingsStore } as Partial<AppSettings>;
+    delete legacySettings.voice_output;
+    delete legacySettings.voice_rate;
+    delete legacySettings.voice_volume;
+    return legacySettings;
+  };
+
   if (url.endsWith("/api/settings") && init?.method === "POST") {
     appSettingsStore = { ...appSettingsStore, ...JSON.parse(String(init.body ?? "{}")) };
-    return Response.json(appSettingsStore);
+    return Response.json(settingsPayload());
   }
-  if (url.endsWith("/api/settings")) return Response.json(appSettingsStore);
+  if (url.endsWith("/api/settings")) return Response.json(settingsPayload());
+  return null;
+};
+
+const safePathName = (value: unknown) => {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return value.trim().split(/[\\/]/).filter(Boolean).pop() ?? "已配置";
+};
+
+const localAsrSettingsResponse = (url: string, init?: RequestInit) => {
+  if (url.endsWith("/api/voice-input/local-asr/settings") && init?.method === "PUT") {
+    const body = JSON.parse(String(init.body ?? "{}")) as {
+      local_asr_binary_path?: string | null;
+      local_asr_model_path?: string | null;
+      audio_converter_binary_path?: string | null;
+    };
+    const safeBinaryName = safePathName(body.local_asr_binary_path) ?? localAsrSettingsStore.safe_binary_name;
+    const safeModelName = safePathName(body.local_asr_model_path) ?? localAsrSettingsStore.safe_model_name;
+    const safeConverterName = safePathName(body.audio_converter_binary_path) ?? localAsrSettingsStore.safe_converter_name;
+    localAsrSettingsStore = {
+      configured: Boolean(safeBinaryName && safeModelName),
+      binary_configured: Boolean(safeBinaryName),
+      model_configured: Boolean(safeModelName),
+      converter_configured: Boolean(safeConverterName),
+      safe_binary_name: safeBinaryName,
+      safe_model_name: safeModelName,
+      safe_converter_name: safeConverterName,
+      source: safeBinaryName || safeModelName || safeConverterName ? "user_settings" : "none"
+    };
+    localAsrStatusStore = {
+      ...localAsrStatusStore,
+      status: safeBinaryName && safeModelName ? "local_asr_ready" : "local_asr_not_configured",
+      available: Boolean(safeBinaryName && safeModelName),
+      binary_configured: Boolean(safeBinaryName),
+      binary_present: Boolean(safeBinaryName),
+      binary_executable: Boolean(safeBinaryName),
+      model_configured: Boolean(safeModelName),
+      model_present: Boolean(safeModelName),
+      converter_configured: Boolean(safeConverterName),
+      safe_binary_name: safeBinaryName,
+      safe_model_name: safeModelName,
+      safe_converter_name: safeConverterName,
+      source: localAsrSettingsStore.source,
+      display_message: safeBinaryName && safeModelName ? "本地语音识别配置已就绪" : "本地语音识别未配置"
+    };
+    return Response.json(localAsrSettingsStore);
+  }
+  if (url.endsWith("/api/voice-input/local-asr/settings") && init?.method === "DELETE") {
+    localAsrSettingsStore = { ...localAsrSettings };
+    localAsrStatusStore = { ...localAsrStatus };
+    return Response.json(localAsrSettingsStore);
+  }
+  if (url.endsWith("/api/voice-input/local-asr/settings")) return Response.json(localAsrSettingsStore);
   return null;
 };
 
@@ -839,10 +1230,54 @@ const chatResponse = {
   timestamp: new Date().toISOString()
 };
 
+const defaultFetchResponse = async (url: string, init?: RequestInit) => {
+  const debugAction = debugActionResponse(url, init);
+  if (debugAction) return debugAction;
+  const pendingResponse = pendingMemoryResponse(url, init);
+  if (pendingResponse) return pendingResponse;
+  const settings = settingsResponse(url, init);
+  if (settings) return settings;
+  const gameContextResponseValue = gameContextResponse(url, init);
+  if (gameContextResponseValue) return gameContextResponseValue;
+  const proactive = proactiveResponse(url, init);
+  if (proactive) return proactive;
+  const setup = setupStatusResponse(url);
+  if (setup) return setup;
+  const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+  if (localAsrSettingsValue) return localAsrSettingsValue;
+  if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
+  if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+  if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
+  if (url.endsWith("/api/voice-input/local-asr/probe") && init?.method === "POST") {
+    return Response.json(localAsrProbeResponseStore);
+  }
+  if (url.endsWith("/api/voice-input/audio/probe") && init?.method === "POST") {
+    return Response.json(audioProbeResponseStore);
+  }
+  if (url.endsWith("/api/voice-input/local-asr/transcribe") && init?.method === "POST") {
+    return Response.json(localAsrTranscriptionResponseStore);
+  }
+  if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
+  if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
+  if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
+  if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
+  if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
+  if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
+  if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
+  if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
+  if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
+  if (url.endsWith("/api/chat") && init?.method === "POST") {
+    if (chatFailureResponse) return chatFailureResponse();
+    return Response.json(chatResponse);
+  }
+  return new Response("missing", { status: 404 });
+};
+
 describe("App", () => {
   beforeEach(() => {
     let uuid = 0;
     resetSettingsResponse();
+    eventBus.clear();
     scrollToMock = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
       const top = typeof options === "number" ? options : options?.top;
       if (typeof top === "number") {
@@ -855,46 +1290,23 @@ describe("App", () => {
       value: scrollToMock
     });
     vi.stubGlobal("crypto", { randomUUID: () => `test-id-${uuid++}` });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string, init?: RequestInit) => {
-        const debugAction = debugActionResponse(url, init);
-        if (debugAction) return debugAction;
-        const pendingResponse = pendingMemoryResponse(url, init);
-        if (pendingResponse) return pendingResponse;
-        const settings = settingsResponse(url, init);
-        if (settings) return settings;
-        const gameContextResponseValue = gameContextResponse(url, init);
-        if (gameContextResponseValue) return gameContextResponseValue;
-        const proactive = proactiveResponse(url, init);
-        if (proactive) return proactive;
-        const setup = setupStatusResponse(url);
-        if (setup) return setup;
-        if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
-        if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
-        if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
-        if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
-        if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
-        if (url.includes("/api/debug/memory")) return Response.json(memoryDebug);
-        if (url.endsWith("/api/debug/chat")) return Response.json(chatDebug);
-        if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
-        if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
-        if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
-        if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
-        if (url.endsWith("/api/chat") && init?.method === "POST") {
-          if (chatFailureResponse) return chatFailureResponse();
-          return Response.json(chatResponse);
-        }
-        return new Response("missing", { status: 404 });
-      })
-    );
+    vi.stubGlobal("fetch", vi.fn(defaultFetchResponse));
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    audioCapture.resetForTest();
+    voiceInput.resetForTest();
+    voiceOutput.resetForTest();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    Reflect.deleteProperty(window, "SpeechRecognition");
+    Reflect.deleteProperty(window, "webkitSpeechRecognition");
     Reflect.deleteProperty(window, "reilinkRuntime");
+    Reflect.deleteProperty(window, "MediaRecorder");
+    Reflect.deleteProperty(navigator, "mediaDevices");
+    Reflect.deleteProperty(navigator, "permissions");
+    eventBus.clear();
   });
 
   it("renders the app", async () => {
@@ -941,6 +1353,13 @@ describe("App", () => {
     expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
+    expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
+    expect(screen.getByText(/当前状态：已关闭/)).toBeInTheDocument();
+    expect(screen.getByText(/本地语音：不可用/)).toBeInTheDocument();
+    expect(screen.getByText(/播放状态：当前环境不支持本地语音输出/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeDisabled();
+    expect(screen.getByLabelText("语速 / Rate")).toHaveValue("1");
+    expect(screen.getByLabelText("音量 / Volume")).toHaveValue("1");
     expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("on");
     expect(screen.getByLabelText("自动启动本地后端")).toBeDisabled();
     expect(screen.getByLabelText("自动游戏检测")).toHaveValue("on");
@@ -1302,6 +1721,7 @@ describe("App", () => {
   });
 
   it("updates settings through the API", async () => {
+    installSpeechSynthesisMock();
     render(<App />);
 
     await userEvent.selectOptions(await screen.findByLabelText("人格模式"), "guarded");
@@ -1325,6 +1745,30 @@ describe("App", () => {
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),
         expect.objectContaining({ method: "POST", body: JSON.stringify({ model_preference: "pro" }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("语音输出 / Voice Output"), "on");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_output: "on" }) })
+      )
+    );
+
+    fireEvent.change(screen.getByLabelText("语速 / Rate"), { target: { value: "1.2" } });
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_rate: 1.2 }) })
+      )
+    );
+
+    fireEvent.change(screen.getByLabelText("音量 / Volume"), { target: { value: "0.6" } });
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_volume: 0.6 }) })
       )
     );
 
@@ -1396,6 +1840,1769 @@ describe("App", () => {
       expect.stringContaining("/api/chat"),
       expect.objectContaining({ method: "POST" })
     );
+  });
+
+  it("emits interaction events for sent messages and shown assistant segments", async () => {
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    const events = eventBus.getRecentEvents(20);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "user_message_sent", text: "Margit 怎么打？" }),
+        expect.objectContaining({ type: "assistant_reply_started" }),
+        expect.objectContaining({
+          type: "assistant_reply_segment_shown",
+          segment_index: 0,
+          text: "别急着翻滚。先看动作。再试一次。"
+        }),
+        expect.objectContaining({ type: "assistant_reply_completed" })
+      ])
+    );
+  });
+
+  it("does not speak assistant replies when Voice Output is disabled", async () => {
+    const speech = installSpeechSynthesisMock();
+    render(<App />);
+
+    await screen.findByLabelText("语音输出 / Voice Output");
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    expect(speech.speak).not.toHaveBeenCalled();
+    expect(eventBus.getRecentEvents(20)).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "tts_started" })]));
+  });
+
+  it("does not crash and shows a readable status when local TTS is unavailable", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    expect(await screen.findByText(/本地语音：不可用/)).toBeInTheDocument();
+    expect(screen.getByText("当前环境不支持本地语音输出。")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "tts_error", reason: "unavailable", status: "当前环境不支持" })
+      ])
+    );
+  });
+
+  it("updates the Voice Output status when system voices load later", async () => {
+    const speech = installSpeechSynthesisMock();
+    render(<App />);
+
+    expect(await screen.findByText(/等待系统语音列表/)).toBeInTheDocument();
+
+    act(() => {
+      speech.setVoices([mockVoice("zh-Hans")]);
+    });
+
+    expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
+  });
+
+  it("plays a test voice from Settings without writing chat", async () => {
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    render(<App />);
+
+    expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
+    const chatPanel = screen.getByRole("region", { name: "聊天面板" });
+    await userEvent.click(screen.getByRole("button", { name: "测试语音 / Test Voice" }));
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0]).toMatchObject({
+      text: "你好，我是 Rei。语音输出测试。",
+      lang: "zh-CN",
+      voice: expect.objectContaining({ lang: "zh-CN" })
+    });
+    expect(within(chatPanel).queryByText("你好，我是 Rei。语音输出测试。")).not.toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({ method: "POST" })
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
+    });
+
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started", source: "test_voice" })])
+    );
+  });
+
+  it("shows Voice Input controls and Settings availability status", async () => {
+    installMediaDevicesMock("prompt");
+    installSpeechRecognitionMock();
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "开始语音 / Start Voice" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音输入 / Voice Input");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("可用");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音识别功能：可用");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("麦克风权限：可请求");
+    expect(screen.getByText(/语音输入：待命/)).toBeInTheDocument();
+  });
+
+  it("shows Local ASR not configured status in Voice Input settings", async () => {
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("本地语音识别 / Local ASR");
+    expect(voiceInputSettings).toHaveTextContent("未配置");
+    expect(voiceInputSettings).toHaveTextContent("本地语音识别未配置");
+    expect(voiceInputSettings).toHaveTextContent("未配置本地 ASR 时，主聊天语音按钮会回退到 Web Speech");
+    expect(voiceInputSettings).toHaveTextContent("配置未就绪");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeDisabled();
+    expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto");
+    expect(voiceInputSettings).not.toHaveTextContent("REILINK_LOCAL_ASR_BINARY");
+    expect(voiceInputSettings).not.toHaveTextContent("REILINK_LOCAL_ASR_MODEL");
+  });
+
+  it("shows Local ASR setup controls with safe settings summary", async () => {
+    render(<App />);
+
+    const setup = await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+
+    expect(setup).toHaveTextContent("本地 ASR 配置 / Local ASR Setup");
+    expect(setup).toHaveTextContent("未配置");
+    expect(setup).toHaveTextContent("识别程序：未配置");
+    expect(setup).toHaveTextContent("模型：未配置");
+    expect(setup).toHaveTextContent("转换工具：未配置");
+    expect(screen.getByLabelText("本地识别程序 / ASR Binary")).toBeInTheDocument();
+    expect(screen.getByLabelText("模型文件 / Model File")).toBeInTheDocument();
+    expect(screen.getByLabelText("音频转换工具 / Audio Converter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存配置 / Save" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "清除配置 / Clear" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "重新检测 / Refresh Status" })).toBeEnabled();
+  });
+
+  it("saves Local ASR paths, shows basenames, and keeps debug surfaces safe", async () => {
+    const binaryPath = "/Users/aragoto/private/whisper-cli";
+    const modelPath = "/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin";
+    const converterPath = "/Users/aragoto/tools/ffmpeg";
+    render(<App />);
+
+    await userEvent.type(await screen.findByLabelText("本地识别程序 / ASR Binary"), binaryPath);
+    await userEvent.type(screen.getByLabelText("模型文件 / Model File"), modelPath);
+    await userEvent.type(screen.getByLabelText("音频转换工具 / Audio Converter"), converterPath);
+    await userEvent.click(screen.getByRole("button", { name: "保存配置 / Save" }));
+
+    const setup = await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+    await waitFor(() => expect(setup).toHaveTextContent("本地 ASR 配置已保存"));
+    expect(setup).toHaveTextContent("用户配置");
+    expect(setup).toHaveTextContent("识别程序：whisper-cli");
+    expect(setup).toHaveTextContent("模型：ggml-base.bin");
+    expect(setup).toHaveTextContent("转换工具：ffmpeg");
+    expect(screen.getByLabelText("本地识别程序 / ASR Binary")).toHaveValue("");
+    expect(screen.getByLabelText("模型文件 / Model File")).toHaveValue("");
+    expect(screen.getByLabelText("音频转换工具 / Audio Converter")).toHaveValue("");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/settings"),
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          local_asr_binary_path: binaryPath,
+          local_asr_model_path: modelPath,
+          audio_converter_binary_path: converterPath
+        })
+      })
+    );
+
+    const rawJson = screen.getByText("原始 JSON").closest("details");
+    expect(rawJson).not.toBeNull();
+    expect(rawJson).toHaveTextContent("safe_converter_name");
+    expect(rawJson).toHaveTextContent("whisper-cli");
+    expect(rawJson).toHaveTextContent("ggml-base.bin");
+    expect(rawJson).toHaveTextContent("ffmpeg");
+    const debugSummary = screen.getByText("配置摘要").closest("div");
+    expect(debugSummary).toHaveTextContent("whisper-cli");
+    expect(debugSummary).toHaveTextContent("ggml-base.bin");
+    expect(debugSummary).toHaveTextContent("ffmpeg");
+    const combinedSafeSurface = [
+      setup.textContent,
+      rawJson?.textContent,
+      debugSummary?.textContent,
+      JSON.stringify(eventBus.getRecentEvents(50))
+    ].join("\n");
+    expect(combinedSafeSurface).not.toContain(binaryPath);
+    expect(combinedSafeSurface).not.toContain(modelPath);
+    expect(combinedSafeSurface).not.toContain(converterPath);
+  });
+
+  it("clears Local ASR settings and refreshes local status", async () => {
+    setLocalAsrReady();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "清除配置 / Clear" }));
+
+    const setup = await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+    await waitFor(() => expect(setup).toHaveTextContent("本地 ASR 配置已清除"));
+    expect(setup).toHaveTextContent("识别程序：未配置");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeDisabled();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/settings"),
+      expect.objectContaining({ method: "DELETE" })
+    );
+  });
+
+  it("refreshes Local ASR settings and status on demand", async () => {
+    render(<App />);
+    await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+    const initialSettingsCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/api/voice-input/local-asr/settings")
+    ).length;
+    localAsrSettingsStore = {
+      ...localAsrSettings,
+      configured: true,
+      binary_configured: true,
+      model_configured: true,
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin",
+      source: "env"
+    };
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin",
+      source: "env"
+    };
+
+    await userEvent.click(screen.getByRole("button", { name: "重新检测 / Refresh Status" }));
+
+    const setup = screen.getByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
+    await waitFor(() => expect(setup).toHaveTextContent("本地 ASR 状态已刷新"));
+    expect(setup).toHaveTextContent("环境变量");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeEnabled();
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/api/voice-input/local-asr/settings")
+    ).length).toBeGreaterThan(initialSettingsCalls);
+  });
+
+  it("shows Local ASR model missing with safe file names only", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_model_missing",
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: false,
+      display_message: "缺少本地语音模型",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("缺少模型文件");
+    expect(voiceInputSettings).toHaveTextContent("缺少本地语音模型");
+    expect(voiceInputSettings).toHaveTextContent("识别程序：whisper-cli");
+    expect(voiceInputSettings).toHaveTextContent("模型：ggml-base.bin");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeDisabled();
+    expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto/Library/Application Support/ReiLink/models");
+  });
+
+  it("shows Local ASR ready and enables the main chat voice button", async () => {
+    setLocalAsrReady();
+    installAudioCaptureMock();
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("已就绪");
+    expect(voiceInputSettings).toHaveTextContent("本地语音识别配置已就绪");
+    expect(voiceInputSettings).toHaveTextContent("主聊天语音按钮会优先使用本地 ASR");
+    expect(voiceInputSettings).toHaveTextContent("未检查");
+    expect(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "开始本地语音 / Start Local ASR" })).toBeEnabled();
+    expect(screen.getByText("语音输入：本地语音识别可用")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
+  });
+
+  it("checks Local ASR and shows succeeded status without leaking raw output", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrProbeResponseStore = {
+      ...localAsrProbeResponse,
+      display_message: "本地语音识别程序可以启动",
+      binary_name: "whisper-cli",
+      model_name: "ggml-base.bin",
+      duration_ms: 58
+    };
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("可以启动"));
+    expect(voiceInputSettings).toHaveTextContent("本地语音识别程序可以启动");
+    expect(voiceInputSettings).toHaveTextContent("58 ms");
+    expect(voiceInputSettings).not.toHaveTextContent("Usage:");
+    expect(voiceInputSettings).not.toHaveTextContent("stderr");
+    expect(voiceInputSettings).not.toHaveTextContent("/Users/aragoto");
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/voice-input/local-asr/probe"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows Local ASR checking state while probe is pending", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    let resolveProbe: (response: Response) => void = () => undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith("/api/voice-input/local-asr/probe") && init?.method === "POST") {
+          return new Promise<Response>((resolve) => {
+            resolveProbe = resolve;
+          });
+        }
+        return defaultFetchResponse(url, init);
+      })
+    );
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("正在检查");
+
+    resolveProbe(Response.json(localAsrProbeResponse));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("可以启动"));
+  });
+
+  it("shows Local ASR timeout and failed probe states safely", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrProbeResponseStore = {
+      ...localAsrProbeResponse,
+      status: "local_asr_probe_timed_out",
+      available: false,
+      display_message: "本地语音识别程序启动超时",
+      duration_ms: 3000
+    };
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("启动超时"));
+
+    localAsrProbeResponseStore = {
+      ...localAsrProbeResponse,
+      status: "local_asr_probe_failed",
+      available: false,
+      display_message: "本地语音识别程序启动失败",
+      duration_ms: 61
+    };
+    await userEvent.click(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("启动失败"));
+    expect(screen.getByRole("group", { name: "语音输入设置" })).not.toHaveTextContent("raw stderr");
+  });
+
+  it("Local ASR probe does not fill chat input or auto send", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    render(<App />);
+
+    const input = await screen.findByLabelText("聊天输入");
+    await userEvent.click(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("可以启动"));
+
+    expect(input).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows Audio Capture Test unavailable when MediaRecorder is missing", async () => {
+    installMediaDevicesMock("prompt");
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("录音测试 / Audio Capture Test");
+    expect(voiceInputSettings).toHaveTextContent("当前环境不支持录音");
+    expect(screen.getByRole("button", { name: "测试录音 / Test Recording" })).toBeDisabled();
+  });
+
+  it("shows readable Audio Capture permission denied errors", async () => {
+    installAudioCaptureMock({ permissionDenied: true });
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("权限被拒绝"));
+    expect(voiceInputSettings).toHaveTextContent("麦克风权限被拒绝");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "audio_capture_error", reason: "permission_denied" })])
+    );
+  });
+
+  it("records audio, stops tracks, uploads blob, and shows cleanup success", async () => {
+    const audioMock = installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
+    expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(MockMediaRecorder.instances).toHaveLength(1);
+    expect(MockMediaRecorder.instances[0].start).toHaveBeenCalled();
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("正在录音");
+
+    await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("录音测试完成"));
+    expect(voiceInputSettings).toHaveTextContent("临时音频已清理：是");
+    expect(voiceInputSettings).toHaveTextContent("格式：audio/webm");
+    expect(voiceInputSettings).toHaveTextContent("当前录音格式需要本地转换为 WAV");
+    expect(audioMock.stopTrack).toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/audio/probe"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(Blob),
+        headers: expect.objectContaining({ "Content-Type": "audio/webm" })
+      })
+    );
+  });
+
+  it("Audio Capture probe does not fill chat input or auto send", async () => {
+    installAudioCaptureMock();
+    render(<App />);
+
+    const input = await screen.findByLabelText("聊天输入");
+    await userEvent.click(screen.getByRole("button", { name: "测试录音 / Test Recording" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("录音测试完成"));
+
+    expect(input).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("Audio Capture Event Stream summaries do not expose audio content or paths", async () => {
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("录音测试完成"));
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("录音测试开始"));
+    expect(eventStream).toHaveTextContent("录音测试完成");
+    expect(eventStream).toHaveTextContent("临时音频已清理");
+    expect(eventStream).not.toHaveTextContent("fake-webm-audio");
+    expect(eventStream).not.toHaveTextContent("base64");
+    expect(eventStream).not.toHaveTextContent("/tmp");
+    expect(eventStream).not.toHaveTextContent("Authorization");
+    expect(eventStream).not.toHaveTextContent(".env");
+  });
+
+  it("shows Local Transcribe disabled until Local ASR is ready", async () => {
+    installAudioCaptureMock();
+    render(<App />);
+
+    const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
+
+    expect(voiceInputSettings).toHaveTextContent("本地转写测试 / Local Transcribe Test");
+    expect(voiceInputSettings).toHaveTextContent("配置未就绪");
+    expect(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" })).toBeDisabled();
+  });
+
+  it("records audio, calls Local ASR transcription, fills input, and does not auto send", async () => {
+    const simplifiedTranscript = "玛尔基特怎么打";
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: simplifiedTranscript,
+      transcript_char_count: simplifiedTranscript.length,
+      language: "zh",
+      transcript_normalized_to_simplified: true
+    };
+    const audioMock = installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("正在录音");
+
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(simplifiedTranscript));
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写完成");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写完成，请确认后发送");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语言：zh");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("已规范为简体中文");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("临时音频已清理：是");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("格式：audio/webm");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前录音格式需要本地转换为 WAV");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转换：音频已转换为 WAV");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("目标格式：audio/wav");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转换器：ffmpeg");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("原始音频已清理：是");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转换音频已清理：是");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("模型取舍：ggml-base.bin");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).not.toHaveTextContent("/Users/aragoto");
+    expect(audioMock.stopTrack).toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/transcribe"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(FormData)
+      })
+    );
+    const fetchCalls = vi.mocked(fetch).mock.calls;
+    const transcribeCall = fetchCalls.find(([url]) => String(url).includes("/api/voice-input/local-asr/transcribe"));
+    expect(transcribeCall).toBeTruthy();
+    expect((transcribeCall?.[1]?.body as FormData).get("language")).toBe("zh-CN");
+    expect(fetchCalls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/memory"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/debug/prompt-preview"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/game/context"))).toBe(false);
+    expect(screen.queryByText(simplifiedTranscript)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    expect(await screen.findByText(simplifiedTranscript)).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows a Local ASR timeout suggestion without filling input", async () => {
+    setLocalAsrReady();
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_timed_out",
+      available: false,
+      display_message: "本地语音识别超时，可以尝试更小模型或更短录音",
+      transcript: "",
+      transcript_char_count: 0,
+      conversion_status: "audio_conversion_not_needed",
+      conversion_required: false
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("语音输入：本地语音识别超时，可以尝试更小模型或更短录音")).toBeInTheDocument()
+    );
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("本地语音识别超时，可以尝试更小模型或更短录音");
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows Local ASR audio conversion not configured without filling input", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_failed",
+      available: false,
+      display_message: "尚未配置音频转换工具",
+      transcript: "",
+      transcript_char_count: 0,
+      conversion_status: "audio_conversion_not_configured",
+      conversion_required: true,
+      converted_mime_type: null,
+      converter_configured: false,
+      safe_converter_name: null
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("转写失败"));
+    expect(voiceInputSettings).toHaveTextContent("尚未配置音频转换工具");
+    expect(voiceInputSettings).toHaveTextContent("转换：尚未配置音频转换工具");
+    expect(voiceInputSettings).toHaveTextContent("转换工具：未配置");
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("keeps empty Local ASR transcription out of the input", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_no_text",
+      available: false,
+      display_message: "没有识别到可用文本",
+      transcript: "",
+      transcript_char_count: 0
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+
+    await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("没有识别到可用文本"));
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("Local ASR transcription Event Stream summaries do not expose full transcript", async () => {
+    const privateTranscript = "玛尔基特怎么打";
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: privateTranscript,
+      transcript_char_count: privateTranscript.length,
+      language: "zh",
+      transcript_normalized_to_simplified: true
+    };
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("本地语音识别开始"));
+    expect(eventStream).toHaveTextContent("本地语音识别完成");
+    expect(eventStream).toHaveTextContent(`${privateTranscript.length} 字`);
+    expect(eventStream).toHaveTextContent("语言：zh");
+    expect(eventStream).toHaveTextContent("已规范为简体中文");
+    expect(eventStream).toHaveTextContent("音频已转换为 WAV");
+    expect(eventStream).toHaveTextContent("转为 audio/wav");
+    expect(eventStream).toHaveTextContent("转换器：ffmpeg");
+    expect(eventStream).not.toHaveTextContent(privateTranscript);
+    expect(eventStream).not.toHaveTextContent("fake-webm-audio");
+    expect(eventStream).not.toHaveTextContent("raw stdout");
+    expect(eventStream).not.toHaveTextContent("raw stderr");
+    expect(eventStream).not.toHaveTextContent("/Users/aragoto");
+    expect(eventStream).not.toHaveTextContent("Authorization");
+    expect(eventStream).not.toHaveTextContent(".env");
+  });
+
+  it("Debug Panel does not show the full Local ASR transcript", async () => {
+    const privateTranscript = "本地转写私有文本";
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: privateTranscript,
+      transcript_char_count: privateTranscript.length,
+      language: "zh",
+      transcript_normalized_to_simplified: true
+    };
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
+
+    const rawJson = screen.getByText("原始 JSON").closest("details");
+    expect(rawJson).not.toBeNull();
+    expect(rawJson).toHaveTextContent("transcript_char_count");
+    expect(rawJson).not.toHaveTextContent("\"transcript\"");
+    expect(rawJson).not.toHaveTextContent(privateTranscript);
+    expect(screen.getByText("本地转写字数").closest("div")).toHaveTextContent(String(privateTranscript.length));
+    expect(screen.getByText("本地转写语言").closest("div")).toHaveTextContent("zh");
+    expect(screen.getByText("本地转写简体规范").closest("div")).toHaveTextContent("已规范为简体中文");
+    expect(screen.getByText("本地转写格式").closest("div")).toHaveTextContent("audio/webm");
+    expect(screen.getByText("本地转写格式提示").closest("div")).toHaveTextContent("当前录音格式需要本地转换为 WAV");
+    expect(screen.getByText("本地转写转换状态").closest("div")).toHaveTextContent("音频已转换为 WAV");
+    expect(screen.getByText("本地转写目标格式").closest("div")).toHaveTextContent("audio/wav");
+    expect(screen.getByText("本地转写转换工具").closest("div")).toHaveTextContent("已配置 / ffmpeg");
+  });
+
+  it("shows safe audio format summaries without raw audio paths or subprocess output", async () => {
+    audioProbeResponseStore = {
+      ...audioProbeResponse,
+      mime_type: "audio/webm;codecs=opus"
+    };
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
+    await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("录音测试完成"));
+    expect(voiceInputSettings).toHaveTextContent("格式：audio/webm");
+    expect(voiceInputSettings).toHaveTextContent("当前录音格式需要本地转换为 WAV");
+    expect(voiceInputSettings).not.toHaveTextContent("codecs=opus");
+    expect(voiceInputSettings).not.toHaveTextContent("/tmp");
+    expect(voiceInputSettings).not.toHaveTextContent("raw stdout");
+    expect(voiceInputSettings).not.toHaveTextContent("raw stderr");
+  });
+
+  it("stops active Voice Output when Local ASR transcription starts", async () => {
+    localAsrStatusStore = {
+      ...localAsrStatus,
+      status: "local_asr_ready",
+      available: true,
+      binary_configured: true,
+      binary_present: true,
+      binary_executable: true,
+      model_configured: true,
+      model_present: true,
+      display_message: "本地语音识别配置已就绪",
+      safe_binary_name: "whisper-cli",
+      safe_model_name: "ggml-base.bin"
+    };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installAudioCaptureMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试语音 / Test Voice" }));
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
+
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_stopped", reason: "user_stop" })])
+    );
+  });
+
+  it("routes the main chat voice button through Local ASR when Web Speech is unavailable", async () => {
+    setLocalAsrReady();
+    const privateTranscript = "主按钮本地转写文本";
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: privateTranscript,
+      transcript_char_count: privateTranscript.length
+    };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    const audioMock = installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    const mainVoiceButton = await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" });
+    expect(mainVoiceButton).toBeEnabled();
+    expect(screen.getByText("语音输入：本地语音识别可用")).toBeInTheDocument();
+    expect(screen.queryByText("语音输入：语音识别服务不可用")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "测试语音 / Test Voice" }));
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(mainVoiceButton);
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" })).toBeEnabled();
+    expect(screen.getByText("语音输入：正在录音")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
+    expect(screen.getByText("语音输入：转写完成，请确认后发送")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/transcribe"),
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) })
+    );
+    const fetchCalls = vi.mocked(fetch).mock.calls;
+    expect(fetchCalls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/memory"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/debug/prompt-preview"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/game/context"))).toBe(false);
+    expect(screen.queryByText(privateTranscript)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("本地语音识别开始"));
+    expect(eventStream).toHaveTextContent("本地语音识别完成");
+    expect(eventStream).toHaveTextContent(`${privateTranscript.length} 字`);
+    expect(eventStream).not.toHaveTextContent(privateTranscript);
+    expect(eventStream).not.toHaveTextContent("/Users/aragoto");
+    expect(eventStream).not.toHaveTextContent("raw stdout");
+    expect(eventStream).not.toHaveTextContent("raw stderr");
+
+    expect(screen.getByText("主输入提供方").closest("div")).toHaveTextContent("local_asr");
+    expect(screen.getByText("主输入状态").closest("div")).toHaveTextContent("转写完成，请确认后发送");
+    const rawJson = screen.getByText("原始 JSON").closest("details");
+    expect(rawJson).not.toBeNull();
+    expect(rawJson).toHaveTextContent("main_provider");
+    expect(rawJson).toHaveTextContent("local_asr_conversion_status");
+    expect(rawJson).not.toHaveTextContent("\"transcript\"");
+    expect(rawJson).not.toHaveTextContent(privateTranscript);
+  });
+
+  it("keeps the main chat voice button on Local ASR when Web Speech reports service unavailable", async () => {
+    setLocalAsrReady();
+    installAudioCaptureMock();
+    installMediaDevicesMock("granted");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" });
+    act(() => {
+      voiceInput.start({ onFinalTranscript: vi.fn() });
+    });
+    act(() => {
+      recognition.instances[0].emitError("network");
+    });
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    await waitFor(() => expect(voiceInputSettings).toHaveTextContent("服务不可用"));
+    expect(screen.getByRole("button", { name: "开始本地语音 / Start Local ASR" })).toBeEnabled();
+    expect(screen.getByText("语音输入：本地语音识别可用")).toBeInTheDocument();
+    expect(screen.queryByText("语音输入：语音识别服务不可用")).not.toBeInTheDocument();
+  });
+
+  it("falls back to Web Speech from the main chat voice button when Local ASR is not ready", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("Hollow Knight 怎么走", true);
+    });
+
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("Hollow Knight 怎么走");
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/voice-input/local-asr/transcribe"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("shows the main chat voice button as unavailable when Local ASR and Web Speech are both unavailable", async () => {
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("语音输入：未配置本地 ASR，Web Speech 不可用")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "开始语音 / Start Voice" })).toBeDisabled();
+  });
+
+  it("shows Local ASR conversion fallback from the main chat voice button without filling input", async () => {
+    setLocalAsrReady();
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_failed",
+      available: false,
+      display_message: "尚未配置音频转换工具",
+      transcript: "",
+      transcript_char_count: 0,
+      conversion_status: "audio_conversion_not_configured",
+      conversion_required: true,
+      converted_mime_type: null,
+      converter_configured: false,
+      safe_converter_name: null
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() => expect(screen.getByText("语音输入：音频转换工具未配置")).toBeInTheDocument());
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+  });
+
+  it("shows no-text and failed Local ASR fallbacks from the main chat voice button", async () => {
+    setLocalAsrReady();
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_no_text",
+      available: false,
+      display_message: "没有识别到可用文本",
+      transcript: "",
+      transcript_char_count: 0
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() => expect(screen.getByText("语音输入：没有识别到可用文本")).toBeInTheDocument());
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      status: "local_asr_transcription_failed",
+      available: false,
+      display_message: "本地语音识别失败",
+      transcript: "",
+      transcript_char_count: 0,
+      conversion_status: "audio_conversion_not_needed",
+      conversion_required: false
+    };
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    await waitFor(() => expect(screen.getByText("语音输入：本地转写失败")).toBeInTheDocument());
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+  });
+
+  it("starts SpeechRecognition when Voice Input is supported", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+
+    expect(recognition.instances).toHaveLength(1);
+    expect(recognition.instances[0].lang).toBe("zh-CN");
+    expect(recognition.instances[0].interimResults).toBe(true);
+    expect(recognition.instances[0].start).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("button", { name: "停止识别 / Stop Listening" })).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "voice_input_started", language: "zh-CN" })])
+    );
+  });
+
+  it("starts webkitSpeechRecognition when the prefixed API is supported", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock("webkit");
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+
+    expect(recognition.instances).toHaveLength(1);
+    expect(recognition.instances[0].start).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音识别功能：可用");
+  });
+
+  it("shows Voice Input unavailable fallback without crashing", async () => {
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前运行环境不支持本地语音识别")
+    );
+    const voiceButton = screen.getByRole("button", { name: "开始语音 / Start Voice" });
+
+    expect(voiceButton).toBeDisabled();
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("不可用");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("你仍然可以使用系统听写输入到文本框");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "voice_input_unavailable",
+          status: "当前运行环境不支持本地语音识别"
+        })
+      ])
+    );
+  });
+
+  it("shows Voice Input start failure separately from unsupported", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    recognition.startError = new Error("start failed");
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+
+    expect(recognition.instances).toHaveLength(1);
+    expect(recognition.instances[0].start).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音输入启动失败");
+    expect(screen.getByText(/语音输入：语音输入启动失败/)).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "voice_input_error",
+          reason: "start_failed",
+          status: "语音输入启动失败"
+        })
+      ])
+    );
+  });
+
+  it("fills final Voice Input transcript into the input without auto sending", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("Hollow Knight 里的 Hornet 怎么打？", true);
+    });
+
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("Hollow Knight 里的 Hornet 怎么打？");
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(screen.queryByText("Hollow Knight 里的 Hornet 怎么打？")).not.toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "voice_input_completed",
+          character_count: "Hollow Knight 里的 Hornet 怎么打？".length,
+          is_final: true
+        })
+      ])
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    expect(await screen.findByText("Hollow Knight 里的 Hornet 怎么打？")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("keeps interim Voice Input transcript out of chat, memory, retrieval, and game context", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("我还没确认", false);
+    });
+
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(screen.getByText(/临时识别 5 字/)).toBeInTheDocument();
+    const fetchCalls = vi.mocked(fetch).mock.calls;
+    expect(fetchCalls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/memory/pending"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/debug/prompt-preview"))).toBe(false);
+    expect(fetchCalls.some(([url]) => String(url).includes("/api/game/context"))).toBe(false);
+  });
+
+  it("shows readable Voice Input errors without raw reason codes", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitError("not-allowed");
+    });
+
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("麦克风权限被拒绝");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "voice_input_error",
+          reason: "permission_denied",
+          status: "麦克风权限被拒绝"
+        })
+      ])
+    );
+    render(
+      <EventStreamPanel
+        events={eventBus.getRecentEvents(20)}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+    const eventStreamTitles = screen.getAllByText("事件流 / Event Stream");
+    const eventStream = eventStreamTitles[eventStreamTitles.length - 1].closest("details");
+    expect(eventStream).toHaveTextContent("语音输入失败");
+    expect(eventStream).toHaveTextContent("麦克风权限被拒绝");
+    expect(eventStream).not.toHaveTextContent("permission_denied");
+    expect(eventStream).not.toHaveTextContent("not-allowed");
+  });
+
+  it("shows Voice Input service unavailable as unavailable instead of available", async () => {
+    installMediaDevicesMock("granted");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitError("network");
+    });
+
+    const voiceInputSettings = screen.getByRole("group", { name: "语音输入设置" });
+    expect(voiceInputSettings).toHaveTextContent("服务不可用");
+    expect(voiceInputSettings).toHaveTextContent("语音识别功能：服务不可用");
+    expect(voiceInputSettings).toHaveTextContent("麦克风权限：已允许");
+    expect(voiceInputSettings).toHaveTextContent("当前运行环境的语音识别服务不可用");
+    expect(voiceInputSettings).toHaveTextContent("你仍然可以使用系统听写输入到文本框");
+    expect(screen.getByText(/语音输入：未配置本地 ASR，Web Speech 服务不可用/)).toBeInTheDocument();
+  });
+
+  it("maps Voice Input no-speech and user stop errors to readable Chinese", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitError("no-speech");
+    });
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("没有识别到语音");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[1].emitError("aborted");
+    });
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("用户停止");
+
+    render(
+      <EventStreamPanel
+        events={eventBus.getRecentEvents(20)}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+    const eventStreamTitles = screen.getAllByText("事件流 / Event Stream");
+    const eventStream = eventStreamTitles[eventStreamTitles.length - 1].closest("details");
+    expect(eventStream).toHaveTextContent("没有识别到语音");
+    expect(eventStream).toHaveTextContent("用户停止");
+    expect(eventStream).not.toHaveTextContent("no_speech");
+    expect(eventStream).not.toHaveTextContent("aborted");
+  });
+
+  it("stops active Voice Output when Voice Input starts", async () => {
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installMediaDevicesMock("prompt");
+    installSpeechRecognitionMock();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "测试语音 / Test Voice" }));
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "tts_stopped", reason: "user_stop" }),
+        expect.objectContaining({ type: "voice_input_started" })
+      ])
+    );
+  });
+
+  it("shows Voice Input lifecycle summaries without full transcript in Event Stream", () => {
+    render(
+      <EventStreamPanel
+        events={[
+          { type: "voice_input_started", timestamp: new Date().toISOString(), language: "zh-CN" },
+          {
+            type: "voice_input_completed",
+            timestamp: new Date().toISOString(),
+            character_count: 21,
+            is_final: true,
+            language: "zh-CN"
+          },
+          {
+            type: "voice_input_stopped",
+            timestamp: new Date().toISOString(),
+            reason: "user_stop",
+            status: "用户停止",
+            language: "zh-CN"
+          },
+          {
+            type: "voice_input_error",
+            timestamp: new Date().toISOString(),
+            reason: "no_speech",
+            status: "没有识别到语音",
+            language: "zh-CN"
+          },
+          {
+            type: "voice_input_unavailable",
+            timestamp: new Date().toISOString(),
+            reason: "not_supported",
+            status: "当前运行环境不支持本地语音识别",
+            language: "zh-CN"
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).toHaveTextContent("语音输入开始");
+    expect(eventStream).toHaveTextContent("语音输入完成");
+    expect(eventStream).toHaveTextContent("识别文本 21 字");
+    expect(eventStream).toHaveTextContent("语音输入已停止");
+    expect(eventStream).toHaveTextContent("语音输入失败");
+    expect(eventStream).toHaveTextContent("语音输入不可用");
+    expect(eventStream).not.toHaveTextContent("Hollow Knight 里的 Hornet 怎么打？");
+    expect(eventStream).not.toHaveTextContent("user_stop");
+    expect(eventStream).not.toHaveTextContent("no_speech");
+    expect(eventStream).not.toHaveTextContent("not_supported");
+    expect(eventStream).not.toHaveTextContent("raw_prompt");
+    expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
+    expect(eventStream).not.toHaveTextContent("services/backend/.env");
+    expect(eventStream).not.toHaveTextContent("Authorization");
+  });
+
+  it("falls back to the system default voice when voices are empty", async () => {
+    const speech = installSpeechSynthesisMock([]);
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    expect(await screen.findByText(/等待系统语音列表/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0]).toMatchObject({ lang: "zh-CN", voice: null });
+  });
+
+  it("emits TTS started only after the system reports playback started", () => {
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+
+    expect(voiceOutput.speak("你好", { source: "test_voice" })).toBe(true);
+    expect(voiceOutput.getStatus()).toMatchObject({ active: true, phase: "starting" });
+    expect(eventBus.getRecentEvents(20)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started" })])
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
+    });
+
+    expect(voiceOutput.getStatus()).toMatchObject({ active: true, phase: "playing" });
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started", source: "test_voice" })])
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onend?.({} as SpeechSynthesisEvent);
+    });
+
+    expect(voiceOutput.getStatus()).toMatchObject({ active: false, phase: "idle" });
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_completed", source: "test_voice" })])
+    );
+  });
+
+  it("reports a readable TTS error when playback never starts", () => {
+    vi.useFakeTimers();
+    installSpeechSynthesisMock([mockVoice("zh-CN")]);
+
+    expect(voiceOutput.speak("你好", { source: "test_voice" })).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(voiceOutput.getStatus()).toMatchObject({
+      active: false,
+      phase: "idle",
+      lastError: "语音没有开始，请检查系统声音输出或语音包"
+    });
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tts_error",
+          reason: "start_timeout",
+          status: "语音没有开始，请检查系统声音输出或语音包",
+          source: "test_voice"
+        })
+      ])
+    );
+  });
+
+  it("emits TTS error from the system speech error callback", () => {
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+
+    expect(voiceOutput.speak("你好", { source: "test_voice" })).toBe(true);
+    act(() => {
+      speech.speak.mock.calls[0][0].onerror?.({ error: "speech_error" } as unknown as SpeechSynthesisErrorEvent);
+    });
+
+    expect(voiceOutput.getStatus()).toMatchObject({ active: false, phase: "idle", lastError: "播放失败" });
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "tts_error", reason: "speech_error", status: "播放失败", source: "test_voice" })
+      ])
+    );
+  });
+
+  it("speaks assistant replies when Voice Output is enabled", async () => {
+    const speech = installSpeechSynthesisMock([
+      mockVoice("en-US"),
+      mockVoice("zh-Hans"),
+      mockVoice("zh-CN")
+    ]);
+    appSettingsStore = { ...appSettingsStore, voice_output: "on", voice_rate: 1.2, voice_volume: 0.6 };
+    render(<App />);
+
+    expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0]).toMatchObject({
+      text: "别急着翻滚。先看动作。再试一次。",
+      rate: 1.2,
+      volume: 0.6,
+      lang: "zh-CN",
+      voice: expect.objectContaining({ lang: "zh-CN" })
+    });
+    expect(screen.getAllByRole("button", { name: "停止语音 / Stop Voice" }).length).toBeGreaterThan(0);
+    expect(eventBus.getRecentEvents(20)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started" })])
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
+    });
+
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started", character_count: 16, source: "assistant_reply" })])
+    );
+
+    act(() => {
+      speech.speak.mock.calls[0][0].onend?.({} as SpeechSynthesisEvent);
+    });
+
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_completed", character_count: 16 })])
+    );
+  });
+
+  it("keeps Voice Output enabled when older settings responses omit the field", async () => {
+    const speech = installSpeechSynthesisMock();
+    omitVoiceOutputFromSettings = true;
+    render(<App />);
+
+    await userEvent.selectOptions(await screen.findByLabelText("语音输出 / Voice Output"), "on");
+    await waitFor(() => expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("on"));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_output: "on" }) })
+      )
+    );
+    fireEvent.change(screen.getByLabelText("语速 / Rate"), { target: { value: "1.3" } });
+    await waitFor(() => expect(screen.getByLabelText("语速 / Rate")).toHaveValue("1.3"));
+    fireEvent.change(screen.getByLabelText("音量 / Volume"), { target: { value: "0.5" } });
+    await waitFor(() => expect(screen.getByLabelText("音量 / Volume")).toHaveValue("0.5"));
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0]).toMatchObject({ rate: 1.3, volume: 0.5 });
+    act(() => {
+      speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
+    });
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_started", character_count: 16 })])
+    );
+  });
+
+  it("does not repeat speech for the same assistant reply after a rerender", async () => {
+    const speech = installSpeechSynthesisMock();
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    const { rerender } = render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+
+    rerender(<App />);
+
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+  });
+
+  it("stops active speech from the Stop Voice control", async () => {
+    const speech = installSpeechSynthesisMock();
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+
+    await userEvent.click(screen.getAllByRole("button", { name: "停止语音 / Stop Voice" })[0]);
+
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_stopped", reason: "user_stop" })])
+    );
+  });
+
+  it("sending a new user message cancels active speech", async () => {
+    const speech = installSpeechSynthesisMock();
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "再说一遍");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_stopped", reason: "new_message" })])
+    );
+  });
+
+  it("disabling Voice Output cancels active speech", async () => {
+    const speech = installSpeechSynthesisMock();
+    appSettingsStore = { ...appSettingsStore, voice_output: "on" };
+    render(<App />);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+
+    await userEvent.selectOptions(screen.getByLabelText("语音输出 / Voice Output"), "off");
+
+    await waitFor(() => expect(speech.cancel).toHaveBeenCalledTimes(1));
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tts_stopped", reason: "disabled" })])
+    );
+  });
+
+  it("shows TTS lifecycle summaries without full assistant text in Event Stream", async () => {
+    render(
+      <EventStreamPanel
+        events={[
+          { type: "tts_started", timestamp: new Date().toISOString(), character_count: 16 },
+          { type: "tts_completed", timestamp: new Date().toISOString(), character_count: 16, source: "test_voice" },
+          { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "user_stop" },
+          { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "new_message" },
+          { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "disabled" },
+          {
+            type: "tts_error",
+            timestamp: new Date().toISOString(),
+            character_count: 16,
+            reason: "unavailable",
+            status: "当前环境不支持"
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    expect(eventStream).toHaveTextContent("语音开始播放");
+    expect(eventStream).toHaveTextContent("语音播放完成");
+    expect(eventStream).toHaveTextContent("语音已停止");
+    expect(eventStream).toHaveTextContent("测试语音");
+    expect(eventStream).toHaveTextContent("新消息打断");
+    expect(eventStream).toHaveTextContent("已关闭");
+    expect(eventStream).toHaveTextContent("语音播放失败");
+    expect(eventStream).toHaveTextContent("16 字");
+    expect(eventStream).not.toHaveTextContent("user_stop");
+    expect(eventStream).not.toHaveTextContent("new_message");
+    expect(eventStream).not.toHaveTextContent("disabled");
+    expect(eventStream).not.toHaveTextContent("unavailable");
+    expect(eventStream).not.toHaveTextContent("test_voice");
+    expect(eventStream).not.toHaveTextContent("你好，我是 Rei。语音输出测试。");
+    expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
+    expect(eventStream).not.toHaveTextContent("raw_prompt");
+    expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
+    expect(eventStream).not.toHaveTextContent("services/backend/.env");
+  });
+
+  it("emits pending memory creation only after a chat operation discovers new pending memory", async () => {
+    let chatCompleted = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/api/memory/pending")) {
+          return Response.json(chatCompleted ? pendingMemories : []);
+        }
+        if (url.endsWith("/api/chat") && init?.method === "POST") {
+          chatCompleted = true;
+          return Response.json(chatResponse);
+        }
+        return defaultFetchResponse(url, init);
+      })
+    );
+
+    render(<App />);
+    await screen.findByText("已连接");
+    expect(eventBus.getRecentEvents(20).some((event) => event.type === "pending_memory_created")).toBe(false);
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "我不喜欢长篇攻略");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("玩家不喜欢长篇攻略");
+
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "pending_memory_created",
+          memory_type: "user_preference",
+          text: "玩家不喜欢长篇攻略"
+        })
+      ])
+    );
+  });
+
+  it("renders Event Stream collapsed by default and shows sanitized recent events", async () => {
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    expect(eventStream).not.toHaveAttribute("open");
+    expect(screen.getByText("原始 JSON")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    expect(eventStream).toHaveAttribute("open");
+    await waitFor(() =>
+      expect(within(eventStream as HTMLElement).getByRole("list", { name: "事件流列表" })).toBeInTheDocument()
+    );
+    expect(eventStream).toHaveTextContent("用户发送消息");
+    expect(eventStream).toHaveTextContent("Rei 显示回复片段");
+    expect(eventStream).toHaveTextContent("使用游戏知识");
+    expect(eventStream).toHaveTextContent("已使用本地知识");
+    expect(eventStream).not.toHaveTextContent("user_message_sent");
+    expect(eventStream).not.toHaveTextContent("assistant_reply_segment_shown");
+    expect(eventStream).not.toHaveTextContent("bundled");
+    expect(eventStream).toHaveTextContent("Margit 怎么打？");
+    expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
+    expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
+    expect(eventStream).not.toHaveTextContent("raw_prompt");
+    expect(eventStream).not.toHaveTextContent("services/backend/.env");
+  });
+
+  it("shows readable knowledge retrieval reasons in Event Stream", () => {
+    render(
+      <EventStreamPanel
+        events={[
+          {
+            type: "knowledge_used",
+            timestamp: new Date().toISOString(),
+            game: "艾尔登法环",
+            topics: ["相关性不足，未使用", "这次不是游戏知识问题"]
+          },
+          {
+            type: "knowledge_used",
+            timestamp: new Date().toISOString(),
+            topics: ["未命中本地知识"]
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).toHaveTextContent("使用游戏知识");
+    expect(eventStream).toHaveTextContent("艾尔登法环 / 相关性不足，未使用、这次不是游戏知识问题");
+    expect(eventStream).toHaveTextContent("未命中本地知识");
+    expect(eventStream).not.toHaveTextContent("无 / 未命中本地知识");
+    expect(eventStream).not.toHaveTextContent("below_threshold");
+    expect(eventStream).not.toHaveTextContent("not_game_related");
+    expect(eventStream).not.toHaveTextContent("raw_prompt");
+    expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
+  });
+
+  it("shows an empty Event Stream state when there are no events", () => {
+    render(<EventStreamPanel events={[]} open onOpenChange={() => undefined} />);
+
+    expect(screen.getByText("事件流 / Event Stream")).toBeInTheDocument();
+    expect(screen.getByText("暂无事件")).toBeInTheDocument();
+  });
+
+  it("updates Event Stream when interaction events are emitted", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    act(() => {
+      eventBus.emit({
+        type: "user_message_sent",
+        timestamp: new Date().toISOString(),
+        text: "我现在卡在女武神"
+      });
+      eventBus.emit({
+        type: "assistant_reply_segment_shown",
+        timestamp: new Date().toISOString(),
+        segment_index: 0,
+        text: "先别贪刀。"
+      });
+      eventBus.emit({
+        type: "runtime_status_changed",
+        timestamp: new Date().toISOString(),
+        backend_source: "bundled_binary",
+        knowledge_source: "bundled"
+      });
+      eventBus.emit({
+        type: "backend_status_changed",
+        timestamp: new Date().toISOString(),
+        status: "starting"
+      });
+    });
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("用户发送消息"));
+    expect(eventStream).toHaveTextContent("Rei 显示回复片段");
+    expect(eventStream).toHaveTextContent("运行来源变化");
+    expect(eventStream).toHaveTextContent("内置后端 / 内置知识资源");
+    expect(eventStream).not.toHaveTextContent("bundled_binary");
+    expect(eventStream).toHaveTextContent("后端状态变化");
+    expect(eventStream).toHaveTextContent("正在启动");
+    expect(eventStream).not.toHaveTextContent("starting");
+    expect(eventStream).toHaveTextContent("我现在卡在女武神");
+    expect(eventStream).toHaveTextContent("第 1 段 / 5 字");
+    expect(eventStream).not.toHaveTextContent("先别贪刀。");
+  });
+
+  it("shows only the latest 20 Event Stream rows", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+
+    act(() => {
+      for (let index = 0; index < 25; index += 1) {
+        eventBus.emit({
+          type: "user_message_sent",
+          timestamp: new Date(Date.UTC(2026, 5, 1, 9, index)).toISOString(),
+          text: `event-${index}`
+        });
+      }
+    });
+
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() =>
+      expect(within(eventStream as HTMLElement).getAllByRole("listitem")).toHaveLength(20)
+    );
+    const rows = within(eventStream as HTMLElement).getAllByRole("listitem");
+    expect(rows).toHaveLength(20);
+    expect(eventStream).not.toHaveTextContent("event-4");
+    expect(eventStream).toHaveTextContent("event-5");
+    expect(eventStream).toHaveTextContent("event-24");
   });
 
   it("forces chat scroll to bottom when the user sends a message", async () => {
@@ -1552,6 +3759,15 @@ describe("App", () => {
     expect(screen.getByText(/主动 · 反复死亡/)).toBeInTheDocument();
     expect(bubble).toHaveClass("messageBubble", "assistant", "proactive");
     expect(bubble).not.toHaveClass("system");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "proactive_message_shown",
+          trigger_type: "repeated_death",
+          text: "你开始急了。"
+        })
+      ])
+    );
   });
 
   it("does not poll proactive check while proactive companion is off", async () => {
@@ -1592,6 +3808,13 @@ describe("App", () => {
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return Promise.resolve(localAsrSettingsValue);
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) {
+          return Promise.resolve(Response.json(localAsrStatusStore));
+        }
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -1654,6 +3877,13 @@ describe("App", () => {
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return Promise.resolve(localAsrSettingsValue);
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) {
+          return Promise.resolve(Response.json(localAsrStatusStore));
+        }
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -1723,6 +3953,13 @@ describe("App", () => {
         if (setup) return Promise.resolve(setup);
         if (url.endsWith("/api/health")) return Promise.resolve(Response.json({ status: "ok" }));
         if (url.endsWith("/api/local-data/status")) return Promise.resolve(Response.json(localDataStatus));
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return Promise.resolve(localAsrSettingsValue);
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) {
+          return Promise.resolve(Response.json(localAsrStatusStore));
+        }
         if (url.endsWith("/api/game/status")) return Promise.resolve(Response.json(runningStatus));
         if (url.endsWith("/api/game/detected")) return Promise.resolve(Response.json(gameDetection));
         if (url.endsWith("/api/memory/profile")) return Promise.resolve(Response.json(memoryProfile));
@@ -1828,6 +4065,9 @@ describe("App", () => {
     expect(screen.getAllByText("当前来源").length).toBeGreaterThan(0);
     expect(screen.getAllByText("知识库状态").length).toBeGreaterThan(0);
     expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("检索结果").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("未使用原因").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("已使用本地知识").length).toBeGreaterThan(0);
     expect(screen.getAllByText("相关主题").length).toBeGreaterThan(0);
     expect(screen.getAllByText("命中知识条数").length).toBeGreaterThan(0);
     expect(screen.getAllByText("命中的知识标题").length).toBeGreaterThan(0);
@@ -1858,6 +4098,7 @@ describe("App", () => {
     expect(screen.getByText("会话焦点")).toBeInTheDocument();
     expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
     expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("检索结果").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Boss 攻略").length).toBeGreaterThan(0);
     expect(screen.getByText("记忆摘要")).toBeInTheDocument();
@@ -1892,6 +4133,11 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, status: "idle", game_id: null, game_name: null });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1933,6 +4179,11 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "sekiro", game_name: "只狼" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -1979,6 +4230,11 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: "hollow_knight", game_name: "空洞骑士" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -2026,6 +4282,11 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -2074,6 +4335,11 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json({ ...runningStatus, game_id: null, game_name: "星之门遗迹" });
         if (url.endsWith("/api/game/detected")) return Response.json(idleGameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -2113,6 +4379,11 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);
@@ -2146,7 +4417,7 @@ describe("App", () => {
     expect(within(warningsSection as HTMLElement).getByText("无")).toBeInTheDocument();
   });
 
-  it("accepts pending memory from the debug panel", async () => {
+  it("emits pending memory accept and ignore events from the memory panel", async () => {
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: "保存" }));
 
@@ -2155,6 +4426,20 @@ describe("App", () => {
         expect.stringContaining("/api/memory/pending/pending-1/accept"),
         expect.objectContaining({ method: "POST" })
       )
+    );
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "pending_memory_accepted", memory_id: "pending-1" })])
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "忽略" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/memory/pending/pending-1/ignore"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "pending_memory_ignored", memory_id: "pending-1" })])
     );
   });
 
@@ -2175,6 +4460,11 @@ describe("App", () => {
         if (setup) return setup;
         if (url.endsWith("/api/health")) return Response.json({ status: "ok" });
         if (url.endsWith("/api/local-data/status")) return Response.json(localDataStatus);
+        {
+          const localAsrSettingsValue = localAsrSettingsResponse(url, init);
+          if (localAsrSettingsValue) return localAsrSettingsValue;
+        }
+        if (url.endsWith("/api/voice-input/local-asr/status")) return Response.json(localAsrStatusStore);
         if (url.endsWith("/api/game/status")) return Response.json(runningStatus);
         if (url.endsWith("/api/game/detected")) return Response.json(gameDetection);
         if (url.endsWith("/api/memory/profile")) return Response.json(memoryProfile);

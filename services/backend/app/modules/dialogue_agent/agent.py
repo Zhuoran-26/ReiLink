@@ -228,7 +228,13 @@ class DialogueAgent:
             matched_topics=knowledge_result.topics,
             snippets_count=len(snippets),
             snippet_titles=[snippet.title for snippet in snippets],
+            snippet_previews=[snippet.content for snippet in snippets],
+            matched_terms=[term for snippet in snippets for term in snippet.matched_terms],
+            result_scores=[snippet.score for snippet in snippets],
             knowledge_used_in_prompt=bool(snippets),
+            knowledge_retrieval_status=knowledge_result.retrieval_status,
+            knowledge_not_used_reason=knowledge_result.not_used_reason,
+            knowledge_retrieval_min_score=knowledge_result.retrieval_min_score,
         )
         set_last_chat_metrics(metrics)
         logger.info(

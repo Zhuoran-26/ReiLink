@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictStr
 
 SupportStatus = Literal["supported", "detected_only", "planned", "unsupported"]
 
@@ -175,6 +175,9 @@ class AppSettings(BaseModel):
     proactive_companion: Literal["on", "off"] = "off"
     proactive_sensitivity: Literal["low", "normal", "high"] = "low"
     auto_game_detection: Literal["on", "off"] = "on"
+    voice_output: Literal["on", "off"] = "off"
+    voice_rate: float = Field(default=1.0, ge=0.7, le=1.3)
+    voice_volume: float = Field(default=1.0, ge=0.0, le=1.0)
     onboarding_completed: bool = False
     onboarding_last_seen_at: str | None = None
 
@@ -189,6 +192,9 @@ class AppSettingsUpdate(BaseModel):
     proactive_companion: Literal["on", "off"] | None = None
     proactive_sensitivity: Literal["low", "normal", "high"] | None = None
     auto_game_detection: Literal["on", "off"] | None = None
+    voice_output: Literal["on", "off"] | None = None
+    voice_rate: float | None = Field(default=None, ge=0.7, le=1.3)
+    voice_volume: float | None = Field(default=None, ge=0.0, le=1.0)
     onboarding_completed: bool | None = None
     onboarding_last_seen_at: str | None = None
 
@@ -223,6 +229,138 @@ class LocalDataStatusResponse(BaseModel):
     pending_memory_count: int = 0
     using_bundled_knowledge: bool = False
     writable: bool = False
+
+
+LocalAsrStatus = Literal[
+    "local_asr_not_configured",
+    "local_asr_binary_missing",
+    "local_asr_binary_not_executable",
+    "local_asr_model_missing",
+    "local_asr_ready",
+]
+
+LocalAsrSettingsSource = Literal["user_settings", "env", "none"]
+
+
+class LocalAsrSettingsResponse(BaseModel):
+    configured: bool = False
+    binary_configured: bool = False
+    model_configured: bool = False
+    converter_configured: bool = False
+    safe_binary_name: str | None = None
+    safe_model_name: str | None = None
+    safe_converter_name: str | None = None
+    source: LocalAsrSettingsSource = "none"
+
+
+class LocalAsrSettingsUpdate(BaseModel):
+    local_asr_binary_path: StrictStr | None = None
+    local_asr_model_path: StrictStr | None = None
+    audio_converter_binary_path: StrictStr | None = None
+
+
+class LocalAsrStatusResponse(BaseModel):
+    status: LocalAsrStatus
+    available: bool = False
+    binary_configured: bool = False
+    binary_present: bool = False
+    binary_executable: bool = False
+    model_configured: bool = False
+    model_present: bool = False
+    display_message: str
+    safe_binary_name: str | None = None
+    safe_model_name: str | None = None
+    converter_configured: bool = False
+    safe_converter_name: str | None = None
+    source: LocalAsrSettingsSource = "none"
+
+
+LocalAsrProbeStatus = Literal[
+    "local_asr_probe_not_ready",
+    "local_asr_probe_succeeded",
+    "local_asr_probe_failed",
+    "local_asr_probe_timed_out",
+    "local_asr_probe_error",
+]
+
+
+class LocalAsrProbeResponse(BaseModel):
+    status: LocalAsrProbeStatus
+    available: bool = False
+    display_message: str
+    binary_name: str | None = None
+    model_name: str | None = None
+    duration_ms: int = 0
+
+
+LocalAsrTranscriptionStatus = Literal[
+    "local_asr_transcription_not_ready",
+    "local_asr_transcription_started",
+    "local_asr_transcription_succeeded",
+    "local_asr_transcription_failed",
+    "local_asr_transcription_timed_out",
+    "local_asr_transcription_no_text",
+    "local_asr_transcription_cleanup_failed",
+    "local_asr_transcription_error",
+]
+
+AudioConversionStatus = Literal[
+    "audio_conversion_not_needed",
+    "audio_conversion_needed",
+    "audio_conversion_not_configured",
+    "audio_conversion_succeeded",
+    "audio_conversion_failed",
+    "audio_conversion_timed_out",
+    "audio_conversion_invalid_input",
+    "audio_conversion_cleanup_failed",
+]
+
+
+class LocalAsrTranscriptionResponse(BaseModel):
+    status: LocalAsrTranscriptionStatus
+    available: bool = False
+    display_message: str
+    transcript: str = ""
+    transcript_char_count: int = 0
+    language: str = "zh"
+    transcript_normalized_to_simplified: bool = False
+    duration_ms: int = 0
+    size_bytes: int = 0
+    mime_type: str | None = None
+    audio_format: str | None = None
+    conversion_status: AudioConversionStatus = "audio_conversion_not_needed"
+    conversion_required: bool = False
+    converted_mime_type: str | None = None
+    converter_configured: bool = False
+    safe_converter_name: str | None = None
+    temporary_file_cleaned: bool = False
+    temporary_input_cleaned: bool = False
+    temporary_converted_cleaned: bool = False
+    binary_name: str | None = None
+    model_name: str | None = None
+
+
+AudioProbeStatus = Literal[
+    "audio_probe_not_supported",
+    "audio_probe_permission_denied",
+    "audio_probe_recording_failed",
+    "audio_probe_upload_failed",
+    "audio_probe_succeeded",
+    "audio_probe_file_too_large",
+    "audio_probe_invalid_audio",
+    "audio_probe_cleanup_failed",
+    "audio_probe_error",
+]
+
+
+class AudioProbeResponse(BaseModel):
+    status: AudioProbeStatus
+    available: bool = False
+    display_message: str
+    duration_ms: int = 0
+    size_bytes: int = 0
+    mime_type: str | None = None
+    temporary_file_cleaned: bool = False
 
 
 class MemoryProvenanceItem(BaseModel):
@@ -289,7 +427,13 @@ class ChatDebugResponse(BaseModel):
     matched_topics: list[str] = Field(default_factory=list)
     snippets_count: int = 0
     snippet_titles: list[str] = Field(default_factory=list)
+    snippet_previews: list[str] = Field(default_factory=list)
+    matched_terms: list[str] = Field(default_factory=list)
+    result_scores: list[float] = Field(default_factory=list)
     knowledge_used_in_prompt: bool = False
+    knowledge_retrieval_status: Literal["used", "not_found", "below_threshold", "no_pack", "not_game_related"] = "not_found"
+    knowledge_not_used_reason: str | None = None
+    knowledge_retrieval_min_score: float = 8.0
 
 
 class PromptPreviewResponse(BaseModel):

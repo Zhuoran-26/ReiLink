@@ -15,6 +15,8 @@ import {
   Send,
   Settings,
   Sparkles,
+  Volume2,
+  VolumeX,
   X
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,11 +25,17 @@ import {
   api,
   ApiRequestError,
   AppSettings,
+  AudioProbeResponse,
   ChatDebugResponse,
   GameContextResponse,
   GameDetectionResponse,
   GameSessionDebugResponse,
   GameStatus,
+  LocalAsrProbeResponse,
+  LocalAsrSettings,
+  LocalAsrSettingsUpdate,
+  LocalAsrStatus,
+  LocalAsrTranscriptionResponse,
   LocalDataStatus,
   MemoryDebugResponse,
   PendingMemory,
@@ -38,7 +46,12 @@ import {
   SetupStatus,
   UserProfileMemory
 } from "../shared/api";
+import type { ReiLinkEvent } from "../shared/events";
 import type { BackendRuntimeStatus } from "../shared/runtime";
+import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
+import { eventBus } from "./eventBus";
+import { voiceInput, type VoiceInputStatus } from "./voiceInput";
+import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
 
 type Message = {
   id: string;
@@ -58,6 +71,16 @@ type DemoResetAction =
   | "reset-memory"
   | "reset-proactive"
   | "reset-demo";
+
+type LocalAsrTranscriptionPhase = "idle" | "recording" | "transcribing";
+type MainVoiceInputProvider = "local_asr" | "web_speech" | "unavailable";
+type LocalAsrSettingsDraft = {
+  local_asr_binary_path: string;
+  local_asr_model_path: string;
+  audio_converter_binary_path: string;
+};
+
+const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
 
 const idleStatus: GameStatus = {
   game_id: null,
@@ -173,7 +196,13 @@ const emptyChatDebug: ChatDebugResponse = {
   matched_topics: [],
   snippets_count: 0,
   snippet_titles: [],
-  knowledge_used_in_prompt: false
+  snippet_previews: [],
+  matched_terms: [],
+  result_scores: [],
+  knowledge_used_in_prompt: false,
+  knowledge_retrieval_status: "not_found",
+  knowledge_not_used_reason: null,
+  knowledge_retrieval_min_score: 8
 };
 
 const emptyGameSessionDebug: GameSessionDebugResponse = {
@@ -276,6 +305,63 @@ const emptyLocalDataStatus: LocalDataStatus = {
   writable: false
 };
 
+const emptyLocalAsrStatus: LocalAsrStatus = {
+  status: "local_asr_not_configured",
+  available: false,
+  binary_configured: false,
+  binary_present: false,
+  binary_executable: false,
+  model_configured: false,
+  model_present: false,
+  display_message: "本地语音识别未配置",
+  safe_binary_name: null,
+  safe_model_name: null,
+  converter_configured: false,
+  safe_converter_name: null,
+  source: "none"
+};
+
+const emptyLocalAsrSettings: LocalAsrSettings = {
+  configured: false,
+  binary_configured: false,
+  model_configured: false,
+  converter_configured: false,
+  safe_binary_name: null,
+  safe_model_name: null,
+  safe_converter_name: null,
+  source: "none"
+};
+
+const emptyLocalAsrSettingsDraft: LocalAsrSettingsDraft = {
+  local_asr_binary_path: "",
+  local_asr_model_path: "",
+  audio_converter_binary_path: ""
+};
+
+const emptyLocalAsrTranscription: LocalAsrTranscriptionResponse = {
+  status: "local_asr_transcription_not_ready",
+  available: false,
+  display_message: "本地语音识别未配置",
+  transcript: "",
+  transcript_char_count: 0,
+  language: "zh",
+  transcript_normalized_to_simplified: false,
+  duration_ms: 0,
+  size_bytes: 0,
+  mime_type: null,
+  audio_format: null,
+  conversion_status: "audio_conversion_not_needed",
+  conversion_required: false,
+  converted_mime_type: null,
+  converter_configured: false,
+  safe_converter_name: null,
+  temporary_file_cleaned: false,
+  temporary_input_cleaned: false,
+  temporary_converted_cleaned: false,
+  binary_name: null,
+  model_name: null
+};
+
 const emptyBackendRuntimeStatus: BackendRuntimeStatus = {
   backend_auto_start_enabled: true,
   backend_app_mode: "dev",
@@ -326,20 +412,47 @@ const defaultAppSettings: AppSettings = {
   proactive_companion: "off",
   proactive_sensitivity: "low",
   auto_game_detection: "on",
+  voice_output: "off",
+  voice_rate: 1,
+  voice_volume: 1,
   onboarding_completed: false,
   onboarding_last_seen_at: null
 };
+
+const hasAppSetting = (settings: Partial<AppSettings>, key: keyof AppSettings) =>
+  Object.prototype.hasOwnProperty.call(settings, key);
+
+const normalizeAppSettings = (
+  settings: Partial<AppSettings>,
+  fallback: Partial<AppSettings> = {}
+): AppSettings => ({
+  ...defaultAppSettings,
+  ...fallback,
+  ...settings
+});
+
+const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSettings, patch: Partial<AppSettings> = {}) => ({
+  voice_output: hasAppSetting(settings, "voice_output") ? settings.voice_output : patch.voice_output ?? previous.voice_output,
+  voice_rate: hasAppSetting(settings, "voice_rate") ? settings.voice_rate : patch.voice_rate ?? previous.voice_rate,
+  voice_volume: hasAppSetting(settings, "voice_volume") ? settings.voice_volume : patch.voice_volume ?? previous.voice_volume
+});
 
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 const PROACTIVE_CHECK_INTERVAL_MS = 30000;
 const AUTO_SCROLL_THRESHOLD_PX = 120;
+const EVENT_STREAM_LIMIT = 20;
+const TEST_VOICE_TEXT = "你好，我是 Rei。语音输出测试。";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const nextSegmentDelay = () => 500 + Math.floor(Math.random() * 401);
 
 const pickPlaceholder = () => INTERIM_PLACEHOLDERS[Math.floor(Math.random() * INTERIM_PLACEHOLDERS.length)];
+
+const eventTimestamp = () => new Date().toISOString();
+
+const eventSignature = (...parts: unknown[]) => JSON.stringify(parts);
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -409,7 +522,13 @@ const labelMap: Record<string, string> = {
   knowledge_summary: "游戏知识摘要",
   knowledge_supported_games_count: "已支持游戏数",
   knowledge_used_in_prompt: "已注入回复上下文",
+  knowledge_retrieval_status: "检索结果",
+  knowledge_not_used_reason: "未使用原因",
+  knowledge_retrieval_min_score: "最低命中分数",
   auto_game_detection: "自动游戏检测",
+  voice_output: "语音输出",
+  voice_rate: "语速",
+  voice_volume: "音量",
   automatic_detected_result: "自动检测结果",
   llm_called: "是否调用 LLM",
   llm_event: "LLM 游戏事件",
@@ -427,7 +546,9 @@ const labelMap: Record<string, string> = {
   matched_game_display_name: "匹配游戏",
   matched_game_id: "匹配游戏 ID",
   matched_topics: "相关主题",
+  matched_terms: "命中词",
   next_possible_trigger_at: "下次可能触发",
+  new_message: "新消息打断",
   parse_error: "解析错误",
   persona: "人格",
   persona_mode: "人格模式",
@@ -448,6 +569,8 @@ const labelMap: Record<string, string> = {
   session_focus_summary: "会话焦点",
   skip_reason: "跳过原因",
   snippet_titles: "命中的知识标题",
+  snippet_previews: "知识片段预览",
+  result_scores: "命中分数",
   snippets_count: "命中知识条数",
   support_status: "支持状态",
   supported_games_count: "已支持游戏数",
@@ -465,6 +588,8 @@ const valueMap: Record<string, string> = {
   conflict_with_fresh_game_state: "与当前游戏状态冲突",
   conversation: "对话",
   cooldown: "冷却中",
+  checking: "检查中",
+  connected: "已连接",
   current: "当前",
   disabled: "关闭",
   eligible: "可触发",
@@ -515,10 +640,24 @@ const valueMap: Record<string, string> = {
   no_game_detected: "未检测到游戏",
   no_knowledge_match: "没有可用知识命中",
   no_supported_knowledge: "未支持知识库",
+  used: "已使用本地知识",
+  below_threshold: "相关性不足，未使用",
+  no_pack: "没有可用知识包",
+  not_game_related: "这次不是游戏知识问题",
   unknown_game: "未接入知识库",
   none: "无",
   normal: "普通",
   not_connected: "未连接",
+  disconnected: "未连接",
+  external_backend_detected: "已检测到外部后端",
+  external: "外部后端",
+  configured_binary: "指定后端",
+  bundled_binary: "内置后端",
+  repo: "本地源码后端",
+  bundled: "内置知识资源",
+  missing: "缺失",
+  mock: "模拟模型",
+  mock_provider: "模拟模型回复",
   off: "关闭",
   on: "开启",
   pending: "待确认",
@@ -537,8 +676,18 @@ const valueMap: Record<string, string> = {
   simple_game_reminder: "简单游戏提醒",
   show: "显示",
   stale: "已过期",
+  starting: "正在启动",
+  failed: "启动失败",
+  spawn_failed: "启动失败",
+  health_timeout: "启动超时",
+  port_occupied: "端口被占用",
+  missing_project_root: "缺少项目目录",
+  missing_venv: "缺少本地运行环境",
+  not_found: "未找到运行环境",
   user_is_typing: "正在输入",
   user_preference: "用户偏好",
+  user_stop: "用户停止",
+  unavailable: "当前环境不支持",
   waiting_for_user_activity_after_proactive: "等待用户回应",
   weak: "较弱",
   current_game: "当前运行游戏",
@@ -596,6 +745,45 @@ const fallbackModeText = (available: boolean, used: boolean, fallback?: string |
   return "仅使用模型回答";
 };
 
+const knowledgeRetrievalStatusText = (status: unknown) => {
+  const labels: Record<string, string> = {
+    used: "已使用本地知识",
+    not_found: "未命中本地知识",
+    below_threshold: "相关性不足，未使用",
+    no_pack: "没有可用知识包",
+    not_game_related: "这次不是游戏知识问题"
+  };
+  return labels[String(status || "")] ?? "未命中本地知识";
+};
+
+const knowledgeNotUsedReasonText = (reason: unknown) => {
+  const labels: Record<string, string> = {
+    no_game_detected: "未检测到游戏",
+    no_active_game: "尚未确定当前游戏",
+    no_knowledge_match: "没有可用知识命中",
+    no_supported_knowledge: "未支持知识库",
+    unknown_game: "未接入知识库",
+    knowledge_disabled: "该游戏知识库已关闭",
+    knowledge_file_missing: "知识文件不存在",
+    below_threshold: "相关性不足，未使用",
+    not_game_related: "这次不是游戏知识问题"
+  };
+  const key = String(reason || "");
+  if (!key) return "无";
+  return labels[key] ?? debugText(key);
+};
+
+const knowledgeEventTopics = (debug: ChatDebugResponse) => {
+  if (debug.knowledge_used_in_prompt) {
+    const labels = debug.matched_topics.length > 0 ? debug.matched_topics : debug.snippet_titles;
+    return ["已使用本地知识", ...labels.slice(0, 2)];
+  }
+  return [
+    knowledgeRetrievalStatusText(debug.knowledge_retrieval_status),
+    knowledgeNotUsedReasonText(debug.knowledge_not_used_reason ?? debug.knowledge_fallback_reason)
+  ].filter((item, index, items) => item !== "无" && items.indexOf(item) === index);
+};
+
 const formatDateKey = (date: Date) =>
   `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 
@@ -630,6 +818,578 @@ const debugListText = (item: unknown): string => {
   const meta = [source, field, reason].filter(Boolean).join(" / ");
   return meta ? `${meta}: ${text}` : text;
 };
+
+const truncateEventText = (value: string, maxLength = 64) =>
+  value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+
+const eventTextLength = (value: string) => `${value.length} 字`;
+
+const voiceStopReasonText = (reason?: string) => {
+  const labels: Record<string, string> = {
+    user_stop: "用户停止",
+    new_message: "新消息打断",
+    disabled: "已关闭",
+    unmount: "窗口关闭",
+    new_reply: "新回复开始"
+  };
+  if (!reason) return "已停止";
+  return labels[reason] ?? debugText(reason);
+};
+
+const voiceInputReasonText = (reason?: string, status?: string) => {
+  if (status) return status;
+  const labels: Record<string, string> = {
+    not_supported: "当前运行环境不支持本地语音识别",
+    permission_denied: "麦克风权限被拒绝",
+    network: "语音识别服务不可用",
+    no_speech: "没有识别到语音",
+    aborted: "用户停止",
+    audio_capture: "无法读取麦克风",
+    start_failed: "语音输入启动失败",
+    user_stop: "用户停止",
+    unmount: "窗口关闭",
+    unknown: "语音输入失败"
+  };
+  if (!reason) return "无";
+  return labels[reason] ?? "语音输入失败";
+};
+
+const audioCaptureReasonText = (reason?: string, status?: string) => {
+  const labels: Record<string, string> = {
+    not_supported: "当前环境不支持录音",
+    permission_denied: "麦克风权限被拒绝",
+    recording_failed: "录音失败",
+    user_stop: "用户停止",
+    max_duration: "达到最长录音时间",
+    unmount: "窗口关闭"
+  };
+  if (!reason && !status) return "无";
+  return labels[reason ?? ""] ?? debugText(status ?? reason);
+};
+
+const audioBytesText = (sizeBytes: number) => {
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return "0 KB";
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  return `${(sizeBytes / 1024).toFixed(1)} KB`;
+};
+
+const audioFormatSummaryText = (mimeType: string | null | undefined) => {
+  const value = typeof mimeType === "string" ? mimeType.split(";")[0]?.trim().toLowerCase() : "";
+  if (!value) return "unknown";
+  return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(value) ? value : "unknown";
+};
+
+const audioFormatConversionHint = (mimeType: string | null | undefined) => {
+  const summary = audioFormatSummaryText(mimeType);
+  if (["audio/wav", "audio/wave", "audio/x-wav"].includes(summary) || summary.includes("pcm")) return "";
+  return "当前录音格式需要本地转换为 WAV";
+};
+
+const audioConversionStatusText = (status: LocalAsrTranscriptionResponse["conversion_status"] | null | undefined) => {
+  const labels: Record<LocalAsrTranscriptionResponse["conversion_status"], string> = {
+    audio_conversion_not_needed: "无需转换",
+    audio_conversion_needed: "音频格式需要转换",
+    audio_conversion_not_configured: "尚未配置音频转换工具",
+    audio_conversion_succeeded: "音频已转换为 WAV",
+    audio_conversion_failed: "音频转换失败",
+    audio_conversion_timed_out: "音频转换超时",
+    audio_conversion_invalid_input: "音频转换输入无效",
+    audio_conversion_cleanup_failed: "音频转换清理失败"
+  };
+  return status ? labels[status] ?? debugText(status) : "无";
+};
+
+const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
+  if (source === "test_voice") return "测试语音";
+  return "";
+};
+
+const eventSummary = (event: ReiLinkEvent) => {
+  switch (event.type) {
+    case "user_message_sent":
+      return truncateEventText(event.text);
+    case "assistant_reply_started":
+      return "开始生成回复";
+    case "assistant_reply_segment_shown":
+      return `第 ${event.segment_index + 1} 段 / ${eventTextLength(event.text)}`;
+    case "assistant_reply_completed":
+      return "回复显示完成";
+    case "proactive_message_shown":
+      return `${debugText(event.trigger_type)}: ${truncateEventText(event.text)}`;
+    case "pending_memory_created":
+      return `${debugText(event.memory_type)}: ${truncateEventText(event.text)}`;
+    case "pending_memory_accepted":
+      return event.memory_id;
+    case "pending_memory_ignored":
+      return event.memory_id;
+    case "game_context_changed":
+      return [debugText(event.game), debugText(event.source)].join(" / ");
+    case "game_session_changed":
+      return [debugText(event.game), debugText(event.current_boss), debugText(event.activity)].join(" / ");
+    case "knowledge_used":
+      return [event.game ? debugText(event.game) : "", debugText(event.topics)].filter(Boolean).join(" / ");
+    case "model_routed":
+      return `模型：${debugText(event.model)} / 原因：${debugText(event.route_reason)}`;
+    case "backend_status_changed":
+      return debugText(event.status);
+    case "runtime_status_changed":
+      return [debugText(event.backend_source), knowledgeSourceText(event.knowledge_source as BackendRuntimeStatus["knowledge_source"])].join(" / ");
+    case "tts_started":
+      return [voiceEventSourceText(event.source), `${event.character_count} 字`].filter(Boolean).join(" / ");
+    case "tts_completed":
+      return [voiceEventSourceText(event.source), `${event.character_count} 字`].filter(Boolean).join(" / ");
+    case "tts_stopped":
+      return [voiceEventSourceText(event.source), voiceStopReasonText(event.reason)].filter(Boolean).join(" / ");
+    case "tts_error":
+      return [voiceEventSourceText(event.source), event.status ? debugText(event.status) : debugText(event.reason)].filter(Boolean).join(" / ");
+    case "voice_input_started":
+      return [event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ") || "正在听";
+    case "voice_input_completed":
+      return [`识别文本 ${event.character_count} 字`, event.is_final ? "已填入输入框" : "", event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "voice_input_stopped":
+      return [voiceInputReasonText(event.reason, event.status), event.character_count ? `${event.character_count} 字` : "", event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "voice_input_error":
+      return [voiceInputReasonText(event.reason, event.status), event.character_count ? `${event.character_count} 字` : "", event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "voice_input_unavailable":
+      return [voiceInputReasonText(event.reason, event.status), event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "audio_capture_started":
+      return `最长 ${event.duration_ms ?? 0} ms`;
+    case "audio_capture_completed":
+      return [`${event.duration_ms} ms`, audioBytesText(event.size_bytes), audioFormatSummaryText(event.mime_type)].filter(Boolean).join(" / ");
+    case "audio_capture_stopped":
+      return [audioCaptureReasonText(event.reason), event.duration_ms ? `${event.duration_ms} ms` : ""].filter(Boolean).join(" / ");
+    case "audio_capture_error":
+      return audioCaptureReasonText(event.reason, event.status);
+    case "audio_temp_file_cleaned":
+      return [
+        event.temporary_file_cleaned ? "已清理" : "未清理",
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.size_bytes ? audioBytesText(event.size_bytes) : "",
+        audioFormatSummaryText(event.mime_type)
+      ].filter(Boolean).join(" / ");
+    case "local_asr_transcription_started":
+      return [
+        event.status ? debugText(event.status) : "正在本地转写",
+        event.language ? `语言：${debugText(event.language)}` : "",
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.size_bytes ? audioBytesText(event.size_bytes) : "",
+        audioFormatSummaryText(event.mime_type)
+      ].filter(Boolean).join(" / ");
+    case "local_asr_transcription_completed":
+      return [
+        `识别文本 ${event.character_count} 字`,
+        event.language ? `语言：${debugText(event.language)}` : "",
+        event.transcript_normalized_to_simplified ? "已规范为简体中文" : "",
+        event.temporary_file_cleaned ? "已清理" : "未清理",
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.size_bytes ? audioBytesText(event.size_bytes) : "",
+        audioFormatSummaryText(event.mime_type),
+        event.conversion_status ? audioConversionStatusText(event.conversion_status) : "",
+        event.converted_mime_type ? `转为 ${audioFormatSummaryText(event.converted_mime_type)}` : "",
+        event.safe_converter_name ? `转换器：${debugText(event.safe_converter_name)}` : "",
+        event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
+        event.model_name ? `模型：${debugText(event.model_name)}` : ""
+      ].filter(Boolean).join(" / ");
+    case "local_asr_transcription_error":
+      return [
+        debugText(event.reason ?? event.status),
+        event.character_count ? `${event.character_count} 字` : "",
+        event.language ? `语言：${debugText(event.language)}` : "",
+        event.transcript_normalized_to_simplified ? "已规范为简体中文" : "",
+        event.temporary_file_cleaned ? "已清理" : event.temporary_file_cleaned === false ? "未清理" : "",
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.size_bytes ? audioBytesText(event.size_bytes) : "",
+        audioFormatSummaryText(event.mime_type),
+        event.conversion_status ? audioConversionStatusText(event.conversion_status) : "",
+        event.converted_mime_type ? `转为 ${audioFormatSummaryText(event.converted_mime_type)}` : "",
+        event.safe_converter_name ? `转换器：${debugText(event.safe_converter_name)}` : "",
+        event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
+        event.model_name ? `模型：${debugText(event.model_name)}` : ""
+      ].filter(Boolean).join(" / ");
+    default:
+      return "event";
+  }
+};
+
+const eventTypeText = (type: ReiLinkEvent["type"]) => {
+  const labels: Record<ReiLinkEvent["type"], string> = {
+    user_message_sent: "用户发送消息",
+    assistant_reply_started: "Rei 开始回复",
+    assistant_reply_segment_shown: "Rei 显示回复片段",
+    assistant_reply_completed: "Rei 回复完成",
+    proactive_message_shown: "主动消息显示",
+    pending_memory_created: "发现待确认记忆",
+    pending_memory_accepted: "记忆已保存",
+    pending_memory_ignored: "记忆已忽略",
+    game_context_changed: "游戏上下文变化",
+    game_session_changed: "游戏状态变化",
+    knowledge_used: "使用游戏知识",
+    model_routed: "模型路由完成",
+    backend_status_changed: "后端状态变化",
+    runtime_status_changed: "运行来源变化",
+    tts_started: "语音开始播放",
+    tts_completed: "语音播放完成",
+    tts_stopped: "语音已停止",
+    tts_error: "语音播放失败",
+    voice_input_started: "语音输入开始",
+    voice_input_completed: "语音输入完成",
+    voice_input_stopped: "语音输入已停止",
+    voice_input_error: "语音输入失败",
+    voice_input_unavailable: "语音输入不可用",
+    audio_capture_started: "录音测试开始",
+    audio_capture_completed: "录音测试完成",
+    audio_capture_stopped: "录音已停止",
+    audio_capture_error: "录音测试失败",
+    audio_temp_file_cleaned: "临时音频已清理",
+    local_asr_transcription_started: "本地语音识别开始",
+    local_asr_transcription_completed: "本地语音识别完成",
+    local_asr_transcription_error: "本地语音识别失败"
+  };
+  return labels[type];
+};
+
+const eventStreamTime = (timestamp: string) => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+};
+
+const voicePhaseText = (status: VoiceOutputStatus) => {
+  if (!status.available) return "当前环境不支持本地语音输出";
+  if (status.phase === "starting") return "正在准备播放";
+  if (status.phase === "playing") return "正在播放";
+  return "已停止";
+};
+
+const voiceInputPhaseText = (status: VoiceInputStatus) => {
+  if (!status.supported) return "当前运行环境不支持本地语音识别";
+  if (status.lastError) return status.lastError;
+  if (status.phase === "listening") return "正在听 / Listening";
+  if (status.phase === "recognizing") return "正在识别 / Recognizing";
+  return "待命";
+};
+
+const voiceInputServiceUnavailable = (status: VoiceInputStatus) =>
+  status.lastError === "语音识别服务不可用";
+
+const voiceInputAvailabilityText = (status: VoiceInputStatus) => {
+  if (voiceInputServiceUnavailable(status)) return "服务不可用";
+  return status.supported ? "可用" : "不可用";
+};
+
+const voiceInputApiText = (status: VoiceInputStatus) => {
+  if (voiceInputServiceUnavailable(status)) return "服务不可用";
+  return status.diagnostics.recognitionApiAvailable ? "可用" : "不可用";
+};
+
+const voiceInputRuntimeText = (status: VoiceInputStatus) => {
+  if (status.diagnostics.runtimeEnvironment === "packaged") return "打包应用";
+  if (status.diagnostics.runtimeEnvironment === "dev") return "开发模式";
+  return "未知";
+};
+
+const webSpeechVoiceInputAvailable = (status: VoiceInputStatus) =>
+  status.supported && !voiceInputServiceUnavailable(status);
+
+const mainVoiceInputProviderText = (provider: MainVoiceInputProvider) => {
+  const labels: Record<MainVoiceInputProvider, string> = {
+    local_asr: "local_asr",
+    web_speech: "web_speech",
+    unavailable: "unavailable"
+  };
+  return labels[provider];
+};
+
+const localAsrStatusText = (status: LocalAsrStatus) => {
+  const labels: Record<LocalAsrStatus["status"], string> = {
+    local_asr_not_configured: "未配置",
+    local_asr_binary_missing: "缺少本地识别程序",
+    local_asr_binary_not_executable: "识别程序不可执行",
+    local_asr_model_missing: "缺少模型文件",
+    local_asr_ready: "已就绪"
+  };
+  return labels[status.status] ?? "未配置";
+};
+
+const localAsrSourceText = (source: LocalAsrSettings["source"]) => {
+  const labels: Record<LocalAsrSettings["source"], string> = {
+    user_settings: "用户配置",
+    env: "环境变量",
+    none: "未配置"
+  };
+  return labels[source] ?? "未配置";
+};
+
+const localAsrSafeNameText = (name: string | null | undefined) => debugText(name, "未配置");
+
+const localAsrSettingsSummaryText = (settings: LocalAsrSettings) =>
+  [
+    `识别程序：${localAsrSafeNameText(settings.safe_binary_name)}`,
+    `模型：${localAsrSafeNameText(settings.safe_model_name)}`,
+    `转换工具：${localAsrSafeNameText(settings.safe_converter_name)}`
+  ].join("。");
+
+const localAsrStatusDetail = (status: LocalAsrStatus) => {
+  if (status.status === "local_asr_ready") return "本地语音识别配置已就绪。主聊天语音按钮会优先使用本地 ASR，转写后仍需手动发送。";
+  if (status.status === "local_asr_binary_missing") return "未找到本地识别程序。主聊天语音按钮会回退到 Web Speech，或显示不可用。";
+  if (status.status === "local_asr_binary_not_executable") return "本地识别程序不可执行。主聊天语音按钮会回退到 Web Speech，或显示不可用。";
+  if (status.status === "local_asr_model_missing") return "未找到本地语音模型。主聊天语音按钮会回退到 Web Speech，或显示不可用。";
+  return "未配置本地 ASR 时，主聊天语音按钮会回退到 Web Speech，或显示不可用。";
+};
+
+const mainVoiceInputLocalAsrUnavailableText = (status: LocalAsrStatus) => {
+  const labels: Record<LocalAsrStatus["status"], string> = {
+    local_asr_not_configured: "未配置本地 ASR",
+    local_asr_binary_missing: "缺少本地识别程序",
+    local_asr_binary_not_executable: "识别程序不可执行",
+    local_asr_model_missing: "缺少本地语音模型",
+    local_asr_ready: "本地语音识别可用"
+  };
+  return labels[status.status] ?? "未配置本地 ASR";
+};
+
+const selectMainVoiceInputProvider = (
+  localStatus: LocalAsrStatus,
+  webSpeechStatus: VoiceInputStatus
+): MainVoiceInputProvider => {
+  if (localStatus.status === "local_asr_ready") return "local_asr";
+  if (webSpeechVoiceInputAvailable(webSpeechStatus)) return "web_speech";
+  return "unavailable";
+};
+
+const mainVoiceInputLocalAsrStatusText = (
+  phase: LocalAsrTranscriptionPhase,
+  result: LocalAsrTranscriptionResponse | null,
+  captureStatus: AudioCaptureStatus
+) => {
+  if (phase === "recording") return "正在录音";
+  if (phase === "transcribing") return "正在本地转写";
+  if (!captureStatus.supported) return "当前环境缺少麦克风录音能力";
+  if (captureStatus.lastError) return captureStatus.lastError;
+  if (!result) return "本地语音识别可用";
+  if (result.conversion_status === "audio_conversion_not_configured") return "音频转换工具未配置";
+  if (result.conversion_status === "audio_conversion_failed") return "音频转换失败";
+  if (result.conversion_status === "audio_conversion_timed_out") return "音频转换超时";
+  if (result.status === "local_asr_transcription_timed_out") return "本地语音识别超时，可以尝试更小模型或更短录音";
+  const labels: Record<LocalAsrTranscriptionResponse["status"], string> = {
+    local_asr_transcription_not_ready: "未配置本地 ASR",
+    local_asr_transcription_started: "正在本地转写",
+    local_asr_transcription_succeeded: "转写完成，请确认后发送",
+    local_asr_transcription_failed: "本地转写失败",
+    local_asr_transcription_timed_out: "本地语音识别超时，可以尝试更小模型或更短录音",
+    local_asr_transcription_no_text: "没有识别到可用文本",
+    local_asr_transcription_cleanup_failed: "临时音频清理失败",
+    local_asr_transcription_error: "本地转写失败"
+  };
+  return labels[result.status] ?? "本地转写失败";
+};
+
+const mainVoiceInputUnavailableStatusText = (localStatus: LocalAsrStatus, webSpeechStatus: VoiceInputStatus) => {
+  const localText = mainVoiceInputLocalAsrUnavailableText(localStatus);
+  if (!webSpeechStatus.supported) return `${localText}，Web Speech 不可用`;
+  if (voiceInputServiceUnavailable(webSpeechStatus)) return `${localText}，Web Speech 服务不可用`;
+  if (webSpeechStatus.lastError) return webSpeechStatus.lastError;
+  return localText;
+};
+
+const mainVoiceInputStatusText = (
+  provider: MainVoiceInputProvider,
+  webSpeechStatus: VoiceInputStatus,
+  localStatus: LocalAsrStatus,
+  localPhase: LocalAsrTranscriptionPhase,
+  localResult: LocalAsrTranscriptionResponse | null,
+  captureStatus: AudioCaptureStatus
+) => {
+  if (provider === "local_asr") return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus);
+  if (provider === "web_speech") return voiceInputPhaseText(webSpeechStatus);
+  return mainVoiceInputUnavailableStatusText(localStatus, webSpeechStatus);
+};
+
+const mainVoiceInputButtonLabel = (provider: MainVoiceInputProvider, webSpeechStatus: VoiceInputStatus, localPhase: LocalAsrTranscriptionPhase) => {
+  if (provider === "local_asr") {
+    return localPhase === "recording" ? "停止本地转写录音 / Stop Local ASR Recording" : "开始本地语音 / Start Local ASR";
+  }
+  return webSpeechStatus.phase === "idle" ? "开始语音 / Start Voice" : "停止识别 / Stop Listening";
+};
+
+const mainVoiceInputButtonTitle = (
+  provider: MainVoiceInputProvider,
+  webSpeechStatus: VoiceInputStatus,
+  localStatus: LocalAsrStatus,
+  localPhase: LocalAsrTranscriptionPhase,
+  localResult: LocalAsrTranscriptionResponse | null,
+  captureStatus: AudioCaptureStatus
+) => {
+  if (provider === "local_asr") {
+    if (localPhase === "recording") return "停止本地录音并开始转写";
+    return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus);
+  }
+  if (provider === "web_speech") return webSpeechStatus.phase === "idle" ? "开始语音输入" : "停止识别";
+  return mainVoiceInputUnavailableStatusText(localStatus, webSpeechStatus);
+};
+
+const localAsrProbeStatusText = (probe: LocalAsrProbeResponse | null, checking: boolean, configReady: boolean) => {
+  if (checking) return "正在检查";
+  if (!configReady) return "配置未就绪";
+  if (!probe) return "未检查";
+  const labels: Record<LocalAsrProbeResponse["status"], string> = {
+    local_asr_probe_not_ready: "配置未就绪",
+    local_asr_probe_succeeded: "可以启动",
+    local_asr_probe_failed: "启动失败",
+    local_asr_probe_timed_out: "启动超时",
+    local_asr_probe_error: "启动失败"
+  };
+  return labels[probe.status] ?? "未检查";
+};
+
+const localAsrProbeHint = (probe: LocalAsrProbeResponse | null, checking: boolean, configReady: boolean) => {
+  if (checking) return "正在检查本地语音识别程序。不会录音，也不会转写。";
+  if (!configReady) return "配置就绪后才能检查本地 ASR。";
+  if (!probe) return "检查只确认识别程序能否启动，不代表已经可以转写语音。";
+  return probe.display_message;
+};
+
+const audioProbeStatusText = (
+  captureStatus: AudioCaptureStatus,
+  uploading: boolean,
+  result: AudioProbeResponse | null
+) => {
+  if (captureStatus.phase === "recording") return "正在录音";
+  if (uploading) return "正在上传临时音频";
+  if (!captureStatus.supported) return "当前环境不支持录音";
+  if (captureStatus.lastError === "麦克风权限被拒绝") return "权限被拒绝";
+  if (captureStatus.lastError) return "录音失败";
+  if (!result) return "未测试";
+  const labels: Record<AudioProbeResponse["status"], string> = {
+    audio_probe_not_supported: "当前环境不支持录音",
+    audio_probe_permission_denied: "权限被拒绝",
+    audio_probe_recording_failed: "录音失败",
+    audio_probe_upload_failed: "上传失败",
+    audio_probe_succeeded: "录音测试完成",
+    audio_probe_file_too_large: "录音文件过大",
+    audio_probe_invalid_audio: "录音无效",
+    audio_probe_cleanup_failed: "临时音频清理失败",
+    audio_probe_error: "录音失败"
+  };
+  return labels[result.status] ?? "未测试";
+};
+
+const audioProbeHint = (captureStatus: AudioCaptureStatus, uploading: boolean, result: AudioProbeResponse | null) => {
+  if (captureStatus.phase === "recording") return "正在录制短音频。不会转写，也不会自动发送。";
+  if (uploading) return "正在上传到本机后端做临时文件清理测试。";
+  if (captureStatus.lastError) return captureStatus.lastError;
+  if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
+  if (!result) return `只测试麦克风录音和临时文件清理，不做语音识别。最长 ${Math.round(MAX_RECORDING_DURATION_MS / 1000)} 秒。`;
+  return result.display_message;
+};
+
+const localAsrTranscriptionStatusText = (
+  phase: LocalAsrTranscriptionPhase,
+  result: LocalAsrTranscriptionResponse | null,
+  configReady: boolean,
+  captureStatus: AudioCaptureStatus
+) => {
+  if (phase === "recording") return "正在录音";
+  if (phase === "transcribing") return "正在本地转写";
+  if (!configReady) return "配置未就绪";
+  if (!captureStatus.supported) return "当前环境不支持录音";
+  if (!result) return "未转写";
+  const labels: Record<LocalAsrTranscriptionResponse["status"], string> = {
+    local_asr_transcription_not_ready: "配置未就绪",
+    local_asr_transcription_started: "正在本地转写",
+    local_asr_transcription_succeeded: "转写完成",
+    local_asr_transcription_failed: "转写失败",
+    local_asr_transcription_timed_out: "转写超时",
+    local_asr_transcription_no_text: "没有识别到可用文本",
+    local_asr_transcription_cleanup_failed: "临时音频清理失败",
+    local_asr_transcription_error: "转写失败"
+  };
+  return labels[result.status] ?? "未转写";
+};
+
+const localAsrTranscriptionHint = (
+  phase: LocalAsrTranscriptionPhase,
+  result: LocalAsrTranscriptionResponse | null,
+  configReady: boolean,
+  captureStatus: AudioCaptureStatus,
+  localStatus: LocalAsrStatus
+) => {
+  if (phase === "recording") return "正在录制短音频。完成后会交给本机后端转写。";
+  if (phase === "transcribing") return "正在本机调用本地语音识别程序。不会自动发送。";
+  if (!configReady) return localStatus.display_message;
+  if (captureStatus.lastError) return captureStatus.lastError;
+  if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
+  if (!result) return "录音并转写会把识别文本填入输入框，发送前仍可编辑或删除。";
+  if (result.status === "local_asr_transcription_succeeded") return "转写完成，请确认后发送。文本已填入输入框，可编辑或删除，不会自动发送。";
+  if (result.status === "local_asr_transcription_timed_out") return "本地语音识别超时，可以尝试更小模型或更短录音。不会自动发送。";
+  if (result.conversion_status === "audio_conversion_not_configured") {
+    return "当前录音格式需要转换为 WAV，尚未配置音频转换工具。不会上传音频，也不会自动发送。";
+  }
+  if (result.conversion_status === "audio_conversion_timed_out") return "音频格式转换超时。不会调用本地 ASR，也不会自动发送。";
+  if (result.conversion_status === "audio_conversion_failed") return "音频格式转换失败。不会调用本地 ASR，也不会自动发送。";
+  return result.display_message;
+};
+
+const appendTranscriptToInput = (current: string, transcript: string) => {
+  const text = transcript.trim();
+  if (!text) return current;
+  if (!current.trim()) return text;
+  return `${current.trimEnd()} ${text}`;
+};
+
+const safeProviderDebug = (debug: ProviderDebugResponse) => {
+  const safeDebug: Partial<ProviderDebugResponse> = { ...debug };
+  delete safeDebug.env_file_path;
+  return safeDebug;
+};
+
+const safeBackendRuntimeDebug = (status: BackendRuntimeStatus) => ({
+  backend_auto_start_enabled: status.backend_auto_start_enabled,
+  backend_app_mode: status.backend_app_mode,
+  backend_binary_exists: status.backend_binary_exists,
+  bundled_backend_exists: status.bundled_backend_exists,
+  backend_started_by_app: status.backend_started_by_app,
+  backend_started_from: status.backend_started_from,
+  backend_status: status.backend_status,
+  backend_runtime_mode: status.backend_runtime_mode,
+  backend_retry_count: status.backend_retry_count,
+  knowledge_source: status.knowledge_source
+});
+
+export function EventStreamPanel({
+  events,
+  open,
+  onOpenChange
+}: {
+  events: ReiLinkEvent[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <details
+      className="debugSection eventStreamSection"
+      onToggle={(event) => onOpenChange(event.currentTarget.open)}
+      open={open}
+    >
+      <summary>
+        <span>事件流 / Event Stream</span>
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </summary>
+      {open && (
+        <ol className="eventStreamList" aria-label="事件流列表">
+          {events.map((event, index) => (
+            <li key={`${event.timestamp}-${event.type}-${index}`}>
+              <span className="eventStreamTime">{eventStreamTime(event.timestamp)}</span>
+              <span className="eventStreamType" title={event.type}>{eventTypeText(event.type)}</span>
+              <span className="eventStreamSummary">{eventSummary(event)}</span>
+            </li>
+          ))}
+          {events.length === 0 && <li className="emptyDebugText eventStreamEmpty">暂无事件</li>}
+        </ol>
+      )}
+    </details>
+  );
+}
 
 const pendingEvidenceSummary = (memory: PendingMemory) => {
   const evidence = asRecord(memory.evidence);
@@ -673,7 +1433,7 @@ const backendRuntimeStatusText = (status: BackendRuntimeStatus) => {
 
 const backendRuntimeSourceText = (status: BackendRuntimeStatus) => {
   if (status.backend_started_from === "external") return "外部后端";
-  if (status.backend_started_from === "configured_binary") return "指定 backend binary";
+  if (status.backend_started_from === "configured_binary") return "指定后端";
   if (status.backend_started_from === "bundled_binary") return "内置后端";
   if (status.backend_started_from === "repo") return "本地源码后端";
   return status.backend_started_by_app ? "桌面端启动" : "外部或未启动";
@@ -754,6 +1514,18 @@ export function App() {
   const [promptPreview, setPromptPreview] = useState<PromptPreviewResponse>(emptyPromptPreview);
   const [setupStatus, setSetupStatus] = useState<SetupStatus>(emptySetupStatus);
   const [localDataStatus, setLocalDataStatus] = useState<LocalDataStatus>(emptyLocalDataStatus);
+  const [localAsrStatus, setLocalAsrStatus] = useState<LocalAsrStatus>(emptyLocalAsrStatus);
+  const [localAsrSettings, setLocalAsrSettings] = useState<LocalAsrSettings>(emptyLocalAsrSettings);
+  const [localAsrSettingsDraft, setLocalAsrSettingsDraft] = useState<LocalAsrSettingsDraft>(emptyLocalAsrSettingsDraft);
+  const [localAsrSettingsBusy, setLocalAsrSettingsBusy] = useState("");
+  const [localAsrSettingsMessage, setLocalAsrSettingsMessage] = useState("");
+  const [localAsrProbe, setLocalAsrProbe] = useState<LocalAsrProbeResponse | null>(null);
+  const [localAsrProbeChecking, setLocalAsrProbeChecking] = useState(false);
+  const [audioCaptureStatus, setAudioCaptureStatus] = useState<AudioCaptureStatus>(() => audioCapture.getStatus());
+  const [audioProbeResult, setAudioProbeResult] = useState<AudioProbeResponse | null>(null);
+  const [audioProbeUploading, setAudioProbeUploading] = useState(false);
+  const [localAsrTranscriptionResult, setLocalAsrTranscriptionResult] = useState<LocalAsrTranscriptionResponse | null>(null);
+  const [localAsrTranscriptionPhase, setLocalAsrTranscriptionPhase] = useState<LocalAsrTranscriptionPhase>("idle");
   const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
@@ -771,6 +1543,8 @@ export function App() {
   const [sending, setSending] = useState(false);
   const [debugOpen, setDebugOpen] = useState(true);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
+  const [eventStreamOpen, setEventStreamOpen] = useState(false);
+  const [recentEvents, setRecentEvents] = useState<ReiLinkEvent[]>(() => eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
   const [setupHelpOpen, setSetupHelpOpen] = useState(false);
   const [demoDocHintOpen, setDemoDocHintOpen] = useState(false);
   const [demoResetFeedback, setDemoResetFeedback] = useState("");
@@ -780,9 +1554,44 @@ export function App() {
   const [lastRawError, setLastRawError] = useState("");
   const [lastInterimPlaceholderShown, setLastInterimPlaceholderShown] = useState(false);
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceOutputStatus>(() => voiceOutput.getStatus());
+  const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>(() => voiceInput.getStatus());
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const forceNextScrollRef = useRef(true);
+  const knownPendingMemoryIdsRef = useRef<Set<string>>(new Set());
+  const lastBackendStatusEventRef = useRef<string | null>(null);
+  const lastRuntimeStatusEventRef = useRef<string | null>(null);
+  const lastGameContextEventRef = useRef<string | null>(null);
+  const lastGameSessionEventRef = useRef<string | null>(null);
+  const lastKnowledgeEventRef = useRef<string | null>(null);
+  const lastModelRouteEventRef = useRef<string | null>(null);
+  const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
+
+  const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
+    voiceOutput.stop(reason);
+  }, []);
+
+  const testVoiceOutput = useCallback(() => {
+    voiceOutput.speak(TEST_VOICE_TEXT, {
+      rate: appSettings.voice_rate,
+      volume: appSettings.voice_volume,
+      source: "test_voice"
+    });
+  }, [appSettings.voice_rate, appSettings.voice_volume]);
+
+  const startVoiceInput = useCallback(() => {
+    voiceOutput.stop("user_stop");
+    voiceInput.start({
+      onFinalTranscript: (transcript) => {
+        setInput((current) => appendTranscriptToInput(current, transcript));
+      }
+    });
+  }, []);
+
+  const stopVoiceInput = useCallback(() => {
+    voiceInput.stop("user_stop");
+  }, []);
 
   const isMessagesNearBottom = useCallback(() => {
     const element = messagesRef.current;
@@ -809,35 +1618,184 @@ export function App() {
     shouldAutoScrollRef.current = isMessagesNearBottom();
   }, [isMessagesNearBottom]);
 
-  const refreshStatus = useCallback(async () => {
+  const emitBackendStatusChanged = useCallback((status: string) => {
+    if (lastBackendStatusEventRef.current === status) return;
+    lastBackendStatusEventRef.current = status;
+    eventBus.emit({ type: "backend_status_changed", timestamp: eventTimestamp(), status });
+  }, []);
+
+  const emitRuntimeStatusChanged = useCallback((status: BackendRuntimeStatus) => {
+    const signature = eventSignature(status.backend_started_from, status.knowledge_source);
+    if (lastRuntimeStatusEventRef.current === signature) return;
+    lastRuntimeStatusEventRef.current = signature;
+    eventBus.emit({
+      type: "runtime_status_changed",
+      timestamp: eventTimestamp(),
+      backend_source: status.backend_started_from,
+      knowledge_source: status.knowledge_source
+    });
+  }, []);
+
+  const emitGameContextChanged = useCallback((currentGameContext: GameContextResponse) => {
+    const game = currentGameContext.active_game_display_name ?? currentGameContext.active_game_id ?? undefined;
+    const signature = eventSignature(
+      game,
+      currentGameContext.active_source,
+      currentGameContext.support_status,
+      currentGameContext.knowledge_available,
+      currentGameContext.fallback_reason
+    );
+    if (lastGameContextEventRef.current === signature) return;
+    lastGameContextEventRef.current = signature;
+    eventBus.emit({
+      type: "game_context_changed",
+      timestamp: eventTimestamp(),
+      game,
+      source: currentGameContext.active_source
+    });
+  }, []);
+
+  const emitGameSessionChanged = useCallback((currentGameSession: GameSessionDebugResponse) => {
+    const currentBoss = currentGameSession.current_boss?.name;
+    const signature = eventSignature(currentGameSession.current_game, currentBoss, currentGameSession.current_activity);
+    if (lastGameSessionEventRef.current === signature) return;
+    lastGameSessionEventRef.current = signature;
+    eventBus.emit({
+      type: "game_session_changed",
+      timestamp: eventTimestamp(),
+      game: currentGameSession.current_game ?? undefined,
+      current_boss: currentBoss,
+      activity: currentGameSession.current_activity ?? undefined
+    });
+  }, []);
+
+  const emitKnowledgeUsed = useCallback((currentChatDebug: ChatDebugResponse) => {
+    const topics = knowledgeEventTopics(currentChatDebug);
+    const hasKnowledgeResult = currentChatDebug.knowledge_used_in_prompt ||
+      currentChatDebug.knowledge_matched ||
+      topics.length > 0 ||
+      Boolean(currentChatDebug.request_started_at && (
+        currentChatDebug.knowledge_available ||
+        currentChatDebug.knowledge_retrieval_status !== "not_found" ||
+        currentChatDebug.knowledge_fallback_reason
+      ));
+    if (!hasKnowledgeResult) return;
+
+    const game = currentChatDebug.knowledge_game_display_name ??
+      currentChatDebug.knowledge_game_id ??
+      currentChatDebug.active_game_display_name ??
+      currentChatDebug.active_game_id ??
+      undefined;
+    const signature = eventSignature(
+      currentChatDebug.request_started_at,
+      game,
+      topics,
+      currentChatDebug.knowledge_used_in_prompt,
+      currentChatDebug.knowledge_matched,
+      currentChatDebug.knowledge_retrieval_status,
+      currentChatDebug.knowledge_not_used_reason
+    );
+    if (lastKnowledgeEventRef.current === signature) return;
+    lastKnowledgeEventRef.current = signature;
+    eventBus.emit({ type: "knowledge_used", timestamp: eventTimestamp(), game, topics });
+  }, []);
+
+  const emitModelRouted = useCallback((
+    model: string | null | undefined,
+    routeReason: string | null | undefined,
+    requestKey?: string | null
+  ) => {
+    if (!model && !routeReason) return;
+    const signature = eventSignature(requestKey ?? "", model, routeReason);
+    if (lastModelRouteEventRef.current === signature) return;
+    lastModelRouteEventRef.current = signature;
+    eventBus.emit({
+      type: "model_routed",
+      timestamp: eventTimestamp(),
+      model: model ?? undefined,
+      route_reason: routeReason ?? undefined
+    });
+  }, []);
+
+  const emitDebugSnapshotEvents = useCallback((
+    currentGameContext: GameContextResponse,
+    currentGameSession: GameSessionDebugResponse,
+    currentChatDebug: ChatDebugResponse,
+    currentProviderDebug: ProviderDebugResponse
+  ) => {
+    emitGameContextChanged(currentGameContext);
+    emitGameSessionChanged(currentGameSession);
+    emitKnowledgeUsed(currentChatDebug);
+    emitModelRouted(
+      currentChatDebug.main_reply_model ?? currentChatDebug.model_used ?? currentChatDebug.selected_model ?? currentProviderDebug.main_reply_model ?? currentProviderDebug.model ?? currentProviderDebug.selected_model,
+      currentChatDebug.route_reason ?? currentProviderDebug.route_reason ?? currentChatDebug.fallback_reason ?? currentProviderDebug.fallback_reason,
+      currentChatDebug.request_started_at
+    );
+  }, [emitGameContextChanged, emitGameSessionChanged, emitKnowledgeUsed, emitModelRouted]);
+
+  const recordPendingMemories = useCallback((memories: PendingMemory[], emitCreated: boolean) => {
+    const previousIds = knownPendingMemoryIdsRef.current;
+    if (emitCreated) {
+      for (const memory of memories) {
+        if (!previousIds.has(memory.id)) {
+          eventBus.emit({
+            type: "pending_memory_created",
+            timestamp: eventTimestamp(),
+            memory_type: memory.type,
+            text: memory.text
+          });
+        }
+      }
+    }
+    knownPendingMemoryIdsRef.current = new Set(memories.map((memory) => memory.id));
+    setPendingMemories(memories);
+  }, []);
+
+  const refreshStatus = useCallback(async (options: { emitPendingMemoryCreated?: boolean } = {}) => {
     try {
       setLastError("");
       setLastRawError("");
       await api.health();
       const currentSetupStatus = await api.setupStatus();
       setBackendStatus("connected");
+      emitBackendStatusChanged("connected");
       setSetupStatus(currentSetupStatus);
-      setAppSettings(await api.settings());
+      const currentSettings = await api.settings();
+      setAppSettings((previous) =>
+        normalizeAppSettings(
+          currentSettings,
+          voiceSettingFallback(currentSettings, previous)
+        )
+      );
       setLocalDataStatus(await api.localDataStatus());
+      setLocalAsrSettings(await api.localAsrSettings());
+      const currentLocalAsrStatus = await api.localAsrStatus();
+      setLocalAsrStatus(currentLocalAsrStatus);
+      if (currentLocalAsrStatus.status !== "local_asr_ready") setLocalAsrProbe(null);
       setGameStatus(await api.gameStatus());
       const currentGameContext = await api.gameContext();
       setGameContext(currentGameContext);
       setGameDetection(currentGameContext.detected_game);
       setMemoryProfile(await api.memoryProfile());
       setMemoryDebug(await api.memoryDebug());
-      setChatDebug(await api.chatDebug());
-      setProviderDebug(await api.providerDebug());
+      const currentChatDebug = await api.chatDebug();
+      setChatDebug(currentChatDebug);
+      const currentProviderDebug = await api.providerDebug();
+      setProviderDebug(currentProviderDebug);
       setProactiveStatus(await api.proactiveStatus());
-      setGameSessionDebug(await api.gameSessionDebug());
+      const currentGameSessionDebug = await api.gameSessionDebug();
+      setGameSessionDebug(currentGameSessionDebug);
       setSemanticDebug(await api.semanticExtractionDebug());
       setPromptPreview(await api.promptPreview());
-      setPendingMemories(await api.pendingMemories());
+      recordPendingMemories(await api.pendingMemories(), Boolean(options.emitPendingMemoryCreated));
+      emitDebugSnapshotEvents(currentGameContext, currentGameSessionDebug, currentChatDebug, currentProviderDebug);
     } catch (error) {
       setBackendStatus("disconnected");
+      emitBackendStatusChanged("disconnected");
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "后端未连接"));
     }
-  }, []);
+  }, [emitBackendStatusChanged, emitDebugSnapshotEvents, recordPendingMemories]);
 
   const updateAppSettings = async (patch: Partial<AppSettings>) => {
     const busyKey = Object.keys(patch)[0] ?? "settings";
@@ -846,7 +1804,12 @@ export function App() {
       setLastError("");
       setLastRawError("");
       const updated = await api.updateSettings(patch);
-      setAppSettings(updated);
+      setAppSettings((previous) =>
+        normalizeAppSettings(
+          updated,
+          voiceSettingFallback(updated, previous, patch)
+        )
+      );
       if (patch.debug_panel === "hide") {
         setDebugOpen(false);
         setPromptPreviewOpen(false);
@@ -862,6 +1825,268 @@ export function App() {
     }
   };
 
+  const refreshLocalAsrSetup = async (message = "本地 ASR 状态已刷新") => {
+    setLocalAsrSettingsBusy("refresh");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const currentSettings = await api.localAsrSettings();
+      const currentStatus = await api.localAsrStatus();
+      setLocalAsrSettings(currentSettings);
+      setLocalAsrStatus(currentStatus);
+      if (currentStatus.status !== "local_asr_ready") setLocalAsrProbe(null);
+      setLocalAsrSettingsMessage(message);
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "本地 ASR 配置刷新失败"));
+    } finally {
+      setLocalAsrSettingsBusy("");
+    }
+  };
+
+  const saveLocalAsrSettings = async () => {
+    const payload: LocalAsrSettingsUpdate = {};
+    const binaryPath = localAsrSettingsDraft.local_asr_binary_path.trim();
+    const modelPath = localAsrSettingsDraft.local_asr_model_path.trim();
+    const converterPath = localAsrSettingsDraft.audio_converter_binary_path.trim();
+    if (binaryPath) payload.local_asr_binary_path = binaryPath;
+    if (modelPath) payload.local_asr_model_path = modelPath;
+    if (converterPath) payload.audio_converter_binary_path = converterPath;
+    if (Object.keys(payload).length === 0) {
+      setLocalAsrSettingsMessage("请输入要保存的路径；清除请使用 Clear。");
+      return;
+    }
+    setLocalAsrSettingsBusy("save");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const updated = await api.updateLocalAsrSettings(payload);
+      setLocalAsrSettings(updated);
+      setLocalAsrSettingsDraft(emptyLocalAsrSettingsDraft);
+      const currentStatus = await api.localAsrStatus();
+      setLocalAsrStatus(currentStatus);
+      if (currentStatus.status !== "local_asr_ready") setLocalAsrProbe(null);
+      setLocalAsrSettingsMessage("本地 ASR 配置已保存");
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "本地 ASR 配置保存失败"));
+    } finally {
+      setLocalAsrSettingsBusy("");
+    }
+  };
+
+  const clearLocalAsrSettings = async () => {
+    setLocalAsrSettingsBusy("clear");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const updated = await api.clearLocalAsrSettings();
+      setLocalAsrSettings(updated);
+      setLocalAsrSettingsDraft(emptyLocalAsrSettingsDraft);
+      const currentStatus = await api.localAsrStatus();
+      setLocalAsrStatus(currentStatus);
+      if (currentStatus.status !== "local_asr_ready") setLocalAsrProbe(null);
+      setLocalAsrSettingsMessage("本地 ASR 配置已清除");
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "本地 ASR 配置清除失败"));
+    } finally {
+      setLocalAsrSettingsBusy("");
+    }
+  };
+
+  const checkLocalAsr = async () => {
+    if (localAsrStatus.status !== "local_asr_ready" || localAsrProbeChecking) return;
+    setLocalAsrProbeChecking(true);
+    try {
+      setLocalAsrProbe(await api.probeLocalAsr());
+    } catch {
+      setLocalAsrProbe({
+        status: "local_asr_probe_error",
+        available: false,
+        display_message: "本地语音识别检查失败",
+        binary_name: localAsrStatus.safe_binary_name,
+        model_name: localAsrStatus.safe_model_name,
+        duration_ms: 0
+      });
+    } finally {
+      setLocalAsrProbeChecking(false);
+    }
+  };
+
+  const runAudioCaptureProbe = async () => {
+    if (audioCaptureStatus.phase === "recording") {
+      audioCapture.stop("user_stop");
+      return;
+    }
+    if (!audioCaptureStatus.supported || audioProbeUploading) return;
+    setAudioProbeResult(null);
+    await audioCapture.start({
+      durationMs: 3000,
+      onRecorded: (recording) => {
+        setAudioProbeUploading(true);
+        void api.probeAudio(recording.blob, recording.durationMs)
+          .then((result) => {
+            setAudioProbeResult(result);
+            eventBus.emit({
+              type: "audio_temp_file_cleaned",
+              timestamp: new Date().toISOString(),
+              duration_ms: result.duration_ms,
+              size_bytes: result.size_bytes,
+              mime_type: result.mime_type ?? undefined,
+              temporary_file_cleaned: result.temporary_file_cleaned
+            });
+          })
+          .catch(() => {
+            setAudioProbeResult({
+              status: "audio_probe_upload_failed",
+              available: false,
+              display_message: "录音上传失败",
+              duration_ms: recording.durationMs,
+              size_bytes: recording.sizeBytes,
+              mime_type: recording.mimeType,
+              temporary_file_cleaned: false
+            });
+            eventBus.emit({
+              type: "audio_capture_error",
+              timestamp: new Date().toISOString(),
+              reason: "upload_failed",
+              status: "录音上传失败"
+            });
+          })
+          .finally(() => setAudioProbeUploading(false));
+      }
+    });
+  };
+
+  const runLocalAsrTranscription = async () => {
+    if (localAsrTranscriptionPhase === "recording") {
+      audioCapture.stop("user_stop");
+      return;
+    }
+    if (
+      localAsrStatus.status !== "local_asr_ready" ||
+      !audioCaptureStatus.supported ||
+      audioCaptureStatus.phase !== "idle" ||
+      localAsrTranscriptionPhase !== "idle"
+    ) {
+      return;
+    }
+    voiceOutput.stop("user_stop");
+    setLocalAsrTranscriptionResult(null);
+    setLocalAsrTranscriptionPhase("recording");
+    const started = await audioCapture.start({
+      durationMs: 3000,
+      onRecorded: (recording) => {
+        setLocalAsrTranscriptionPhase("transcribing");
+        eventBus.emit({
+          type: "local_asr_transcription_started",
+          timestamp: eventTimestamp(),
+          status: "正在本地转写",
+          language: LOCAL_ASR_UI_LANGUAGE,
+          duration_ms: recording.durationMs,
+          size_bytes: recording.sizeBytes,
+          mime_type: recording.mimeType
+        });
+        void api.transcribeLocalAsr(recording.blob, recording.durationMs, LOCAL_ASR_UI_LANGUAGE)
+          .then((result) => {
+            setLocalAsrTranscriptionResult(result);
+            if (result.status === "local_asr_transcription_succeeded" && result.transcript.trim()) {
+              setInput((current) => appendTranscriptToInput(current, result.transcript));
+              eventBus.emit({
+                type: "local_asr_transcription_completed",
+                timestamp: eventTimestamp(),
+                status: result.status,
+                character_count: result.transcript_char_count,
+                language: result.language,
+                transcript_normalized_to_simplified: result.transcript_normalized_to_simplified,
+                duration_ms: result.duration_ms,
+                size_bytes: result.size_bytes,
+                mime_type: result.mime_type ?? undefined,
+                audio_format: result.audio_format ?? undefined,
+                conversion_status: result.conversion_status,
+                conversion_required: result.conversion_required,
+                converted_mime_type: result.converted_mime_type ?? undefined,
+                converter_configured: result.converter_configured,
+                safe_converter_name: result.safe_converter_name ?? undefined,
+                temporary_file_cleaned: result.temporary_file_cleaned,
+                temporary_input_cleaned: result.temporary_input_cleaned,
+                temporary_converted_cleaned: result.temporary_converted_cleaned,
+                binary_name: result.binary_name ?? undefined,
+                model_name: result.model_name ?? undefined
+              });
+              return;
+            }
+            eventBus.emit({
+              type: "local_asr_transcription_error",
+              timestamp: eventTimestamp(),
+              status: result.status,
+              reason: result.display_message,
+              character_count: result.transcript_char_count,
+              language: result.language,
+              transcript_normalized_to_simplified: result.transcript_normalized_to_simplified,
+              duration_ms: result.duration_ms,
+              size_bytes: result.size_bytes,
+              mime_type: result.mime_type ?? undefined,
+              audio_format: result.audio_format ?? undefined,
+              conversion_status: result.conversion_status,
+              conversion_required: result.conversion_required,
+              converted_mime_type: result.converted_mime_type ?? undefined,
+              converter_configured: result.converter_configured,
+              safe_converter_name: result.safe_converter_name ?? undefined,
+              temporary_file_cleaned: result.temporary_file_cleaned,
+              temporary_input_cleaned: result.temporary_input_cleaned,
+              temporary_converted_cleaned: result.temporary_converted_cleaned,
+              binary_name: result.binary_name ?? undefined,
+              model_name: result.model_name ?? undefined
+            });
+          })
+          .catch(() => {
+            const fallback: LocalAsrTranscriptionResponse = {
+              ...emptyLocalAsrTranscription,
+              status: "local_asr_transcription_error",
+              display_message: "本地语音识别失败",
+              duration_ms: recording.durationMs,
+              size_bytes: recording.sizeBytes,
+              mime_type: recording.mimeType,
+              audio_format: recording.mimeType,
+              conversion_status: audioFormatConversionHint(recording.mimeType)
+                ? "audio_conversion_needed"
+                : "audio_conversion_not_needed",
+              conversion_required: Boolean(audioFormatConversionHint(recording.mimeType)),
+              binary_name: localAsrStatus.safe_binary_name,
+              model_name: localAsrStatus.safe_model_name
+            };
+            setLocalAsrTranscriptionResult(fallback);
+            eventBus.emit({
+              type: "local_asr_transcription_error",
+              timestamp: eventTimestamp(),
+              status: fallback.status,
+              reason: fallback.display_message,
+              language: fallback.language,
+              transcript_normalized_to_simplified: fallback.transcript_normalized_to_simplified,
+              duration_ms: fallback.duration_ms,
+              size_bytes: fallback.size_bytes,
+              mime_type: fallback.mime_type ?? undefined,
+              audio_format: fallback.audio_format ?? undefined,
+              conversion_status: fallback.conversion_status,
+              conversion_required: fallback.conversion_required,
+              converted_mime_type: fallback.converted_mime_type ?? undefined,
+              converter_configured: fallback.converter_configured,
+              safe_converter_name: fallback.safe_converter_name ?? undefined,
+              temporary_file_cleaned: fallback.temporary_file_cleaned,
+              temporary_input_cleaned: fallback.temporary_input_cleaned,
+              temporary_converted_cleaned: fallback.temporary_converted_cleaned,
+              binary_name: fallback.binary_name ?? undefined,
+              model_name: fallback.model_name ?? undefined
+            });
+          })
+          .finally(() => setLocalAsrTranscriptionPhase("idle"));
+      }
+    });
+    if (!started) setLocalAsrTranscriptionPhase("idle");
+  };
+
   const updateBackendAutoStart = async (enabled: boolean) => {
     const runtime = window.reilinkRuntime;
     if (!runtime) return;
@@ -869,7 +2094,10 @@ export function App() {
     try {
       setLastError("");
       setLastRawError("");
-      setBackendRuntimeStatus(await runtime.setBackendAutoStart(enabled));
+      const updated = await runtime.setBackendAutoStart(enabled);
+      setBackendRuntimeStatus(updated);
+      emitRuntimeStatusChanged(updated);
+      emitBackendStatusChanged(updated.backend_status);
     } catch (error) {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "本地后端自动启动设置失败"));
@@ -941,6 +2169,43 @@ export function App() {
   };
 
   useEffect(() => {
+    return eventBus.subscribe(() => {
+      setRecentEvents(eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
+    });
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = voiceOutput.subscribe(setVoiceStatus);
+    return () => {
+      unsubscribe();
+      voiceOutput.stop("unmount");
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = voiceInput.subscribe(setVoiceInputStatus);
+    void voiceInput.refreshDiagnostics();
+    return () => {
+      unsubscribe();
+      voiceInput.stop("unmount");
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = audioCapture.subscribe(setAudioCaptureStatus);
+    return () => {
+      unsubscribe();
+      audioCapture.stop("unmount");
+    };
+  }, []);
+
+  useEffect(() => {
+    if (appSettings.voice_output === "off") {
+      voiceOutput.stop("disabled");
+    }
+  }, [appSettings.voice_output]);
+
+  useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
 
@@ -953,17 +2218,22 @@ export function App() {
     const applyStatus = (status: BackendRuntimeStatus) => {
       if (!active) return;
       setBackendRuntimeStatus(status);
+      emitRuntimeStatusChanged(status);
+      emitBackendStatusChanged(status.backend_status);
       if (status.backend_status === "connected") {
         void refreshStatus();
       }
     };
     void runtime.getBackendStatus().then(applyStatus).catch(() => {
       if (active) {
-        setBackendRuntimeStatus({
+        const failedStatus: BackendRuntimeStatus = {
           ...emptyBackendRuntimeStatus,
           backend_start_error: "无法读取本地后端运行状态。",
           backend_status: "failed"
-        });
+        };
+        setBackendRuntimeStatus(failedStatus);
+        emitRuntimeStatusChanged(failedStatus);
+        emitBackendStatusChanged(failedStatus.backend_status);
       }
     });
     const unsubscribe = runtime.onBackendStatus(applyStatus);
@@ -971,13 +2241,14 @@ export function App() {
       active = false;
       unsubscribe();
     };
-  }, [refreshStatus]);
+  }, [emitBackendStatusChanged, emitRuntimeStatusChanged, refreshStatus]);
 
   const checkProactive = useCallback(async () => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on" || sending) return;
     try {
       const response = await api.checkProactive("default", Boolean(input.trim()), backendStatus === "connected");
       if (response.should_send && response.message) {
+        const createdAt = new Date().toISOString();
         queueMessageAutoScroll();
         setMessages((current) => [
           ...current,
@@ -985,11 +2256,17 @@ export function App() {
             id: crypto.randomUUID(),
             role: "assistant",
             text: response.message,
-            createdAt: new Date().toISOString(),
+            createdAt,
             messageType: "proactive",
             triggerType: response.trigger_type
           }
         ]);
+        eventBus.emit({
+          type: "proactive_message_shown",
+          timestamp: createdAt,
+          trigger_type: response.trigger_type,
+          text: response.message
+        });
       }
       setProactiveStatus(await api.proactiveStatus());
     } catch (error) {
@@ -1008,8 +2285,11 @@ export function App() {
     event.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || sending) return;
+    voiceOutput.stop("new_message");
+    voiceInput.stop("user_stop");
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed, createdAt: new Date().toISOString() };
     const placeholderId = crypto.randomUUID();
+    const replyMessageId = crypto.randomUUID();
     let placeholderShown = false;
     const requestStartedAt = Date.now();
     setLastInterimPlaceholderShown(false);
@@ -1017,8 +2297,10 @@ export function App() {
     setLastRawError("");
     queueMessageAutoScroll(true);
     setMessages((current) => [...current, userMessage]);
+    eventBus.emit({ type: "user_message_sent", timestamp: userMessage.createdAt, text: trimmed });
     setInput("");
     setSending(true);
+    eventBus.emit({ type: "assistant_reply_started", timestamp: eventTimestamp(), message_id: replyMessageId });
     const placeholderTimer = window.setTimeout(() => {
       placeholderShown = true;
       setLastInterimPlaceholderShown(true);
@@ -1032,6 +2314,7 @@ export function App() {
       const response = await api.chat(trimmed);
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
+      emitModelRouted(response.model_used, response.route_reason, response.request_started_at ?? String(requestStartedAt));
       queueMessageAutoScroll();
       setMessages((current) => current.filter((message) => message.id !== placeholderId));
       const segments = response.reply_segments.length > 0 ? response.reply_segments : [response.reply];
@@ -1039,14 +2322,30 @@ export function App() {
         if (index > 0) {
           await sleep(nextSegmentDelay());
         }
+        const segmentCreatedAt = new Date().toISOString();
         queueMessageAutoScroll();
         setMessages((current) => [
           ...current,
-          { id: crypto.randomUUID(), role: "assistant", text: segment, createdAt: new Date().toISOString(), pending: false }
+          { id: crypto.randomUUID(), role: "assistant", text: segment, createdAt: segmentCreatedAt, pending: false }
         ]);
+        eventBus.emit({
+          type: "assistant_reply_segment_shown",
+          timestamp: segmentCreatedAt,
+          segment_index: index,
+          text: segment
+        });
+      }
+      eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
+      if (appSettings.voice_output === "on" && !spokenAssistantReplyIdsRef.current.has(replyMessageId)) {
+        spokenAssistantReplyIdsRef.current.add(replyMessageId);
+        voiceOutput.speak(segments.join("\n"), {
+          rate: appSettings.voice_rate,
+          volume: appSettings.voice_volume,
+          source: "assistant_reply"
+        });
       }
       setLastInterimPlaceholderShown(placeholderShown);
-      await refreshStatus();
+      await refreshStatus({ emitPendingMemoryCreated: true });
     } catch (error) {
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
@@ -1058,6 +2357,7 @@ export function App() {
         ...current.filter((message) => message.id !== placeholderId),
         { id: crypto.randomUUID(), role: "assistant", text: reply, createdAt: new Date().toISOString(), pending: false }
       ]);
+      eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
       setLastInterimPlaceholderShown(placeholderShown);
     } finally {
       setSending(false);
@@ -1069,8 +2369,10 @@ export function App() {
     try {
       if (action === "accept") {
         await api.acceptPendingMemory(id);
+        eventBus.emit({ type: "pending_memory_accepted", timestamp: eventTimestamp(), memory_id: id });
       } else {
         await api.ignorePendingMemory(id);
+        eventBus.emit({ type: "pending_memory_ignored", timestamp: eventTimestamp(), memory_id: id });
       }
       await refreshStatus();
     } catch (error) {
@@ -1112,7 +2414,12 @@ export function App() {
       onboarding_completed: false,
       onboarding_last_seen_at: null
     });
-    setAppSettings(updated);
+    setAppSettings((previous) =>
+      normalizeAppSettings(
+        updated,
+        voiceSettingFallback(updated, previous)
+      )
+    );
     setOnboardingDismissedThisSession(false);
     setOnboardingReopened(true);
     setDemoDocHintOpen(false);
@@ -1218,6 +2525,43 @@ export function App() {
   const debugPanelVisible = appSettings.debug_panel === "show";
   const displayGame = gameContext.active_game_display_name ?? gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
   const displayBoss = gameSessionDebug.current_boss?.name ?? null;
+  const localAsrConfigReady = localAsrStatus.status === "local_asr_ready";
+  const localAsrTranscriptionBusy = localAsrTranscriptionPhase !== "idle";
+  const localAsrTranscriptionButtonDisabled = !localAsrConfigReady ||
+    !audioCaptureStatus.supported ||
+    audioProbeUploading ||
+    (audioCaptureStatus.phase !== "idle" && localAsrTranscriptionPhase !== "recording") ||
+    localAsrTranscriptionPhase === "transcribing";
+  const mainVoiceInputProvider = selectMainVoiceInputProvider(localAsrStatus, voiceInputStatus);
+  const mainVoiceInputUsesLocalAsr = mainVoiceInputProvider === "local_asr";
+  const mainVoiceInputUsesWebSpeech = mainVoiceInputProvider === "web_speech";
+  const mainVoiceInputStatus = mainVoiceInputStatusText(
+    mainVoiceInputProvider,
+    voiceInputStatus,
+    localAsrStatus,
+    localAsrTranscriptionPhase,
+    localAsrTranscriptionResult,
+    audioCaptureStatus
+  );
+  const mainVoiceInputDisabled = mainVoiceInputUsesLocalAsr
+    ? localAsrTranscriptionButtonDisabled
+    : !mainVoiceInputUsesWebSpeech || !webSpeechVoiceInputAvailable(voiceInputStatus);
+  const mainVoiceInputActive = mainVoiceInputUsesLocalAsr
+    ? localAsrTranscriptionPhase !== "idle"
+    : voiceInputStatus.phase !== "idle";
+  const mainVoiceInputLabel = mainVoiceInputButtonLabel(
+    mainVoiceInputProvider,
+    voiceInputStatus,
+    localAsrTranscriptionPhase
+  );
+  const mainVoiceInputTitle = mainVoiceInputButtonTitle(
+    mainVoiceInputProvider,
+    voiceInputStatus,
+    localAsrStatus,
+    localAsrTranscriptionPhase,
+    localAsrTranscriptionResult,
+    audioCaptureStatus
+  );
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
   const detectedKnowledgeGameId = gameContext.detected_game.knowledge_game_id;
@@ -1369,8 +2713,19 @@ export function App() {
               游戏：{debugText(displayGame)}
             </span>
             <span className="topChip">Boss：{displayBoss ?? "空闲"}</span>
+            {voiceStatus.active && (
+              <button
+                aria-label="停止语音 / Stop Voice"
+                className="topChip stopVoiceButton"
+                type="button"
+                onClick={() => stopVoiceOutput("user_stop")}
+              >
+                <VolumeX size={15} />
+                停止语音
+              </button>
+            )}
             <span className={`connection ${backendStatus}`}>{runtimeStatusLabel}</span>
-            <button aria-label="刷新状态" className="iconButton soft" onClick={refreshStatus}>
+            <button aria-label="刷新状态" className="iconButton soft" onClick={() => void refreshStatus()}>
               <RefreshCw size={17} />
             </button>
           </div>
@@ -1496,7 +2851,23 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             {lastError && <div className="errorNotice" role="status">{lastError}</div>}
 
             <form className="composer" onSubmit={sendMessage}>
-              <button className="iconButton disabled" type="button" aria-label="按住说话实验功能" disabled>
+              <button
+                className={`iconButton voiceInputButton ${mainVoiceInputActive ? "active" : ""}`}
+                type="button"
+                aria-label={mainVoiceInputLabel}
+                title={mainVoiceInputTitle}
+                disabled={mainVoiceInputDisabled}
+                onClick={() => {
+                  if (mainVoiceInputUsesLocalAsr) {
+                    void runLocalAsrTranscription();
+                    return;
+                  }
+                  if (mainVoiceInputUsesWebSpeech) {
+                    if (voiceInputStatus.phase === "idle") startVoiceInput();
+                    else stopVoiceInput();
+                  }
+                }}
+              >
                 <Mic size={18} />
               </button>
               <input
@@ -1509,6 +2880,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <Send size={18} />
                 <span>{sending ? "发送中" : "发送"}</span>
               </button>
+              <div className="voiceInputInlineStatus" role="status">
+                语音输入：{mainVoiceInputStatus}
+                {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
+              </div>
             </form>
           </section>
         </section>
@@ -1595,6 +2970,315 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="pro">高质量</option>
                 </select>
               </label>
+              <div className="voiceOutputPanel" role="group" aria-label="语音输出设置">
+                <label className="settingRow">
+                  <span>语音输出 / Voice Output</span>
+                  <select
+                    aria-label="语音输出 / Voice Output"
+                    disabled={settingsBusy !== "" || !voiceStatus.available}
+                    value={appSettings.voice_output}
+                    onChange={(event) =>
+                      void updateAppSettings({ voice_output: event.target.value as AppSettings["voice_output"] })
+                    }
+                  >
+                    <option value="off">关闭</option>
+                    <option value="on">开启</option>
+                  </select>
+                </label>
+                <p className="settingHint">
+                  当前状态：{appSettings.voice_output === "on" ? "已开启" : "已关闭"}；本地语音：
+                  {voiceStatus.available ? "可用" : "不可用"}。
+                </p>
+                <p className="settingHint">播放状态：{voicePhaseText(voiceStatus)}。</p>
+                {voiceStatus.available && (
+                  <p className="settingHint">
+                    语音选择：{voiceStatus.hasChineseVoice ? "优先使用中文语音" : voiceStatus.hasVoices ? "使用系统默认语音" : "等待系统语音列表"}。
+                  </p>
+                )}
+                {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
+                <p className="settingHint">如果更换过系统语音包，请先点“测试语音”确认系统声音可用。</p>
+                {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
+                <label className="settingRow">
+                  <span>语速 / Rate</span>
+                  <span className="rangeControl">
+                    <input
+                      aria-label="语速 / Rate"
+                      disabled={settingsBusy !== ""}
+                      max="1.3"
+                      min="0.7"
+                      step="0.1"
+                      type="range"
+                      value={appSettings.voice_rate}
+                      onChange={(event) => void updateAppSettings({ voice_rate: Number(event.target.value) })}
+                    />
+                    <strong>{appSettings.voice_rate.toFixed(1)}</strong>
+                  </span>
+                </label>
+                <label className="settingRow">
+                  <span>音量 / Volume</span>
+                  <span className="rangeControl">
+                    <input
+                      aria-label="音量 / Volume"
+                      disabled={settingsBusy !== ""}
+                      max="1"
+                      min="0"
+                      step="0.1"
+                      type="range"
+                      value={appSettings.voice_volume}
+                      onChange={(event) => void updateAppSettings({ voice_volume: Number(event.target.value) })}
+                    />
+                    <strong>{appSettings.voice_volume.toFixed(1)}</strong>
+                  </span>
+                </label>
+                {voiceStatus.active && (
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    aria-label="停止语音 / Stop Voice"
+                    onClick={() => stopVoiceOutput("user_stop")}
+                  >
+                    <VolumeX size={14} />
+                    停止语音
+                  </button>
+                )}
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  aria-label="测试语音 / Test Voice"
+                  disabled={!voiceStatus.available}
+                  onClick={testVoiceOutput}
+                >
+                  <Volume2 size={14} />
+                  测试语音
+                </button>
+              </div>
+              <div className="voiceOutputPanel" role="group" aria-label="语音输入设置">
+                <div className="settingRow static">
+                  <span>语音输入 / Voice Input</span>
+                  <strong>{voiceInputAvailabilityText(voiceInputStatus)}</strong>
+                </div>
+                <p className="settingHint">当前状态：{voiceInputPhaseText(voiceInputStatus)}。</p>
+                <p className="settingHint">语言：{voiceInputStatus.language}。识别结果会先填入输入框，不会自动发送。</p>
+                <p className="settingHint">
+                  语音识别功能：{voiceInputApiText(voiceInputStatus)}。麦克风权限：{voiceInputStatus.diagnostics.microphonePermission}。运行环境：{voiceInputRuntimeText(voiceInputStatus)}。
+                </p>
+                {!voiceInputStatus.supported && (
+                  <p className="settingHint">当前运行环境不支持本地语音识别。你仍然可以使用系统听写输入到文本框。</p>
+                )}
+                {voiceInputServiceUnavailable(voiceInputStatus) && (
+                  <p className="settingHint">当前运行环境的语音识别服务不可用。你仍然可以使用系统听写输入到文本框。</p>
+                )}
+                {voiceInputStatus.lastTranscriptCharacterCount > 0 && (
+                  <p className="settingHint">最近识别：{voiceInputStatus.lastTranscriptCharacterCount} 字。</p>
+                )}
+                {voiceInputStatus.lastError && <p className="settingHint">{voiceInputStatus.lastError}</p>}
+                <div className="settingRow static">
+                  <span>本地语音识别 / Local ASR</span>
+                  <strong>{localAsrStatusText(localAsrStatus)}</strong>
+                </div>
+                <p className="settingHint">{localAsrStatus.display_message}</p>
+                <p className="settingHint">{localAsrStatusDetail(localAsrStatus)}</p>
+                <div className="localAsrSetupPanel" role="group" aria-label="本地 ASR 配置 / Local ASR Setup">
+                  <div className="settingRow static">
+                    <span>本地 ASR 配置 / Local ASR Setup</span>
+                    <strong>{localAsrSourceText(localAsrSettings.source)}</strong>
+                  </div>
+                  <p className="settingHint">{localAsrSettingsSummaryText(localAsrSettings)}</p>
+                  <label className="localAsrPathField">
+                    <span>本地识别程序 / ASR Binary</span>
+                    <input
+                      aria-label="本地识别程序 / ASR Binary"
+                      autoComplete="off"
+                      disabled={localAsrSettingsBusy !== ""}
+                      placeholder="/opt/homebrew/bin/whisper-cli"
+                      spellCheck={false}
+                      type="text"
+                      value={localAsrSettingsDraft.local_asr_binary_path}
+                      onChange={(event) =>
+                        setLocalAsrSettingsDraft((current) => ({
+                          ...current,
+                          local_asr_binary_path: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="localAsrPathField">
+                    <span>模型文件 / Model File</span>
+                    <input
+                      aria-label="模型文件 / Model File"
+                      autoComplete="off"
+                      disabled={localAsrSettingsBusy !== ""}
+                      placeholder="~/Library/Application Support/ReiLink/models/ggml-base.bin"
+                      spellCheck={false}
+                      type="text"
+                      value={localAsrSettingsDraft.local_asr_model_path}
+                      onChange={(event) =>
+                        setLocalAsrSettingsDraft((current) => ({
+                          ...current,
+                          local_asr_model_path: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="localAsrPathField">
+                    <span>音频转换工具 / Audio Converter</span>
+                    <input
+                      aria-label="音频转换工具 / Audio Converter"
+                      autoComplete="off"
+                      disabled={localAsrSettingsBusy !== ""}
+                      placeholder="/opt/homebrew/bin/ffmpeg"
+                      spellCheck={false}
+                      type="text"
+                      value={localAsrSettingsDraft.audio_converter_binary_path}
+                      onChange={(event) =>
+                        setLocalAsrSettingsDraft((current) => ({
+                          ...current,
+                          audio_converter_binary_path: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="localAsrSetupActions">
+                    <button
+                      className="smallButton quiet"
+                      type="button"
+                      aria-label="保存配置 / Save"
+                      disabled={localAsrSettingsBusy !== ""}
+                      onClick={() => void saveLocalAsrSettings()}
+                    >
+                      <FileText size={14} />
+                      保存配置
+                    </button>
+                    <button
+                      className="smallButton quiet"
+                      type="button"
+                      aria-label="清除配置 / Clear"
+                      disabled={localAsrSettingsBusy !== ""}
+                      onClick={() => void clearLocalAsrSettings()}
+                    >
+                      <X size={14} />
+                      清除配置
+                    </button>
+                    <button
+                      className="smallButton quiet"
+                      type="button"
+                      aria-label="重新检测 / Refresh Status"
+                      disabled={localAsrSettingsBusy !== ""}
+                      onClick={() => void refreshLocalAsrSetup()}
+                    >
+                      <RefreshCw size={14} />
+                      重新检测
+                    </button>
+                  </div>
+                  {localAsrSettingsMessage && <p className="settingHint">{localAsrSettingsMessage}</p>}
+                </div>
+                {(localAsrStatus.safe_binary_name || localAsrStatus.safe_model_name) && (
+                  <p className="settingHint">
+                    {localAsrStatus.safe_binary_name ? `识别程序：${debugText(localAsrStatus.safe_binary_name)}` : ""}
+                    {localAsrStatus.safe_binary_name && localAsrStatus.safe_model_name ? "。" : ""}
+                    {localAsrStatus.safe_model_name ? `模型：${debugText(localAsrStatus.safe_model_name)}` : ""}
+                  </p>
+                )}
+                {localAsrStatus.safe_model_name && (
+                  <p className="settingHint">
+                    模型取舍：{debugText(localAsrStatus.safe_model_name)} 由用户自行配置，ReiLink 不内置模型。base 通常速度和准确率较均衡；tiny 更快但更不准，small / medium / large 可能更准但更慢或超时。
+                  </p>
+                )}
+                <div className="settingRow static">
+                  <span>本地 ASR 检查</span>
+                  <strong>{localAsrProbeStatusText(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</strong>
+                </div>
+                <p className="settingHint">{localAsrProbeHint(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</p>
+                {localAsrProbe && (
+                  <p className="settingHint">
+                    {localAsrProbe.duration_ms} ms
+                    {localAsrProbe.binary_name ? `。识别程序：${debugText(localAsrProbe.binary_name)}` : ""}
+                    {localAsrProbe.model_name ? `。模型：${debugText(localAsrProbe.model_name)}` : ""}
+                  </p>
+                )}
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  aria-label="检查本地 ASR / Check Local ASR"
+                  disabled={!localAsrConfigReady || localAsrProbeChecking}
+                  onClick={() => void checkLocalAsr()}
+                >
+                  <RefreshCw size={14} />
+                  检查本地 ASR
+                </button>
+                <div className="settingRow static">
+                  <span>本地转写测试 / Local Transcribe Test</span>
+                  <strong>
+                    {localAsrTranscriptionStatusText(
+                      localAsrTranscriptionPhase,
+                      localAsrTranscriptionResult,
+                      localAsrConfigReady,
+                      audioCaptureStatus
+                    )}
+                  </strong>
+                </div>
+                <p className="settingHint">
+                  {localAsrTranscriptionHint(
+                    localAsrTranscriptionPhase,
+                    localAsrTranscriptionResult,
+                    localAsrConfigReady,
+                    audioCaptureStatus,
+                    localAsrStatus
+                  )}
+                </p>
+                {localAsrTranscriptionResult && (
+                  <p className="settingHint">
+                    {localAsrTranscriptionResult.transcript_char_count} 字
+                    {`。语言：${debugText(localAsrTranscriptionResult.language)}`}
+                    {localAsrTranscriptionResult.transcript_normalized_to_simplified ? "。已规范为简体中文" : ""}
+                    {localAsrTranscriptionResult.duration_ms ? `。${localAsrTranscriptionResult.duration_ms} ms` : ""}
+                    {localAsrTranscriptionResult.size_bytes ? `。${audioBytesText(localAsrTranscriptionResult.size_bytes)}` : ""}
+                    {`。格式：${audioFormatSummaryText(localAsrTranscriptionResult.mime_type)}`}
+                    {audioFormatConversionHint(localAsrTranscriptionResult.mime_type) ? `。${audioFormatConversionHint(localAsrTranscriptionResult.mime_type)}` : ""}
+                    {`。转换：${audioConversionStatusText(localAsrTranscriptionResult.conversion_status)}`}
+                    {localAsrTranscriptionResult.converted_mime_type ? `。目标格式：${audioFormatSummaryText(localAsrTranscriptionResult.converted_mime_type)}` : ""}
+                    {`。转换工具：${localAsrTranscriptionResult.converter_configured ? "已配置" : "未配置"}`}
+                    {localAsrTranscriptionResult.safe_converter_name ? `。转换器：${debugText(localAsrTranscriptionResult.safe_converter_name)}` : ""}
+                    {`。临时音频已清理：${localAsrTranscriptionResult.temporary_file_cleaned ? "是" : "否"}`}
+                    {`。原始音频已清理：${localAsrTranscriptionResult.temporary_input_cleaned ? "是" : "否"}`}
+                    {`。转换音频已清理：${localAsrTranscriptionResult.temporary_converted_cleaned ? "是" : "否"}`}
+                    {localAsrTranscriptionResult.binary_name ? `。识别程序：${debugText(localAsrTranscriptionResult.binary_name)}` : ""}
+                    {localAsrTranscriptionResult.model_name ? `。模型：${debugText(localAsrTranscriptionResult.model_name)}` : ""}
+                  </p>
+                )}
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  aria-label={localAsrTranscriptionPhase === "recording" ? "停止本地转写录音 / Stop Local Transcribe Recording" : "录音并转写 / Record & Transcribe"}
+                  disabled={localAsrTranscriptionButtonDisabled}
+                  onClick={() => void runLocalAsrTranscription()}
+                >
+                  <Mic size={14} />
+                  {localAsrTranscriptionPhase === "recording" ? "停止录音" : localAsrTranscriptionBusy ? "正在转写" : "录音并转写"}
+                </button>
+                <div className="settingRow static">
+                  <span>录音测试 / Audio Capture Test</span>
+                  <strong>{audioProbeStatusText(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</strong>
+                </div>
+                <p className="settingHint">{audioProbeHint(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</p>
+                {audioProbeResult && (
+                  <p className="settingHint">
+                    {audioBytesText(audioProbeResult.size_bytes)}。临时音频已清理：{audioProbeResult.temporary_file_cleaned ? "是" : "否"}
+                    {`。格式：${audioFormatSummaryText(audioProbeResult.mime_type)}`}
+                    {audioFormatConversionHint(audioProbeResult.mime_type) ? `。${audioFormatConversionHint(audioProbeResult.mime_type)}` : ""}
+                  </p>
+                )}
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  aria-label={audioCaptureStatus.phase === "recording" ? "停止录音 / Stop Recording" : "测试录音 / Test Recording"}
+                  disabled={audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
+                  onClick={() => void runAudioCaptureProbe()}
+                >
+                  <Mic size={14} />
+                  {audioCaptureStatus.phase === "recording" ? "停止录音" : "测试录音"}
+                </button>
+              </div>
               <label className="settingRow">
                 <span>自动启动本地后端</span>
                 <select
@@ -2085,6 +3769,12 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </div>
                   </section>
 
+                  <EventStreamPanel
+                    events={recentEvents}
+                    open={eventStreamOpen}
+                    onOpenChange={setEventStreamOpen}
+                  />
+
                   <section className="debugSection">
                     <h3>游戏上下文</h3>
                     <dl className="debugFacts">
@@ -2254,6 +3944,221 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </section>
 
                   <section className="debugSection">
+                    <h3>语音输入</h3>
+                    <dl className="debugFacts">
+                      <div>
+                        <dt>主输入提供方</dt>
+                        <dd>{mainVoiceInputProviderText(mainVoiceInputProvider)}</dd>
+                      </div>
+                      <div>
+                        <dt>主输入状态</dt>
+                        <dd>{mainVoiceInputStatus}</dd>
+                      </div>
+                      <div>
+                        <dt>主输入可用</dt>
+                        <dd><BooleanBadge value={!mainVoiceInputDisabled} /></dd>
+                      </div>
+                      <div>
+                        <dt>本地语音识别</dt>
+                        <dd>{voiceInputAvailabilityText(voiceInputStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>语音识别功能</dt>
+                        <dd>{voiceInputApiText(voiceInputStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>麦克风权限</dt>
+                        <dd>{voiceInputStatus.diagnostics.microphonePermission}</dd>
+                      </div>
+                      <div>
+                        <dt>运行环境</dt>
+                        <dd>{voiceInputRuntimeText(voiceInputStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>启动状态</dt>
+                        <dd>{debugText(voiceInputStatus.diagnostics.lastStartStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>当前状态</dt>
+                        <dd>{voiceInputPhaseText(voiceInputStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>语言</dt>
+                        <dd>{debugText(voiceInputStatus.language)}</dd>
+                      </div>
+                      <div>
+                        <dt>最近识别字数</dt>
+                        <dd>{voiceInputStatus.lastTranscriptCharacterCount}</dd>
+                      </div>
+                      <div>
+                        <dt>临时识别字数</dt>
+                        <dd>{voiceInputStatus.interimCharacterCount}</dd>
+                      </div>
+                      <div>
+                        <dt>最近错误</dt>
+                        <dd className={voiceInputStatus.lastError ? "debugError" : ""}>
+                          {debugText(voiceInputStatus.lastError)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>本地语音识别</dt>
+                        <dd>{localAsrStatusText(localAsrStatus)}</dd>
+                      </div>
+                      <div>
+                        <dt>本地识别说明</dt>
+                        <dd>{debugText(localAsrStatus.display_message)}</dd>
+                      </div>
+                      <div>
+                        <dt>识别程序</dt>
+                        <dd>{debugText(localAsrStatus.safe_binary_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>模型文件</dt>
+                        <dd>{debugText(localAsrStatus.safe_model_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>音频转换工具</dt>
+                        <dd>{debugText(localAsrSettings.safe_converter_name ?? localAsrStatus.safe_converter_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>配置来源</dt>
+                        <dd>{localAsrSourceText(localAsrSettings.source)}</dd>
+                      </div>
+                      <div>
+                        <dt>配置摘要</dt>
+                        <dd>{debugText(localAsrSettingsSummaryText(localAsrSettings))}</dd>
+                      </div>
+                      <div>
+                        <dt>配置状态</dt>
+                        <dd>
+                          binary {localAsrStatus.binary_configured ? "已配置" : "未配置"} / model {localAsrStatus.model_configured ? "已配置" : "未配置"} / converter {localAsrSettings.converter_configured ? "已配置" : "未配置"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>本地 ASR 检查</dt>
+                        <dd>{localAsrProbeStatusText(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</dd>
+                      </div>
+                      <div>
+                        <dt>检查说明</dt>
+                        <dd>{debugText(localAsrProbeHint(localAsrProbe, localAsrProbeChecking, localAsrConfigReady))}</dd>
+                      </div>
+                      <div>
+                        <dt>检查耗时</dt>
+                        <dd>{localAsrProbe ? `${localAsrProbe.duration_ms} ms` : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写</dt>
+                        <dd>
+                          {localAsrTranscriptionStatusText(
+                            localAsrTranscriptionPhase,
+                            localAsrTranscriptionResult,
+                            localAsrConfigReady,
+                            audioCaptureStatus
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>本地转写说明</dt>
+                        <dd>
+                          {debugText(
+                            localAsrTranscriptionHint(
+                              localAsrTranscriptionPhase,
+                              localAsrTranscriptionResult,
+                              localAsrConfigReady,
+                              audioCaptureStatus,
+                              localAsrStatus
+                            )
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>本地转写字数</dt>
+                        <dd>{localAsrTranscriptionResult?.transcript_char_count ?? 0}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写语言</dt>
+                        <dd>{debugText(localAsrTranscriptionResult?.language)}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写简体规范</dt>
+                        <dd>{localAsrTranscriptionResult ? (localAsrTranscriptionResult.transcript_normalized_to_simplified ? "已规范为简体中文" : "未改写") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写时长</dt>
+                        <dd>{localAsrTranscriptionResult ? `${localAsrTranscriptionResult.duration_ms} ms` : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写大小</dt>
+                        <dd>{localAsrTranscriptionResult ? audioBytesText(localAsrTranscriptionResult.size_bytes) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写格式</dt>
+                        <dd>{localAsrTranscriptionResult ? audioFormatSummaryText(localAsrTranscriptionResult.mime_type) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写格式提示</dt>
+                        <dd>{localAsrTranscriptionResult ? debugText(audioFormatConversionHint(localAsrTranscriptionResult.mime_type), "无") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写转换状态</dt>
+                        <dd>{localAsrTranscriptionResult ? audioConversionStatusText(localAsrTranscriptionResult.conversion_status) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写目标格式</dt>
+                        <dd>{localAsrTranscriptionResult ? debugText(localAsrTranscriptionResult.converted_mime_type, "无") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写转换工具</dt>
+                        <dd>
+                          {localAsrTranscriptionResult
+                            ? `${localAsrTranscriptionResult.converter_configured ? "已配置" : "未配置"}${localAsrTranscriptionResult.safe_converter_name ? ` / ${debugText(localAsrTranscriptionResult.safe_converter_name)}` : ""}`
+                            : "无"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>本地转写临时音频清理</dt>
+                        <dd>{localAsrTranscriptionResult ? (localAsrTranscriptionResult.temporary_file_cleaned ? "是" : "否") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写原始音频清理</dt>
+                        <dd>{localAsrTranscriptionResult ? (localAsrTranscriptionResult.temporary_input_cleaned ? "是" : "否") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>本地转写转换音频清理</dt>
+                        <dd>{localAsrTranscriptionResult ? (localAsrTranscriptionResult.temporary_converted_cleaned ? "是" : "否") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>录音测试</dt>
+                        <dd>{audioProbeStatusText(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</dd>
+                      </div>
+                      <div>
+                        <dt>录音测试说明</dt>
+                        <dd>{debugText(audioProbeHint(audioCaptureStatus, audioProbeUploading, audioProbeResult))}</dd>
+                      </div>
+                      <div>
+                        <dt>录音时长</dt>
+                        <dd>{audioProbeResult ? `${audioProbeResult.duration_ms} ms` : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>录音大小</dt>
+                        <dd>{audioProbeResult ? audioBytesText(audioProbeResult.size_bytes) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>录音格式</dt>
+                        <dd>{audioProbeResult ? audioFormatSummaryText(audioProbeResult.mime_type) : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>录音格式提示</dt>
+                        <dd>{audioProbeResult ? debugText(audioFormatConversionHint(audioProbeResult.mime_type), "无") : "无"}</dd>
+                      </div>
+                      <div>
+                        <dt>临时音频清理</dt>
+                        <dd>{audioProbeResult ? (audioProbeResult.temporary_file_cleaned ? "是" : "否") : "无"}</dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section className="debugSection">
                     <h3>模型路由</h3>
                     <dl className="debugFacts">
                       <div>
@@ -2341,6 +4246,16 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         </dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("knowledge_retrieval_status")}</dt>
+                        <dd>{knowledgeRetrievalStatusText(chatDebug.knowledge_retrieval_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("knowledge_not_used_reason")}</dt>
+                        <dd className={chatDebug.knowledge_not_used_reason ? "debugError" : ""}>
+                          {knowledgeNotUsedReasonText(chatDebug.knowledge_not_used_reason)}
+                        </dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("knowledge_game_display_name")}</dt>
                         <dd>{debugText(chatDebug.knowledge_game_display_name)}</dd>
                       </div>
@@ -2387,12 +4302,24 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{debugText(chatDebug.matched_topics)}</dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("matched_terms")}</dt>
+                        <dd>{debugText(chatDebug.matched_terms)}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("snippets_count")}</dt>
                         <dd>{chatDebug.snippets_count}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("snippet_titles")}</dt>
                         <dd>{debugText(chatDebug.snippet_titles)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("snippet_previews")}</dt>
+                        <dd>{debugText(chatDebug.snippet_previews)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("result_scores")}</dt>
+                        <dd>{debugText(chatDebug.result_scores)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("knowledge_used_in_prompt")}</dt>
@@ -2405,6 +4332,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{Number(chatDebug.knowledge_confidence ?? 0).toFixed(2)}</dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("knowledge_retrieval_min_score")}</dt>
+                        <dd>{Number(chatDebug.knowledge_retrieval_min_score ?? 0).toFixed(0)}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("knowledge_fallback_reason")}</dt>
                         <dd className={chatDebug.knowledge_fallback_reason ? "debugError" : ""}>
                           {debugText(chatDebug.knowledge_fallback_reason)}
@@ -2413,9 +4344,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </dl>
                   </section>
 
-                  <section className="debugSection">
-                    <h3>语义识别</h3>
-                    <dl className="debugFacts">
+	                  <section className="debugSection">
+	                    <h3>语义识别</h3>
+	                    <dl className="debugFacts">
                       <div>
                         <dt>{formatDebugLabel("latest_user_message")}</dt>
                         <dd>{debugText(semanticDebug.latest_user_message)}</dd>
@@ -2462,15 +4393,15 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dt>{formatDebugLabel("latency_ms")}</dt>
                         <dd>{Number(semanticDebug.semantic_extraction_latency_ms || semanticDebug.latency_ms || 0).toFixed(0)}</dd>
                       </div>
-                    </dl>
-                  </section>
+	                    </dl>
+	                  </section>
 
-                  <details className="rawJsonDetails">
-                    <summary>原始 JSON</summary>
-                    <pre className="debugJson">
+	                  <details className="rawJsonDetails">
+	                    <summary>原始 JSON</summary>
+	                    <pre className="debugJson">
                       {JSON.stringify(
                         {
-                          provider_debug: providerDebug,
+                          provider_debug: safeProviderDebug(providerDebug),
                           setup_status: setupStatus,
                           proactive: proactiveStatus,
                           game_context: gameContext,
@@ -2481,7 +4412,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           memory_profile: memoryProfile,
                           pending_memory: pendingMemories,
                           prompt_preview: promptPreview,
-                          backend_runtime: backendRuntimeStatus,
+                          backend_runtime: safeBackendRuntimeDebug(backendRuntimeStatus),
                           settings: {
                             persona_mode: appSettings.persona_mode,
                             debug_panel: appSettings.debug_panel,
@@ -2491,7 +4422,127 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             model_preference: appSettings.model_preference,
                             proactive_companion: appSettings.proactive_companion,
                             proactive_sensitivity: appSettings.proactive_sensitivity,
-                            auto_game_detection: appSettings.auto_game_detection
+                            auto_game_detection: appSettings.auto_game_detection,
+                            voice_output: appSettings.voice_output,
+                            voice_rate: appSettings.voice_rate,
+                            voice_volume: appSettings.voice_volume
+                          },
+                          voice_input: {
+                            main_provider: {
+                              selected: mainVoiceInputProviderText(mainVoiceInputProvider),
+                              status_text: mainVoiceInputStatus,
+                              button_enabled: !mainVoiceInputDisabled,
+                              local_asr_ready: localAsrConfigReady,
+                              web_speech_available: webSpeechVoiceInputAvailable(voiceInputStatus),
+                              audio_capture_supported: audioCaptureStatus.supported,
+                              audio_capture_phase: audioCaptureStatus.phase,
+                              local_asr_transcription_phase: localAsrTranscriptionPhase,
+                              local_asr_transcription_status: localAsrTranscriptionResult?.status ?? null,
+                              local_asr_language: localAsrTranscriptionResult?.language ?? null,
+                              local_asr_transcript_normalized_to_simplified:
+                                localAsrTranscriptionResult?.transcript_normalized_to_simplified ?? null,
+                              local_asr_conversion_status: localAsrTranscriptionResult?.conversion_status ?? null,
+                              local_asr_conversion_required: localAsrTranscriptionResult?.conversion_required ?? null,
+                              local_asr_converter_configured: localAsrTranscriptionResult?.converter_configured ?? null
+                            },
+                            supported: voiceInputStatus.supported,
+                            phase: voiceInputStatus.phase,
+                            language: voiceInputStatus.language,
+                            lastTranscriptCharacterCount: voiceInputStatus.lastTranscriptCharacterCount,
+                            interimCharacterCount: voiceInputStatus.interimCharacterCount,
+                            lastError: voiceInputStatus.lastError,
+                            diagnostics: {
+                              recognitionApiAvailable: voiceInputStatus.diagnostics.recognitionApiAvailable,
+                              hasSpeechRecognition: voiceInputStatus.diagnostics.hasSpeechRecognition,
+                              hasWebkitSpeechRecognition: voiceInputStatus.diagnostics.hasWebkitSpeechRecognition,
+                              hasMediaDevices: voiceInputStatus.diagnostics.hasMediaDevices,
+                              hasGetUserMedia: voiceInputStatus.diagnostics.hasGetUserMedia,
+                              microphonePermission: voiceInputStatus.diagnostics.microphonePermission,
+                              runtimeEnvironment: voiceInputRuntimeText(voiceInputStatus),
+                              lastStartStatus: voiceInputStatus.diagnostics.lastStartStatus
+                            }
+                          },
+                          local_asr: {
+                            status: localAsrStatus.status,
+                            available: localAsrStatus.available,
+                            binary_configured: localAsrStatus.binary_configured,
+                            binary_present: localAsrStatus.binary_present,
+                            binary_executable: localAsrStatus.binary_executable,
+                            model_configured: localAsrStatus.model_configured,
+                            model_present: localAsrStatus.model_present,
+                            converter_configured: localAsrStatus.converter_configured,
+                            source: localAsrStatus.source,
+                            display_message: localAsrStatus.display_message,
+                            safe_binary_name: localAsrStatus.safe_binary_name,
+                            safe_model_name: localAsrStatus.safe_model_name,
+                            safe_converter_name: localAsrStatus.safe_converter_name,
+                            settings: {
+                              configured: localAsrSettings.configured,
+                              binary_configured: localAsrSettings.binary_configured,
+                              model_configured: localAsrSettings.model_configured,
+                              converter_configured: localAsrSettings.converter_configured,
+                              source: localAsrSettings.source,
+                              safe_binary_name: localAsrSettings.safe_binary_name,
+                              safe_model_name: localAsrSettings.safe_model_name,
+                              safe_converter_name: localAsrSettings.safe_converter_name
+                            },
+                            probe: localAsrProbe
+                              ? {
+                                  status: localAsrProbe.status,
+                                  available: localAsrProbe.available,
+                                  display_message: localAsrProbe.display_message,
+                                  binary_name: localAsrProbe.binary_name,
+                                  model_name: localAsrProbe.model_name,
+                                  duration_ms: localAsrProbe.duration_ms
+                                }
+                              : null,
+                            transcription: localAsrTranscriptionResult
+                              ? {
+                                  status: localAsrTranscriptionResult.status,
+                                  available: localAsrTranscriptionResult.available,
+                                  display_message: localAsrTranscriptionResult.display_message,
+                                  transcript_char_count: localAsrTranscriptionResult.transcript_char_count,
+                                  language: localAsrTranscriptionResult.language,
+                                  transcript_normalized_to_simplified:
+                                    localAsrTranscriptionResult.transcript_normalized_to_simplified,
+                                  duration_ms: localAsrTranscriptionResult.duration_ms,
+                                  size_bytes: localAsrTranscriptionResult.size_bytes,
+                                  mime_type: localAsrTranscriptionResult.mime_type,
+                                  audio_format: localAsrTranscriptionResult.audio_format,
+                                  format_summary: audioFormatSummaryText(localAsrTranscriptionResult.mime_type),
+                                  format_warning: audioFormatConversionHint(localAsrTranscriptionResult.mime_type) || null,
+                                  conversion_status: localAsrTranscriptionResult.conversion_status,
+                                  conversion_summary: audioConversionStatusText(localAsrTranscriptionResult.conversion_status),
+                                  conversion_required: localAsrTranscriptionResult.conversion_required,
+                                  converted_mime_type: localAsrTranscriptionResult.converted_mime_type,
+                                  converter_configured: localAsrTranscriptionResult.converter_configured,
+                                  safe_converter_name: localAsrTranscriptionResult.safe_converter_name,
+                                  temporary_file_cleaned: localAsrTranscriptionResult.temporary_file_cleaned,
+                                  temporary_input_cleaned: localAsrTranscriptionResult.temporary_input_cleaned,
+                                  temporary_converted_cleaned: localAsrTranscriptionResult.temporary_converted_cleaned,
+                                  binary_name: localAsrTranscriptionResult.binary_name,
+                                  model_name: localAsrTranscriptionResult.model_name
+                                }
+                              : null
+                          },
+                          audio_capture: {
+                            supported: audioCaptureStatus.supported,
+                            phase: audioCaptureStatus.phase,
+                            last_error: audioCaptureStatus.lastError,
+                            uploading: audioProbeUploading,
+                            probe: audioProbeResult
+                              ? {
+                                  status: audioProbeResult.status,
+                                  available: audioProbeResult.available,
+                                  display_message: audioProbeResult.display_message,
+                                  duration_ms: audioProbeResult.duration_ms,
+                                  size_bytes: audioProbeResult.size_bytes,
+                                  mime_type: audioProbeResult.mime_type,
+                                  format_summary: audioFormatSummaryText(audioProbeResult.mime_type),
+                                  format_warning: audioFormatConversionHint(audioProbeResult.mime_type) || null,
+                                  temporary_file_cleaned: audioProbeResult.temporary_file_cleaned
+                                }
+                              : null
                           },
                           chat: {
                             intent: chatDebug.intent,
@@ -2526,7 +4577,13 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             matched_topics: chatDebug.matched_topics,
                             snippets_count: chatDebug.snippets_count,
                             snippet_titles: chatDebug.snippet_titles,
+                            snippet_previews: chatDebug.snippet_previews,
+                            matched_terms: chatDebug.matched_terms,
+                            result_scores: chatDebug.result_scores,
                             knowledge_used_in_prompt: chatDebug.knowledge_used_in_prompt,
+                            knowledge_retrieval_status: chatDebug.knowledge_retrieval_status,
+                            knowledge_not_used_reason: chatDebug.knowledge_not_used_reason,
+                            knowledge_retrieval_min_score: chatDebug.knowledge_retrieval_min_score,
                             fallback_reason: chatDebug.fallback_reason,
                             last_latency_ms: chatDebug.total_latency_ms,
                             llm_latency_ms: chatDebug.llm_latency_ms,
@@ -2636,6 +4693,16 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <dd>{debugText(knowledgeSummary.knowledge_matched)}</dd>
                     </div>
                     <div>
+                      <dt>{formatDebugLabel("knowledge_retrieval_status")}</dt>
+                      <dd>{knowledgeRetrievalStatusText(knowledgeSummary.retrieval_status)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_not_used_reason")}</dt>
+                      <dd className={knowledgeSummary.not_used_reason ? "debugError" : ""}>
+                        {knowledgeNotUsedReasonText(knowledgeSummary.not_used_reason)}
+                      </dd>
+                    </div>
+                    <div>
                       <dt>{formatDebugLabel("active_game_id")}</dt>
                       <dd>{debugText(knowledgeSummary.active_game_id ?? knowledgeSummary.game_id)}</dd>
                     </div>
@@ -2718,6 +4785,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <dd>{debugText(knowledgeSummary.matched_topics)}</dd>
                     </div>
                     <div>
+                      <dt>{formatDebugLabel("matched_terms")}</dt>
+                      <dd>{debugText(knowledgeSummary.matched_terms)}</dd>
+                    </div>
+                    <div>
                       <dt>{formatDebugLabel("snippets_count")}</dt>
                       <dd>{debugText(knowledgeSummary.snippets_count)}</dd>
                     </div>
@@ -2726,12 +4797,24 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <dd>{debugText(knowledgeSummary.snippet_titles)}</dd>
                     </div>
                     <div>
+                      <dt>{formatDebugLabel("snippet_previews")}</dt>
+                      <dd>{debugText(knowledgeSummary.snippet_previews)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("result_scores")}</dt>
+                      <dd>{debugText(knowledgeSummary.result_scores)}</dd>
+                    </div>
+                    <div>
                       <dt>{formatDebugLabel("knowledge_used_in_prompt")}</dt>
                       <dd>{debugText(knowledgeSummary.knowledge_used_in_prompt)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("confidence")}</dt>
                       <dd>{debugText(knowledgeSummary.confidence)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("knowledge_retrieval_min_score")}</dt>
+                      <dd>{debugText(knowledgeSummary.retrieval_min_score)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("fallback_reason")}</dt>

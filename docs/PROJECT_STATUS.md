@@ -2,13 +2,13 @@
 
 ## 中文
 
-Updated: 2026-06-02
+Updated: 2026-06-06
 
 ### 当前阶段
 
 当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。
 
 v0.2-pre 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示、standalone runtime、本地数据目录、多游戏知识维护和 release readiness 更清晰、更稳定。
 
@@ -48,10 +48,17 @@ dev/codex-reilink
 - Unsupported Game fallback。
 - Game Catalog / Multi-game Knowledge Interface。
 - Knowledge Pack Manifest v1。
+- Knowledge Retrieval：本地 keyword retrieval、grounding / gating、闲聊隔离、显式游戏名切换。
 - Elden Ring sample knowledge pack。
 - Hollow Knight sample knowledge pack。
+- Voice Output：`语音输出 / Voice Output`、Test Voice、rate / volume、中文语音优先和 Event Stream 安全摘要。
+- Voice Input v1 fallback：push-to-talk Web Speech UI、安全 fallback、不自动发送。
+- Main chat Local ASR voice input：Local ASR ready 时主聊天语音按钮优先走本地录音/转写，Web Speech 作为 fallback。
+- Voice Interaction MVP：系统 TTS + 用户配置 Local ASR + transcript-first UX + 隐私安全事件摘要。
+- Event Bus / Event Stream。
 - Prompt Preview。
 - Debug Dashboard。
+- QA / Regression scenarios。
 - UI polish。
 
 ### v0.2-pre 新增 / 补齐能力
@@ -74,6 +81,42 @@ dev/codex-reilink
 - Backend runtime priority：external backend、configured binary、bundled binary、repo fallback。
 - User data dir：packaged app 使用 `~/Library/Application Support/ReiLink/data`。
 - Local Data Controls：Settings 中查看 / 打开本地数据目录，并复用 Demo Reset / reset controls。
+- Audio Capture / Temp File probe。
+- Local ASR staged foundation and main chat integration：feasibility plan、config detection、CLI probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge、whisper-like output parsing hardening、manual setup guide、主聊天语音按钮 provider selection。
+- Local ASR Settings persistence / Setup UI：Settings 中保存、清除、刷新本地 ASR binary / model / converter 路径，保存到用户数据目录并 fallback 到 env。
+
+### 当前 Voice / Local ASR 状态
+
+- Voice Output 已完成并可用：支持 Test Voice、rate / volume、中文语音优先，`tts_started` 只在真实 `utterance.onstart` 后触发，`tts_completed` / `tts_error` 映射到安全中文摘要。
+- Voice Output 当前使用系统 `speechSynthesis`，不是角色级配音；“Rei”等名字和语气可能不自然，后续可研究本地角色 TTS 或更自然的 voice provider，但当前不接商业 TTS。
+- Voice Input v1 已完成 push-to-talk fallback：Web Speech transcript 只填入输入框，不自动发送；未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
+- Electron packaged 环境中的 Web Speech Recognition 服务不可靠，当前不作为稳定主路径；Local ASR ready 时主聊天语音按钮优先使用本地 ASR。
+- Local ASR 已接入主聊天语音按钮：provider selection 为 `local_asr` -> `web_speech` -> `unavailable`；本地转写成功后 transcript 只填入输入框，仍需手动发送。
+- Local ASR v1.1 已补齐输出规范化和 UX polish：`zh-CN` 归一为 whisper `zh`，ASR transcript 返回前 trim / 折叠空白 / 轻量繁转简，成功状态提示 `转写完成，请确认后发送`，timeout 提示可尝试更小模型或更短录音。
+- Local ASR Setup UI v1 已补齐：用户可在 Settings -> Voice Input 保存本地 ASR binary、model 和 converter 路径；用户配置优先，env fallback 次之，完整路径不进入 Event Stream / Debug / Raw JSON。
+- Local ASR v1 已达到 packaged app 可配置 MVP：真实用户手动验证已通过，包括 packaged `.app` 非黑屏、后端自启动、无 shell env 配置、Settings 持久化、重启后配置仍存在、Check Local ASR 可启动、主聊天按钮显示本地语音识别可用。
+- Local ASR release regression checklist 已建立在 `docs/QA.md` 和 `docs/qa/voice_input_local_asr_scenarios.json`，覆盖 packaged clean start、no-env setup、settings persistence、主聊天语音按钮、简体化、不自动发送、隐私和 clear fallback。
+- Local ASR staged foundation 已完成：feasibility plan、config detection、CLI probe、Audio Capture / Temp File probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge 和 whisper-like parsing QA。
+- Audio Format Conversion v1 已支持通过 Settings 用户配置或 `REILINK_AUDIO_CONVERTER_BINARY` fallback 把 WebM/Ogg 等录音格式转为 WAV；未配置或失败时安全短路，不调用 ASR。
+- Local ASR 当前不提交 whisper binary，不提交 model，不提交 ffmpeg / converter binary，不接入云 ASR 或商业 ASR。
+- Local ASR manual setup guide 已新增；真实 whisper.cpp / model / converter 仍由用户手动配置，不随 app 内置。
+- 真实 whisper 手动 smoke 仍是 manual release regression，不是自动测试依赖。
+
+### 当前 Knowledge Retrieval 状态
+
+- Knowledge layer 已从 knowledge pack infrastructure 推进到本地 keyword retrieval 闭环。
+- 已支持 top-k / snippet / context limit、grounding / gating、低相关不注入 prompt、闲聊不强行注入 knowledge。
+- 用户显式游戏名优先于 current game context，跨游戏 query 有隔离。
+- 当前支持 Elden Ring / 艾尔登法环 / 法环 与 Hollow Knight / 空洞骑士 sample packs。
+- QA scenarios 已沉淀在 `docs/qa/retrieval_scenarios.json`，并由 backend tests 校验。
+- 当前没有 embedding、vector database、hybrid retrieval 或外部攻略站 crawling。
+
+### Runtime / Packaging 注意
+
+- packaged `.app` 已多次验证，但 dev renderer 正常不等于 packaged `.app` 正常。
+- 修改 backend binary、schema、runtime、knowledge loading 或 user-visible packaged behavior 时，需要运行 `make package-backend` 和 `make package-desktop`，并做 packaged smoke。
+- `.env`、API key、memory、session、settings、logs 和本地用户数据不复制进 `.app`。
+- packaged app 使用内置只读 resources 与 `~/Library/Application Support/ReiLink/data` 用户数据目录。
 
 ### 后续重点
 
@@ -82,9 +125,13 @@ dev/codex-reilink
 - Code signing / notarization research。
 - Windows packaging。
 - Knowledge pack expansion。
-- Optional RAG / vector retrieval。
-- Optional Voice interaction。
-- Optional Overlay / Live2D。
+- Embedding / hybrid retrieval research。
+- Local ASR native file picker。
+- Local ASR model setup helper。
+- Local ASR accuracy tuning、timeout tuning 和 optional larger model guidance。
+- Character TTS / natural voice output。
+- Overlay v1。
+- Live2D v1。
 - Multi-companion system。
 
 ### 当前数据范围
@@ -102,7 +149,9 @@ dev/codex-reilink
 - Steam login / Steam Web API。
 - 外部抓取攻略站。
 - RAG / vector database / embeddings。
-- Live2D / Voice / Vision / Overlay。
+- Cloud ASR / commercial ASR。
+- Bundled whisper binary、model files 或 ffmpeg binary。
+- Live2D / Vision / Overlay。
 - Multi-character system。
 
 ### 验证基线
@@ -123,13 +172,13 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-02
+Updated: 2026-06-06
 
 ### Current Stage
 
 Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze.
 
 The v0.2-pre focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, standalone runtime, local data directories, multi-game knowledge maintenance, and release readiness clearer and more stable.
 
@@ -169,10 +218,17 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Unsupported Game fallback.
 - Game Catalog / Multi-game Knowledge Interface.
 - Knowledge Pack Manifest v1.
+- Knowledge Retrieval: local keyword retrieval, grounding / gating, casual-chat isolation, and explicit game-name switching.
 - Elden Ring sample knowledge pack.
 - Hollow Knight sample knowledge pack.
+- Voice Output: Voice Output settings, Test Voice, rate / volume, Chinese voice preference, and safe Event Stream summaries.
+- Voice Input v1 fallback: push-to-talk Web Speech UI, safe fallback, and no auto-send.
+- Main chat Local ASR voice input: when Local ASR is ready, the main chat voice button prefers local record/transcribe, with Web Speech kept as fallback.
+- Voice Interaction MVP: system TTS + user-configured Local ASR + transcript-first UX + privacy-safe event summaries.
+- Event Bus / Event Stream.
 - Prompt Preview.
 - Debug Dashboard.
+- QA / Regression scenarios.
 - UI polish.
 
 ### v0.2-pre Additions / Productization Work
@@ -195,6 +251,42 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Backend runtime priority: external backend, configured binary, bundled binary, repo fallback.
 - User data dir: the packaged app uses `~/Library/Application Support/ReiLink/data`.
 - Local Data Controls: Settings can show / open the local data directory and reuse Demo Reset / reset controls.
+- Audio Capture / Temp File probe.
+- Local ASR staged foundation and main chat integration: feasibility plan, config detection, CLI probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, whisper-like output parsing hardening, manual setup guide, and main chat voice provider selection.
+- Local ASR Settings persistence / Setup UI: users can save, clear, and refresh local ASR binary / model / converter paths in Settings; saved user data falls back to env when absent.
+
+### Current Voice / Local ASR Status
+
+- Voice Output is implemented and usable: Test Voice, rate / volume, Chinese voice preference, `tts_started` only after the real `utterance.onstart`, and safe Chinese Event Stream summaries.
+- Voice Output currently uses system `speechSynthesis`, not character-grade voice acting; names like "Rei" and the tone may sound unnatural. A local character TTS or more natural voice provider can be researched later, but commercial TTS is not part of the current scope.
+- Voice Input v1 push-to-talk fallback is implemented: Web Speech transcripts only fill the input and are not auto-sent; unconfirmed transcripts do not enter memory, prompt, knowledge retrieval, or game context.
+- Web Speech Recognition is not reliable in the packaged Electron runtime and is not the stable main path; when Local ASR is ready, the main chat voice button prefers Local ASR.
+- Local ASR is wired into the main chat voice button: provider selection is `local_asr` -> `web_speech` -> `unavailable`; successful local transcripts only fill the input and still require manual send.
+- Local ASR v1.1 now includes transcript output polish: `zh-CN` is normalized to whisper `zh`, ASR transcripts are trimmed / whitespace-collapsed / lightly normalized to Simplified Chinese before filling the input, success asks the user to confirm before sending, and timeouts suggest a smaller model or shorter recording.
+- Local ASR Setup UI v1 is complete: users can save local ASR binary, model, and converter paths from Settings -> Voice Input; saved user settings take priority over env fallback, and full paths stay out of Event Stream / Debug / Raw JSON.
+- Local ASR v1 has reached a packaged-app configurable MVP: real user manual validation has passed for non-black packaged startup, backend auto-start, no-shell-env setup, Settings persistence, restart persistence, Check Local ASR startup, and main-chat local voice availability.
+- Local ASR release regression checklists now live in `docs/QA.md` and `docs/qa/voice_input_local_asr_scenarios.json`, covering packaged clean start, no-env setup, settings persistence, main-chat voice button behavior, Simplified Chinese transcript output, no auto-send, privacy, and clear fallback.
+- Local ASR staged foundation is complete: feasibility plan, config detection, CLI probe, Audio Capture / Temp File probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, and whisper-like parsing QA.
+- Audio Format Conversion v1 can use Settings user configuration or `REILINK_AUDIO_CONVERTER_BINARY` fallback to convert WebM/Ogg-style recordings to WAV; missing or failed converters short-circuit safely and do not call ASR.
+- Local ASR does not commit a whisper binary, model file, ffmpeg / converter binary, cloud ASR, or commercial ASR integration.
+- The Local ASR manual setup guide has been added; real whisper.cpp / model / converter remains user-configured and is not bundled with the app.
+- Real whisper manual smoke remains a manual release regression check and is not an automated test dependency.
+
+### Current Knowledge Retrieval Status
+
+- The knowledge layer has moved from knowledge pack infrastructure to a local keyword retrieval loop.
+- It supports top-k / snippet / context limits, grounding / gating, low-relevance prompt exclusion, and casual-chat isolation.
+- Explicit game names from the user take priority over current game context, with cross-game query isolation.
+- Current sample packs cover Elden Ring and Hollow Knight, including Chinese aliases.
+- QA scenarios live in `docs/qa/retrieval_scenarios.json` and are validated by backend tests.
+- There is no embedding, vector database, hybrid retrieval, or external guide-site crawling yet.
+
+### Runtime / Packaging Notes
+
+- Packaged `.app` has been smoke-tested repeatedly, but a healthy dev renderer does not prove packaged `.app` behavior.
+- When backend binary, schema, runtime, knowledge loading, or user-visible packaged behavior changes, run `make package-backend`, `make package-desktop`, and a packaged smoke test.
+- `.env`, API keys, memory, session, settings, logs, and local user data are not copied into the `.app`.
+- The packaged app uses read-only bundled resources and the user data directory at `~/Library/Application Support/ReiLink/data`.
 
 ### Upcoming Focus
 
@@ -203,9 +295,13 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Code signing / notarization research.
 - Windows packaging.
 - Knowledge pack expansion.
-- Optional RAG / vector retrieval.
-- Optional Voice interaction.
-- Optional Overlay / Live2D.
+- Embedding / hybrid retrieval research.
+- Local ASR native file picker.
+- Local ASR model setup helper.
+- Local ASR accuracy tuning, timeout tuning, and optional larger-model guidance.
+- Character TTS / natural voice output.
+- Overlay v1.
+- Live2D v1.
 - Multi-companion system.
 
 ### Current Data Scope
@@ -223,7 +319,9 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Steam login / Steam Web API.
 - External guide-site crawling.
 - RAG / vector database / embeddings.
-- Live2D / Voice / Vision / Overlay.
+- Cloud ASR / commercial ASR.
+- Bundled whisper binaries, model files, or ffmpeg binaries.
+- Live2D / Vision / Overlay.
 - Multi-character system.
 
 ### Verification Baseline

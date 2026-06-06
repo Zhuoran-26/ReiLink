@@ -1,669 +1,388 @@
 # ReiLink
 
-## 中文
+> 本地优先的 AI 游戏陪伴 Agent 桌面应用。
 
-### 项目简介
+简体中文 | [English](README.en.md)
 
-ReiLink 是一个面向单机游戏玩家的中文 AI Companion 桌面应用。它会结合当前游戏、玩家对话、临时游戏状态、已确认记忆偏好和本地知识包，让一个 Rei-like 的原创低情绪陪伴角色用克制、简短的中文与玩家互动。
+[![Status](https://img.shields.io/badge/status-pre--release-6b5cff)](docs/PROJECT_STATUS.md)
+[![Platform](https://img.shields.io/badge/platform-macOS-111827)](#快速开始)
+[![Desktop](https://img.shields.io/badge/desktop-Electron-47848f)](https://www.electronjs.org/)
+[![Backend](https://img.shields.io/badge/backend-FastAPI-009688)](https://fastapi.tiangolo.com/)
+[![Language](https://img.shields.io/badge/language-TypeScript%20%2F%20Python-3178c6)](#架构概览)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-ReiLink 不是通用 chatbot，也不是纯攻略站。它更接近一个带有游戏上下文的陪伴层：由 AI companion、game context（游戏上下文）、memory（记忆）和 knowledge layer（知识层）共同组成，但最终回复仍保持 LLM-first，由 persona 与模型生成。
+ReiLink 是面向单机游戏玩家的中文 AI 游戏陪伴运行时。它把当前游戏状态、玩家对话、已确认记忆、本地知识包、语音输入输出和调试事件放在同一个桌面应用里，让 companion 在游戏时提供低打扰、上下文相关、克制的回应。
 
-声明：本项目不使用 Evangelion、Rei Ayanami、NERV 或任何官方 IP 元素。
+ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona + LLM 生成；game context、memory 和 knowledge layer 只提供辅助上下文。当前 companion persona 是原创 Rei-like minimal 风格，不使用 Evangelion、Rei Ayanami、NERV 或任何官方 IP 元素。
 
-### 状态
+## 目录
 
-Status: MVP / Pre-release。
+- [ReiLink 是什么](#reilink-是什么)
+- [当前状态](#当前状态)
+- [核心亮点](#核心亮点)
+- [功能矩阵](#功能矩阵)
+- [架构概览](#架构概览)
+- [Agent 回答链路](#agent-回答链路)
+- [Voice Interaction MVP](#voice-interaction-mvp)
+- [Knowledge Retrieval / 本地知识检索](#knowledge-retrieval--本地知识检索)
+- [Local-first 与隐私边界](#local-first-与隐私边界)
+- [快速开始](#快速开始)
+- [Local ASR 配置](#local-asr-配置)
+- [打包与运行时说明](#打包与运行时说明)
+- [文档入口](#文档入口)
+- [路线图](#路线图)
+- [已知限制](#已知限制)
+- [License](#license)
 
-当前公开预发布版本：v0.2-pre（`reilink-v0.2-pre`）。MVP v0.1.1（`reilink-mvp-v0.1.1`）仍是早期公开展示基线；当前开发继续在 `dev/codex-reilink` 上做 runtime / product foundation 补齐。
+## ReiLink 是什么
 
-当前版本适合本地演示、作品集展示和代码审阅。它不是完整商业发布版本，也不包含安装器、云端账号、支付系统或复杂部署流程。
+很多游戏 companion 容易落到两个极端：要么只是普通聊天机器人，要么只是静态攻略查询。ReiLink 想探索中间地带：
 
-Rei 是原创 companion persona。项目不隶属于 Evangelion、FromSoftware、Team Cherry 或相关权利方。Elden Ring / Hollow Knight 仅作为本地 sample knowledge context 展示多游戏知识接口；相关名称与商标归各自权利方所有。
+- 玩家始终掌控输入、发送和记忆写入；
+- companion 保持低情绪、低打扰、短句风格；
+- 本地知识只在相关时提供事实上下文，不把回复变成 wiki dump；
+- 记忆必须经过用户确认；
+- 语音输入是 transcript-first，可编辑、可删除、确认后才发送；
+- 用户数据、设置、知识包和音频处理尽量保留在本机。
 
-### 截图展示 / Screenshots
+当前项目面向本地演示、作品集展示和 runtime / product iteration，不是正式商业安装包。
 
-#### 主聊天界面 / Main Companion Chat
+## 当前状态
 
-![Main Chat](docs/assets/reilink-main-chat.jpeg)
+- 当前开发里程碑：**Voice Interaction MVP / Local ASR v1 packaged configurable MVP**。
+- `dev/codex-reilink` 分支包含最新 Voice / Local ASR / Knowledge Retrieval 进展。
+- 当前开发线已完成：Voice Output、Local ASR 语音输入、主聊天语音按钮、Local ASR Settings 持久化、Knowledge Retrieval 与 QA 回归清单。
+- 公开 release tag 可能滞后于当前 dev 分支；GitHub 更新、release tag、push、merge 仍需要人工 review 后进行。
+- macOS packaged app 已做多轮 smoke，但项目仍处于 pre-release。
 
-![Companion Chat](docs/assets/reilink-companion-chat.jpeg)
+详细状态见 [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)。
 
-#### 可确认记忆 / Confirmable Memory
+## 核心亮点
 
-![Pending Memory](docs/assets/reilink-pending-memory.jpeg)
+- 中文优先的 AI companion chat，原创 minimal persona。
+- [DeepSeek](https://api-docs.deepseek.com/) compatible provider 与 `fast` / `pro` / `auto` 模型路由。
+- Confirmable Memory：长期记忆只在用户接受后写入。
+- Game Context：当前游戏、Boss、进度、挫败状态和手动当前游戏覆盖。
+- 本地知识包：包含 [Elden Ring sample knowledge](data/knowledge/games/elden_ring) 与 [Hollow Knight sample knowledge](data/knowledge/games/hollow_knight)。
+- Knowledge Retrieval v1：本地 keyword retrieval、top-k snippets、grounding / gating、显式游戏名切换和闲聊隔离。
+- Voice Output MVP：系统 TTS，可选开启，安全 Event Stream 生命周期摘要。
+- Voice Input MVP：用户配置 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) compatible binary、model 和 [ffmpeg](https://ffmpeg.org/) compatible converter 后走 Local ASR。
+- Event Stream / Debug Panel：展示安全摘要，不展示 raw prompt、API key、完整路径或完整 transcript。
+- macOS packaged app runtime foundation：bundled backend binary、bundled knowledge resources、用户数据写到 app 外部。
 
-#### 游戏状态 / Game Session State
+## 功能矩阵
 
-![Game Session](docs/assets/reilink-game-session.jpeg)
+| 范围 | 能力 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| Persona | 原创 minimal companion | MVP | 原创 Rei-like persona，不使用官方 IP。 |
+| Dialogue | LLM-first 回复生成 | 已完成 | Game context / memory / knowledge 只提供上下文。 |
+| Memory | 待确认记忆写入 | 已完成 | 只有用户接受后的记忆会进入长期记忆。 |
+| Game Context | Boss / deaths / frustration / session | MVP | Rule-first，必要时结合 LLM semantic fallback。 |
+| Knowledge Retrieval | 本地 keyword retrieval | MVP | 暂无 embeddings / vector DB / hybrid retrieval。 |
+| Voice Output | 系统 TTS | MVP | 可选开启，不是角色级配音。 |
+| Voice Input | Local ASR | MVP | 需要用户手动配置 binary / model / converter。 |
+| Event Stream | 安全生命周期事件 | 已完成 | 不显示 raw prompt、API key、完整路径、完整 transcript。 |
+| Packaging | macOS `.app` | MVP | 用户数据写在 `.app` 外部；当前为未签名本地构建。 |
+| Overlay | 游戏内 overlay | 计划中 | 尚未实现。 |
+| Live2D | Avatar layer | 计划中 | 尚未实现。 |
+| Embedding / Hybrid RAG | Vector / hybrid retrieval | 计划中 | 当前 retrieval 是 keyword-based。 |
 
-#### 多游戏知识库 / Multi-game Knowledge
+## 架构概览
 
-![Elden Ring Knowledge](docs/assets/reilink-knowledge-elden-ring.jpeg)
+ReiLink 使用 [Electron](https://www.electronjs.org/) desktop shell、[React](https://react.dev/) / [TypeScript](https://www.typescriptlang.org/) / [Vite](https://vite.dev/) renderer，以及本地 [FastAPI](https://fastapi.tiangolo.com/) backend。packaged app 通过 [PyInstaller](https://pyinstaller.org/) 打包 backend binary。下方图表使用 [Mermaid](https://mermaid.js.org/)，可在 GitHub README 直接渲染。
 
-![Hollow Knight Knowledge](docs/assets/reilink-knowledge-hollow-knight.jpeg)
+```mermaid
+flowchart LR
+  Player["玩家"] --> UI["React Renderer<br/>聊天 / 设置 / 调试"]
+  UI --> Events["Event Bus<br/>安全事件摘要"]
+  UI --> VoiceOut["Voice Output<br/>系统 TTS"]
+  UI --> Audio["Voice Input<br/>MediaRecorder"]
 
-#### 未支持游戏兜底 / Unsupported Game Fallback
+  subgraph Desktop["Electron Desktop"]
+    UI
+    Events
+    VoiceOut
+    Audio
+  end
 
-![Knowledge Fallback](docs/assets/reilink-knowledge-fallback.jpeg)
+  UI --> API["FastAPI Backend"]
+  Audio --> API
 
-#### 主动陪伴 / Proactive Companion
+  subgraph Runtime["Backend Runtime"]
+    API --> Agent["Dialogue Agent"]
+    Agent --> Persona["Persona"]
+    Agent --> Memory["Confirmed Memory"]
+    Agent --> Game["Game Context"]
+    Agent --> Retrieval["Knowledge Retrieval"]
+    Agent --> Router["Model Router"]
+    API --> ASR["Local ASR Bridge"]
+    ASRSettings["Local ASR Settings"] --> ASR
+    ASR --> TempAudio["Temporary Audio Files<br/>默认处理后清理"]
+    ASR --> Converter["Audio Converter<br/>ffmpeg-compatible"]
+    ASR --> Whisper["Local ASR Binary<br/>whisper.cpp-compatible"]
+  end
 
-![Proactive Companion](docs/assets/reilink-proactive.jpeg)
+  Retrieval --> Packs["Bundled Knowledge Packs"]
+  Memory --> UserData["Local User Data"]
+  UserData --> ASRSettings
+  Router --> DeepSeek["DeepSeek-compatible API"]
 
-#### 回复上下文与调试 / Context Preview and Debug
+  Packs -. "只读资源" .-> Runtime
+  UserData -. "本地保存" .-> Runtime
+```
 
-![Context Preview](docs/assets/reilink-context-preview.jpeg)
+Renderer 负责用户交互、语音录制、系统 TTS 和安全事件展示。Backend 负责 Agent runtime、knowledge retrieval、memory、game context、model routing、Local ASR subprocess 边界和用户数据目录。Local ASR settings 保存在 Local User Data 中；Local ASR 使用短时 temporary audio files，默认处理后清理。transcript 只回填输入框，不会自动进入 memory、prompt、knowledge retrieval 或 game context。Local-first 指本地用户数据、本地记忆、本地设置、本地知识包、音频处理和 Local ASR 优先保存在本机；LLM 推理目前仍可通过用户配置的 DeepSeek-compatible provider 完成。
 
-![Debug Panel](docs/assets/reilink-debug-panel.jpeg)
+## Agent 回答链路
 
-### 功能介绍
+ReiLink 的一次回复不是“用户消息直接丢给 chatbot”。它会先整理游戏上下文、记忆候选、本地知识和模型路由，再组装 prompt。
 
-- 中文 AI companion chat（中文陪伴聊天）
-- Rei-like original minimal persona（原创 minimal 人格）
-- DeepSeek provider（DeepSeek 模型提供方）
-- Model routing（模型路由）：`fast` / `pro` / `auto`
-- Multi-part replies（分段回复）
-- Pending memory confirmation（待确认记忆）
-- Game session state（游戏会话状态）
-- Semantic extraction（语义识别）
-- Proactive companion trigger（低频主动陪伴触发）
-- Local game detection（本地游戏检测）
-- Manual game context override（手动当前游戏覆盖）
-- Multi-game knowledge catalog（多游戏知识目录）
-- Knowledge pack manifest（知识包清单）
-- Elden Ring 与 Hollow Knight sample knowledge packs（样例知识包）
-- Debug dashboard（调试面板）
-- Prompt / context preview（回复上下文预览）
-- Settings panel（设置面板）
-- Local-first memory and session state（本地优先的记忆与会话状态）
-- Standalone App Packaging v1（独立应用本地打包 v1）
-- Bundled backend binary 与 bundled knowledge resources（内置后端 binary 与知识资源）
-- Local Data Controls（本地数据查看、打开目录与安全重置入口）
+```mermaid
+flowchart TD
+  U["用户消息"] --> GC["游戏上下文提取"]
+  U --> MC["记忆候选检测"]
+  U --> KR["本地知识检索"]
 
-### 技术栈
+  GC --> CTX["当前回合上下文"]
+  MC --> PM["待确认记忆<br/>用户 accept 后才写入"]
+  KR --> KG["Top-k 本地知识片段"]
 
-Backend:
+  Persona["Persona"] --> Prompt["Prompt 组装"]
+  LongMemory["Confirmed Memory<br/>长期记忆"] --> Prompt
+  CTX --> Prompt["Prompt 组装"]
+  KG --> Prompt
+  Prompt --> Router["模型路由<br/>fast / pro / auto"]
+  Router --> LLM["DeepSeek-compatible Provider"]
+  LLM --> Reply["Rei 回复"]
 
-- Python
-- FastAPI
-- JSON / JSONL local state
-- DeepSeek-compatible provider
+  Reply --> UI2["聊天界面"]
+  Reply --> TTS["可选语音输出"]
+  Reply --> ES["Event Stream<br/>安全摘要"]
 
-Desktop:
+  PM -. "用户确认后" .-> LongMemory
+```
 
-- Electron
-- React
-- TypeScript
-- Vite
+Prompt 会同时使用 persona、confirmed memory、当前回合上下文和相关 knowledge snippets。Memory 不会自动写入；knowledge 只有相关时注入；闲聊不会强行触发 retrieval；Event Stream 只展示安全摘要。
 
-Tests:
+## Voice Interaction MVP
 
-- pytest
-- Vitest
-- React Testing Library
-- Playwright
+ReiLink 的 Voice Interaction MVP 是保守路线：可选语音输出、用户触发语音输入、transcript-first 确认发送。它不是完整自然语音助手。
 
-### 架构概览
+### Voice Output
 
-主要 backend 模块：
+- 使用本机系统 `speechSynthesis`。
+- 可选开启，默认关闭。
+- 不接商业 TTS provider。
+- 支持 Test Voice、rate、volume、Stop Voice。
+- Event Stream 只记录安全生命周期摘要。
+- 已知限制：声音不够角色化，可能念错 Rei 或游戏专有名词。
 
-- `persona_engine`：加载 persona 配置并构建系统提示。
-- `dialogue_agent`：编排设置、游戏状态、知识、模型路由、provider 调用和 debug 数据。
-- `game_session`：维护当前游戏、Boss、进度和临时状态。
-- `memory`：维护待确认记忆和已接受长期记忆。
-- `semantic_extraction`：从用户消息中识别游戏状态和记忆候选。
-- `game_knowledge` / `knowledge`：基于 catalog 与 snippets 提供事实上下文。
-- `game_detector`：本地进程 / 应用名检测当前游戏。
-- `proactive`：低频主动陪伴触发与冷却控制。
-- `app_settings`：持久化用户设置。
+### Voice Input / Local ASR
 
-主要 desktop 区域：
+- Web Speech fallback 在 Electron packaged app 中不可靠。
+- Local ASR 是当前稳定主路径。
+- 用户在 Settings 配置 ASR binary、model 和 converter。
+- transcript 只填入输入框，用户确认后才发送。
+- 不上传音频到云 ASR。
+- 默认不保存音频。
+- 不做 wake word / continuous listening。
+- 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context extraction。
 
-- Chat UI（聊天）
-- Settings（设置）
-- Pending Memory（待确认记忆）
-- Game Session / Game Context Debug（游戏状态与上下文）
-- Prompt Preview（回复上下文预览）
-- Knowledge Debug（知识层调试）
+```mermaid
+sequenceDiagram
+  participant User as 用户
+  participant UI as Renderer
+  participant Backend as FastAPI Backend
+  participant Settings as Local ASR Settings
+  participant Converter as Audio Converter
+  participant ASR as Local ASR Binary
 
-### 快速启动 / Quick Start
+  User->>UI: 点击主聊天语音按钮
+  UI->>UI: 录制短音频
+  UI->>Backend: 上传 audio blob
+  Backend->>Settings: 解析 ASR / model / converter 配置
+  Backend->>Backend: 写入临时音频
+  alt WebM / Ogg 输入
+    Backend->>Converter: 转换为 16kHz mono WAV
+    Converter-->>Backend: 返回 WAV
+  end
+  Backend->>ASR: 本地转写
+  ASR-->>Backend: transcript output
+  Backend->>Backend: 清理临时文件
+  Backend-->>UI: 返回安全 transcript response
+  UI->>UI: 填入可编辑输入框
+  User->>UI: 用户确认后手动发送
+```
 
-Makefile 已提供常用命令。
+在用户确认发送前，transcript 不会进入 memory、prompt、knowledge retrieval 或 game context extraction。
 
-1. 创建 backend 虚拟环境并安装依赖：
+如果 ASR 未配置、converter 未配置、转写失败、超时或没有文本，流程会安全失败：不会自动发送，不会写入 memory / prompt / retrieval / game context，Event Stream / Debug 只显示安全摘要。
+
+详细配置见 [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md)，发布回归见 [`docs/QA.md`](docs/QA.md)。
+
+## Knowledge Retrieval / 本地知识检索
+
+当前 retrieval 是本地 keyword retrieval，不是 embedding / vector search。
+
+- 支持 sample packs：Elden Ring / 艾尔登法环、Hollow Knight / 空洞骑士。
+- 状态包括 `used`、`not_found`、`below_threshold`、`no_pack`、`not_game_related`。
+- grounding / gating 会阻止低相关知识注入 prompt。
+- 闲聊不会强行注入 knowledge。
+- 用户显式游戏名优先于 current game context。
+
+知识包位于 [`data/knowledge/games`](data/knowledge/games)，新增知识包规范见 [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md)。
+
+## Local-first 与隐私边界
+
+- 本地 memory、session、settings、logs 写入用户数据目录，不写入 packaged app resources。
+- packaged app 用户数据目录：`~/Library/Application Support/ReiLink/data`。
+- Local ASR settings 示例路径：`~/Library/Application Support/ReiLink/data/local_asr_settings.json`。
+- API keys 和本地环境文件不会打包进 `.app`。
+- Pending memory 必须由用户确认。
+- Local ASR 音频是短时临时文件，处理后清理。
+- Event Stream / Debug / Raw JSON 不展示 raw prompt、完整 transcript、raw subprocess output、API key、完整本地路径、audio content 或 base64 audio。
+- Local-first 指本地数据、本地设置、本地知识包和本地 ASR 优先留在本机；不代表当前所有 LLM 推理都离线。
+
+## 快速开始
+
+### 1. 环境要求
+
+- macOS：当前 packaged app 路径以 macOS 为主。
+- Python backend 环境。
+- Node.js / npm desktop 环境。
+- 可选：真实 LLM provider 凭据。
+- 可选：Local ASR 所需 whisper.cpp-compatible binary、model file、converter。
+
+### 2. Backend / Desktop 开发模式
 
 ```bash
 make install-backend
-```
-
-2. 安装 desktop 依赖：
-
-```bash
 make install-desktop
-```
-
-3. 配置 backend 环境变量，手动创建 `services/backend/.env`，不要提交真实 key。可先参考下方“环境变量”。
-
-4. 运行本地环境检查：
-
-```bash
 make doctor
-```
-
-5. 启动 backend：
-
-```bash
 make dev-backend
-```
-
-6. 启动 desktop / Electron dev：
-
-```bash
 make dev-desktop
 ```
 
-首次打开会在聊天区看到 Quick Start / 新手引导。它只写入本地 settings 中的完成状态，不会写入长期记忆，也不会进入待确认记忆；之后可在 Settings 里点“新手引导：重新查看”再次打开。
+`make dev` 不管理长进程；请分别启动 backend 和 desktop。
 
-如果只想启动 Vite renderer：
+### 3. Provider 配置
 
-```bash
-cd apps/desktop
-npm run dev
-```
+在本地 backend 环境配置 LLM provider。不要提交真实 key 或本地环境文件。无 key 本地演示可使用 `LLM_PROVIDER=mock`。
 
-`make dev` 不做复杂进程管理，只会提示分别运行 `make dev-backend` 和 `make dev-desktop`。
-
-### 本地打包 / Local Packaging
-
-生成本地未签名的 macOS Electron app：
-
-```bash
-make package-backend
-make package-desktop
-```
-
-`make package-backend` 会用 PyInstaller 生成 backend binary。`make package-desktop` 会构建 Electron app，并把 backend binary、`data/knowledge/games` 知识资源，以及 persona / game registry 等只读 runtime resources 复制进 `.app` 的只读 resources。
-
-packaged app 会按以下优先级连接或启动后端：
-
-1. 外部已经运行且健康的 backend。
-2. `REILINK_BACKEND_BINARY` 指定的 backend binary。
-3. `.app/Contents/Resources/backend/reilink-backend` 内置 backend binary。
-4. repo-local backend fallback。
-
-当前打包是 macOS 本地未签名开发构建，用于展示、截图、录屏或 release artifact 预演；它不是正式 installer，没有 code signing、notarization、DMG installer 或 auto updater。产物默认生成在 `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`。macOS 可能提示应用未签名，需要在本机允许打开。
-
-`.env`、API key、memory、session 和用户数据不会被复制进 `.app`。
-
-### 后端运行时 / Backend Runtime
-
-Desktop app 会访问 `http://127.0.0.1:8000`。如果该地址已有健康的外部 ReiLink backend，app 会复用它，不会重复启动，也不会在退出时杀掉外部 backend。
-
-如果没有外部 backend，app 会自动启动可用的 backend runtime。packaged app 优先启动内置 backend binary；开发模式可回退到 repo-local backend。app 退出时会清理由自己启动的 backend 进程，并释放 8000 端口。
-
-后端健康检查：
+健康检查：
 
 ```bash
 curl http://127.0.0.1:8000/api/health
 curl http://127.0.0.1:8000/api/setup/status
 ```
 
-### 常用命令 / Common Commands
+### 4. 可选 Local ASR 配置
 
-```bash
-make doctor
-make dev-backend
-make dev-desktop
-make package-backend
-make test-backend
-make test-desktop
-make test
-make lint
-make typecheck
-make package-desktop
-```
+真实 Local ASR 需要用户自行准备本地工具，并放在 repo 和 packaged app 外部：
 
-说明：
+- whisper.cpp-compatible CLI binary
+- compatible local model file
+- 用于 browser WebM / Ogg 录音的 ffmpeg-like converter
 
-- `make doctor`：检查本地环境，不启动长进程。
-- `make dev-backend`：启动 FastAPI backend。
-- `make dev-desktop`：启动 Electron dev shell。
-- `make package-backend`：用 PyInstaller 生成本地 backend binary。
-- `make test`：运行 backend + desktop tests。
-- `make lint`：运行 desktop lint 和 `git diff --check`。
-- `make typecheck`：当前等同于 desktop build。
-- `make package-desktop`：生成本地未签名的 macOS Electron app，并打入 backend binary 与 bundled knowledge resources。
+然后在 Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 中填入路径。详细步骤见 [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md)。
 
-常见启动问题见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
-
-### 环境变量
-
-示例配置，放在 `services/backend/.env`：
-
-```bash
-LLM_PROVIDER=deepseek
-DEEPSEEK_API_KEY=
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL_FAST=
-DEEPSEEK_MODEL_PRO=
-MODEL_PREFERENCE=auto
-PERSONA_MODE=minimal
-PROACTIVE_COMPANION=off
-PROACTIVE_SENSITIVITY=low
-AUTO_GAME_DETECTION=on
-```
-
-不要在仓库中提交真实 API key。`LLM_PROVIDER=mock` 可用于无 key 的本地演示。
-
-### 首次启动 / 模型配置
-
-第一次启动时，desktop 会读取 backend setup status。如果 DeepSeek API Key 未加载，聊天区会显示“需要完成模型配置”，设置中只显示 API Key 状态，不显示真实 key。
-
-确认 setup status：
-
-```bash
-curl http://127.0.0.1:8000/api/setup/status
-```
-
-正常配置后应看到：
-
-```json
-{
-  "provider": "deepseek",
-  "provider_configured": true,
-  "api_key_loaded": true,
-  "needs_setup": false,
-  "missing_items": []
-}
-```
-
-如果 `DEEPSEEK_API_KEY` 缺失，`needs_setup` 会是 `true`，`missing_items` 会包含 `DEEPSEEK_API_KEY`。响应不会返回真实 API key。
-
-### 隐私与本地数据
-
-- `.env`、`*.env` 和 `services/backend/.env` 不应提交。
-- API key 通过本地环境变量或 `services/backend/.env` 配置，不会内置进 `.app`。
-- packaged app 的用户数据目录是 `~/Library/Application Support/ReiLink/data`。
-- memory / session / settings / logs 写入用户数据目录，不写入 `.app/Contents/Resources`。
-- `.app` resources 只保存只读资源，例如 bundled knowledge、persona runtime resources 和 backend binary。
-- Settings 中的“本地数据 / Local Data”可以查看并打开本地数据目录，也可以执行安全的演示状态重置操作。
-- repo dev 模式下，未显式设置 `REILINK_DATA_DIR` 时会使用 repo-local `data` 目录。
-- `data/memory/*` 保存本地长期记忆数据，不应提交。
-- `data/session/*` 保存本地临时会话状态，不应提交。
-- Pending memory（待确认记忆）必须由用户接受后才会进入长期记忆。
-- Pending memory 不会直接注入 prompt。
-- ReiLink 不会自动上传用户记忆或会话状态。
-- 本地 knowledge packs 只提供事实上下文，不直接生成 Rei 的最终回复。
-
-### License
-
-ReiLink 使用 MIT License，见 [LICENSE](LICENSE)。
-
-### 知识包结构
-
-知识层使用本地 JSON 文件，不使用外部抓取、Steam API、RAG 或 vector database。
-
-关键路径：
-
-- `data/knowledge/games/catalog.json`：游戏目录。`game_id` 表示游戏 ID，`display_name` 表示显示名称，`support_status` 表示支持状态。
-- `data/knowledge/games/{game_id}/manifest.json`：知识包清单。`version` 表示版本，`language` 表示语言，`coverage` 表示覆盖范围。
-- `data/knowledge/games/{game_id}/snippets.json`：简短事实片段。
-
-新增游戏知识包见 [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md)。
-
-知识包校验工具：
-
-```bash
-make validate-knowledge
-```
-
-该命令会检查 catalog、supported 游戏的 manifest 与 snippets 结构。`planned` / `detected_only` 游戏暂未接入知识包时只会输出 warning，不会让校验失败。
-
-当前 sample packs：
-
-- Elden Ring / 艾尔登法环
-- Hollow Knight / 空洞骑士
-
-知识层只提供 factual context（事实上下文）。Rei 的最终表达仍由 persona + LLM 生成，避免变成攻略站。
-
-### 当前限制
-
-- 目前只有 Elden Ring 与 Hollow Knight 的样例知识包，不是完整攻略库。
-- Game detector 仍是轻量本地进程 / 应用名检测。
-- backend binary 由 PyInstaller 生成，当前是 macOS 本地未签名开发构建。
-- 当前没有 code signing / notarization / DMG installer / auto updater。
-- 当前不是 App Store 应用或正式安装包。
-- Windows / Linux 打包尚未完成。
-- API key 仍通过本地环境或 `.env` 配置，不会内置进 App。
-- 没有 Live2D / Voice / Vision / Overlay。
-- 没有完整 RAG、embedding 或 vector database。
-- 多游戏知识库仍处于样例阶段。
-- “这个 / 那个 / 刚才说的游戏”这类指代表达仍有已知限制，未来需要 Recent Entity Tracker 或 LLM semantic resolver。
-
-### Roadmap（路线图）
-
-- RAG / vector search
-- Steam library integration
-- Voice interaction
-- Live2D / overlay
-- Multi-companion system
-- Richer game knowledge packs
-- Better entity resolution
-
-## English
-
-### Project Overview
-
-ReiLink is a Chinese-first desktop AI companion for single-player game players. It combines the active game, user conversation, temporary game state, accepted memory preferences, and local knowledge packs so an original Rei-like minimal companion can respond in restrained, concise Chinese.
-
-It is not a generic chatbot and not a pure guide site. ReiLink is designed as an AI companion with game context, memory, and a factual knowledge layer. Final replies remain LLM-first and are generated through the persona and model.
-
-This project does not use Evangelion, Rei Ayanami, NERV, or any official IP elements.
-
-### Status
-
-Status: MVP / Pre-release.
-
-Current public pre-release: v0.2-pre (`reilink-v0.2-pre`). MVP v0.1.1 (`reilink-mvp-v0.1.1`) remains the earlier public showcase baseline; active development continues on `dev/codex-reilink` for runtime / product foundation work.
-
-The current version is suitable for local demos, portfolio presentation, and code review. It is not a full commercial release and does not include an installer, cloud accounts, payments, or complex deployment flows.
-
-Rei is an original companion persona. This project is not affiliated with Evangelion, FromSoftware, Team Cherry, or their rights holders. Elden Ring / Hollow Knight are used only as local sample knowledge contexts to demonstrate the multi-game knowledge interface; related names and trademarks belong to their respective owners.
-
-### Screenshots
-
-The bilingual screenshot showcase above uses repository assets under `docs/assets/` for GitHub, portfolio, and interview presentation.
-
-### Key Features
-
-- Chinese AI companion chat
-- Original Rei-like minimal persona
-- DeepSeek model provider
-- Model routing: `fast` / `pro` / `auto`
-- Multi-part replies
-- Pending memory confirmation
-- Game session state
-- Semantic extraction
-- Proactive companion trigger
-- Local game detection
-- Manual game context override
-- Multi-game knowledge catalog
-- Knowledge pack manifest
-- Elden Ring and Hollow Knight sample knowledge packs
-- Debug dashboard
-- Prompt / context preview
-- Settings panel
-- Local-first memory and session state
-- Standalone App Packaging v1
-- Bundled backend binary and bundled knowledge resources
-- Local Data Controls for inspecting, opening, and safely resetting local data
-
-### Tech Stack
-
-Backend:
-
-- Python
-- FastAPI
-- JSON / JSONL local state
-- DeepSeek-compatible provider
-
-Desktop:
-
-- Electron
-- React
-- TypeScript
-- Vite
-
-Tests:
-
-- pytest
-- Vitest
-- React Testing Library
-- Playwright
-
-### Architecture
-
-Main backend modules:
-
-- `persona_engine`: loads persona configuration and builds system prompt context.
-- `dialogue_agent`: orchestrates settings, game state, knowledge, model routing, provider calls, and debug data.
-- `game_session`: tracks active game, boss, progress, and temporary session state.
-- `memory`: separates pending memory from accepted long-term memory.
-- `semantic_extraction`: extracts game-state and memory-candidate signals from user messages.
-- `game_knowledge` / `knowledge`: provides factual context through catalog and snippets.
-- `game_detector`: detects the active game from local process or app names.
-- `proactive`: handles low-frequency proactive companion triggers and cooldowns.
-- `app_settings`: persists user-facing settings.
-
-Main desktop areas:
-
-- Chat UI
-- Settings
-- Pending Memory
-- Game Session / Game Context Debug
-- Prompt Preview
-- Knowledge Debug
-
-### Quick Start
-
-The Makefile includes the common development commands.
-
-1. Create the backend virtual environment and install dependencies:
-
-```bash
-make install-backend
-```
-
-2. Install desktop dependencies:
-
-```bash
-make install-desktop
-```
-
-3. Configure backend environment variables by creating `services/backend/.env` manually. Do not commit real keys. See "Environment Variables" below.
-
-4. Run the local environment check:
-
-```bash
-make doctor
-```
-
-5. Start the backend:
-
-```bash
-make dev-backend
-```
-
-6. Start the desktop / Electron dev shell:
-
-```bash
-make dev-desktop
-```
-
-On first open, the chat area shows a Quick Start onboarding card. It only stores completion state in local settings, does not write long-term memory, and does not create pending memory; it can be reopened from Settings.
-
-To start the Vite renderer only:
-
-```bash
-cd apps/desktop
-npm run dev
-```
-
-`make dev` does not manage long-running processes. It prints the two commands to run in separate terminals: `make dev-backend` and `make dev-desktop`.
-
-### Local Packaging
-
-Build an unsigned local macOS Electron app:
+### 5. 打包
 
 ```bash
 make package-backend
 make package-desktop
 ```
 
-`make package-backend` builds the backend binary with PyInstaller. `make package-desktop` builds the Electron app and copies the backend binary, `data/knowledge/games` knowledge resources, and read-only runtime resources such as persona data and the game registry into the app's read-only resources.
+本地未签名 macOS app 会生成在 `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`。
 
-The packaged app connects to or starts the backend in this order:
+## Local ASR 配置
 
-1. An already-running healthy external backend.
-2. The backend binary specified by `REILINK_BACKEND_BINARY`.
-3. The bundled backend binary at `.app/Contents/Resources/backend/reilink-backend`.
-4. A repo-local backend fallback.
+配置优先级：
 
-This is an unsigned local macOS development build for demos, screenshots, recordings, or release artifact dry runs. It is not a formal installer and does not include code signing, notarization, a DMG installer, or an auto updater. The default output is `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`. macOS may warn that the app is unsigned, so you may need to allow it locally.
+1. Settings 用户配置。
+2. Local ASR 环境变量 fallback。
+3. 未配置安全 fallback。
 
-`.env` files, API keys, memory, session state, and user data are not copied into the `.app`.
+Settings API 只返回 configured booleans、source 和 basename；完整路径只保存在本地配置文件中，或出现在用户主动编辑的输入框中。ReiLink 不内置、不自动获取，也不会随项目提供 whisper binary、model、ffmpeg 或第三方可执行文件。
 
-### Backend Runtime
+## 打包与运行时说明
 
-The desktop app talks to `http://127.0.0.1:8000`. If that address already has a healthy external ReiLink backend, the app reuses it, does not start a duplicate backend, and does not kill the external backend when quitting.
+packaged app backend 优先级：
 
-If no external backend is available, the app automatically starts an available backend runtime. The packaged app prefers the bundled backend binary; development mode can fall back to the repo-local backend. When the app quits, it cleans up backend processes it started itself and releases port 8000.
+1. `127.0.0.1:8000` 上健康的外部 backend。
+2. 用户配置的 backend binary。
+3. `.app` 内 bundled backend binary。
+4. dev 模式下 repo-local fallback。
 
-Backend health checks:
+packaged resources 是只读资源。memory、session、settings、logs 和 Local ASR settings 都保存在 `.app` 外部。当前 macOS app 是本地未签名构建，不包含 installer、notarization、auto updater 或 Windows / Linux 打包。
 
-```bash
-curl http://127.0.0.1:8000/api/health
-curl http://127.0.0.1:8000/api/setup/status
-```
+## 文档入口
 
-### Common Commands
+| 文档 | 用途 |
+| --- | --- |
+| [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) | 当前项目状态与范围。 |
+| [`docs/QA.md`](docs/QA.md) | 手动 QA 与 release regression checklist。 |
+| [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) | 真实 Local ASR 配置与 smoke flow。 |
+| [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Local ASR 设计背景与实现说明。 |
+| [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Voice Interaction MVP release notes 草稿。 |
+| [`docs/qa/retrieval_scenarios.json`](docs/qa/retrieval_scenarios.json) | Knowledge Retrieval 机器可读回归场景。 |
+| [`docs/qa/voice_input_scenarios.json`](docs/qa/voice_input_scenarios.json) | Voice Input fallback 机器可读回归场景。 |
+| [`docs/qa/voice_input_local_asr_scenarios.json`](docs/qa/voice_input_local_asr_scenarios.json) | Local ASR release regression 场景。 |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | 常见启动和运行问题。 |
 
-```bash
-make doctor
-make dev-backend
-make dev-desktop
-make package-backend
-make test-backend
-make test-desktop
-make test
-make lint
-make typecheck
-make package-desktop
-```
+## 路线图
 
-Notes:
+### v0.2 Runtime Foundation
 
-- `make doctor`: checks the local environment without starting long-running processes.
-- `make dev-backend`: starts the FastAPI backend.
-- `make dev-desktop`: starts the Electron dev shell.
-- `make package-backend`: builds the local backend binary with PyInstaller.
-- `make test`: runs backend + desktop tests.
-- `make lint`: runs desktop lint and `git diff --check`.
-- `make typecheck`: currently runs the desktop build.
-- `make package-desktop`: builds an unsigned local macOS Electron app with the backend binary and bundled knowledge resources.
+当前开发线已基本完成该阶段的 MVP 能力。
 
-For common startup issues, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+- Voice Output MVP。
+- Local ASR Voice Input MVP。
+- Knowledge Retrieval v1。
+- Event Stream / Debug privacy guardrails。
+- Packaged app runtime foundation。
 
-### Environment Variables
+### v0.2.x Stabilization
 
-Example `services/backend/.env`:
+- Local ASR native file picker。
+- Local ASR setup helper。
+- ASR accuracy / timeout tuning。
+- More robust QA regression flows。
 
-```bash
-LLM_PROVIDER=deepseek
-DEEPSEEK_API_KEY=
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL_FAST=
-DEEPSEEK_MODEL_PRO=
-MODEL_PREFERENCE=auto
-PERSONA_MODE=minimal
-PROACTIVE_COMPANION=off
-PROACTIVE_SENSITIVITY=low
-AUTO_GAME_DETECTION=on
-```
+### v0.3 Gameplay Presence
 
-Never commit real API keys. `LLM_PROVIDER=mock` can be used for local demos without a key.
+- Overlay v1。
+- 更好的游戏会话感知。
+- 低打扰 proactive companion display。
 
-### First Run / Provider Setup
+### v0.4 Character Presence
 
-On first launch, the desktop app reads the backend setup status. If the DeepSeek API key is not loaded, the chat area shows a lightweight setup prompt, and Settings only shows the API key status without revealing the key value.
+- Live2D avatar layer。
+- Character state machine。
+- 更自然的本地角色 TTS 探索。
 
-Check setup status:
+### Later
 
-```bash
-curl http://127.0.0.1:8000/api/setup/status
-```
+- Embedding / hybrid retrieval。
+- More games and richer knowledge packs。
+- Installer / updater。
 
-After a valid local configuration, the response should include:
+## 已知限制
 
-```json
-{
-  "provider": "deepseek",
-  "provider_configured": true,
-  "api_key_loaded": true,
-  "needs_setup": false,
-  "missing_items": []
-}
-```
+- Pre-release / portfolio-oriented project。
+- macOS-first。
+- 还没有 installer、code signing、notarization 或 auto updater。
+- 没有 cloud account / sync。
+- 不内置 whisper binary、model、ffmpeg 或第三方可执行文件。
+- 系统 TTS 可能不够自然，也不是角色级配音。
+- Local ASR 准确率取决于模型大小、麦克风、环境噪音和硬件性能。
+- 不做 wake word / continuous listening。
+- 还没有 Overlay。
+- 还没有 Live2D。
+- 还没有 embedding / vector DB / hybrid retrieval。
+- 知识包仍是 samples，不是完整攻略库。
+- 当前 packaged app 是本地未签名开发构建。
 
-If `DEEPSEEK_API_KEY` is missing, `needs_setup` is `true` and `missing_items` includes `DEEPSEEK_API_KEY`. The response never returns the real API key.
+## License
 
-### Privacy / Local Data
-
-- `.env`, `*.env`, and `services/backend/.env` should never be committed.
-- API keys are configured through local environment variables or `services/backend/.env`; they are not bundled into the `.app`.
-- The packaged app user data directory is `~/Library/Application Support/ReiLink/data`.
-- Memory, session, settings, and logs are written to the user data directory, not to `.app/Contents/Resources`.
-- `.app` resources only hold read-only resources such as bundled knowledge, persona runtime resources, and the backend binary.
-- Settings includes "本地数据 / Local Data" for viewing and opening the local data directory and for safe demo reset controls.
-- In repo dev mode, ReiLink uses the repo-local `data` directory unless `REILINK_DATA_DIR` is set.
-- `data/memory/*` stores local long-term memory data and should not be committed.
-- `data/session/*` stores local temporary session state and should not be committed.
-- Pending memory must be accepted by the user before it enters long-term memory.
-- Pending memory is not injected directly into prompts.
-- ReiLink does not automatically upload user memory or session state.
-- Local knowledge packs provide factual context only; they do not generate Rei's final reply directly.
-
-### License
-
-ReiLink is licensed under the MIT License. See [LICENSE](LICENSE).
-
-### Knowledge Packs
-
-The knowledge layer uses local JSON files. It does not use external crawling, Steam API, RAG, or a vector database.
-
-Key paths:
-
-- `data/knowledge/games/catalog.json`: game catalog. `game_id` means game identifier, `display_name` means display name, and `support_status` means support state.
-- `data/knowledge/games/{game_id}/manifest.json`: knowledge pack manifest. `version` means pack version, `language` means pack language, and `coverage` means covered topics.
-- `data/knowledge/games/{game_id}/snippets.json`: short factual snippets.
-
-See [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md) for adding new game knowledge packs.
-
-Knowledge pack validator:
-
-```bash
-make validate-knowledge
-```
-
-This command checks the catalog plus manifest and snippets structure for supported games. `planned` / `detected_only` games without knowledge packs only produce warnings and do not fail validation.
-
-Current sample packs:
-
-- Elden Ring
-- Hollow Knight
-
-The knowledge layer only provides factual context. Rei's final wording is still generated by persona + LLM, so the product does not become a guide site.
-
-### Current Limitations
-
-- Only Elden Ring and Hollow Knight have sample knowledge packs today.
-- Game detection is still lightweight local process / app-name detection.
-- The backend binary is generated by PyInstaller and currently targets unsigned local macOS development builds.
-- There is no code signing, notarization, DMG installer, or auto updater yet.
-- This is not an App Store app or a formal installer.
-- Windows / Linux packaging is not complete yet.
-- API keys are still configured through the local environment or `.env`; they are not bundled into the app.
-- No Live2D / Voice / Vision / Overlay.
-- No full RAG, embeddings, or vector database.
-- Multi-game knowledge is still at sample-pack stage.
-- Referential phrases such as "this game", "that one", or "the game we just mentioned" have known limitations and will need a Recent Entity Tracker or LLM semantic resolver.
-
-### Roadmap
-
-- RAG / vector search
-- Steam library integration
-- Voice interaction
-- Live2D / overlay
-- Multi-companion system
-- Richer game knowledge packs
-- Better entity resolution
+MIT License. See [LICENSE](LICENSE).

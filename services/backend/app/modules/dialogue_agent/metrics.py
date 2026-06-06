@@ -52,12 +52,21 @@ class ChatLatencyMetrics:
     matched_topics: list[str] | None = None
     snippets_count: int = 0
     snippet_titles: list[str] | None = None
+    snippet_previews: list[str] | None = None
+    matched_terms: list[str] | None = None
+    result_scores: list[float] | None = None
     knowledge_used_in_prompt: bool = False
+    knowledge_retrieval_status: str = "not_found"
+    knowledge_not_used_reason: str | None = None
+    knowledge_retrieval_min_score: float = 8.0
 
     def as_dict(self) -> dict:
         data = asdict(self)
         data["matched_topics"] = data.get("matched_topics") or []
         data["snippet_titles"] = data.get("snippet_titles") or []
+        data["snippet_previews"] = data.get("snippet_previews") or []
+        data["matched_terms"] = data.get("matched_terms") or []
+        data["result_scores"] = data.get("result_scores") or []
         data["coverage"] = data.get("coverage") or []
         return data
 

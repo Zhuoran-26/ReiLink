@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.modules.dialogue_agent.intent import detect_intent
 from app.modules.dialogue_agent.providers import DeepSeekProvider, LLMResult, MockLLMProvider
 from app.modules.game_session.state import CurrentBoss, GameSessionState, GameSessionStore
+from app.modules.knowledge.retriever import KnowledgeSnippet
 from app.modules.memory.store import ConversationStore
 from app.schemas.api import ChatRequest
 
@@ -23,10 +24,12 @@ class _PromptCapturingProvider:
     def __init__(self, replies: list[str] | None = None) -> None:
         self.replies = replies or ["嗯。"]
         self.prompts: list[str] = []
+        self.snippets: list[list[KnowledgeSnippet]] = []
         self.calls = 0
 
     def generate_with_metrics(self, system_prompt, user_message, snippets, intent):
         self.prompts.append(system_prompt)
+        self.snippets.append(snippets)
         reply = self.replies[min(self.calls, len(self.replies) - 1)]
         self.calls += 1
         return LLMResult(
@@ -76,6 +79,87 @@ def test_deepseek_provider_sends_thinking_payload(monkeypatch):
     assert captured["payload"]["thinking"] == {"type": "enabled"}
     assert captured["payload"]["reasoning_effort"] == "medium"
     assert captured["payload"]["stream"] is False
+
+
+def test_deepseek_provider_injects_limited_local_knowledge_context(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "好的"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    snippets = [
+        KnowledgeSnippet(
+            source="data/knowledge/games/elden_ring/snippets.json",
+            source_id=f"entry-{index}",
+            entry_id=f"entry-{index}",
+            game_id="elden_ring",
+            pack_id="elden_ring",
+            title=f"测试条目 {index}",
+            kind="boss_strategy",
+            content=("这是一段本地知识。" * 80),
+            score=10 - index,
+            matched_terms=["测试", "boss"],
+            topics=["boss_strategy"],
+        )
+        for index in range(5)
+    ]
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.settings.deepseek_api_key", "test-key")
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.urllib.request.urlopen", fake_urlopen)
+
+    DeepSeekProvider().generate_with_metrics("中文短句", "详细讲 Boss 怎么打", snippets, "elden_ring_boss_strategy")
+
+    messages = captured["payload"]["messages"]
+    knowledge_messages = [
+        message["content"]
+        for message in messages
+        if "本地知识包检索结果 / Local Knowledge Pack Results" in message["content"]
+    ]
+    assert len(knowledge_messages) == 1
+    knowledge_text = knowledge_messages[0]
+    assert "测试条目 0" in knowledge_text
+    assert "测试条目 2" in knowledge_text
+    assert "测试条目 3" not in knowledge_text
+    assert "没有写到的信息不要编" in knowledge_text
+    assert len(knowledge_text) < 1900
+    assert "Authorization" not in knowledge_text
+    assert ".env" not in knowledge_text
+
+
+def test_deepseek_provider_does_not_inject_empty_knowledge_context(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "好的"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.settings.deepseek_api_key", "test-key")
+    monkeypatch.setattr("app.modules.dialogue_agent.providers.urllib.request.urlopen", fake_urlopen)
+
+    DeepSeekProvider().generate_with_metrics("中文短句", "今天有点累", [], "casual_chat")
+
+    messages = captured["payload"]["messages"]
+    assert all("本地知识包检索结果 / Local Knowledge Pack Results" not in message["content"] for message in messages)
 
 
 def test_deepseek_provider_fast_route_disables_thinking(monkeypatch):
@@ -153,6 +237,32 @@ def test_margit_strategy_returns_chinese_strategy(monkeypatch, tmp_path: Path):
     assert response.sources
     assert "延迟" in response.reply or "翻滚" in response.reply
     assert_chinese_reply(response.reply)
+
+
+def test_retrieved_knowledge_is_passed_to_provider_but_not_memory(monkeypatch, tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    memory_calls = []
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    provider = _PromptCapturingProvider(["先看延迟攻击。"])
+    agent.provider = provider
+
+    def capture_memory(user_message, reply, intent, timestamp, semantic_extraction=None):
+        memory_calls.append((user_message, reply, intent, semantic_extraction))
+
+    agent._safe_memory_update = capture_memory
+
+    response = agent.chat(ChatRequest(message="Margit 怎么打", session_id="knowledge-provider"))
+
+    assert response.sources
+    assert provider.snippets
+    assert provider.snippets[0]
+    assert any("Margit" in snippet.title for snippet in provider.snippets[0])
+    assert memory_calls
+    assert memory_calls[0][0] == "Margit 怎么打"
+    assert memory_calls[0][1] == response.reply
+    assert "Margit 很多攻击会故意延迟" not in json.dumps(memory_calls, ensure_ascii=False)
 
 
 def test_margit_location_returns_location_content(tmp_path: Path):

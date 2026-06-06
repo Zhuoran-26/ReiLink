@@ -54,6 +54,18 @@ def test_generic_retriever_matches_margit_for_current_game():
     assert "boss" in result.coverage
     assert result.last_updated == "2026-06-01"
     assert result.supported_games_count == 2
+    assert result.snippets[0].entry_id == result.snippets[0].source_id
+    assert result.snippets[0].pack_id == "elden_ring"
+    assert result.snippets[0].game_id == "elden_ring"
+    assert result.snippets[0].score > 0
+    assert result.snippets[0].matched_terms
+    assert len(result.snippets[0].content) <= 420
+    assert result.retrieval_status == "used"
+    assert result.not_used_reason is None
+    assert result.as_debug_dict()["snippet_previews"]
+    assert result.as_debug_dict()["matched_terms"]
+    assert result.as_debug_dict()["result_scores"]
+    assert result.as_debug_dict()["retrieval_status"] == "used"
 
 
 def test_game_catalog_matches_explicit_user_game_alias():
@@ -160,13 +172,93 @@ def test_game_catalog_recognizes_planned_game_without_knowledge():
 def test_game_catalog_prefers_current_game_when_supported():
     match = GameCatalog().match_game(
         current_game="Elden Ring",
-        user_message="老头环里恶兆妖鬼怎么打",
+        user_message="恶兆妖鬼怎么打",
         game_session_state={},
     )
 
     assert match.matched_game_id == "elden_ring"
     assert match.match_source == "current_game"
     assert match.confidence >= 0.9
+
+
+@pytest.mark.parametrize(
+    ("current_game", "message", "expected_game", "expected_title", "expected_term"),
+    [
+        ("Elden Ring", "Hollow Knight 里的 Hornet 怎么打？", "hollow_knight", "大黄蜂", "hornet"),
+        ("Elden Ring", "空洞骑士里的 Hornet 怎么打？", "hollow_knight", "大黄蜂", "hornet"),
+        ("空洞骑士", "Elden Ring 里的 Margit 怎么打？", "elden_ring", "Margit", "margit"),
+        ("空洞骑士", "法环 Margit 怎么打？", "elden_ring", "Margit", "margit"),
+    ],
+)
+def test_explicit_game_query_overrides_current_game_context(
+    current_game: str,
+    message: str,
+    expected_game: str,
+    expected_title: str,
+    expected_term: str,
+):
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=current_game,
+        user_message=message,
+        current_boss=None,
+        game_session_state={"current_game": current_game},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert result.game_id == expected_game
+    assert result.match_source == "user_message"
+    assert result.active_source == "user_message"
+    assert any(expected_title in snippet.title for snippet in result.snippets)
+    matched_terms = result.as_debug_dict()["matched_terms"]
+    assert expected_term in {term.lower() for term in matched_terms}
+    assert not set(term.lower() for term in matched_terms) <= {"hollow", "knight", "elden", "ring"}
+
+
+def test_explicit_hollow_knight_query_terms_do_not_keep_game_name_tokens():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="Elden Ring",
+        user_message="Hollow Knight 里的 Hornet 怎么打？",
+        current_boss=None,
+        game_session_state={"current_game": "Elden Ring"},
+        intent="casual_chat",
+    )
+
+    matched_terms = {term.lower() for term in result.as_debug_dict()["matched_terms"]}
+    assert "hornet" in matched_terms
+    assert "hollow" not in matched_terms
+    assert "knight" not in matched_terms
+    assert "hollow knight" not in matched_terms
+
+
+def test_no_explicit_game_query_uses_current_context():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game="空洞骑士",
+        user_message="Hornet 怎么打？",
+        current_boss=None,
+        game_session_state={"current_game": "空洞骑士"},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert result.game_id == "hollow_knight"
+    assert result.match_source == "current_game"
+    assert any("大黄蜂" in snippet.title for snippet in result.snippets)
+
+
+def test_no_explicit_game_and_no_current_game_avoids_broad_search():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=None,
+        user_message="路线",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id is None
+    assert result.snippets == []
+    assert result.retrieval_status == "no_pack"
 
 
 def test_generic_retriever_infers_game_from_content_alias_without_game_name():
@@ -344,6 +436,7 @@ def test_hollow_knight_current_game_does_not_match_unrelated_boss():
     assert result.knowledge_available is True
     assert result.snippets == []
     assert result.fallback_reason == "no_knowledge_match"
+    assert result.retrieval_status == "not_found"
 
 
 def test_manual_override_elden_ring_does_not_use_hollow_knight_snippets():
@@ -400,6 +493,7 @@ def test_planned_game_query_does_not_use_elden_ring_snippets():
     assert result.knowledge_available is False
     assert result.snippets == []
     assert result.fallback_reason == "no_supported_knowledge"
+    assert result.retrieval_status == "no_pack"
 
 
 def test_explicit_user_switch_overrides_session_and_detector_game():
@@ -537,6 +631,84 @@ def test_generic_retriever_ignores_non_game_chat():
 
     assert result.matched is False
     assert result.snippets == []
+    assert result.retrieval_status == "not_game_related"
+    assert result.not_used_reason == "not_game_related"
+
+
+@pytest.mark.parametrize(
+    ("current_game", "message"),
+    [
+        ("Elden Ring", "今天有点累"),
+        ("空洞骑士", "谢谢"),
+    ],
+)
+def test_idle_chat_with_current_game_stays_not_game_related(current_game: str, message: str):
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=current_game,
+        user_message=message,
+        current_boss=None,
+        game_session_state={"current_game": current_game},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.snippets == []
+    assert result.retrieval_status == "not_game_related"
+    assert result.not_used_reason == "not_game_related"
+
+
+def test_generic_retriever_does_not_use_below_threshold_match(tmp_path):
+    games_dir = tmp_path / "games"
+    snippets_path = games_dir / "weak_game" / "snippets.json"
+    snippets_path.parent.mkdir(parents=True)
+    snippets_path.write_text(
+        """
+[
+  {
+    "id": "weak_note",
+    "title": "General note",
+    "kind": "general",
+    "topics": ["weak_game"],
+    "aliases": [],
+    "summary": "needle appears only once in body text."
+  }
+]
+""",
+        encoding="utf-8",
+    )
+    (games_dir / "catalog.json").write_text(
+        f"""
+{{
+  "games": [
+    {{
+      "game_id": "weak_game",
+      "display_name": "弱命中游戏",
+      "aliases": ["Weak Game"],
+      "knowledge_game_id": "weak_game",
+      "knowledge_path": "{snippets_path}",
+      "knowledge_available": true,
+      "support_status": "supported",
+      "enabled": true
+    }}
+  ]
+}}
+""",
+        encoding="utf-8",
+    )
+
+    result = GameKnowledgeRetriever(games_dir).retrieve(
+        current_game="弱命中游戏",
+        user_message="needle",
+        current_boss=None,
+        game_session_state={},
+        intent="weak_game_general_help",
+    )
+
+    assert result.matched is False
+    assert result.snippets == []
+    assert result.retrieval_status == "below_threshold"
+    assert result.not_used_reason == "below_threshold"
+    assert result.confidence > 0
 
 
 def test_current_boss_context_is_used_for_followup_game_message():
@@ -564,7 +736,8 @@ def test_current_boss_context_is_not_used_for_unrelated_preference():
     assert result.matched is False
     assert result.game_id == "elden_ring"
     assert result.snippets == []
-    assert result.fallback_reason == "no_knowledge_match"
+    assert result.fallback_reason == "not_game_related"
+    assert result.retrieval_status == "not_game_related"
 
 
 def test_generic_retriever_falls_back_for_unsupported_game():
@@ -634,6 +807,7 @@ def test_unknown_game_returns_no_game_detected():
     assert result.matched is False
     assert result.game_id is None
     assert result.fallback_reason == "no_game_detected"
+    assert result.retrieval_status == "no_pack"
 
 
 def test_knowledge_disabled_does_not_inject_snippets(tmp_path):
@@ -745,3 +919,55 @@ def test_generic_retriever_returns_at_most_three_snippets():
     )
 
     assert len(result.snippets) <= 3
+
+
+def test_snippet_preview_length_limit_is_enforced_for_long_entries(tmp_path):
+    games_dir = tmp_path / "games"
+    snippets_path = games_dir / "long_game" / "snippets.json"
+    snippets_path.parent.mkdir(parents=True)
+    snippets_path.write_text(
+        """
+[
+  {
+    "id": "long_boss",
+    "title": "Long Boss",
+    "kind": "boss_strategy",
+    "topics": ["long_game", "boss_strategy"],
+    "aliases": ["Long Boss"],
+    "summary": "%s"
+  }
+]
+"""
+        % ("Long Boss " + "very long content " * 80),
+        encoding="utf-8",
+    )
+    (games_dir / "catalog.json").write_text(
+        f"""
+{{
+  "games": [
+    {{
+      "game_id": "long_game",
+      "display_name": "长文本游戏",
+      "aliases": ["Long Game", "长文本游戏"],
+      "knowledge_game_id": "long_game",
+      "knowledge_path": "{snippets_path}",
+      "knowledge_available": true,
+      "support_status": "supported",
+      "enabled": true
+    }}
+  ]
+}}
+""",
+        encoding="utf-8",
+    )
+
+    result = GameKnowledgeRetriever(games_dir).retrieve(
+        current_game="长文本游戏",
+        user_message="Long Boss 怎么打",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is True
+    assert len(result.snippets[0].content) <= 420
