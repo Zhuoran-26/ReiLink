@@ -9,7 +9,9 @@ VOICE_INPUT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_scenarios.
 VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_local_asr_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
+PROJECT_STATUS_PATH = REPO_ROOT / "docs" / "PROJECT_STATUS.md"
 LOCAL_ASR_MANUAL_SETUP_PATH = REPO_ROOT / "docs" / "local-asr-manual-setup.md"
+VOICE_MVP_RELEASE_NOTES_PATH = REPO_ROOT / "docs" / "release-notes" / "reilink-voice-mvp.md"
 ALLOWED_RETRIEVAL_STATUSES = {
     "used",
     "not_found",
@@ -325,16 +327,20 @@ def test_voice_input_local_asr_release_regression_scenarios_are_present():
 def test_readme_qa_links_point_to_existing_files():
     readme = README_PATH.read_text(encoding="utf-8")
     qa_doc = QA_DOC_PATH.read_text(encoding="utf-8")
+    project_status = PROJECT_STATUS_PATH.read_text(encoding="utf-8")
     local_asr_manual_setup = LOCAL_ASR_MANUAL_SETUP_PATH.read_text(encoding="utf-8")
+    voice_mvp_release_notes = VOICE_MVP_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
     links = re.findall(
-        r"\((docs/(?:QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
+        r"\((docs/(?:PROJECT_STATUS\.md|QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|release-notes/reilink-voice-mvp\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
         readme,
     )
 
     assert {
+        "docs/PROJECT_STATUS.md",
         "docs/QA.md",
         "docs/voice-input-local-asr-spike.md",
         "docs/local-asr-manual-setup.md",
+        "docs/release-notes/reilink-voice-mvp.md",
         "docs/qa/retrieval_scenarios.json",
         "docs/qa/voice_input_scenarios.json",
         "docs/qa/voice_input_local_asr_scenarios.json",
@@ -345,6 +351,10 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/voice-input-local-asr-spike.md" in qa_doc
     assert "docs/local-asr-manual-setup.md" in qa_doc
     assert "docs/qa/voice_input_local_asr_scenarios.json" in qa_doc
+    assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
+    assert "Voice Interaction MVP" in project_status
     assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup
     assert "REILINK_LOCAL_ASR_MODEL" in local_asr_manual_setup
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup
+    assert "Voice Interaction MVP" in voice_mvp_release_notes
+    assert "No cloud ASR" in voice_mvp_release_notes

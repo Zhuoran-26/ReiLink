@@ -4,6 +4,8 @@
 
 这份 QA Pack 用于在继续开发 Voice Input 后续能力、Live2D、Overlay、embedding RAG 之前，快速回归 ReiLink 当前已经稳定的交互底座。它覆盖手动检查、packaged app smoke、Knowledge Retrieval、Voice Output、Voice Input、Event Stream / Debug 隐私，以及 release 前 runtime sanity。
 
+Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voice-mvp.md`。
+
 配套机器可读场景文件：
 
 - `docs/qa/retrieval_scenarios.json`
@@ -153,6 +155,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
    - Local ASR 回到 env fallback 或未配置。
    - 主聊天语音按钮显示安全 fallback，App 不崩溃。
    - Debug Panel / Event Stream 不泄露已清除的完整路径。
+   - packaged app 退出后，由 app 自启动的 backend 没有残留监听进程。
 8. Known limitations:
    - ReiLink 不内置 whisper binary、model 或 ffmpeg。
    - 真实识别准确率取决于模型大小、录音质量和硬件性能。
