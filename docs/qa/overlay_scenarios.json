@@ -50,6 +50,36 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "memory", "debug", "full transcript", "full local path"]
   },
   {
+    "id": "overlay-position-preset-moves-window",
+    "category": "overlay",
+    "precondition": "Overlay is enabled and Settings is open",
+    "expected_status": "overlay_window_moved",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Changing the Overlay position preset to any allowed corner or side preset moves the independent overlay window within the primary display work area without stealing focus.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-opacity-background-readable",
+    "category": "overlay",
+    "precondition": "Overlay is enabled and Settings is open",
+    "expected_status": "overlay_settings_changed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Changing Overlay background opacity between 0.35 and 0.95 updates the translucent background while Rei message text remains readable.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "debug", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-message-count-limit",
+    "category": "overlay_privacy",
+    "precondition": "Overlay is enabled and several safe assistant or proactive messages have been shown",
+    "expected_status": "overlay_content_updated",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Changing Overlay message count to 1, 2, or 3 limits the bubble list to that many latest safe summaries only.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "memory", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
     "id": "overlay-disable-hides-window",
     "category": "overlay",
     "precondition": "Overlay is currently enabled and visible",
@@ -66,7 +96,7 @@
     "expected_status": "overlay_setting_persisted",
     "should_accept_input": false,
     "should_show_full_reply": false,
-    "expected_behavior": "Overlay enabled state is restored from app settings after restart; default remains off for fresh settings.",
+    "expected_behavior": "Overlay enabled state, position preset, opacity, and message count are restored from app settings after restart; default remains off for fresh settings.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full local path"]
   },
   {
@@ -86,7 +116,7 @@
     "expected_status": "overlay_visible",
     "should_accept_input": false,
     "should_show_full_reply": false,
-    "expected_behavior": "Main window is not black, Settings contains Overlay, enabling it opens a separate overlay window, and disabling it hides the window.",
+    "expected_behavior": "Main window is not black, Settings contains Overlay config, enabling it opens a separate overlay window, position and opacity changes apply, and disabling it hides the window.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
   }
 ]

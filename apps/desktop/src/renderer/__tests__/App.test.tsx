@@ -670,6 +670,9 @@ const appSettings: AppSettings = {
   proactive_sensitivity: "low",
   auto_game_detection: "on",
   overlay_enabled: "off",
+  overlay_position: "middle-right",
+  overlay_opacity: 0.72,
+  overlay_message_count: 2,
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -979,8 +982,10 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
   let overlayState: OverlayState = {
     enabled: false,
     visible: false,
+    position: "middle-right",
+    opacity: 0.72,
     messages: [],
-    max_messages: 3,
+    max_messages: 2,
     max_message_length: 96,
     updated_at: null
   };
@@ -1006,6 +1011,17 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
       for (const listener of overlayListeners) listener(overlayState);
       return overlayState;
     }),
+    setOverlayConfig: vi.fn(async (config) => {
+      overlayState = {
+        ...overlayState,
+        position: config.position ?? overlayState.position,
+        opacity: config.opacity ?? overlayState.opacity,
+        max_messages: config.max_messages ?? overlayState.max_messages,
+        messages: overlayState.messages.slice(-(config.max_messages ?? overlayState.max_messages))
+      };
+      for (const listener of overlayListeners) listener(overlayState);
+      return overlayState;
+    }),
     updateOverlayContent: vi.fn(async (content) => {
       const message = {
         id: `overlay-${overlayState.messages.length}`,
@@ -1016,7 +1032,7 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
       };
       overlayState = {
         ...overlayState,
-        messages: [...overlayState.messages, message].slice(-3),
+        messages: [...overlayState.messages, message].slice(-overlayState.max_messages),
         updated_at: message.timestamp
       };
       for (const listener of overlayListeners) listener(overlayState);
@@ -1393,7 +1409,10 @@ describe("App", () => {
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
     expect(screen.getByLabelText("Overlay / 游戏悬浮层")).toHaveValue("off");
-    expect(screen.getByText("默认关闭。开启后只显示 1～3 条 Rei 短消息，不接收输入。")).toBeInTheDocument();
+    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("middle-right");
+    expect(screen.getByLabelText("Overlay 背景透明度")).toHaveValue("0.72");
+    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("2");
+    expect(screen.getByText("默认关闭。开启后只显示短消息，不接收输入。")).toBeInTheDocument();
     expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
     expect(screen.getByText(/当前状态：已关闭/)).toBeInTheDocument();
     expect(screen.getByText(/本地语音：不可用/)).toBeInTheDocument();
@@ -1507,6 +1526,69 @@ describe("App", () => {
     expect(screen.getByLabelText("Overlay / 游戏悬浮层")).toHaveValue("on");
     expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_enabled_changed")).toBe(true);
     expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_window_shown")).toBe(true);
+  });
+
+  it("syncs Overlay position, opacity, and message count settings", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    await waitFor(() =>
+      expect(runtime.bridge.setOverlayConfig).toHaveBeenCalledWith({
+        position: "middle-right",
+        opacity: 0.72,
+        max_messages: 2
+      })
+    );
+    vi.mocked(runtime.bridge.setOverlayConfig).mockClear();
+
+    await userEvent.selectOptions(await screen.findByLabelText("Overlay 位置预设"), "bottom-left");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ overlay_position: "bottom-left" }) })
+      )
+    );
+    await waitFor(() =>
+      expect(runtime.bridge.setOverlayConfig).toHaveBeenLastCalledWith({
+        position: "bottom-left",
+        opacity: 0.72,
+        max_messages: 2
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText("Overlay 背景透明度"), { target: { value: "0.85" } });
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ overlay_opacity: 0.85 }) })
+      )
+    );
+    await waitFor(() =>
+      expect(runtime.bridge.setOverlayConfig).toHaveBeenLastCalledWith({
+        position: "bottom-left",
+        opacity: 0.85,
+        max_messages: 2
+      })
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Overlay 显示消息数量"), "1");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ overlay_message_count: 1 }) })
+      )
+    );
+    await waitFor(() =>
+      expect(runtime.bridge.setOverlayConfig).toHaveBeenLastCalledWith({
+        position: "bottom-left",
+        opacity: 0.85,
+        max_messages: 1
+      })
+    );
+    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("bottom-left");
+    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("1");
+    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_settings_changed")).toBe(true);
+    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_window_moved")).toBe(true);
   });
 
   it("sends only a sanitized short assistant summary to Overlay", async () => {

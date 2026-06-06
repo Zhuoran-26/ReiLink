@@ -6,6 +6,7 @@ const runtimeBridge = {
   openLocalDataDir: () => ipcRenderer.invoke("local-data:open-dir"),
   getOverlayStatus: () => ipcRenderer.invoke("overlay:get-status"),
   setOverlayEnabled: (enabled) => ipcRenderer.invoke("overlay:set-enabled", enabled),
+  setOverlayConfig: (config) => ipcRenderer.invoke("overlay:set-config", config),
   updateOverlayContent: (content) => ipcRenderer.invoke("overlay:update-content", content),
   onBackendStatus: (callback) => {
     const listener = (_event, status) => callback(status);

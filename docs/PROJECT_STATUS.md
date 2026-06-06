@@ -8,7 +8,7 @@ Updated: 2026-06-06
 
 当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已进入 Overlay v1 Foundation 底座开发。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，并进入 Overlay v1.1 polish。
 
 v0.2-pre 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示、standalone runtime、本地数据目录、多游戏知识维护和 release readiness 更清晰、更稳定。
 
@@ -55,7 +55,7 @@ dev/codex-reilink
 - Voice Input v1 fallback：push-to-talk Web Speech UI、安全 fallback、不自动发送。
 - Main chat Local ASR voice input：Local ASR ready 时主聊天语音按钮优先走本地录音/转写，Web Speech 作为 fallback。
 - Voice Interaction MVP：系统 TTS + 用户配置 Local ASR + transcript-first UX + 隐私安全事件摘要。
-- Overlay v1 Foundation：默认关闭的独立透明悬浮层、Settings 开关、1～3 条安全短消息气泡和 overlay lifecycle Event Stream。
+- Overlay v1.1：默认关闭的独立透明悬浮层、Settings 开关、位置预设、背景透明度、1～3 条安全短消息气泡和 overlay lifecycle Event Stream。
 - Event Bus / Event Stream。
 - Prompt Preview。
 - Debug Dashboard。
@@ -105,13 +105,15 @@ dev/codex-reilink
 
 ### 当前 Overlay 状态
 
-- Overlay v1 Foundation 已建立底座：Settings 中新增 `Overlay / 游戏悬浮层`，默认关闭，开关持久化在 app settings。
+- Overlay v1.1 已建立底座：Settings 中新增 `Overlay / 游戏悬浮层`，默认关闭，开关、位置、透明度和消息数量持久化在 app settings。
 - Electron main process 可创建独立 overlay window；窗口为 frameless、transparent、always-on-top、skipTaskbar、不可聚焦，并忽略鼠标输入。
-- Overlay renderer 通过 packaged/dev 共用的 `index.html?overlay=1` 加载，视觉上是右侧偏中下的半透明 Rei 短消息气泡层。
-- Overlay 只显示最近 1～3 条安全短摘要；没有内容时显示 `Rei 正安静待机。`。
+- Overlay renderer 通过 packaged/dev 共用的 `index.html?overlay=1` 加载，视觉上是右侧轻量半透明 Rei 短消息气泡层。
+- Overlay 支持右上、右中、右下、左上、左中、左下位置预设；默认右中，并按 primary display workArea 计算窗口位置。
+- Overlay 支持 0.35～0.95 背景透明度；默认 0.72，只影响背景层，不降低文字透明度。
+- Overlay 只显示最近 1～3 条安全短摘要；默认 2 条，没有内容时显示 `Rei 正安静待机。`。
 - assistant 最终回复和 proactive message 只会把截断/脱敏后的安全摘要推送到 overlay；不会传 raw prompt、完整 assistant reply、完整用户输入、memory、debug raw JSON、完整 transcript、API key、`.env`、完整路径、raw stdout 或 raw stderr。
-- Event Stream 已加入 overlay lifecycle 安全事件：开关变化、窗口显示/隐藏、内容更新和错误摘要；内容更新只显示来源、字数和消息数量。
-- 当前不实现 HUD / 敌人 / 玩家位置识别，不做画面理解或自动避让，不做拖拽、锁定位置、透明度调节或显示数量调节。
+- Event Stream 已加入 overlay lifecycle 安全事件：开关变化、设置变化、位置更新、窗口显示/隐藏、内容更新和错误摘要；内容更新只显示来源、字数和消息数量。
+- 当前不实现 HUD / 敌人 / 玩家位置识别，不做画面理解或自动避让，不做拖拽或锁定位置。
 
 ### 当前 Knowledge Retrieval 状态
 
@@ -141,8 +143,9 @@ dev/codex-reilink
 - Local ASR model setup helper。
 - Local ASR accuracy tuning、timeout tuning 和 optional larger model guidance。
 - Character TTS / natural voice output。
-- Overlay v1.1 polish / packaged release smoke。
-- Overlay 位置锁定、拖拽、透明度和显示数量调节。
+- Overlay v1.1 packaged release smoke。
+- Overlay v1.2 Drag / Lock Mode。
+- Overlay 自动避让和 HUD-aware placement research。
 - Live2D v1。
 - Multi-companion system。
 
@@ -190,7 +193,7 @@ Updated: 2026-06-06
 
 Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. The project has now entered the Overlay v1 Foundation stage.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, and the project is now in Overlay v1.1 polish.
 
 The v0.2-pre focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, standalone runtime, local data directories, multi-game knowledge maintenance, and release readiness clearer and more stable.
 
@@ -237,7 +240,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Voice Input v1 fallback: push-to-talk Web Speech UI, safe fallback, and no auto-send.
 - Main chat Local ASR voice input: when Local ASR is ready, the main chat voice button prefers local record/transcribe, with Web Speech kept as fallback.
 - Voice Interaction MVP: system TTS + user-configured Local ASR + transcript-first UX + privacy-safe event summaries.
-- Overlay v1 Foundation: default-off independent transparent overlay, Settings toggle, 1-3 safe short Rei message bubbles, and overlay lifecycle Event Stream events.
+- Overlay v1.1: default-off independent transparent overlay, Settings toggle, position presets, background opacity, 1-3 safe short Rei message bubbles, and overlay lifecycle Event Stream events.
 - Event Bus / Event Stream.
 - Prompt Preview.
 - Debug Dashboard.
@@ -287,13 +290,15 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 
 ### Current Overlay Status
 
-- Overlay v1 Foundation is in place: Settings now includes `Overlay / 游戏悬浮层`, defaults to off, and persists through app settings.
+- Overlay v1.1 is in place: Settings now includes `Overlay / 游戏悬浮层`, defaults to off, and persists enabled state, position, opacity, and message count through app settings.
 - The Electron main process can create a separate overlay window that is frameless, transparent, always-on-top, skipTaskbar, non-focusable, and ignores mouse input.
-- The overlay renderer loads through the shared packaged/dev `index.html?overlay=1` entry and renders a restrained right-side middle-lower translucent Rei short-message bubble layer.
-- Overlay shows only the latest 1-3 safe short summaries; with no content it shows `Rei 正安静待机。`.
+- The overlay renderer loads through the shared packaged/dev `index.html?overlay=1` entry and renders a restrained right-side translucent Rei short-message bubble layer.
+- Overlay supports top-right, middle-right, bottom-right, top-left, middle-left, and bottom-left presets; the default is middle-right and bounds are calculated within the primary display workArea.
+- Overlay supports 0.35-0.95 background opacity; the default is 0.72 and only affects the background layer, not text alpha.
+- Overlay shows only the latest 1-3 safe short summaries; the default is 2, and with no content it shows `Rei 正安静待机。`.
 - Completed assistant replies and proactive messages send only truncated/redacted safe summaries to overlay; raw prompt, full assistant reply, full user input, memory, debug raw JSON, full transcript, API keys, `.env`, full paths, raw stdout, and raw stderr are excluded.
-- Event Stream includes safe overlay lifecycle events for enabled changes, show/hide, content updates, and errors; content updates expose only source, character count, and message count.
-- The current scope does not include HUD / enemy / player-position detection, vision, automatic avoidance, dragging, locking, opacity controls, or message-count controls.
+- Event Stream includes safe overlay lifecycle events for enabled changes, settings changes, position updates, show/hide, content updates, and errors; content updates expose only source, character count, and message count.
+- The current scope does not include HUD / enemy / player-position detection, vision, automatic avoidance, dragging, or locking.
 
 ### Current Knowledge Retrieval Status
 
@@ -323,8 +328,9 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Local ASR model setup helper.
 - Local ASR accuracy tuning, timeout tuning, and optional larger-model guidance.
 - Character TTS / natural voice output.
-- Overlay v1.1 polish / packaged release smoke.
-- Overlay position locking, dragging, opacity, and message-count controls.
+- Overlay v1.1 packaged release smoke.
+- Overlay v1.2 Drag / Lock Mode.
+- Overlay automatic avoidance and HUD-aware placement research.
 - Live2D v1.
 - Multi-companion system.
 

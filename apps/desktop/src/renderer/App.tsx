@@ -47,7 +47,16 @@ import {
   UserProfileMemory
 } from "../shared/api";
 import type { ReiLinkEvent } from "../shared/events";
-import { sanitizeOverlayText, type OverlayContentUpdate, type OverlayMessageSource } from "../shared/overlay";
+import {
+  normalizeOverlayConfig,
+  OVERLAY_DEFAULT_MESSAGE_COUNT,
+  OVERLAY_DEFAULT_OPACITY,
+  OVERLAY_DEFAULT_POSITION,
+  sanitizeOverlayText,
+  type OverlayConfig,
+  type OverlayContentUpdate,
+  type OverlayMessageSource
+} from "../shared/overlay";
 import type { BackendRuntimeStatus } from "../shared/runtime";
 import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
 import { eventBus } from "./eventBus";
@@ -414,6 +423,9 @@ const defaultAppSettings: AppSettings = {
   proactive_sensitivity: "low",
   auto_game_detection: "on",
   overlay_enabled: "off",
+  overlay_position: OVERLAY_DEFAULT_POSITION,
+  overlay_opacity: OVERLAY_DEFAULT_OPACITY,
+  overlay_message_count: OVERLAY_DEFAULT_MESSAGE_COUNT,
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -435,6 +447,11 @@ const normalizeAppSettings = (
 
 const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSettings, patch: Partial<AppSettings> = {}) => ({
   overlay_enabled: hasAppSetting(settings, "overlay_enabled") ? settings.overlay_enabled : patch.overlay_enabled ?? previous.overlay_enabled,
+  overlay_position: hasAppSetting(settings, "overlay_position") ? settings.overlay_position : patch.overlay_position ?? previous.overlay_position,
+  overlay_opacity: hasAppSetting(settings, "overlay_opacity") ? settings.overlay_opacity : patch.overlay_opacity ?? previous.overlay_opacity,
+  overlay_message_count: hasAppSetting(settings, "overlay_message_count")
+    ? settings.overlay_message_count
+    : patch.overlay_message_count ?? previous.overlay_message_count,
   voice_output: hasAppSetting(settings, "voice_output") ? settings.voice_output : patch.voice_output ?? previous.voice_output,
   voice_rate: hasAppSetting(settings, "voice_rate") ? settings.voice_rate : patch.voice_rate ?? previous.voice_rate,
   voice_volume: hasAppSetting(settings, "voice_volume") ? settings.voice_volume : patch.voice_volume ?? previous.voice_volume
@@ -907,6 +924,18 @@ const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
   return "";
 };
 
+const overlayPositionText = (position?: string) => {
+  const labels: Record<string, string> = {
+    "top-right": "右上",
+    "middle-right": "右中",
+    "bottom-right": "右下",
+    "top-left": "左上",
+    "middle-left": "左中",
+    "bottom-left": "左下"
+  };
+  return labels[position ?? ""] ?? "右中";
+};
+
 const eventSummary = (event: ReiLinkEvent) => {
   switch (event.type) {
     case "user_message_sent":
@@ -939,8 +968,16 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [debugText(event.backend_source), knowledgeSourceText(event.knowledge_source as BackendRuntimeStatus["knowledge_source"])].join(" / ");
     case "overlay_enabled_changed":
       return [event.enabled ? "已开启" : "已关闭", event.visible ? "窗口可见" : "窗口隐藏"].join(" / ");
+    case "overlay_settings_changed":
+      return [
+        overlayPositionText(event.position),
+        `${Math.round(event.opacity * 100)}%`,
+        `${event.max_messages} 条`
+      ].join(" / ");
     case "overlay_window_shown":
       return `显示 ${event.message_count} 条短消息`;
+    case "overlay_window_moved":
+      return overlayPositionText(event.position);
     case "overlay_window_hidden":
       return "悬浮层已隐藏";
     case "overlay_content_updated":
@@ -1045,7 +1082,9 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     backend_status_changed: "后端状态变化",
     runtime_status_changed: "运行来源变化",
     overlay_enabled_changed: "悬浮层开关变化",
+    overlay_settings_changed: "悬浮层设置变化",
     overlay_window_shown: "悬浮层显示",
+    overlay_window_moved: "悬浮层位置更新",
     overlay_window_hidden: "悬浮层隐藏",
     overlay_content_updated: "悬浮层内容更新",
     overlay_error: "悬浮层失败",
@@ -1559,6 +1598,14 @@ export function App() {
   const [backendRuntimeBusy, setBackendRuntimeBusy] = useState(false);
   const [localDataBusy, setLocalDataBusy] = useState("");
   const [gameContextBusy, setGameContextBusy] = useState("");
+  const overlayRuntimeConfig = useMemo<OverlayConfig>(
+    () => normalizeOverlayConfig({
+      position: appSettings.overlay_position,
+      opacity: appSettings.overlay_opacity,
+      max_messages: appSettings.overlay_message_count
+    }),
+    [appSettings.overlay_message_count, appSettings.overlay_opacity, appSettings.overlay_position]
+  );
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。", createdAt: new Date().toISOString() }
   ]);
@@ -1590,6 +1637,7 @@ export function App() {
   const lastKnowledgeEventRef = useRef<string | null>(null);
   const lastModelRouteEventRef = useRef<string | null>(null);
   const lastOverlayEnabledRef = useRef<boolean | null>(null);
+  const lastOverlayConfigRef = useRef<OverlayConfig | null>(null);
   const lastOverlayContentRef = useRef<OverlayContentUpdate | null>(null);
   const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
 
@@ -2259,6 +2307,40 @@ export function App() {
       voiceOutput.stop("disabled");
     }
   }, [appSettings.voice_output]);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    const previousConfig = lastOverlayConfigRef.current;
+    const configUnchanged = previousConfig &&
+      previousConfig.position === overlayRuntimeConfig.position &&
+      previousConfig.opacity === overlayRuntimeConfig.opacity &&
+      previousConfig.max_messages === overlayRuntimeConfig.max_messages;
+    if (configUnchanged) return;
+    lastOverlayConfigRef.current = overlayRuntimeConfig;
+
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.setOverlayConfig) {
+      if (appSettings.overlay_enabled === "on") emitOverlayError("overlay_config_runtime_unavailable");
+      return;
+    }
+
+    void runtime.setOverlayConfig(overlayRuntimeConfig).then(() => {
+      eventBus.emit({
+        type: "overlay_settings_changed",
+        timestamp: eventTimestamp(),
+        position: overlayRuntimeConfig.position,
+        opacity: overlayRuntimeConfig.opacity,
+        max_messages: overlayRuntimeConfig.max_messages
+      });
+      if (previousConfig && previousConfig.position !== overlayRuntimeConfig.position) {
+        eventBus.emit({
+          type: "overlay_window_moved",
+          timestamp: eventTimestamp(),
+          position: overlayRuntimeConfig.position
+        });
+      }
+    }).catch(() => emitOverlayError("overlay_settings_update_failed"));
+  }, [appSettings.overlay_enabled, emitOverlayError, overlayRuntimeConfig, settingsLoaded]);
 
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -3077,7 +3159,54 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <option value="on">开启</option>
                   </select>
                 </label>
-                <p className="settingHint">默认关闭。开启后只显示 1～3 条 Rei 短消息，不接收输入。</p>
+                <label className="settingRow">
+                  <span>位置预设</span>
+                  <select
+                    aria-label="Overlay 位置预设"
+                    disabled={settingsBusy !== ""}
+                    value={appSettings.overlay_position}
+                    onChange={(event) =>
+                      void updateAppSettings({ overlay_position: event.target.value as AppSettings["overlay_position"] })
+                    }
+                  >
+                    <option value="top-right">右上</option>
+                    <option value="middle-right">右中</option>
+                    <option value="bottom-right">右下</option>
+                    <option value="top-left">左上</option>
+                    <option value="middle-left">左中</option>
+                    <option value="bottom-left">左下</option>
+                  </select>
+                </label>
+                <label className="settingRow">
+                  <span>背景透明度</span>
+                  <span className="rangeControl">
+                    <input
+                      aria-label="Overlay 背景透明度"
+                      disabled={settingsBusy !== ""}
+                      max="0.95"
+                      min="0.35"
+                      step="0.01"
+                      type="range"
+                      value={appSettings.overlay_opacity}
+                      onChange={(event) => void updateAppSettings({ overlay_opacity: Number(event.target.value) })}
+                    />
+                    <strong>{Math.round(overlayRuntimeConfig.opacity * 100)}%</strong>
+                  </span>
+                </label>
+                <label className="settingRow">
+                  <span>显示消息数</span>
+                  <select
+                    aria-label="Overlay 显示消息数量"
+                    disabled={settingsBusy !== ""}
+                    value={appSettings.overlay_message_count}
+                    onChange={(event) => void updateAppSettings({ overlay_message_count: Number(event.target.value) })}
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                  </select>
+                </label>
+                <p className="settingHint">默认关闭。开启后只显示短消息，不接收输入。</p>
                 <p className="settingHint">不显示调试信息、路径、密钥或完整回复。</p>
               </div>
               <div className="voiceOutputPanel" role="group" aria-label="语音输出设置">
@@ -4534,6 +4663,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             proactive_sensitivity: appSettings.proactive_sensitivity,
                             auto_game_detection: appSettings.auto_game_detection,
                             overlay_enabled: appSettings.overlay_enabled,
+                            overlay_position: appSettings.overlay_position,
+                            overlay_opacity: appSettings.overlay_opacity,
+                            overlay_message_count: appSettings.overlay_message_count,
                             voice_output: appSettings.voice_output,
                             voice_rate: appSettings.voice_rate,
                             voice_volume: appSettings.voice_volume

@@ -4,10 +4,14 @@ import path from "node:path";
 
 import { BackendRuntimeManager } from "./backendRuntime.js";
 import { openLocalDataDir } from "./localData.js";
-import { configureOverlayWindowForClickThrough, createOverlayWindowOptions } from "./overlayWindow.js";
+import { calculateOverlayBounds, configureOverlayWindowForClickThrough, createOverlayWindowOptions } from "./overlayWindow.js";
 import {
   createOverlayMessage,
   createOverlayState,
+  normalizeOverlayConfig,
+  OVERLAY_MAX_MESSAGES,
+  type OverlayConfig,
+  type OverlayConfigUpdate,
   type OverlayContentUpdate,
   type OverlayMessage,
   type OverlayState
@@ -20,6 +24,7 @@ let backendRuntime: BackendRuntimeManager | null = null;
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let overlayEnabled = false;
+let overlayConfig: OverlayConfig = normalizeOverlayConfig();
 let overlayMessages: OverlayMessage[] = [];
 let overlayUpdatedAt: string | null = null;
 const isDevRenderer = () => Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -65,7 +70,8 @@ const overlayState = (): OverlayState =>
     overlayEnabled,
     Boolean(overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()),
     overlayMessages,
-    overlayUpdatedAt
+    overlayUpdatedAt,
+    overlayConfig
   );
 
 const broadcastOverlayState = () => {
@@ -85,17 +91,13 @@ const overlayRendererUrl = () => {
 
 const overlayBounds = () => {
   const { workArea } = screen.getPrimaryDisplay();
-  const width = 360;
-  const height = 168;
-  const x = workArea.x + workArea.width - width - 44;
-  const preferredY = workArea.y + Math.round(workArea.height * 0.58);
-  const y = Math.min(Math.max(workArea.y + 24, preferredY), workArea.y + workArea.height - height - 44);
-  return { width, height, x, y };
+  return calculateOverlayBounds(workArea, overlayConfig.position);
 };
 
 const showOverlayWindow = () => {
   if (!overlayEnabled) return overlayState();
   const window = createOverlayWindow();
+  window.setBounds(overlayBounds());
   if (!window.isVisible()) {
     window.showInactive();
   }
@@ -139,9 +141,21 @@ const setOverlayEnabled = (enabled: boolean) => {
   return enabled ? showOverlayWindow() : hideOverlayWindow();
 };
 
+const setOverlayConfig = (config: OverlayConfigUpdate) => {
+  const previousPosition = overlayConfig.position;
+  overlayConfig = normalizeOverlayConfig({ ...overlayConfig, ...config });
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    if (previousPosition !== overlayConfig.position) {
+      overlayWindow.setBounds(overlayBounds());
+    }
+    overlayWindow.webContents.send("overlay:state", overlayState());
+  }
+  return broadcastOverlayState();
+};
+
 const updateOverlayContent = (content: OverlayContentUpdate) => {
   const nextMessage = createOverlayMessage(content, `overlay-${Date.now()}`);
-  overlayMessages = [...overlayMessages, nextMessage].slice(-3);
+  overlayMessages = [...overlayMessages, nextMessage].slice(-OVERLAY_MAX_MESSAGES);
   overlayUpdatedAt = nextMessage.timestamp;
   if (overlayEnabled) {
     const window = createOverlayWindow();
@@ -215,6 +229,7 @@ app.whenReady().then(() => {
   ipcMain.handle("local-data:open-dir", () => openLocalDataDir(app.getPath("userData"), shell));
   ipcMain.handle("overlay:get-status", () => overlayState());
   ipcMain.handle("overlay:set-enabled", (_event, enabled: boolean) => setOverlayEnabled(Boolean(enabled)));
+  ipcMain.handle("overlay:set-config", (_event, config: OverlayConfigUpdate) => setOverlayConfig(config));
   ipcMain.handle("overlay:update-content", (_event, content: OverlayContentUpdate) => updateOverlayContent(content));
   void backendRuntime.ensureBackend();
   createWindow();

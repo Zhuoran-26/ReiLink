@@ -47,6 +47,7 @@ export type ReilinkRuntimeBridge = {
   openLocalDataDir: () => Promise<OpenLocalDataDirResult>;
   getOverlayStatus: () => Promise<OverlayState>;
   setOverlayEnabled: (enabled: boolean) => Promise<OverlayState>;
+  setOverlayConfig: (config: OverlayConfigUpdate) => Promise<OverlayState>;
   updateOverlayContent: (content: OverlayContentUpdate) => Promise<OverlayState>;
   onBackendStatus: (callback: (status: BackendRuntimeStatus) => void) => () => void;
   onOverlayState: (callback: (state: OverlayState) => void) => () => void;
@@ -57,4 +58,4 @@ declare global {
     reilinkRuntime?: ReilinkRuntimeBridge;
   }
 }
-import type { OverlayContentUpdate, OverlayState } from "./overlay.js";
+import type { OverlayConfigUpdate, OverlayContentUpdate, OverlayState } from "./overlay.js";

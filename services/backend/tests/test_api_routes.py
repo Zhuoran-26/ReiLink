@@ -237,6 +237,10 @@ def test_settings_routes_persist_safe_values():
         "proactive_companion",
         "proactive_sensitivity",
         "auto_game_detection",
+        "overlay_enabled",
+        "overlay_position",
+        "overlay_opacity",
+        "overlay_message_count",
         "onboarding_completed",
         "onboarding_last_seen_at",
     } <= data.keys()
@@ -259,6 +263,10 @@ def test_settings_routes_persist_safe_values():
             "proactive_companion": "on",
             "proactive_sensitivity": "high",
             "auto_game_detection": "off",
+            "overlay_enabled": "on",
+            "overlay_position": "top-left",
+            "overlay_opacity": 0.85,
+            "overlay_message_count": 1,
             "onboarding_completed": True,
             "onboarding_last_seen_at": seen_at,
         },
@@ -275,6 +283,10 @@ def test_settings_routes_persist_safe_values():
     assert saved["proactive_companion"] == "on"
     assert saved["proactive_sensitivity"] == "high"
     assert saved["auto_game_detection"] == "off"
+    assert saved["overlay_enabled"] == "on"
+    assert saved["overlay_position"] == "top-left"
+    assert saved["overlay_opacity"] == 0.85
+    assert saved["overlay_message_count"] == 1
     assert saved["onboarding_completed"] is True
     assert saved["onboarding_last_seen_at"] == seen_at
     assert client.get("/api/settings").json() == saved

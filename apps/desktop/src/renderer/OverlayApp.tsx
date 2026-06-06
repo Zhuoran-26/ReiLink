@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 
 import {
   createOverlayState,
@@ -18,6 +19,9 @@ const placeholderMessage = (): OverlayMessage => ({
 export function OverlayApp() {
   const [state, setState] = useState<OverlayState>(() => createOverlayState(false, false, []));
   const messages = useMemo(() => (state.messages.length > 0 ? state.messages : [placeholderMessage()]), [state.messages]);
+  const overlayStyle = useMemo(() => ({
+    "--overlay-bg-opacity": String(state.opacity)
+  }) as CSSProperties, [state.opacity]);
 
   useEffect(() => {
     document.body.classList.add("overlayBody");
@@ -31,7 +35,7 @@ export function OverlayApp() {
   }, []);
 
   return (
-    <main className="overlayRoot" aria-label="Rei 游戏悬浮层">
+    <main className="overlayRoot" aria-label="Rei 游戏悬浮层" style={overlayStyle}>
       <section className="overlayBubbleLayer" aria-label="Rei 最近短消息">
         {messages.slice(-state.max_messages).map((message) => (
           <article className="overlayBubbleRow" key={message.id}>

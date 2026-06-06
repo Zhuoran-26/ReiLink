@@ -1,5 +1,5 @@
 import type { AudioConversionStatusValue } from "./api";
-import type { OverlayMessageSource } from "./overlay";
+import type { OverlayMessageSource, OverlayPosition } from "./overlay";
 
 export type ReiLinkEvent =
   | { type: "user_message_sent"; timestamp: string; text: string }
@@ -17,7 +17,9 @@ export type ReiLinkEvent =
   | { type: "backend_status_changed"; timestamp: string; status: string }
   | { type: "runtime_status_changed"; timestamp: string; backend_source?: string; knowledge_source?: string }
   | { type: "overlay_enabled_changed"; timestamp: string; enabled: boolean; visible: boolean }
+  | { type: "overlay_settings_changed"; timestamp: string; position: OverlayPosition; opacity: number; max_messages: number }
   | { type: "overlay_window_shown"; timestamp: string; message_count: number }
+  | { type: "overlay_window_moved"; timestamp: string; position: OverlayPosition }
   | { type: "overlay_window_hidden"; timestamp: string }
   | { type: "overlay_content_updated"; timestamp: string; source?: OverlayMessageSource; character_count: number; message_count: number }
   | { type: "overlay_error"; timestamp: string; reason: string }

@@ -1,6 +1,30 @@
 export const OVERLAY_PLACEHOLDER_TEXT = "Rei 正安静待机。";
 export const OVERLAY_MAX_MESSAGES = 3;
+export const OVERLAY_MIN_MESSAGES = 1;
+export const OVERLAY_DEFAULT_MESSAGE_COUNT = 2;
 export const OVERLAY_MAX_MESSAGE_LENGTH = 96;
+export const OVERLAY_MIN_OPACITY = 0.35;
+export const OVERLAY_MAX_OPACITY = 0.95;
+export const OVERLAY_DEFAULT_OPACITY = 0.72;
+export const OVERLAY_DEFAULT_POSITION = "middle-right";
+export const OVERLAY_POSITION_VALUES = [
+  "top-right",
+  "middle-right",
+  "bottom-right",
+  "top-left",
+  "middle-left",
+  "bottom-left"
+] as const;
+
+export type OverlayPosition = (typeof OVERLAY_POSITION_VALUES)[number];
+
+export type OverlayConfig = {
+  position: OverlayPosition;
+  opacity: number;
+  max_messages: number;
+};
+
+export type OverlayConfigUpdate = Partial<OverlayConfig>;
 
 export type OverlayMessageSource = "assistant_reply" | "proactive" | "placeholder";
 
@@ -15,6 +39,8 @@ export type OverlayMessage = {
 export type OverlayState = {
   enabled: boolean;
   visible: boolean;
+  position: OverlayPosition;
+  opacity: number;
   messages: OverlayMessage[];
   max_messages: number;
   max_message_length: number;
@@ -40,6 +66,34 @@ const SENSITIVE_PATTERNS = [
 ];
 
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, " ").trim();
+
+export const isOverlayPosition = (value: unknown): value is OverlayPosition =>
+  typeof value === "string" && (OVERLAY_POSITION_VALUES as readonly string[]).includes(value);
+
+export const normalizeOverlayPosition = (value: unknown): OverlayPosition =>
+  isOverlayPosition(value) ? value : OVERLAY_DEFAULT_POSITION;
+
+export const normalizeOverlayOpacity = (value: unknown) => {
+  const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : OVERLAY_DEFAULT_OPACITY;
+  if (!Number.isFinite(numeric)) return OVERLAY_DEFAULT_OPACITY;
+  const clamped = Math.min(OVERLAY_MAX_OPACITY, Math.max(OVERLAY_MIN_OPACITY, numeric));
+  return Math.round(clamped * 100) / 100;
+};
+
+export const normalizeOverlayMessageCount = (value: unknown) => {
+  const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : OVERLAY_DEFAULT_MESSAGE_COUNT;
+  if (!Number.isFinite(numeric)) return OVERLAY_DEFAULT_MESSAGE_COUNT;
+  return Math.min(OVERLAY_MAX_MESSAGES, Math.max(OVERLAY_MIN_MESSAGES, Math.round(numeric)));
+};
+
+export const normalizeOverlayConfig = (config: unknown = {}): OverlayConfig => {
+  const record = typeof config === "object" && config !== null ? config as Record<string, unknown> : {};
+  return {
+    position: normalizeOverlayPosition(record.position),
+    opacity: normalizeOverlayOpacity(record.opacity),
+    max_messages: normalizeOverlayMessageCount(record.max_messages)
+  };
+};
 
 export const truncateOverlayText = (value: string, maxLength = OVERLAY_MAX_MESSAGE_LENGTH) => {
   const normalized = normalizeWhitespace(value);
@@ -90,12 +144,18 @@ export const createOverlayState = (
   enabled: boolean,
   visible: boolean,
   messages: OverlayMessage[],
-  updatedAt: string | null = null
-): OverlayState => ({
-  enabled,
-  visible,
-  messages: messages.slice(-OVERLAY_MAX_MESSAGES),
-  max_messages: OVERLAY_MAX_MESSAGES,
-  max_message_length: OVERLAY_MAX_MESSAGE_LENGTH,
-  updated_at: updatedAt
-});
+  updatedAt: string | null = null,
+  config: OverlayConfigUpdate = {}
+): OverlayState => {
+  const safeConfig = normalizeOverlayConfig(config);
+  return {
+    enabled,
+    visible,
+    position: safeConfig.position,
+    opacity: safeConfig.opacity,
+    messages: messages.slice(-safeConfig.max_messages),
+    max_messages: safeConfig.max_messages,
+    max_message_length: OVERLAY_MAX_MESSAGE_LENGTH,
+    updated_at: updatedAt
+  };
+};

@@ -285,14 +285,17 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - `Audio Capture Test`、`Record & Transcribe`、主聊天语音按钮、`Test Voice` 和 Knowledge Retrieval 入口仍可见。
 - 退出后 backend 无残留。
 
-### 5. Overlay v1 Foundation 回归检查
+### 5. Overlay v1.1 回归检查
 
 机器可读场景见 `docs/qa/overlay_scenarios.json`。
 
 - `Overlay / 游戏悬浮层` 默认关闭。
-- Settings 中可切换 Overlay 开启 / 关闭，状态保存到 app settings；关闭 app 再打开后仍保持上次设置。
+- Settings 中可切换 Overlay 开启 / 关闭，并可设置位置预设、背景透明度和显示消息数量；关闭 app 再打开后仍保持上次设置。
+- Overlay 位置预设只使用右上、右中、右下、左上、左中、左下；默认 `右中`，移动时应保持在 primary display workArea 内。
+- Overlay 背景透明度范围为 0.35～0.95，默认 0.72；调整后只影响浮层背景，文字仍应清晰可读。
+- Overlay 显示消息数量只能是 1～3，默认 2。
 - 开启后出现独立 Electron overlay window；窗口应是透明、无边框、always-on-top、skipTaskbar。
-- Overlay 位于屏幕右侧偏中下区域，整体是半透明短消息层，不应像普通桌面通知窗口。
+- Overlay 整体是半透明短消息层，不应像普通桌面通知窗口。
 - Overlay 不抢主窗口焦点；开启、更新内容和关闭时主聊天输入仍可继续使用。
 - Overlay 不接收输入，不显示输入框、按钮、debug 面板、Raw JSON、memory 或 prompt。
 - 没有消息时显示克制 placeholder，例如 `Rei 正安静待机。`。
@@ -300,12 +303,12 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - proactive short hint 可作为 Rei 短消息显示；不影响主窗口聊天流程。
 - Overlay 最多显示最近 1～3 条安全短消息，每条消息应保留 `Rei` 小标识或等价头像占位。
 - 关闭 Overlay 后悬浮窗消失，主窗口聊天和 Voice Output / Voice Input / Knowledge Retrieval 不受影响。
-- Event Stream 可显示 `悬浮层开关变化`、`悬浮层显示`、`悬浮层隐藏`、`悬浮层内容更新` 或等价中文安全摘要。
-- Event Stream 只显示来源、消息数量、字符数和窗口状态，不显示完整 assistant reply、完整用户输入、memory、raw prompt、API key、`.env`、Authorization、完整路径、完整 transcript、raw stdout 或 raw stderr。
-- Debug Raw JSON 的 settings 只应显示 `overlay_enabled` 开关，不显示 overlay 消息文本。
-- Dev smoke 至少覆盖：启动不黑屏、Settings 中 Overlay 可见、默认关闭、开启后窗口出现、不抢焦点、不接收输入、发送消息后显示短摘要、关闭后隐藏、Event Stream 安全事件可见。
-- Packaged `.app` smoke 如本次未执行，需要在 release 前补做：直接打开 packaged app，确认 overlay renderer 能从 packaged `index.html` 加载且不是黑屏。
-- 本阶段不实现 HUD / 敌人 / 玩家位置识别，不做画面理解，不做自动避让，不做拖拽、锁定位置、透明度调节或显示数量调节。
+- Event Stream 可显示 `悬浮层开关变化`、`悬浮层设置变化`、`悬浮层位置更新`、`悬浮层显示`、`悬浮层隐藏`、`悬浮层内容更新` 或等价中文安全摘要。
+- Event Stream 只显示来源、消息数量、字符数、窗口状态、位置预设和透明度数值，不显示完整 assistant reply、完整用户输入、memory、raw prompt、API key、`.env`、Authorization、完整路径、完整 transcript、raw stdout 或 raw stderr。
+- Debug Raw JSON 的 settings 可显示 overlay 开关、位置、透明度和消息数量，不显示 overlay 消息文本。
+- Dev smoke 至少覆盖：启动不黑屏、Settings 中 Overlay 配置可见、默认关闭、开启后窗口出现、位置切换生效、透明度变化可读、消息数量限制生效、不抢焦点、不接收输入、发送消息后显示短摘要、关闭后隐藏、Event Stream 安全事件可见。
+- Packaged `.app` smoke 如本次未执行，需要在 release 前补做：直接打开 packaged app，确认 overlay renderer 能从 packaged `index.html` 加载且不是黑屏，并验证开启 / 关闭 / 位置 / 透明度。
+- 本阶段不实现 HUD / 敌人 / 玩家位置识别，不做画面理解，不做自动避让，不做拖拽或锁定位置。
 
 ### 6. Knowledge Retrieval 回归检查
 
