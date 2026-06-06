@@ -1,5 +1,21 @@
 # Voice Input v2 Local ASR Feasibility Spike
 
+## Current stage conclusion / 当前阶段结论
+
+Local ASR v1 is no longer only a feasibility spike. The original spike remains useful design background, but the implemented product path now includes Settings persistence, backend resolved config, audio conversion, main chat voice-button integration, Simplified Chinese transcript cleanup, and packaged-app manual validation.
+
+Current release state:
+
+- Local ASR can be configured from Settings without relying on shell env.
+- Saved Local ASR settings live in the backend user data directory, not in the repo or `.app`.
+- The main chat voice button prefers Local ASR when ready and falls back safely otherwise.
+- Transcript only fills the input and is never auto-sent.
+- Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, or game context.
+- Debug Panel, Event Stream, and Raw JSON show safe summaries instead of full paths, raw subprocess output, or full transcript.
+- Real manual validation has passed for packaged `.app` startup, backend auto-start, Settings persistence, restart persistence, Check Local ASR, main chat voice availability, and privacy surfaces.
+
+Future Local ASR changes should start from the release regression checklist in [`docs/QA.md`](QA.md) and the machine-readable scenarios in [`docs/qa/voice_input_local_asr_scenarios.json`](qa/voice_input_local_asr_scenarios.json).
+
 ## 1.1 当前 Web Speech Recognition 结论
 
 Voice Input v1 依赖 Electron renderer 中的 `SpeechRecognition` / `webkitSpeechRecognition`。实测 packaged `.app` 中构造器可以存在，麦克风权限也可以是已允许，但识别服务仍会返回“语音识别服务不可用”。这说明 Web Speech Recognition 在 ReiLink 的 Electron packaged runtime 里不能作为稳定主路径。

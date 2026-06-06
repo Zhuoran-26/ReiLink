@@ -869,5 +869,159 @@
       "full model path",
       "full converter path"
     ]
+  },
+  {
+    "id": "local-asr-packaged-clean-start",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Release build is created and packaged ReiLink.app is opened directly with no dev renderer",
+    "expected_status": "local_asr_not_configured",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The packaged app is not a black screen, the backend starts or connects, user data stays outside the .app, .env is not copied into the app, and app-owned backend processes are gone after quit.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "base64", "raw prompt", "long internal payload"]
+  },
+  {
+    "id": "local-asr-no-env-setup-save",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Packaged app starts without Local ASR shell env and the user enters ASR binary, model, and converter paths in Settings",
+    "expected_status": "local_asr_ready",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Save persists user settings, Refresh Status becomes ready, and UI surfaces show only safe basenames for whisper-cli, ggml-base.bin, and ffmpeg.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+  },
+  {
+    "id": "local-asr-settings-refresh-ready",
+    "category": "voice_input_local_asr",
+    "precondition": "Saved user settings point to an executable ASR binary, an existing model, and a usable converter",
+    "expected_status": "local_asr_ready",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Refresh Status rereads settings, reports source user_settings, enables Check Local ASR and Record & Transcribe, and keeps full paths out of Debug/Event/Raw JSON.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+  },
+  {
+    "id": "local-asr-settings-persist-after-restart",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Local ASR settings were saved in packaged app and the app is closed and reopened",
+    "expected_status": "local_asr_ready",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The reopened packaged app reloads settings from the user data directory, shows source user_settings, remains ready, and Check Local ASR can still start.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+  },
+  {
+    "id": "local-asr-check-probe-succeeds",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR status is ready and the user clicks Check Local ASR",
+    "expected_status": "local_asr_probe_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The probe reports that the local ASR binary can start, without recording audio, passing model/audio paths, filling the input, or showing raw stdout/stderr.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full audio path", "full transcript", "base64"]
+  },
+  {
+    "id": "local-asr-audio-capture-succeeds",
+    "category": "voice_input_local_asr",
+    "precondition": "Microphone permission is granted and the user clicks Audio Capture Test",
+    "expected_status": "audio_probe_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Audio Capture Test completes, shows duration, size, MIME, and cleanup status, and does not call ASR or fill the chat input.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "audio content", "full transcript", "base64"]
+  },
+  {
+    "id": "local-asr-record-transcribe-fills-input",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR is ready, microphone permission is granted, and the user clicks Record & Transcribe",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Recording and local transcription succeed, cleaned transcript fills the input, and the send button still requires a user click before chat flow starts.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+  },
+  {
+    "id": "local-asr-main-chat-button-uses-local-asr",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR is ready in the main chat screen",
+    "expected_status": "local_asr_ready",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The main chat voice button is available as Local ASR, does not show Web Speech unavailable as the primary path, and records/transcribes only after the user clicks.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "base64", "raw prompt"]
+  },
+  {
+    "id": "local-asr-transcript-simplified-chinese",
+    "category": "voice_input_local_asr",
+    "precondition": "Local ASR returns Traditional Chinese transcript content with English words and numbers",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The transcript is lightly normalized to Simplified Chinese while English and numbers remain intact, and only a character count plus normalization status appears in Debug/Event surfaces.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "raw transcript", "base64"]
+  },
+  {
+    "id": "local-asr-no-auto-send",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR transcription succeeds from Settings or the main chat voice button",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The transcript stays editable in the input and no chat request is made until the user manually clicks Send.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "raw transcript", "base64", "raw prompt"]
+  },
+  {
+    "id": "local-asr-no-context-pollution",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR transcript is present in the input but has not been manually sent",
+    "expected_status": "local_asr_transcription_succeeded",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Unconfirmed transcript does not write memory, update prompt preview, trigger knowledge retrieval, trigger semantic extraction, or change game context.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "raw transcript", "base64", "raw prompt"]
+  },
+  {
+    "id": "local-asr-privacy-no-full-paths",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Local ASR settings, probe, audio capture, and transcription have all been exercised in a release smoke pass",
+    "expected_status": "local_asr_ready",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Event Stream, Debug Panel, Raw JSON, and chat surfaces show safe basenames and summaries only, never full configured paths, temp paths, raw subprocess output, full transcript, or audio payloads.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64", "raw prompt", "long internal payload"]
+  },
+  {
+    "id": "local-asr-clear-config-fallback",
+    "category": "voice_input_local_asr",
+    "precondition": "Saved Local ASR user settings exist and the user clicks Clear with no Local ASR env fallback configured",
+    "expected_status": "local_asr_not_configured",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Clear removes saved settings, Local ASR returns to unconfigured safe fallback, the main chat voice button falls back safely, and cleared full paths do not remain visible.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+  },
+  {
+    "id": "local-asr-backend-no-residual-process",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Packaged app started its own backend during Local ASR release smoke and the user quits the app",
+    "expected_status": "local_asr_not_configured",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "After app quit, the app-owned backend is no longer listening and no Local ASR settings, temp audio, memory, session, or .env files were written inside the .app.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "base64", "raw prompt", "long internal payload"]
   }
 ]

@@ -92,11 +92,13 @@ dev/codex-reilink
 - Local ASR 已接入主聊天语音按钮：provider selection 为 `local_asr` -> `web_speech` -> `unavailable`；本地转写成功后 transcript 只填入输入框，仍需手动发送。
 - Local ASR v1.1 已补齐输出规范化和 UX polish：`zh-CN` 归一为 whisper `zh`，ASR transcript 返回前 trim / 折叠空白 / 轻量繁转简，成功状态提示 `转写完成，请确认后发送`，timeout 提示可尝试更小模型或更短录音。
 - Local ASR Setup UI v1 已补齐：用户可在 Settings -> Voice Input 保存本地 ASR binary、model 和 converter 路径；用户配置优先，env fallback 次之，完整路径不进入 Event Stream / Debug / Raw JSON。
+- Local ASR v1 已达到 packaged app 可配置 MVP：真实用户手动验证已通过，包括 packaged `.app` 非黑屏、后端自启动、无 shell env 配置、Settings 持久化、重启后配置仍存在、Check Local ASR 可启动、主聊天按钮显示本地语音识别可用。
+- Local ASR release regression checklist 已建立在 `docs/QA.md` 和 `docs/qa/voice_input_local_asr_scenarios.json`，覆盖 packaged clean start、no-env setup、settings persistence、主聊天语音按钮、简体化、不自动发送、隐私和 clear fallback。
 - Local ASR staged foundation 已完成：feasibility plan、config detection、CLI probe、Audio Capture / Temp File probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge 和 whisper-like parsing QA。
 - Audio Format Conversion v1 已支持通过 Settings 用户配置或 `REILINK_AUDIO_CONVERTER_BINARY` fallback 把 WebM/Ogg 等录音格式转为 WAV；未配置或失败时安全短路，不调用 ASR。
 - Local ASR 当前不提交 whisper binary，不提交 model，不提交 ffmpeg / converter binary，不接入云 ASR 或商业 ASR。
 - Local ASR manual setup guide 已新增；真实 whisper.cpp / model / converter 仍由用户手动配置，不随 app 内置。
-- 真实 whisper 手动 smoke 仍是 optional / manual，不是自动测试依赖。
+- 真实 whisper 手动 smoke 仍是 manual release regression，不是自动测试依赖。
 
 ### 当前 Knowledge Retrieval 状态
 
@@ -122,8 +124,9 @@ dev/codex-reilink
 - Windows packaging。
 - Knowledge pack expansion。
 - Optional RAG / vector retrieval。
-- Local ASR real whisper.cpp manual QA。
-- Local ASR converter setup and packaged manual QA。
+- Local ASR native file picker。
+- Local ASR model setup helper。
+- Local ASR accuracy tuning、timeout tuning 和 optional larger model guidance。
 - Optional Overlay / Live2D。
 - Multi-companion system。
 
@@ -255,11 +258,13 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Local ASR is wired into the main chat voice button: provider selection is `local_asr` -> `web_speech` -> `unavailable`; successful local transcripts only fill the input and still require manual send.
 - Local ASR v1.1 now includes transcript output polish: `zh-CN` is normalized to whisper `zh`, ASR transcripts are trimmed / whitespace-collapsed / lightly normalized to Simplified Chinese before filling the input, success asks the user to confirm before sending, and timeouts suggest a smaller model or shorter recording.
 - Local ASR Setup UI v1 is complete: users can save local ASR binary, model, and converter paths from Settings -> Voice Input; saved user settings take priority over env fallback, and full paths stay out of Event Stream / Debug / Raw JSON.
+- Local ASR v1 has reached a packaged-app configurable MVP: real user manual validation has passed for non-black packaged startup, backend auto-start, no-shell-env setup, Settings persistence, restart persistence, Check Local ASR startup, and main-chat local voice availability.
+- Local ASR release regression checklists now live in `docs/QA.md` and `docs/qa/voice_input_local_asr_scenarios.json`, covering packaged clean start, no-env setup, settings persistence, main-chat voice button behavior, Simplified Chinese transcript output, no auto-send, privacy, and clear fallback.
 - Local ASR staged foundation is complete: feasibility plan, config detection, CLI probe, Audio Capture / Temp File probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, and whisper-like parsing QA.
 - Audio Format Conversion v1 can use Settings user configuration or `REILINK_AUDIO_CONVERTER_BINARY` fallback to convert WebM/Ogg-style recordings to WAV; missing or failed converters short-circuit safely and do not call ASR.
 - Local ASR does not commit a whisper binary, model file, ffmpeg / converter binary, cloud ASR, or commercial ASR integration.
 - The Local ASR manual setup guide has been added; real whisper.cpp / model / converter remains user-configured and is not bundled with the app.
-- Real whisper manual smoke remains optional / manual and is not an automated test dependency.
+- Real whisper manual smoke remains a manual release regression check and is not an automated test dependency.
 
 ### Current Knowledge Retrieval Status
 
@@ -285,8 +290,9 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Windows packaging.
 - Knowledge pack expansion.
 - Optional RAG / vector retrieval.
-- Local ASR real whisper.cpp manual QA.
-- Local ASR converter setup and packaged manual QA.
+- Local ASR native file picker.
+- Local ASR model setup helper.
+- Local ASR accuracy tuning, timeout tuning, and optional larger-model guidance.
 - Optional Overlay / Live2D.
 - Multi-companion system.
 

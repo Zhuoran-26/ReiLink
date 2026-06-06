@@ -124,7 +124,46 @@ Run these steps in order:
     - no raw stdout / stderr
     - no API key, `.env`, Authorization header, or raw prompt
 
-## 6. Troubleshooting / 排查
+## 6. Release regression checklist / 发布回归清单
+
+Use this checklist before freezing a release that touches voice input, Settings, Debug/Event surfaces, packaged runtime, or local data behavior.
+
+1. Packaged app clean-start:
+   - Run `make package-backend`.
+   - Run `make package-desktop`.
+   - Open packaged `ReiLink.app` directly, not the dev renderer.
+   - Confirm the app is not a black screen and the backend becomes connected.
+   - Confirm `.env`, memory, session, settings, and user data are not copied into `.app`.
+   - Quit the app and confirm no app-owned backend process remains listening.
+2. No-env setup:
+   - Start without relying on `REILINK_LOCAL_ASR_BINARY`, `REILINK_LOCAL_ASR_MODEL`, or `REILINK_AUDIO_CONVERTER_BINARY`.
+   - Open Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup`.
+   - Enter the ASR binary path, model path, and audio converter path.
+   - Save, then refresh status.
+   - Confirm status becomes ready and UI shows only safe basenames.
+3. Save / refresh / restart persistence:
+   - Close and reopen packaged app.
+   - Confirm source is user settings, safe basenames remain visible, and `Check Local ASR` can still start.
+4. Local operation checks:
+   - `Check Local ASR` succeeds.
+   - `Audio Capture Test` succeeds and cleans temporary audio.
+   - `Record & Transcribe` succeeds and fills the input.
+   - The main chat voice button uses Local ASR when ready.
+5. Transcript checks:
+   - Traditional Chinese ASR output is normalized to Simplified Chinese.
+   - English and numbers are not damaged by normalization.
+   - Transcript only fills the input and is not sent automatically.
+   - The user can edit or delete the transcript before manual send.
+6. Privacy checks:
+   - Event Stream, Debug Panel, and Raw JSON do not show full binary/model/converter paths, full temp audio paths, raw stdout/stderr, raw exceptions, full transcript, audio content, base64, API keys, `.env`, Authorization, raw prompt, or long internal payloads.
+   - Safe basename, configured booleans, source, character count, language, conversion status, cleanup status, duration, and MIME summary are allowed.
+7. Clear config fallback:
+   - Click `清除配置 / Clear`.
+   - Confirm Local ASR returns to env fallback or unconfigured state.
+   - Confirm the main chat voice button shows a safe fallback and the app does not crash.
+   - Confirm cleared full paths are not shown in Event Stream, Debug Panel, or Raw JSON.
+
+## 7. Troubleshooting / 排查
 
 | Status | Meaning | What to check |
 | --- | --- | --- |
@@ -152,7 +191,7 @@ Accuracy tips:
 - If larger models time out, use a shorter recording or a smaller model.
 - ReiLink does not run LLM correction, translation, term correction, or cloud ASR on the transcript.
 
-## 7. Privacy / 隐私边界
+## 8. Privacy / 隐私边界
 
 - ReiLink does not upload audio to external services.
 - ReiLink does not use cloud ASR.
@@ -166,7 +205,7 @@ Accuracy tips:
 - Event Stream / Debug Panel may show safe character count, duration, MIME, conversion status, cleanup status, safe binary/model/converter basename, language, and whether the transcript was `已规范为简体中文`.
 - Debug Panel does not show raw stdout / stderr, raw exception, full transcript, or full local paths.
 
-## 8. Known Limitations / 已知限制
+## 9. Known Limitations / 已知限制
 
 - Real whisper.cpp CLI flags can differ between versions and builds.
 - ReiLink currently assumes a whisper.cpp-like command shape.

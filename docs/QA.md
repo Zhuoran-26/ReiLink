@@ -108,6 +108,58 @@
 
 设计文档见 `docs/voice-input-local-asr-spike.md`，真实手动配置指南见 `docs/local-asr-manual-setup.md`，机器可读场景见 `docs/qa/voice_input_local_asr_scenarios.json`。
 
+#### Local ASR v1 Release Regression / 本地语音输入 v1 发布回归
+
+Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保存本地 ASR binary、model 和 converter 路径，主聊天语音按钮在 ready 时优先使用本地 ASR，transcript 只填入输入框且不会自动发送。每次修改 Overlay、Live2D、RAG、packaging、voice 或 debug surfaces 前后，都应先按本清单做 release regression。
+
+1. Clean packaged app startup:
+   - 运行 `make package-backend`。
+   - 运行 `make package-desktop`。
+   - 直接打开 packaged `ReiLink.app`，不要打开 dev renderer。
+   - App 非黑屏，后端自启动，顶部或 Settings 显示已连接。
+   - `.env` 不复制进 `.app`。
+   - memory / session / settings 写入用户数据目录，不写入 `.app`。
+   - 退出 app 后，由 app 自启动的 backend 没有残留监听进程。
+2. No-env Local ASR setup:
+   - 不依赖 `REILINK_LOCAL_ASR_BINARY` / `REILINK_LOCAL_ASR_MODEL` / `REILINK_AUDIO_CONVERTER_BINARY`。
+   - Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 可见。
+   - 输入 ASR binary path、model path 和 audio converter path。
+   - 点击 `保存配置 / Save`，再点击 `重新检测 / Refresh Status`。
+   - Local ASR status 变为 ready。
+   - UI 只显示 safe basename：`whisper-cli`、`ggml-base.bin`、`ffmpeg`。
+   - Debug Panel / Event Stream / Raw JSON 不显示完整路径。
+3. Persistence after restart:
+   - 关闭 packaged app 后重新打开。
+   - Local ASR 配置仍存在，source 显示为用户配置。
+   - Status 仍可 ready，`Check Local ASR` 仍可启动。
+4. Local ASR operations:
+   - `Check Local ASR` succeeded。
+   - `Audio Capture Test` succeeded。
+   - `Record & Transcribe` succeeded。
+   - 主聊天框语音按钮可用，并使用 Local ASR，而不是 Web Speech unavailable fallback。
+   - 真实 transcript 填入输入框，不自动发送。
+   - 用户可编辑 transcript；只有用户手动点击发送后才进入 chat flow。
+5. Simplified Chinese output:
+   - 如果 whisper 输出繁体中文，ReiLink 应规范化为简体中文。
+   - transcript 中英文和数字不应被破坏。
+   - Event Stream / Debug Panel 不显示完整 transcript。
+6. Privacy / safety checks:
+   - 禁止显示 full ASR binary path、full model path、full converter path、full temp audio path。
+   - 禁止显示 raw stdout、raw stderr、raw exception、full transcript、audio content、base64 audio。
+   - 禁止显示 API key、`.env`、Authorization、raw prompt 或 long internal payload。
+   - 允许显示 safe basename、configured boolean、source (`user_settings` / `env` / `none`)、transcript char count、language、conversion status、cleanup status、duration_ms 和 MIME summary。
+7. Clear configuration fallback:
+   - 点击 `清除配置 / Clear`。
+   - Local ASR 回到 env fallback 或未配置。
+   - 主聊天语音按钮显示安全 fallback，App 不崩溃。
+   - Debug Panel / Event Stream 不泄露已清除的完整路径。
+8. Known limitations:
+   - ReiLink 不内置 whisper binary、model 或 ffmpeg。
+   - 真实识别准确率取决于模型大小、录音质量和硬件性能。
+   - `base` 模型是速度 / 准确率折中；更大模型可能更准确但更慢。
+   - packaged `.app` 若用户未配置路径，会显示安全 fallback。
+   - native file picker 尚未实现，当前使用文本路径输入。
+
 - 当前 Web Speech Recognition 在 Electron packaged app 中可能暴露 API，但识别服务不可用；Local ASR ready 时主聊天语音按钮应走本地转写，Local ASR not ready 时才显示 `语音识别服务不可用` 或明确 unavailable fallback，不崩溃。
 - v1 仍保留输入框入口、安全 fallback、系统听写提示和“不自动发送”的边界。
 - 当前 Local ASR Config Detection v1 只检测解析后的配置，不执行 whisper / ASR binary，不录音，不转写，不上传音频，不下载模型，不把模型或用户数据写入 `.app`。
