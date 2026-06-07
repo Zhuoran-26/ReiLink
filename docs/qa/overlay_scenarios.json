@@ -6,17 +6,17 @@
     "expected_status": "overlay_disabled",
     "should_accept_input": false,
     "should_show_full_reply": false,
-    "expected_behavior": "Settings shows Overlay / 游戏悬浮层 with value 关闭, and no overlay window is visible.",
+    "expected_behavior": "Settings shows Overlay / 游戏悬浮层 with the 关闭 button active, and no overlay window is visible.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
   },
   {
     "id": "overlay-enable-shows-window",
     "category": "overlay",
-    "precondition": "Desktop app is running and backend settings are loaded",
+    "precondition": "Desktop app is running, backend settings are loaded, Overlay has been enabled, and ReiLink is not the foreground app",
     "expected_status": "overlay_visible",
     "should_accept_input": false,
     "should_show_full_reply": false,
-    "expected_behavior": "Switching Overlay to 开启 creates a transparent frameless always-on-top window near the right middle-lower area without stealing focus.",
+    "expected_behavior": "Switching Overlay to 开启 while Settings is foreground only persists enabled state; after switching away from ReiLink, a transparent frameless always-on-top small overlay window may appear without stealing focus.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
   },
   {
@@ -56,7 +56,7 @@
     "expected_status": "overlay_window_moved",
     "should_accept_input": false,
     "should_show_full_reply": false,
-    "expected_behavior": "Changing the Overlay position preset to any allowed corner or side preset moves the independent overlay window within the primary display work area without stealing focus.",
+    "expected_behavior": "Changing the Overlay position preset to any allowed corner or side preset updates the configured bounds within the primary display work area without forcing the overlay above Settings.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
   },
   {
@@ -66,7 +66,7 @@
     "expected_status": "overlay_settings_changed",
     "should_accept_input": false,
     "should_show_full_reply": false,
-    "expected_behavior": "Changing Overlay background opacity between 0.35 and 0.95 updates the translucent background while Rei message text remains readable.",
+    "expected_behavior": "Changing Overlay background opacity between 0.35 and 0.95 updates the translucent background while Rei message text remains readable and does not force the overlay above Settings.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "debug", "full transcript", "full local path"]
   },
   {
@@ -86,7 +86,27 @@
     "expected_status": "overlay_visibility_suppressed",
     "should_accept_input": false,
     "should_show_full_reply": false,
-    "expected_behavior": "Overlay remains enabled but is hidden while ReiLink is the active app, so Settings controls and macOS window buttons stay visible and operable; it can reappear after switching away from ReiLink.",
+    "expected_behavior": "Overlay remains enabled but the runtime window is hidden or destroyed while ReiLink is the active app, so Settings controls and macOS window buttons stay visible and operable; it can reappear after switching away from ReiLink.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "overlay-renderer-isolated",
+    "category": "overlay_packaged",
+    "precondition": "Overlay is enabled and shown in dev or packaged mode",
+    "expected_status": "overlay_visible",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay BrowserWindow loads the overlay-marked renderer entry and shows only the bubble or placeholder surface, not the full ReiLink sidebar, chat, Settings, Debug Panel, or input box.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "memory", "debug panel", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-settings-force-close",
+    "category": "overlay",
+    "precondition": "Overlay is enabled or suspected to be stuck above the main UI",
+    "expected_status": "overlay_hidden",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Settings exposes a reliable 强制关闭悬浮层 button that sets overlay_enabled to off and hides or destroys the overlay window without needing a native select dropdown.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
@@ -96,7 +116,7 @@
     "expected_status": "overlay_hidden",
     "should_accept_input": false,
     "should_show_full_reply": false,
-    "expected_behavior": "Switching Overlay to 关闭 hides the overlay window and does not change main chat messages.",
+    "expected_behavior": "Switching Overlay to 关闭 or using 强制关闭悬浮层 hides or destroys the overlay window and does not change main chat messages.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript"]
   },
   {
@@ -126,7 +146,7 @@
     "expected_status": "overlay_visible",
     "should_accept_input": false,
     "should_show_full_reply": false,
-    "expected_behavior": "Main window is not black, Settings contains Overlay config, enabling it opens a separate overlay window, position and opacity changes apply, and disabling it hides the window.",
+    "expected_behavior": "Main window is not black, Settings contains Overlay config, foreground enabling does not cover Settings, switching away shows only a small overlay bubble window, position and opacity changes apply, and disabling or force-closing hides the window.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
   }
 ]

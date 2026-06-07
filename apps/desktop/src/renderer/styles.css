@@ -732,6 +732,7 @@ button {
 .iconButton.disabled,
 .sendButton:disabled,
 .smallButton:disabled,
+.overlayToggleButton:disabled,
 .settingRow select:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -1079,6 +1080,44 @@ button {
 .settingRow select:focus {
   border-color: rgba(180, 158, 255, 0.46);
   box-shadow: 0 0 0 3px rgba(141, 116, 221, 0.13);
+}
+
+.overlayToggleControl {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.overlayToggleButton {
+  width: 100%;
+  height: 34px;
+  border: 1px solid rgba(150, 169, 218, 0.2);
+  border-radius: 10px;
+  color: #dce4f6;
+  background: rgba(9, 12, 24, 0.78);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.overlayToggleButton[aria-pressed="true"] {
+  color: #efeaff;
+  border-color: rgba(180, 158, 255, 0.46);
+  background: rgba(84, 69, 145, 0.58);
+  box-shadow: 0 0 0 3px rgba(141, 116, 221, 0.13);
+}
+
+.overlayToggleButton:hover:not(:disabled) {
+  border-color: rgba(180, 158, 255, 0.38);
+  background: rgba(41, 38, 70, 0.78);
+}
+
+.overlayForceOffButton {
+  width: 100%;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .rangeControl {

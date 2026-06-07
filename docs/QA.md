@@ -290,14 +290,17 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 机器可读场景见 `docs/qa/overlay_scenarios.json`。
 
 - `Overlay / 游戏悬浮层` 默认关闭。
-- Settings 中可切换 Overlay 开启 / 关闭，并可设置位置预设、背景透明度和显示消息数量；关闭 app 再打开后仍保持上次设置。
+- Settings 中可用普通按钮切换 Overlay 开启 / 关闭，并可设置位置预设、背景透明度和显示消息数量；关闭 app 再打开后仍保持上次设置。
+- Settings 中应存在可靠关闭入口：`强制关闭悬浮层` 点击后应立即把 overlay_enabled 设为关闭并隐藏 / 销毁 overlay window。
 - Overlay 位置预设只使用右上、右中、右下、左上、左中、左下；默认 `右中`，移动时应保持在 primary display workArea 内。
 - Overlay 背景透明度范围为 0.35～0.95，默认 0.72；调整后只影响浮层背景，文字仍应清晰可读。
 - Overlay 显示消息数量只能是 1～3，默认 2。
-- 开启后出现独立 Electron overlay window；窗口应是透明、无边框、always-on-top、skipTaskbar。
+- ReiLink 主窗口前台点击开启时只保存 enabled 状态，不应立即出现盖在 Settings 上方的 overlay window；切换到其他 app 或游戏窗口后才允许出现独立 Electron overlay window。
+- Overlay window 应是透明、无边框、always-on-top、skipTaskbar，并保持小窗口 bounds，不应是主窗口大小或整屏大小。
+- Overlay renderer 应只显示 overlay bubble / placeholder；不得渲染完整 ReiLink sidebar、聊天主界面、Settings、Debug Panel、输入框或完整 App layout。
 - Overlay 整体是半透明短消息层，不应像普通桌面通知窗口。
 - Overlay 不抢主窗口焦点；开启、更新内容和关闭时主聊天输入仍可继续使用。
-- ReiLink 主窗口或 Settings 位于前台时，Overlay 即使已开启也应暂时隐藏，不遮挡 Settings、select、slider、button 或 macOS 关闭 / 最小化 / 全屏按钮。
+- ReiLink 主窗口或 Settings 位于前台时，Overlay 即使已开启也应隐藏或销毁，不遮挡 Settings、select/dropdown、slider、button 或 macOS 关闭 / 最小化 / 全屏按钮。
 - 切换到其他 app 或游戏窗口后，如果 `overlay_enabled=true`，Overlay 可以重新显示；切回 ReiLink 主窗口后应再次自动隐藏。
 - Overlay 不接收输入，不显示输入框、按钮、debug 面板、Raw JSON、memory 或 prompt。
 - 没有消息时显示克制 placeholder，例如 `Rei 正安静待机。`。
@@ -308,8 +311,8 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - Event Stream 可显示 `悬浮层开关变化`、`悬浮层设置变化`、`悬浮层位置更新`、`悬浮层显示`、`悬浮层隐藏`、`悬浮层暂时隐藏`、`悬浮层内容更新` 或等价中文安全摘要。
 - Event Stream 只显示来源、消息数量、字符数、窗口状态、位置预设和透明度数值，不显示完整 assistant reply、完整用户输入、memory、raw prompt、API key、`.env`、Authorization、完整路径、完整 transcript、raw stdout 或 raw stderr。
 - Debug Raw JSON 的 settings 可显示 overlay 开关、位置、透明度和消息数量，不显示 overlay 消息文本。
-- Dev smoke 至少覆盖：启动不黑屏、Settings 中 Overlay 配置可见、默认关闭、开启后窗口出现、位置切换生效、透明度变化可读、消息数量限制生效、不抢焦点、不接收输入、发送消息后显示短摘要、关闭后隐藏、Event Stream 安全事件可见。
-- Packaged `.app` smoke 如本次未执行，需要在 release 前补做：直接打开 packaged app，确认 overlay renderer 能从 packaged `index.html` 加载且不是黑屏，并验证开启 / 关闭 / 位置 / 透明度。
+- Dev smoke 至少覆盖：启动不黑屏、Settings 中 Overlay 配置可见、默认关闭、前台开启不覆盖 Settings、切走后小型 overlay bubble 出现、位置切换生效、透明度变化可读、消息数量限制生效、不抢焦点、不接收输入、发送消息后只更新短摘要、关闭 / 强制关闭后隐藏、Event Stream 安全事件可见。
+- Packaged `.app` smoke 如本次未执行，需要在 release 前补做：直接打开 packaged app，确认 overlay renderer 能从 packaged `index.html?overlay=1#overlay` 加载且不是黑屏 / 完整主应用副本，并验证开启 / 关闭 / 强制关闭 / 位置 / 透明度。
 - 本阶段不实现 HUD / 敌人 / 玩家位置识别，不做画面理解，不做自动避让，不做拖拽或锁定位置。
 
 ### 6. Knowledge Retrieval 回归检查

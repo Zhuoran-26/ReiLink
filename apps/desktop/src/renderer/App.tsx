@@ -2188,6 +2188,17 @@ export function App() {
     eventBus.emit({ type: "overlay_error", timestamp: eventTimestamp(), reason });
   }, []);
 
+  const forceDisableOverlay = async () => {
+    const runtime = window.reilinkRuntime;
+    try {
+      await runtime?.setOverlayEnabled?.(false);
+      eventBus.emit({ type: "overlay_window_hidden", timestamp: eventTimestamp() });
+    } catch {
+      emitOverlayError("overlay_force_disable_failed");
+    }
+    await updateAppSettings({ overlay_enabled: "off" });
+  };
+
   const pushOverlayContent = useCallback(async (text: string, source: OverlayMessageSource) => {
     const update: OverlayContentUpdate = {
       text: sanitizeOverlayText(text),
@@ -3150,20 +3161,43 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 </select>
               </label>
               <div className="voiceOutputPanel" role="group" aria-label="Overlay 设置">
-                <label className="settingRow">
+                <div className="settingRow overlayToggleRow">
                   <span>Overlay / 游戏悬浮层</span>
-                  <select
+                  <div
                     aria-label="Overlay / 游戏悬浮层"
-                    disabled={settingsBusy !== ""}
-                    value={appSettings.overlay_enabled}
-                    onChange={(event) =>
-                      void updateAppSettings({ overlay_enabled: event.target.value as AppSettings["overlay_enabled"] })
-                    }
+                    className="overlayToggleControl"
+                    role="group"
                   >
-                    <option value="off">关闭</option>
-                    <option value="on">开启</option>
-                  </select>
-                </label>
+                    <button
+                      aria-label="关闭 Overlay"
+                      aria-pressed={appSettings.overlay_enabled === "off"}
+                      className="overlayToggleButton"
+                      disabled={settingsBusy !== "" && settingsBusy !== "overlay_enabled"}
+                      type="button"
+                      onClick={() => void updateAppSettings({ overlay_enabled: "off" })}
+                    >
+                      关闭
+                    </button>
+                    <button
+                      aria-label="开启 Overlay"
+                      aria-pressed={appSettings.overlay_enabled === "on"}
+                      className="overlayToggleButton"
+                      disabled={settingsBusy !== "" && settingsBusy !== "overlay_enabled"}
+                      type="button"
+                      onClick={() => void updateAppSettings({ overlay_enabled: "on" })}
+                    >
+                      开启
+                    </button>
+                  </div>
+                </div>
+                <button
+                  aria-label="强制关闭悬浮层"
+                  className="smallButton overlayForceOffButton"
+                  type="button"
+                  onClick={() => void forceDisableOverlay()}
+                >
+                  强制关闭悬浮层
+                </button>
                 <label className="settingRow">
                   <span>位置预设</span>
                   <select

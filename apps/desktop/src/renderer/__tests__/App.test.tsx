@@ -1007,7 +1007,7 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
     openLocalDataDir: vi.fn(async () => ({ ok: true, path: status.user_data_dir, error: null })),
     getOverlayStatus: vi.fn(async () => overlayState),
     setOverlayEnabled: vi.fn(async (enabled: boolean) => {
-      overlayState = { ...overlayState, enabled, visible: enabled };
+      overlayState = { ...overlayState, enabled, visible: false };
       for (const listener of overlayListeners) listener(overlayState);
       return overlayState;
     }),
@@ -1408,7 +1408,10 @@ describe("App", () => {
     expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
-    expect(screen.getByLabelText("Overlay / 游戏悬浮层")).toHaveValue("off");
+    const overlayToggle = screen.getByRole("group", { name: "Overlay / 游戏悬浮层" });
+    expect(within(overlayToggle).getByRole("button", { name: "关闭 Overlay" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(overlayToggle).getByRole("button", { name: "开启 Overlay" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "强制关闭悬浮层" })).toBeInTheDocument();
     expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("middle-right");
     expect(screen.getByLabelText("Overlay 背景透明度")).toHaveValue("0.72");
     expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("2");
@@ -1520,12 +1523,16 @@ describe("App", () => {
     await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(false));
     vi.mocked(runtime.bridge.setOverlayEnabled).mockClear();
 
-    await userEvent.selectOptions(await screen.findByLabelText("Overlay / 游戏悬浮层"), "on");
+    const overlayToggle = await screen.findByRole("group", { name: "Overlay / 游戏悬浮层" });
+    await userEvent.click(within(overlayToggle).getByRole("button", { name: "开启 Overlay" }));
 
     await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(true));
-    expect(screen.getByLabelText("Overlay / 游戏悬浮层")).toHaveValue("on");
+    expect(within(overlayToggle).getByRole("button", { name: "开启 Overlay" })).toHaveAttribute("aria-pressed", "true");
     expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_enabled_changed")).toBe(true);
-    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_window_shown")).toBe(true);
+    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_visibility_suppressed")).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "强制关闭悬浮层" }));
+    await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(false));
+    expect(within(overlayToggle).getByRole("button", { name: "关闭 Overlay" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("syncs Overlay position, opacity, and message count settings", async () => {
@@ -1916,7 +1923,9 @@ describe("App", () => {
       )
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Overlay / 游戏悬浮层"), "on");
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Overlay / 游戏悬浮层" })).getByRole("button", { name: "开启 Overlay" })
+    );
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/settings"),

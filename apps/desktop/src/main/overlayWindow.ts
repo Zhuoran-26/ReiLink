@@ -22,6 +22,7 @@ const OVERLAY_WINDOW_HEIGHT = 168;
 const OVERLAY_EDGE_MARGIN = 44;
 const OVERLAY_MIN_EDGE_MARGIN = 24;
 const OVERLAY_MIDDLE_Y_RATIO = 0.58;
+const OVERLAY_RENDERER_HASH = "overlay";
 
 const clampToWorkArea = (value: number, min: number, max: number) => {
   const safeMax = Math.max(min, max);
@@ -61,6 +62,13 @@ export const shouldOverlayBeVisible = ({
   mainWindowFocused,
   appActive
 }: OverlayVisibilityContext) => overlayEnabled && !mainWindowFocused && !appActive;
+
+export const createOverlayRendererUrl = (baseUrl: string) => {
+  const url = new URL(baseUrl);
+  url.searchParams.set("overlay", "1");
+  url.hash = OVERLAY_RENDERER_HASH;
+  return url.toString();
+};
 
 export const createOverlayWindowOptions = (bounds: OverlayBounds, preloadPath: string): BrowserWindowConstructorOptions => ({
   ...bounds,

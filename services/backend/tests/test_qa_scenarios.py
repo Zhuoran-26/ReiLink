@@ -332,6 +332,8 @@ def test_overlay_scenarios_have_required_fields():
         "overlay-opacity-background-readable",
         "overlay-message-count-limit",
         "overlay-main-window-foreground-suppressed",
+        "overlay-renderer-isolated",
+        "overlay-settings-force-close",
         "overlay-disable-hides-window",
         "overlay-settings-persist-after-restart",
         "overlay-event-stream-safe",

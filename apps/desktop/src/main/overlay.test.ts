@@ -15,6 +15,7 @@ import {
 import {
   calculateOverlayBounds,
   configureOverlayWindowForClickThrough,
+  createOverlayRendererUrl,
   createOverlayWindowOptions,
   shouldOverlayBeVisible
 } from "./overlayWindow";
@@ -97,6 +98,10 @@ describe("overlay content safety", () => {
     const bottomLeft = calculateOverlayBounds(workArea, "bottom-left");
 
     expect(topRight.x).toBeGreaterThan(middleRight.width);
+    expect(topRight.width).toBe(360);
+    expect(topRight.height).toBe(168);
+    expect(topRight.width).toBeLessThan(workArea.width);
+    expect(topRight.height).toBeLessThan(workArea.height);
     expect(topRight.y).toBe(44);
     expect(middleRight.y).toBeGreaterThan(topRight.y);
     expect(bottomLeft.x).toBe(44);
@@ -107,6 +112,14 @@ describe("overlay content safety", () => {
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(workArea.width - 24);
       expect(bounds.y + bounds.height).toBeLessThanOrEqual(workArea.height - 24);
     }
+  });
+
+  it("marks overlay renderer URLs for both dev and packaged windows", () => {
+    const devUrl = createOverlayRendererUrl("http://127.0.0.1:5173");
+    const packagedUrl = createOverlayRendererUrl("app://./index.html");
+
+    expect(devUrl).toBe("http://127.0.0.1:5173/?overlay=1#overlay");
+    expect(packagedUrl).toBe("app://./index.html?overlay=1#overlay");
   });
 
   it("suppresses Overlay while the ReiLink main window or app is foreground", () => {

@@ -2,7 +2,7 @@
 
 ## 中文
 
-Updated: 2026-06-06
+Updated: 2026-06-07
 
 ### 当前阶段
 
@@ -107,8 +107,9 @@ dev/codex-reilink
 
 - Overlay v1.1 已建立底座：Settings 中新增 `Overlay / 游戏悬浮层`，默认关闭，开关、位置、透明度和消息数量持久化在 app settings。
 - Electron main process 可创建独立 overlay window；窗口为 frameless、transparent、always-on-top、skipTaskbar、不可聚焦，并忽略鼠标输入。
-- Overlay 已和 ReiLink 主窗口解耦显示：ReiLink 主窗口 / Settings 前台时会暂时隐藏，切到游戏或其他 app 后再按 enabled 状态显示，避免遮挡 Settings 或 macOS window controls。
-- Overlay renderer 通过 packaged/dev 共用的 `index.html?overlay=1` 加载，视觉上是右侧轻量半透明 Rei 短消息气泡层。
+- Overlay 已和 ReiLink 主窗口解耦显示：ReiLink 主窗口 / Settings 前台时会销毁或隐藏运行时 overlay window，切到游戏或其他 app 后再按 enabled 状态显示，避免遮挡 Settings、select/dropdown 或 macOS window controls。
+- Settings 中的 Overlay 开关使用普通按钮组，并提供 `强制关闭悬浮层` 兜底入口；用户在 ReiLink 主窗口前台开启 Overlay 时只改变持久化 enabled 状态，不会立刻把 always-on-top window 显示到主窗口上方。
+- Overlay renderer 通过 packaged/dev 共用的 `index.html?overlay=1#overlay` 标记加载，视觉上是右侧轻量半透明 Rei 短消息气泡层，不渲染完整 ReiLink sidebar、Settings、Debug 或聊天输入。
 - Overlay 支持右上、右中、右下、左上、左中、左下位置预设；默认右中，并按 primary display workArea 计算窗口位置。
 - Overlay 支持 0.35～0.95 背景透明度；默认 0.72，只影响背景层，不降低文字透明度。
 - Overlay 只显示最近 1～3 条安全短摘要；默认 2 条，没有内容时显示 `Rei 正安静待机。`。
@@ -188,7 +189,7 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-06
+Updated: 2026-06-07
 
 ### Current Stage
 
@@ -293,8 +294,9 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 
 - Overlay v1.1 is in place: Settings now includes `Overlay / 游戏悬浮层`, defaults to off, and persists enabled state, position, opacity, and message count through app settings.
 - The Electron main process can create a separate overlay window that is frameless, transparent, always-on-top, skipTaskbar, non-focusable, and ignores mouse input.
-- Overlay visibility is separated from the enabled setting: it is temporarily hidden while the ReiLink main window / Settings is foreground, then shown again after switching to a game or another app when enabled, so it does not cover Settings or macOS window controls.
-- The overlay renderer loads through the shared packaged/dev `index.html?overlay=1` entry and renders a restrained right-side translucent Rei short-message bubble layer.
+- Overlay visibility is separated from the enabled setting: the runtime overlay window is destroyed or hidden while the ReiLink main window / Settings is foreground, then shown again after switching to a game or another app when enabled, so it does not cover Settings, select/dropdown controls, or macOS window controls.
+- The Settings Overlay control uses regular buttons and includes a `强制关闭悬浮层` fallback; enabling Overlay while ReiLink is foreground only persists enabled state and does not immediately show an always-on-top window above the main UI.
+- The overlay renderer loads through the shared packaged/dev `index.html?overlay=1#overlay` marker and renders a restrained right-side translucent Rei short-message bubble layer without the full ReiLink sidebar, Settings, Debug, or chat input.
 - Overlay supports top-right, middle-right, bottom-right, top-left, middle-left, and bottom-left presets; the default is middle-right and bounds are calculated within the primary display workArea.
 - Overlay supports 0.35-0.95 background opacity; the default is 0.72 and only affects the background layer, not text alpha.
 - Overlay shows only the latest 1-3 safe short summaries; the default is 2, and with no content it shows `Rei 正安静待机。`.
