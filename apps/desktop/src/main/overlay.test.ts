@@ -146,7 +146,7 @@ describe("overlay content safety", () => {
   });
 
   it("builds a non-focusable click-through overlay window configuration", () => {
-    const options = createOverlayWindowOptions({ width: 360, height: 168, x: 100, y: 200 }, "/tmp/preload.cjs");
+    const options = createOverlayWindowOptions({ width: 360, height: 168, x: 100, y: 200 }, "/tmp/preload.cjs", "linux");
 
     expect(options.transparent).toBe(true);
     expect(options.frame).toBe(false);
@@ -159,6 +159,13 @@ describe("overlay content safety", () => {
       nodeIntegration: false,
       preload: "/tmp/preload.cjs"
     });
+  });
+
+  it("does not let the macOS overlay window hide the ReiLink Dock app", () => {
+    const options = createOverlayWindowOptions({ width: 360, height: 168, x: 100, y: 200 }, "/tmp/preload.cjs", "darwin");
+
+    expect(options.skipTaskbar).toBe(false);
+    expect(options.focusable).toBe(false);
   });
 
   it("explicitly configures click-through mouse behavior", () => {

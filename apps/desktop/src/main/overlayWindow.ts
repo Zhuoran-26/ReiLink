@@ -70,12 +70,16 @@ export const createOverlayRendererUrl = (baseUrl: string) => {
   return url.toString();
 };
 
-export const createOverlayWindowOptions = (bounds: OverlayBounds, preloadPath: string): BrowserWindowConstructorOptions => ({
+export const createOverlayWindowOptions = (
+  bounds: OverlayBounds,
+  preloadPath: string,
+  platform = process.platform
+): BrowserWindowConstructorOptions => ({
   ...bounds,
   frame: false,
   transparent: true,
   alwaysOnTop: true,
-  skipTaskbar: true,
+  skipTaskbar: platform !== "darwin",
   resizable: false,
   minimizable: false,
   maximizable: false,

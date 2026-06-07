@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { BackendRuntimeManager } from "./backendRuntime.js";
 import { openLocalDataDir } from "./localData.js";
+import { createMainWindowOptions, restoreMainWindowForActivation } from "./mainWindow.js";
 import {
   calculateOverlayBounds,
   configureOverlayWindowForClickThrough,
@@ -34,7 +35,12 @@ let overlayEnabled = false;
 let overlayConfig: OverlayConfig = normalizeOverlayConfig();
 let overlayMessages: OverlayMessage[] = [];
 let overlayUpdatedAt: string | null = null;
+let overlayVisibilityRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 const isDevRenderer = () => Boolean(process.env.VITE_DEV_SERVER_URL);
+
+const showDockIcon = () => {
+  if (process.platform === "darwin") void app.dock?.show();
+};
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -113,7 +119,15 @@ const shouldShowOverlayWindow = () =>
     appActive: app.isReady() && app.isActive()
   });
 
+const cancelOverlayVisibilityRefresh = () => {
+  if (overlayVisibilityRefreshTimer) {
+    clearTimeout(overlayVisibilityRefreshTimer);
+    overlayVisibilityRefreshTimer = null;
+  }
+};
+
 const destroyOverlayWindow = () => {
+  cancelOverlayVisibilityRefresh();
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     const currentOverlayWindow = overlayWindow;
     overlayWindow = null;
@@ -135,7 +149,9 @@ const applyOverlayVisibility = (createIfNeeded = true) => {
 };
 
 const scheduleOverlayVisibilityRefresh = () => {
-  setTimeout(() => {
+  cancelOverlayVisibilityRefresh();
+  overlayVisibilityRefreshTimer = setTimeout(() => {
+    overlayVisibilityRefreshTimer = null;
     applyOverlayVisibility();
   }, 80);
 };
@@ -191,18 +207,7 @@ const updateOverlayContent = (content: OverlayContentUpdate) => {
 };
 
 const createWindow = () => {
-  const win = new BrowserWindow({
-    width: 1120,
-    height: 780,
-    minWidth: 900,
-    minHeight: 640,
-    backgroundColor: "#111318",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  });
+  const win = new BrowserWindow(createMainWindowOptions(path.join(__dirname, "preload.cjs")));
   mainWindow = win;
 
   win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
@@ -224,6 +229,8 @@ const createWindow = () => {
     }
   });
   win.on("focus", () => {
+    showDockIcon();
+    cancelOverlayVisibilityRefresh();
     destroyOverlayWindow();
   });
   win.on("blur", () => {
@@ -242,6 +249,7 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
+  showDockIcon();
   registerPackagedRendererProtocol();
   backendRuntime = new BackendRuntimeManager({
     appUserDataPath: app.getPath("userData"),
@@ -274,7 +282,25 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+app.on("browser-window-focus", (_event, window) => {
+  if (window !== mainWindow) return;
+  showDockIcon();
+  cancelOverlayVisibilityRefresh();
+  destroyOverlayWindow();
+});
+
+app.on("browser-window-blur", (_event, window) => {
+  if (window !== mainWindow) return;
+  scheduleOverlayVisibilityRefresh();
+});
+
 app.on("activate", () => {
-  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  showDockIcon();
+  cancelOverlayVisibilityRefresh();
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  } else {
+    restoreMainWindowForActivation(mainWindow);
+  }
   destroyOverlayWindow();
 });

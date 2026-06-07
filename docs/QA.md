@@ -34,6 +34,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - 运行 `make package-desktop`。
 - 直接打开 `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`，不要打开 dev renderer。
 - UI 不是黑屏。
+- ReiLink 应出现在 macOS Dock 和 `⌘ + Tab` 程序切换器；点击 Dock 图标或通过 `⌘ + Tab` 切回时，应恢复并聚焦主窗口。
 - 后端最终显示已连接，或 health endpoint 返回 `{"status":"ok"}`。
 - packaged app 使用内置 backend binary 或健康的外部 backend，启动来源显示为用户可读摘要。
 - bundled knowledge resources 可用。
@@ -312,7 +313,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - Event Stream 只显示来源、消息数量、字符数、窗口状态、位置预设和透明度数值，不显示完整 assistant reply、完整用户输入、memory、raw prompt、API key、`.env`、Authorization、完整路径、完整 transcript、raw stdout 或 raw stderr。
 - Debug Raw JSON 的 settings 可显示 overlay 开关、位置、透明度和消息数量，不显示 overlay 消息文本。
 - Dev smoke 至少覆盖：启动不黑屏、Settings 中 Overlay 配置可见、默认关闭、前台开启不覆盖 Settings、切走后小型 overlay bubble 出现、位置切换生效、透明度变化可读、消息数量限制生效、不抢焦点、不接收输入、发送消息后只更新短摘要、关闭 / 强制关闭后隐藏、Event Stream 安全事件可见。
-- Packaged `.app` smoke 如本次未执行，需要在 release 前补做：直接打开 packaged app，确认 overlay renderer 能从 packaged `index.html?overlay=1#overlay` 加载且不是黑屏 / 完整主应用副本，并验证开启 / 关闭 / 强制关闭 / 位置 / 透明度。
+- Packaged `.app` smoke 如本次未执行，需要在 release 前补做：直接打开 packaged app，确认 app 出现在 Dock / `⌘ + Tab`，overlay renderer 能从 packaged `index.html?overlay=1#overlay` 加载且不是黑屏 / 完整主应用副本，并验证开启 / 关闭 / 强制关闭 / 位置 / 透明度。
 - 本阶段不实现 HUD / 敌人 / 玩家位置识别，不做画面理解，不做自动避让，不做拖拽或锁定位置。
 
 ### 6. Knowledge Retrieval 回归检查
