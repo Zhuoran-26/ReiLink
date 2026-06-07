@@ -14,11 +14,10 @@ export const createMainWindowOptions = (preloadPath: string): BrowserWindowConst
 });
 
 export const restoreMainWindowForActivation = (
-  window: Pick<BrowserWindow, "focus" | "isDestroyed" | "isMinimized" | "restore" | "show">
+  window: Pick<BrowserWindow, "isDestroyed" | "isMinimized" | "isVisible" | "restore" | "showInactive">
 ) => {
   if (window.isDestroyed()) return false;
   if (window.isMinimized()) window.restore();
-  window.show();
-  window.focus();
+  else if (!window.isVisible()) window.showInactive();
   return true;
 };

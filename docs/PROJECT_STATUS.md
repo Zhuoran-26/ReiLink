@@ -106,8 +106,8 @@ dev/codex-reilink
 ### 当前 Overlay 状态
 
 - Overlay v1.1 已建立底座：Settings 中新增 `Overlay / 游戏悬浮层`，默认关闭，开关、位置、透明度和消息数量持久化在 app settings。
-- Electron main process 可创建独立 overlay window；窗口为 frameless、transparent、always-on-top、skipTaskbar、不可聚焦，并忽略鼠标输入。
-- Overlay 已和 ReiLink 主窗口解耦显示：ReiLink 主窗口 / Settings 前台时会销毁或隐藏运行时 overlay window，切到游戏或其他 app 后再按 enabled 状态显示，避免遮挡 Settings、select/dropdown 或 macOS window controls。
+- Electron main process 可创建独立 overlay window；窗口为 frameless、transparent、always-on-top、不可聚焦，并忽略鼠标输入。非 macOS 可使用 `skipTaskbar`；macOS 当前避免让 overlay window 影响整个 ReiLink Dock / app switcher 入口。
+- Overlay 已和 ReiLink 主窗口解耦显示：ReiLink 主窗口 / Settings 前台时会销毁或隐藏运行时 overlay window，避免遮挡 Settings、select/dropdown 或 macOS window controls。macOS 当前采用 emergency fail-closed 策略，切到游戏或其他 app 后也不自动显示 overlay，优先保证主窗口不闪烁、不置顶、不抢焦点。
 - Settings 中的 Overlay 开关使用普通按钮组，并提供 `强制关闭悬浮层` 兜底入口；用户在 ReiLink 主窗口前台开启 Overlay 时只改变持久化 enabled 状态，不会立刻把 always-on-top window 显示到主窗口上方。
 - Overlay renderer 通过 packaged/dev 共用的 `index.html?overlay=1#overlay` 标记加载，视觉上是右侧轻量半透明 Rei 短消息气泡层，不渲染完整 ReiLink sidebar、Settings、Debug 或聊天输入。
 - Overlay 支持右上、右中、右下、左上、左中、左下位置预设；默认右中，并按 primary display workArea 计算窗口位置。
@@ -116,6 +116,7 @@ dev/codex-reilink
 - assistant 最终回复和 proactive message 只会把截断/脱敏后的安全摘要推送到 overlay；不会传 raw prompt、完整 assistant reply、完整用户输入、memory、debug raw JSON、完整 transcript、API key、`.env`、完整路径、raw stdout 或 raw stderr。
 - Event Stream 已加入 overlay lifecycle 安全事件：开关变化、设置变化、位置更新、窗口显示/隐藏、内容更新和错误摘要；内容更新只显示来源、字数和消息数量。
 - 当前不实现 HUD / 敌人 / 玩家位置识别，不做画面理解或自动避让，不做拖拽或锁定位置。
+- 后续需单独恢复 macOS overlay auto-show，并验证不会触发 app activation / focus loop。
 
 ### 当前 Knowledge Retrieval 状态
 
@@ -293,8 +294,8 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 ### Current Overlay Status
 
 - Overlay v1.1 is in place: Settings now includes `Overlay / 游戏悬浮层`, defaults to off, and persists enabled state, position, opacity, and message count through app settings.
-- The Electron main process can create a separate overlay window that is frameless, transparent, always-on-top, skipTaskbar, non-focusable, and ignores mouse input.
-- Overlay visibility is separated from the enabled setting: the runtime overlay window is destroyed or hidden while the ReiLink main window / Settings is foreground, then shown again after switching to a game or another app when enabled, so it does not cover Settings, select/dropdown controls, or macOS window controls.
+- The Electron main process can create a separate overlay window that is frameless, transparent, always-on-top, non-focusable, and ignores mouse input. Non-macOS can use `skipTaskbar`; macOS currently avoids letting the overlay window affect the whole ReiLink Dock / app switcher entry.
+- Overlay visibility is separated from the enabled setting: the runtime overlay window is destroyed or hidden while the ReiLink main window / Settings is foreground, so it does not cover Settings, select/dropdown controls, or macOS window controls. macOS currently uses an emergency fail-closed policy and does not auto-show overlay after switching away, prioritizing normal main-window focus behavior.
 - The Settings Overlay control uses regular buttons and includes a `强制关闭悬浮层` fallback; enabling Overlay while ReiLink is foreground only persists enabled state and does not immediately show an always-on-top window above the main UI.
 - The overlay renderer loads through the shared packaged/dev `index.html?overlay=1#overlay` marker and renders a restrained right-side translucent Rei short-message bubble layer without the full ReiLink sidebar, Settings, Debug, or chat input.
 - Overlay supports top-right, middle-right, bottom-right, top-left, middle-left, and bottom-left presets; the default is middle-right and bounds are calculated within the primary display workArea.
@@ -303,6 +304,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Completed assistant replies and proactive messages send only truncated/redacted safe summaries to overlay; raw prompt, full assistant reply, full user input, memory, debug raw JSON, full transcript, API keys, `.env`, full paths, raw stdout, and raw stderr are excluded.
 - Event Stream includes safe overlay lifecycle events for enabled changes, settings changes, position updates, show/hide, content updates, and errors; content updates expose only source, character count, and message count.
 - The current scope does not include HUD / enemy / player-position detection, vision, automatic avoidance, dragging, or locking.
+- A later macOS-specific overlay pass should restore auto-show only after verifying it does not trigger app activation / focus loops.
 
 ### Current Knowledge Retrieval Status
 

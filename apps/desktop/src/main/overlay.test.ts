@@ -126,22 +126,35 @@ describe("overlay content safety", () => {
     expect(shouldOverlayBeVisible({
       overlayEnabled: true,
       mainWindowFocused: true,
-      appActive: true
+      appActive: true,
+      platform: "linux"
     })).toBe(false);
     expect(shouldOverlayBeVisible({
       overlayEnabled: true,
       mainWindowFocused: false,
-      appActive: true
+      appActive: true,
+      platform: "linux"
     })).toBe(false);
     expect(shouldOverlayBeVisible({
       overlayEnabled: true,
       mainWindowFocused: false,
-      appActive: false
+      appActive: false,
+      platform: "linux"
     })).toBe(true);
     expect(shouldOverlayBeVisible({
       overlayEnabled: false,
       mainWindowFocused: false,
-      appActive: false
+      appActive: false,
+      platform: "linux"
+    })).toBe(false);
+  });
+
+  it("keeps macOS Overlay auto-show fail-closed to avoid app activation loops", () => {
+    expect(shouldOverlayBeVisible({
+      overlayEnabled: true,
+      mainWindowFocused: false,
+      appActive: false,
+      platform: "darwin"
     })).toBe(false);
   });
 

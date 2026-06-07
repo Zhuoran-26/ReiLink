@@ -116,7 +116,8 @@ const shouldShowOverlayWindow = () =>
   shouldOverlayBeVisible({
     overlayEnabled,
     mainWindowFocused: isMainWindowFocused(),
-    appActive: app.isReady() && app.isActive()
+    appActive: app.isReady() && app.isActive(),
+    platform: process.platform
   });
 
 const cancelOverlayVisibilityRefresh = () => {
@@ -229,7 +230,6 @@ const createWindow = () => {
     }
   });
   win.on("focus", () => {
-    showDockIcon();
     cancelOverlayVisibilityRefresh();
     destroyOverlayWindow();
   });
@@ -282,20 +282,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("browser-window-focus", (_event, window) => {
-  if (window !== mainWindow) return;
-  showDockIcon();
-  cancelOverlayVisibilityRefresh();
-  destroyOverlayWindow();
-});
-
-app.on("browser-window-blur", (_event, window) => {
-  if (window !== mainWindow) return;
-  scheduleOverlayVisibilityRefresh();
-});
-
 app.on("activate", () => {
-  showDockIcon();
   cancelOverlayVisibilityRefresh();
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();

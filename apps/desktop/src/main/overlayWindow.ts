@@ -15,6 +15,7 @@ export type OverlayVisibilityContext = {
   overlayEnabled: boolean;
   mainWindowFocused: boolean;
   appActive: boolean;
+  platform?: NodeJS.Platform | string;
 };
 
 const OVERLAY_WINDOW_WIDTH = 360;
@@ -60,8 +61,9 @@ export const calculateOverlayBounds = (
 export const shouldOverlayBeVisible = ({
   overlayEnabled,
   mainWindowFocused,
-  appActive
-}: OverlayVisibilityContext) => overlayEnabled && !mainWindowFocused && !appActive;
+  appActive,
+  platform = process.platform
+}: OverlayVisibilityContext) => overlayEnabled && platform !== "darwin" && !mainWindowFocused && !appActive;
 
 export const createOverlayRendererUrl = (baseUrl: string) => {
   const url = new URL(baseUrl);

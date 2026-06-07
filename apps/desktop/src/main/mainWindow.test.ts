@@ -17,20 +17,55 @@ describe("main window", () => {
     });
   });
 
-  it("restores and focuses the main window when the app is activated", () => {
+  it("restores minimized windows without forcing focus when the app is activated", () => {
     const window = {
       focus: vi.fn(),
       isDestroyed: vi.fn(() => false),
       isMinimized: vi.fn(() => true),
+      isVisible: vi.fn(() => false),
       restore: vi.fn(),
-      show: vi.fn()
+      showInactive: vi.fn()
     };
 
     expect(restoreMainWindowForActivation(window)).toBe(true);
 
     expect(window.restore).toHaveBeenCalledOnce();
-    expect(window.show).toHaveBeenCalledOnce();
-    expect(window.focus).toHaveBeenCalledOnce();
+    expect(window.showInactive).not.toHaveBeenCalled();
+    expect(window.focus).not.toHaveBeenCalled();
+  });
+
+  it("shows hidden windows inactively during activation", () => {
+    const window = {
+      focus: vi.fn(),
+      isDestroyed: vi.fn(() => false),
+      isMinimized: vi.fn(() => false),
+      isVisible: vi.fn(() => false),
+      restore: vi.fn(),
+      showInactive: vi.fn()
+    };
+
+    expect(restoreMainWindowForActivation(window)).toBe(true);
+
+    expect(window.restore).not.toHaveBeenCalled();
+    expect(window.showInactive).toHaveBeenCalledOnce();
+    expect(window.focus).not.toHaveBeenCalled();
+  });
+
+  it("leaves already visible windows alone during activation", () => {
+    const window = {
+      focus: vi.fn(),
+      isDestroyed: vi.fn(() => false),
+      isMinimized: vi.fn(() => false),
+      isVisible: vi.fn(() => true),
+      restore: vi.fn(),
+      showInactive: vi.fn()
+    };
+
+    expect(restoreMainWindowForActivation(window)).toBe(true);
+
+    expect(window.restore).not.toHaveBeenCalled();
+    expect(window.showInactive).not.toHaveBeenCalled();
+    expect(window.focus).not.toHaveBeenCalled();
   });
 
   it("does not touch destroyed windows during activation", () => {
@@ -38,14 +73,15 @@ describe("main window", () => {
       focus: vi.fn(),
       isDestroyed: vi.fn(() => true),
       isMinimized: vi.fn(() => true),
+      isVisible: vi.fn(() => false),
       restore: vi.fn(),
-      show: vi.fn()
+      showInactive: vi.fn()
     };
 
     expect(restoreMainWindowForActivation(window)).toBe(false);
 
     expect(window.restore).not.toHaveBeenCalled();
-    expect(window.show).not.toHaveBeenCalled();
+    expect(window.showInactive).not.toHaveBeenCalled();
     expect(window.focus).not.toHaveBeenCalled();
   });
 });
