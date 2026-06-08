@@ -58,6 +58,7 @@ dev/codex-reilink
 - Main chat Local ASR voice input：Local ASR ready 时主聊天语音按钮优先走本地录音/转写，Web Speech 作为 fallback。
 - Voice Interaction MVP：系统 TTS + 用户配置 Local ASR + transcript-first UX + 隐私安全事件摘要。
 - Overlay v1.1：默认关闭的独立透明悬浮层、Settings 开关、位置预设、背景透明度、1～3 条安全短消息气泡和 overlay lifecycle Event Stream。
+- Game Session Timeline / Session Notes v1：Debug Panel 中的当前本局安全摘要时间线。
 - Event Bus / Event Stream。
 - Prompt Preview。
 - Debug Dashboard。
@@ -127,6 +128,15 @@ dev/codex-reilink
 - Event Stream 已加入 overlay lifecycle 安全事件：开关变化、设置变化、位置更新、窗口显示/隐藏、内容更新和错误摘要；内容更新只显示来源、字数和消息数量。
 - 当前不实现 HUD / 敌人 / 玩家位置识别，不做画面理解或自动避让，不做拖拽或锁定位置。
 - 后续需单独恢复 macOS overlay auto-show，并在恢复前通过 checklist 验证：不调用 `mainWindow.focus()` 抢焦点、不触发 app activation loop、不隐藏 Dock / `⌘ + Tab`、主窗口前台时 overlay 隐藏、Settings 始终可关闭 Overlay、packaged `.app` 人工验证通过。当前优先保证主窗口稳定性、Dock / `⌘ + Tab` 可见和 Settings 可关闭。
+
+### 当前 Game Session Timeline 状态
+
+- Game Session Timeline / Session Notes v1 已加入 Debug Panel，入口为 `Session Timeline / 本局时间线`，默认折叠，不影响主聊天、Voice / Local ASR 或 Overlay safe mode。
+- Timeline 是当前 renderer session 内的游戏过程安全摘要，不是 memory、prompt raw log 或完整聊天记录；v1 不持久化，刷新或重启后清空。
+- 当前可从安全 Event Bus 事件生成短摘要：游戏切换、Boss 检测、死亡次数变化、挫败状态变化、Boss 击败、知识检索使用、主动陪伴显示、pending memory 接受 / 忽略。
+- 每条 item 只显示时间和短摘要，例如 `切换游戏：Elden Ring`、`检测到 Boss：Margit`、`死亡次数更新：3`、`使用知识：Margit phase 2 tips`、`记忆已接受`。
+- Timeline 最多保留最近有限条目，并对摘要做截断和脱敏；不显示 raw prompt、完整 user message、完整 assistant reply、完整 ASR transcript、memory 原文全文、knowledge snippet 全文、API key、`.env`、完整本地路径、raw stdout/stderr 或 raw JSON。
+- Debug Panel 提供 `清空时间线`，只清空当前 timeline，不清空 Event Stream、聊天、memory、game session 或 Local ASR 设置。
 
 ### 当前 Knowledge Retrieval 状态
 
@@ -255,6 +265,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Main chat Local ASR voice input: when Local ASR is ready, the main chat voice button prefers local record/transcribe, with Web Speech kept as fallback.
 - Voice Interaction MVP: system TTS + user-configured Local ASR + transcript-first UX + privacy-safe event summaries.
 - Overlay v1.1: default-off independent transparent overlay, Settings toggle, position presets, background opacity, 1-3 safe short Rei message bubbles, and overlay lifecycle Event Stream events.
+- Game Session Timeline / Session Notes v1: current-session safe summary timeline in the Debug Panel.
 - Event Bus / Event Stream.
 - Prompt Preview.
 - Debug Dashboard.
@@ -324,6 +335,15 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Event Stream includes safe overlay lifecycle events for enabled changes, settings changes, position updates, show/hide, content updates, and errors; content updates expose only source, character count, and message count.
 - The current scope does not include HUD / enemy / player-position detection, vision, automatic avoidance, dragging, or locking.
 - A later macOS-specific overlay pass should restore auto-show only after passing the checklist: no `mainWindow.focus()` focus stealing, no app activation loop, no hidden Dock / `⌘ + Tab`, overlay hidden while the main window is foreground, Settings always able to disable Overlay, and packaged `.app` manual verification complete. The current priority is main-window stability, Dock / `⌘ + Tab` visibility, and keeping Settings able to disable Overlay.
+
+### Current Game Session Timeline Status
+
+- Game Session Timeline / Session Notes v1 is available in the Debug Panel as `Session Timeline / 本局时间线`; it is folded by default and does not affect main chat, Voice / Local ASR, or Overlay safe mode.
+- The timeline is a current renderer-session-only safe game-process summary. It is not memory, not a raw prompt log, and not a full chat transcript; v1 is not persisted and clears on refresh or restart.
+- It can generate short items from safe Event Bus events for game switches, boss detection, death count changes, frustration changes, boss clears, knowledge usage, proactive messages, and pending memory accept / ignore actions.
+- Each item shows only time plus a short summary, such as `切换游戏：Elden Ring`, `检测到 Boss：Margit`, `死亡次数更新：3`, `使用知识：Margit phase 2 tips`, or `记忆已接受`.
+- The timeline keeps a bounded recent list and redacts/truncates summaries. It must not show raw prompts, full user messages, full assistant replies, full ASR transcripts, full memory text, full knowledge snippets, API keys, `.env`, full local paths, raw stdout/stderr, or raw JSON.
+- `清空时间线` clears only the current timeline and does not clear Event Stream, chat, memory, game session, or Local ASR settings.
 
 ### Current Knowledge Retrieval Status
 

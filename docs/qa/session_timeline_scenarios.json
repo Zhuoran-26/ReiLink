@@ -1,0 +1,83 @@
+[
+  {
+    "id": "session-timeline-default-empty",
+    "category": "session_timeline",
+    "precondition": "Debug Panel is opened after packaged or dev app startup before any new session event occurs",
+    "expected_status": "timeline_empty",
+    "should_store_full_text": false,
+    "expected_behavior": "Session Timeline / 本局时间线 is visible as a lightweight folded Debug Panel section and shows 本局还没有记录到关键变化 when opened.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-game-context",
+    "category": "session_timeline",
+    "precondition": "A safe game_context_changed event is emitted after the initial startup baseline",
+    "expected_status": "timeline_item_added",
+    "should_store_full_text": false,
+    "expected_behavior": "Timeline adds a short item such as 切换游戏：Elden Ring without recording raw user text.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-game-session-deltas",
+    "category": "session_timeline",
+    "precondition": "Game session debug data changes boss, death count, frustration count, or cleared boss after user activity",
+    "expected_status": "timeline_item_added",
+    "should_store_full_text": false,
+    "expected_behavior": "Timeline adds safe items for detected boss, death count, frustration state, and boss cleared using short summaries only.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-knowledge-used-safe",
+    "category": "session_timeline_privacy",
+    "precondition": "Knowledge retrieval is used for a supported game during a chat turn",
+    "expected_status": "timeline_item_added",
+    "should_store_full_text": false,
+    "expected_behavior": "Timeline adds 使用知识 with a safe game/topic title and does not show snippet preview, knowledge file path, prompt, or raw JSON.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "snippet preview", "full knowledge snippet", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-proactive-safe",
+    "category": "session_timeline_privacy",
+    "precondition": "A proactive companion message is shown",
+    "expected_status": "timeline_item_added",
+    "should_store_full_text": false,
+    "expected_behavior": "Timeline adds 主动陪伴已显示 with a safe trigger label and does not show the full proactive or assistant text.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full proactive text", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-memory-actions-safe",
+    "category": "session_timeline_privacy",
+    "precondition": "The user accepts or ignores a pending memory",
+    "expected_status": "timeline_item_added",
+    "should_store_full_text": false,
+    "expected_behavior": "Timeline adds 记忆已接受 or 记忆已忽略 without showing memory text, evidence, or raw memory payload.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full memory text", "memory evidence", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-clear-current-session",
+    "category": "session_timeline",
+    "precondition": "Timeline has at least one item and the user clicks 清空时间线",
+    "expected_status": "timeline_cleared",
+    "should_store_full_text": false,
+    "expected_behavior": "Timeline clears the in-memory current-session items and returns to the empty state without clearing Event Stream, chat, memory, or game session state.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-limit-and-sanitize",
+    "category": "session_timeline_privacy",
+    "precondition": "More than the timeline limit of safe events is emitted and some source summaries contain sensitive-looking text",
+    "expected_status": "timeline_limited",
+    "should_store_full_text": false,
+    "expected_behavior": "Timeline keeps only the latest bounded list of items, truncates long summaries, and redacts paths, API keys, raw prompt markers, transcripts, stdout, and stderr.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-packaged-smoke",
+    "category": "session_timeline_packaged",
+    "precondition": "Packaged app is opened for manual smoke after Game Session Timeline work",
+    "expected_status": "timeline_empty",
+    "should_store_full_text": false,
+    "expected_behavior": "Packaged app is not black, Settings and Overlay safe mode remain usable, Debug Panel shows Session Timeline / 本局时间线, and the timeline can add and clear safe items without affecting Voice, Local ASR, Event Stream, or Overlay safe mode.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  }
+]

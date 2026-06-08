@@ -8,6 +8,7 @@ SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "retrieval_scenarios.json"
 VOICE_INPUT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_scenarios.json"
 VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_local_asr_scenarios.json"
 OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
+SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
 README_EN_PATH = REPO_ROOT / "README.en.md"
@@ -75,6 +76,13 @@ ALLOWED_OVERLAY_STATUSES = {
     "overlay_visibility_suppressed",
     "overlay_events_safe",
 }
+ALLOWED_SESSION_TIMELINE_STATUSES = {
+    "timeline_empty",
+    "timeline_item_added",
+    "timeline_cleared",
+    "timeline_privacy_safe",
+    "timeline_limited",
+}
 
 
 def _load_scenarios() -> list[dict]:
@@ -109,6 +117,14 @@ def _load_overlay_scenarios() -> list[dict]:
     return data
 
 
+def _load_session_timeline_scenarios() -> list[dict]:
+    data = json.loads(SESSION_TIMELINE_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def test_qa_scenarios_file_is_valid_json():
     scenarios = _load_scenarios()
 
@@ -133,12 +149,19 @@ def test_overlay_scenarios_file_is_valid_json():
     assert len(scenarios) >= 8
 
 
+def test_session_timeline_scenarios_file_is_valid_json():
+    scenarios = _load_session_timeline_scenarios()
+
+    assert len(scenarios) >= 8
+
+
 def test_qa_scenario_ids_are_unique_and_categories_are_present():
     scenarios = [
         *_load_scenarios(),
         *_load_voice_input_scenarios(),
         *_load_voice_input_local_asr_scenarios(),
         *_load_overlay_scenarios(),
+        *_load_session_timeline_scenarios(),
     ]
     ids = [item.get("id") for item in scenarios]
 
@@ -176,6 +199,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_voice_input_scenarios(),
         *_load_voice_input_local_asr_scenarios(),
         *_load_overlay_scenarios(),
+        *_load_session_timeline_scenarios(),
     ]:
         forbidden_terms = item.get("forbidden_terms", [])
         assert isinstance(forbidden_terms, list)
@@ -363,6 +387,46 @@ def test_overlay_scenarios_have_required_fields():
         assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
 
 
+def test_session_timeline_scenarios_have_required_fields():
+    scenarios = _load_session_timeline_scenarios()
+
+    assert {
+        "session-timeline-default-empty",
+        "session-timeline-game-context",
+        "session-timeline-game-session-deltas",
+        "session-timeline-knowledge-used-safe",
+        "session-timeline-proactive-safe",
+        "session-timeline-memory-actions-safe",
+        "session-timeline-clear-current-session",
+        "session-timeline-limit-and-sanitize",
+        "session-timeline-packaged-smoke",
+    } <= {item.get("id") for item in scenarios}
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "raw prompt",
+        "raw JSON",
+        "full user message",
+        "full assistant reply",
+        "full transcript",
+        "raw stdout",
+        "raw stderr",
+        "full local path",
+    }
+    for item in scenarios:
+        assert item.get("category") in {
+            "session_timeline",
+            "session_timeline_privacy",
+            "session_timeline_packaged",
+        }
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert item.get("expected_status") in ALLOWED_SESSION_TIMELINE_STATUSES
+        assert item.get("should_store_full_text") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
 def test_voice_input_local_asr_release_regression_scenarios_are_present():
     scenarios = _load_voice_input_local_asr_scenarios()
     by_id = {item["id"]: item for item in scenarios}
@@ -434,6 +498,7 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/voice-input-local-asr-spike.md" in qa_doc
     assert "docs/local-asr-manual-setup.md" in qa_doc
     assert "docs/qa/voice_input_local_asr_scenarios.json" in qa_doc
+    assert "docs/qa/session_timeline_scenarios.json" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
     assert "Voice Interaction MVP" in project_status
     assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup

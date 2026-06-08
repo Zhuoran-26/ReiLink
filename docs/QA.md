@@ -12,6 +12,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/voice_input_scenarios.json`
 - `docs/qa/voice_input_local_asr_scenarios.json`
 - `docs/qa/overlay_scenarios.json`
+- `docs/qa/session_timeline_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -424,6 +425,24 @@ packaged `.app` 手动 smoke 最低步骤：
 11. 确认 Overlay 不遮挡 Settings。
 12. 确认 Overlay 不导致 ReiLink 左上角窗口按钮消失。
 13. 确认 macOS 下 auto-show 暂时不出现小气泡，这是当前预期。
+
+### 5.5 Game Session Timeline / 本局时间线回归检查
+
+机器可读场景见 `docs/qa/session_timeline_scenarios.json`。
+
+- Debug Panel 中应出现 `Session Timeline / 本局时间线` 折叠区。
+- 默认折叠；展开后如本局尚无关键变化，应显示 `本局还没有记录到关键变化。`。
+- Timeline 只保存在当前 renderer session 内，不写入 `.app`，不替代 Event Stream、memory 或聊天记录。
+- Timeline 可记录安全摘要：切换游戏、检测到 Boss、死亡次数变化、挫败状态变化、击败 Boss、使用知识、主动陪伴已显示、记忆已接受、记忆已忽略。
+- Game Context 变化应显示类似 `切换游戏：Elden Ring` 的短摘要。
+- Game Session 变化应显示类似 `检测到 Boss：Margit`、`死亡次数更新：3`、`挫败状态升高：2`、`击败 Boss：Margit`。
+- Knowledge Retrieval 使用成功时应显示 `使用知识` 类摘要，只允许游戏名或安全 topic/title；不得显示完整 snippet、knowledge 文件路径或 prompt。
+- Proactive 显示时应记录 `主动陪伴已显示` 和安全 trigger 标签，不显示完整 proactive / assistant 文本。
+- Pending Memory 接受或忽略时应记录 `记忆已接受` / `记忆已忽略`，不显示 memory 原文、evidence 或 raw payload。
+- `清空时间线` 应只清空当前 timeline，不清空 Event Stream、聊天、memory、game session 或 Local ASR 设置。
+- Timeline 最多保留最近有限条目，长摘要应截断。
+- Timeline 不显示 raw prompt、完整 user message、完整 assistant reply、完整 ASR transcript、memory 原文全文、knowledge snippet 全文、API key、`.env`、完整本地路径、raw stdout/stderr 或 raw JSON。
+- Voice Output、Local ASR、Overlay safe mode 和 Event Stream 原有行为不应受影响。
 
 ### 6. Knowledge Retrieval 回归检查
 

@@ -60,6 +60,12 @@ import {
 import type { BackendRuntimeStatus, LocalFilePickerKind } from "../shared/runtime";
 import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
 import { eventBus } from "./eventBus";
+import {
+  appendSessionTimelineItems,
+  sanitizeSessionTimelineText,
+  sessionTimelineItemsFromEvent,
+  type SessionTimelineItem
+} from "./sessionTimeline";
 import { voiceInput, type VoiceInputStatus } from "./voiceInput";
 import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
 
@@ -948,9 +954,9 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "assistant_reply_completed":
       return "回复显示完成";
     case "proactive_message_shown":
-      return `${debugText(event.trigger_type)}: ${truncateEventText(event.text)}`;
+      return `${debugText(event.trigger_type)}: ${sanitizeSessionTimelineText(event.text, 64)}`;
     case "pending_memory_created":
-      return `${debugText(event.memory_type)}: ${truncateEventText(event.text)}`;
+      return `${debugText(event.memory_type)}: ${sanitizeSessionTimelineText(event.text, 64)}`;
     case "pending_memory_accepted":
       return event.memory_id;
     case "pending_memory_ignored":
@@ -958,9 +964,19 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "game_context_changed":
       return [debugText(event.game), debugText(event.source)].join(" / ");
     case "game_session_changed":
-      return [debugText(event.game), debugText(event.current_boss), debugText(event.activity)].join(" / ");
+      return [
+        debugText(event.game),
+        debugText(event.current_boss),
+        debugText(event.activity),
+        typeof event.death_count === "number" ? `死亡 ${event.death_count}` : "",
+        typeof event.frustration_count === "number" ? `挫败 ${event.frustration_count}` : "",
+        event.last_cleared_boss ? `通过 ${debugText(event.last_cleared_boss)}` : ""
+      ].filter(Boolean).join(" / ");
     case "knowledge_used":
-      return [event.game ? debugText(event.game) : "", debugText(event.topics)].filter(Boolean).join(" / ");
+      return [
+        event.game ? sanitizeSessionTimelineText(event.game, 36) : "",
+        debugText((event.topics ?? []).map((topic) => sanitizeSessionTimelineText(topic, 48)).filter(Boolean))
+      ].filter(Boolean).join(" / ");
     case "model_routed":
       return `模型：${debugText(event.model)} / 原因：${debugText(event.route_reason)}`;
     case "backend_status_changed":
@@ -1456,6 +1472,50 @@ export function EventStreamPanel({
   );
 }
 
+export function SessionTimelinePanel({
+  items,
+  open,
+  onOpenChange,
+  onClear
+}: {
+  items: SessionTimelineItem[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onClear: () => void;
+}) {
+  return (
+    <details
+      className="debugSection sessionTimelineSection"
+      onToggle={(event) => onOpenChange(event.currentTarget.open)}
+      open={open}
+    >
+      <summary>
+        <span>Session Timeline / 本局时间线</span>
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </summary>
+      {open && (
+        <div className="sessionTimelineBody">
+          <div className="sessionTimelineActions">
+            <p className="settingHint">只记录本局关键变化的安全短摘要，不保存完整聊天或调试内容。</p>
+            <button className="smallButton quiet" type="button" disabled={items.length === 0} onClick={onClear}>
+              清空时间线
+            </button>
+          </div>
+          <ol className="sessionTimelineList" aria-label="本局时间线列表">
+            {items.map((item, index) => (
+              <li key={`${item.id}-${index}`}>
+                <span className="eventStreamTime">{eventStreamTime(item.timestamp)}</span>
+                <span className="sessionTimelineSummary">{item.summary}</span>
+              </li>
+            ))}
+            {items.length === 0 && <li className="emptyDebugText eventStreamEmpty">本局还没有记录到关键变化。</li>}
+          </ol>
+        </div>
+      )}
+    </details>
+  );
+}
+
 const pendingEvidenceSummary = (memory: PendingMemory) => {
   const evidence = asRecord(memory.evidence);
   const userMessage = debugText(evidence.user_message, "");
@@ -1618,6 +1678,8 @@ export function App() {
   const [debugOpen, setDebugOpen] = useState(true);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [eventStreamOpen, setEventStreamOpen] = useState(false);
+  const [sessionTimelineOpen, setSessionTimelineOpen] = useState(false);
+  const [sessionTimeline, setSessionTimeline] = useState<SessionTimelineItem[]>([]);
   const [recentEvents, setRecentEvents] = useState<ReiLinkEvent[]>(() => eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
   const [setupHelpOpen, setSetupHelpOpen] = useState(false);
   const [demoDocHintOpen, setDemoDocHintOpen] = useState(false);
@@ -1643,6 +1705,8 @@ export function App() {
   const lastOverlayEnabledRef = useRef<boolean | null>(null);
   const lastOverlayConfigRef = useRef<OverlayConfig | null>(null);
   const lastOverlayContentRef = useRef<OverlayContentUpdate | null>(null);
+  const sessionTimelineBaselineReadyRef = useRef(false);
+  const sessionTimelineUserActiveRef = useRef(false);
   const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
 
   const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
@@ -1734,7 +1798,14 @@ export function App() {
 
   const emitGameSessionChanged = useCallback((currentGameSession: GameSessionDebugResponse) => {
     const currentBoss = currentGameSession.current_boss?.name;
-    const signature = eventSignature(currentGameSession.current_game, currentBoss, currentGameSession.current_activity);
+    const signature = eventSignature(
+      currentGameSession.current_game,
+      currentBoss,
+      currentGameSession.current_activity,
+      currentGameSession.death_count,
+      currentGameSession.frustration_count,
+      currentGameSession.last_cleared_boss
+    );
     if (lastGameSessionEventRef.current === signature) return;
     lastGameSessionEventRef.current = signature;
     eventBus.emit({
@@ -1742,7 +1813,10 @@ export function App() {
       timestamp: eventTimestamp(),
       game: currentGameSession.current_game ?? undefined,
       current_boss: currentBoss,
-      activity: currentGameSession.current_activity ?? undefined
+      activity: currentGameSession.current_activity ?? undefined,
+      death_count: currentGameSession.death_count,
+      frustration_count: currentGameSession.frustration_count,
+      last_cleared_boss: currentGameSession.last_cleared_boss ?? undefined
     });
   }, []);
 
@@ -1867,6 +1941,7 @@ export function App() {
       setPromptPreview(await api.promptPreview());
       recordPendingMemories(await api.pendingMemories(), Boolean(options.emitPendingMemoryCreated));
       emitDebugSnapshotEvents(currentGameContext, currentGameSessionDebug, currentChatDebug, currentProviderDebug);
+      sessionTimelineBaselineReadyRef.current = true;
     } catch (error) {
       setBackendStatus("disconnected");
       setSettingsLoaded(false);
@@ -2279,6 +2354,7 @@ export function App() {
   const updateManualGameContext = async (gameId: string | null, action = "manual-game") => {
     setGameContextBusy(action);
     try {
+      sessionTimelineUserActiveRef.current = true;
       setLastError("");
       setLastRawError("");
       const updated = await api.setManualGameContext(gameId);
@@ -2315,8 +2391,23 @@ export function App() {
   };
 
   useEffect(() => {
-    return eventBus.subscribe(() => {
+    return eventBus.subscribe((event) => {
       setRecentEvents(eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
+      if (event.type === "user_message_sent") {
+        sessionTimelineUserActiveRef.current = true;
+        return;
+      }
+      if (!sessionTimelineBaselineReadyRef.current) return;
+      const timelineItems = sessionTimelineItemsFromEvent(event);
+      if (timelineItems.length > 0) {
+        if (event.type === "proactive_message_shown" ||
+          event.type === "pending_memory_accepted" ||
+          event.type === "pending_memory_ignored") {
+          sessionTimelineUserActiveRef.current = true;
+        }
+        if (!sessionTimelineUserActiveRef.current) return;
+        setSessionTimeline((current) => appendSessionTimelineItems(current, timelineItems));
+      }
     });
   }, []);
 
@@ -4120,6 +4211,13 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     events={recentEvents}
                     open={eventStreamOpen}
                     onOpenChange={setEventStreamOpen}
+                  />
+
+                  <SessionTimelinePanel
+                    items={sessionTimeline}
+                    open={sessionTimelineOpen}
+                    onOpenChange={setSessionTimelineOpen}
+                    onClear={() => setSessionTimeline([])}
                   />
 
                   <section className="debugSection">

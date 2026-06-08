@@ -3837,6 +3837,88 @@ describe("App", () => {
     expect(screen.getByText("暂无事件")).toBeInTheDocument();
   });
 
+  it("shows, updates, sanitizes, and clears the Session Timeline", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+
+    const timeline = screen.getByText("Session Timeline / 本局时间线").closest("details");
+    expect(timeline).not.toBeNull();
+    expect(timeline).not.toHaveAttribute("open");
+
+    fireEvent.click(screen.getByText("Session Timeline / 本局时间线"));
+    expect(timeline).toHaveAttribute("open");
+    await waitFor(() => expect(screen.getByText("本局还没有记录到关键变化。")).toBeInTheDocument());
+
+    act(() => {
+      eventBus.emit({
+        type: "user_message_sent",
+        timestamp: new Date().toISOString(),
+        text: "我在打 Margit"
+      });
+      eventBus.emit({
+        type: "game_context_changed",
+        timestamp: new Date().toISOString(),
+        game: "Elden Ring",
+        source: "detector"
+      });
+      eventBus.emit({
+        type: "game_session_changed",
+        timestamp: new Date().toISOString(),
+        game: "Elden Ring",
+        current_boss: "Margit",
+        activity: "boss_cleared",
+        death_count: 2,
+        frustration_count: 1,
+        last_cleared_boss: "Margit"
+      });
+      eventBus.emit({
+        type: "knowledge_used",
+        timestamp: new Date().toISOString(),
+        game: "艾尔登法环",
+        topics: ["已使用本地知识", "Margit phase 2 tips /Users/aragoto/Desktop/ReiLink/services/backend/.env raw prompt"]
+      });
+      eventBus.emit({
+        type: "proactive_message_shown",
+        timestamp: new Date().toISOString(),
+        trigger_type: "repeated_death",
+        text: "你开始急了。完整 proactive 文本不应该进入 timeline。"
+      });
+      eventBus.emit({
+        type: "pending_memory_accepted",
+        timestamp: new Date().toISOString(),
+        memory_id: "pending-1"
+      });
+      eventBus.emit({
+        type: "pending_memory_ignored",
+        timestamp: new Date().toISOString(),
+        memory_id: "pending-1"
+      });
+    });
+
+    await waitFor(() => expect(timeline).toHaveTextContent("切换游戏：Elden Ring"));
+    expect(timeline).toHaveTextContent("检测到 Boss：Margit");
+    expect(timeline).toHaveTextContent("死亡次数更新：2");
+    expect(timeline).toHaveTextContent("挫败状态升高：1");
+    expect(timeline).toHaveTextContent("击败 Boss：Margit");
+    expect(timeline).toHaveTextContent("使用知识：艾尔登法环 / Margit phase 2 tips");
+    expect(timeline).toHaveTextContent("主动陪伴已显示：反复死亡");
+    expect(timeline).toHaveTextContent("记忆已接受");
+    expect(timeline).toHaveTextContent("记忆已忽略");
+    expect(timeline).not.toHaveTextContent("/Users/aragoto");
+    expect(timeline).not.toHaveTextContent(".env");
+    expect(timeline).not.toHaveTextContent("raw prompt");
+    expect(timeline).not.toHaveTextContent("你开始急了");
+    expect(timeline).not.toHaveTextContent("pending-1");
+
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    await waitFor(() => expect(eventStream).toHaveTextContent("游戏状态变化"));
+    expect(eventStream).toHaveTextContent("使用游戏知识");
+
+    fireEvent.click(screen.getByRole("button", { name: "清空时间线" }));
+    expect(timeline).toHaveTextContent("本局还没有记录到关键变化。");
+  });
+
   it("updates Event Stream when interaction events are emitted", async () => {
     render(<App />);
     await screen.findByText("已连接");

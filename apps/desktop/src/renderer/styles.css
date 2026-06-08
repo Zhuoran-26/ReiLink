@@ -1390,6 +1390,64 @@ button {
   grid-column: 1 / -1;
 }
 
+.sessionTimelineSection {
+  padding: 0;
+}
+
+.sessionTimelineSection summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 0 10px;
+  color: #dce4f6;
+  font-weight: 680;
+}
+
+.sessionTimelineSection summary::marker {
+  color: #78849e;
+}
+
+.sessionTimelineBody {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.sessionTimelineActions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.sessionTimelineActions .settingHint {
+  margin: 0;
+}
+
+.sessionTimelineList {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sessionTimelineList li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  color: #b8c2d8;
+}
+
+.sessionTimelineSummary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .debugJson {
   max-height: 240px;
   overflow: auto;
@@ -1501,6 +1559,10 @@ button {
   }
 
   .localAsrSetupActions {
+    grid-template-columns: 1fr;
+  }
+
+  .sessionTimelineActions {
     grid-template-columns: 1fr;
   }
 }
