@@ -2,13 +2,13 @@
 
 ## 中文
 
-Updated: 2026-06-07
+Updated: 2026-06-08
 
 ### 当前阶段
 
 当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，并进入 Overlay v1.1 polish。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，并进入 Overlay v1.1 regression freeze / macOS safe mode 明示阶段。
 
 v0.2-pre 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示、standalone runtime、本地数据目录、多游戏知识维护和 release readiness 更清晰、更稳定。
 
@@ -106,6 +106,7 @@ dev/codex-reilink
 ### 当前 Overlay 状态
 
 - Overlay v1.1 已建立底座：Settings 中新增 `Overlay / 游戏悬浮层`，默认关闭，开关、位置、透明度和消息数量持久化在 app settings。
+- Overlay v1.1 Regression Freeze 已确认当前安全基线：用户手动测试已验证 ReiLink 主窗口不再闪烁、不始终置顶、可切出 / 切回、Dock 和 `⌘ + Tab` 可见、Settings 和 `强制关闭悬浮层` 可操作。
 - Electron main process 可创建独立 overlay window；窗口为 frameless、transparent、always-on-top、不可聚焦，并忽略鼠标输入。非 macOS 可使用 `skipTaskbar`；macOS 当前避免让 overlay window 影响整个 ReiLink Dock / app switcher 入口。
 - Overlay 已和 ReiLink 主窗口解耦显示：ReiLink 主窗口 / Settings 前台时会销毁或隐藏运行时 overlay window，避免遮挡 Settings、select/dropdown 或 macOS window controls。macOS 当前采用 emergency fail-closed 策略，切到游戏或其他 app 后也不自动显示 overlay，优先保证主窗口不闪烁、不置顶、不抢焦点。
 - Settings 中的 Overlay 开关使用普通按钮组，并提供 `强制关闭悬浮层` 兜底入口；用户在 ReiLink 主窗口前台开启 Overlay 时只改变持久化 enabled 状态，不会立刻把 always-on-top window 显示到主窗口上方。
@@ -116,7 +117,7 @@ dev/codex-reilink
 - assistant 最终回复和 proactive message 只会把截断/脱敏后的安全摘要推送到 overlay；不会传 raw prompt、完整 assistant reply、完整用户输入、memory、debug raw JSON、完整 transcript、API key、`.env`、完整路径、raw stdout 或 raw stderr。
 - Event Stream 已加入 overlay lifecycle 安全事件：开关变化、设置变化、位置更新、窗口显示/隐藏、内容更新和错误摘要；内容更新只显示来源、字数和消息数量。
 - 当前不实现 HUD / 敌人 / 玩家位置识别，不做画面理解或自动避让，不做拖拽或锁定位置。
-- 后续需单独恢复 macOS overlay auto-show，并验证不会触发 app activation / focus loop。
+- 后续需单独恢复 macOS overlay auto-show，并在恢复前通过 checklist 验证：不调用 `mainWindow.focus()` 抢焦点、不触发 app activation loop、不隐藏 Dock / `⌘ + Tab`、主窗口前台时 overlay 隐藏、Settings 始终可关闭 Overlay、packaged `.app` 人工验证通过。
 
 ### 当前 Knowledge Retrieval 状态
 
@@ -196,7 +197,7 @@ Updated: 2026-06-07
 
 Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, and the project is now in Overlay v1.1 polish.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, and the project is now in Overlay v1.1 regression freeze / macOS safe mode clarification.
 
 The v0.2-pre focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, standalone runtime, local data directories, multi-game knowledge maintenance, and release readiness clearer and more stable.
 
@@ -294,6 +295,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 ### Current Overlay Status
 
 - Overlay v1.1 is in place: Settings now includes `Overlay / 游戏悬浮层`, defaults to off, and persists enabled state, position, opacity, and message count through app settings.
+- Overlay v1.1 Regression Freeze has a confirmed safety baseline: user manual testing verified that the ReiLink main window no longer flickers, no longer stays always-on-top, can switch away and back, remains visible in Dock and `⌘ + Tab`, and keeps Settings plus `强制关闭悬浮层` operable.
 - The Electron main process can create a separate overlay window that is frameless, transparent, always-on-top, non-focusable, and ignores mouse input. Non-macOS can use `skipTaskbar`; macOS currently avoids letting the overlay window affect the whole ReiLink Dock / app switcher entry.
 - Overlay visibility is separated from the enabled setting: the runtime overlay window is destroyed or hidden while the ReiLink main window / Settings is foreground, so it does not cover Settings, select/dropdown controls, or macOS window controls. macOS currently uses an emergency fail-closed policy and does not auto-show overlay after switching away, prioritizing normal main-window focus behavior.
 - The Settings Overlay control uses regular buttons and includes a `强制关闭悬浮层` fallback; enabling Overlay while ReiLink is foreground only persists enabled state and does not immediately show an always-on-top window above the main UI.
@@ -304,7 +306,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Completed assistant replies and proactive messages send only truncated/redacted safe summaries to overlay; raw prompt, full assistant reply, full user input, memory, debug raw JSON, full transcript, API keys, `.env`, full paths, raw stdout, and raw stderr are excluded.
 - Event Stream includes safe overlay lifecycle events for enabled changes, settings changes, position updates, show/hide, content updates, and errors; content updates expose only source, character count, and message count.
 - The current scope does not include HUD / enemy / player-position detection, vision, automatic avoidance, dragging, or locking.
-- A later macOS-specific overlay pass should restore auto-show only after verifying it does not trigger app activation / focus loops.
+- A later macOS-specific overlay pass should restore auto-show only after passing the checklist: no `mainWindow.focus()` focus stealing, no app activation loop, no hidden Dock / `⌘ + Tab`, overlay hidden while the main window is foreground, Settings always able to disable Overlay, and packaged `.app` manual verification complete.
 
 ### Current Knowledge Retrieval Status
 

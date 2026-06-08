@@ -316,6 +316,57 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - Packaged `.app` smoke 如本次未执行，需要在 release 前补做：直接打开 packaged app，确认 app 出现在 Dock / `⌘ + Tab`，窗口模式和全屏模式都不闪烁、不始终置顶、不自动抢回焦点，并验证 Settings 开启 / 关闭 / 强制关闭 / 位置 / 透明度。
 - 本阶段不实现 HUD / 敌人 / 玩家位置识别，不做画面理解，不做自动避让，不做拖拽或锁定位置。
 
+#### Overlay v1.1 Regression Freeze / Safe Mode
+
+当前稳定状态：
+
+- Overlay 默认关闭。
+- Settings 可开启 / 关闭 Overlay，且位置、透明度、显示消息数设置可保存。
+- `强制关闭悬浮层` 可用，用于异常时立即关闭并保存 `overlay_enabled=off`。
+- ReiLink 主窗口或 Settings 前台时 Overlay 不显示，优先保证 Settings 和窗口按钮可操作。
+- macOS 下 overlay auto-show 当前 fail-closed：开启后切到其他 app 也不会自动显示小气泡，这是当前预期。
+- 主窗口稳定性优先于 Overlay 显示；如两者冲突，继续保持 Overlay fail-closed。
+
+以下问题必须回归防止复发：
+
+- Overlay 不能渲染完整 ReiLink App，只能渲染 OverlayApp / bubble surface。
+- Overlay 不能遮挡 Settings、select/dropdown、slider、button。
+- Overlay 不能遮挡 macOS traffic lights。
+- Overlay 不能导致 Settings 无法关闭 Overlay。
+- Overlay 不能导致 ReiLink 从 Dock 或 `⌘ + Tab` 消失。
+- Overlay 不能导致主窗口疯狂闪烁。
+- Overlay 不能导致 ReiLink 始终置顶。
+- Overlay 不能导致切到其他 app 后自动抢回焦点。
+- Overlay 不能破坏主窗口关闭 / 最小化 / 全屏按钮。
+- Overlay content / Event Stream 不能泄露 raw prompt、API key、`.env`、完整路径、完整 transcript、stdout/stderr 或 raw JSON。
+
+后续恢复 macOS auto-show 前必须满足：
+
+- 不调用 `mainWindow.focus()` 抢焦点。
+- 不让 overlay window 触发 app activation loop。
+- 不使用会隐藏整个 ReiLink app 的 macOS `skipTaskbar` 策略。
+- Overlay route 必须稳定只渲染 OverlayApp，不渲染完整 App。
+- 主窗口前台时 overlay 必须隐藏或销毁。
+- 用户必须始终能从 Settings 关闭 Overlay，并能使用 `强制关闭悬浮层` 兜底。
+- Dock / `⌘ + Tab` 必须保持 ReiLink 可见。
+- packaged `.app` 必须人工验证窗口模式和全屏模式。
+
+packaged `.app` 手动 smoke 最低步骤：
+
+1. 打开 packaged ReiLink。
+2. 确认窗口不闪烁。
+3. 确认 ReiLink 不始终置顶。
+4. 确认 Dock 可见。
+5. 确认 `⌘ + Tab` 可见。
+6. 切到 Finder / 浏览器。
+7. 切到其他 app 后确认 ReiLink 不抢回焦点。
+8. 切回 ReiLink。
+9. 在 Settings 开启 / 关闭 Overlay。
+10. 点击 `强制关闭悬浮层`。
+11. 确认 Overlay 不遮挡 Settings。
+12. 确认 Overlay 不导致 ReiLink 左上角窗口按钮消失。
+13. 确认 macOS 下 auto-show 暂时不出现小气泡，这是当前预期。
+
 ### 6. Knowledge Retrieval 回归检查
 
 #### Elden Ring 命中

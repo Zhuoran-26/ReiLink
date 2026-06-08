@@ -981,7 +981,7 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "overlay_window_hidden":
       return "悬浮层已隐藏";
     case "overlay_visibility_suppressed":
-      return "主窗口前台，悬浮层暂时隐藏";
+      return "主窗口前台或 macOS 安全模式，悬浮层暂时隐藏";
     case "overlay_content_updated":
       return [
         event.source ? debugText(event.source) : "",
@@ -3245,8 +3245,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <option value={3}>3</option>
                   </select>
                 </label>
-                <p className="settingHint">默认关闭。开启后只显示短消息，不接收输入。</p>
-                <p className="settingHint">不显示调试信息、路径、密钥或完整回复。</p>
+                <p className="settingHint">默认关闭。开启后只保存设置，ReiLink 前台时不显示，避免遮挡 Settings。</p>
+                <p className="settingHint">macOS 当前为安全模式：自动显示小气泡暂时关闭，以避免抢焦点或影响窗口切换。</p>
+                <p className="settingHint">强制关闭用于异常时立即关闭悬浮层；不显示调试信息、路径、密钥或完整回复。</p>
               </div>
               <div className="voiceOutputPanel" role="group" aria-label="语音输出设置">
                 <label className="settingRow">

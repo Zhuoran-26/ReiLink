@@ -337,6 +337,9 @@ def test_overlay_scenarios_have_required_fields():
         "overlay-disable-hides-window",
         "overlay-settings-persist-after-restart",
         "overlay-event-stream-safe",
+        "overlay-macos-safe-mode-fail-closed",
+        "overlay-window-lifecycle-regression-freeze",
+        "overlay-macos-autoshow-restore-checklist",
     } <= {item.get("id") for item in scenarios}
     required_forbidden_terms = {
         ".env",

@@ -1415,7 +1415,9 @@ describe("App", () => {
     expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("middle-right");
     expect(screen.getByLabelText("Overlay 背景透明度")).toHaveValue("0.72");
     expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("2");
-    expect(screen.getByText("默认关闭。开启后只显示短消息，不接收输入。")).toBeInTheDocument();
+    expect(screen.getByText("默认关闭。开启后只保存设置，ReiLink 前台时不显示，避免遮挡 Settings。")).toBeInTheDocument();
+    expect(screen.getByText("macOS 当前为安全模式：自动显示小气泡暂时关闭，以避免抢焦点或影响窗口切换。")).toBeInTheDocument();
+    expect(screen.getByText("强制关闭用于异常时立即关闭悬浮层；不显示调试信息、路径、密钥或完整回复。")).toBeInTheDocument();
     expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
     expect(screen.getByText(/当前状态：已关闭/)).toBeInTheDocument();
     expect(screen.getByText(/本地语音：不可用/)).toBeInTheDocument();
@@ -3751,7 +3753,7 @@ describe("App", () => {
 
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     expect(eventStream).toHaveTextContent("悬浮层暂时隐藏");
-    expect(eventStream).toHaveTextContent("主窗口前台，悬浮层暂时隐藏");
+    expect(eventStream).toHaveTextContent("主窗口前台或 macOS 安全模式，悬浮层暂时隐藏");
     expect(eventStream).not.toHaveTextContent("main_window_active");
     expect(eventStream).not.toHaveTextContent(".env");
     expect(eventStream).not.toHaveTextContent("/Users/aragoto");
