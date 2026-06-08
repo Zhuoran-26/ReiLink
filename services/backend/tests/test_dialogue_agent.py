@@ -437,6 +437,27 @@ def test_game_session_injects_recent_cleared_boss_history(tmp_path: Path):
     assert "刚刚结束的 boss 是 女武神" not in provider.prompts[0]
 
 
+def test_cleared_boss_strategy_followup_can_acknowledge_and_still_help(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now()
+    agent.game_session.update_from_user_message("我现在卡在恶兆妖鬼", "casual_chat", {}, now)
+    agent.game_session.update_from_user_message("我终于打过玛尔基特了。", "casual_chat", {}, now + timedelta(minutes=1))
+    provider = _PromptCapturingProvider(["你不是已经打过了吗？那就当复盘说。二阶段先别贪刀，等他砸完再进一下。"])
+    agent.provider = provider
+
+    response = agent.chat(ChatRequest(message="玛尔基特二阶段怎么打？", session_id="cleared-strategy-followup"))
+
+    assert "可以用一句轻微反问、吐槽或复盘语气承接已打过状态" in provider.prompts[0]
+    assert "继续回答实际问题" in provider.prompts[0]
+    assert "你不是已经打过了吗" in response.reply
+    assert "二阶段" in response.reply
+    assert "先别贪刀" in response.reply or "等他砸完" in response.reply
+
+
 def test_intent_router_core_cases():
     assert detect_intent("你叫什么").intent == "identity_question"
     assert detect_intent("who are you").intent == "identity_question"

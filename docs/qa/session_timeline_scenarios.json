@@ -113,7 +113,25 @@
     "precondition": "Semantic Extraction runs rule-first and optionally calls LLM fallback for passive-death, near-clear, or unresolved-reference expressions",
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
-    "expected_behavior": "Debug / Event Stream show only safe trace fields such as source, confidence, fallback_reason, and applied_updates. Confidence is shown as high, medium, or low; full user messages, prompt JSON, raw provider responses, paths, and transcripts are not shown.",
+    "expected_behavior": "Debug / Event Stream show only safe trace fields such as source, confidence, fallback_reason, skip_reason, and applied_updates. Confidence is shown as high, medium, or low; full user messages, prompt JSON, raw provider responses, paths, and transcripts are not shown.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-semantic-low-confidence-observable",
+    "category": "session_timeline_privacy",
+    "precondition": "The user sends a low-confidence game-state-like sentence with failure slang or an unclear boss reference, such as getting stomped, 寄了, 打爆了, or an unnamed rider / hammer-wielding enemy",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Debug / Event Stream emit a safe semantic trace even when no state update is applied. The trace may show source none or rule, confidence low or medium, fallback_reason such as slang_failure_expression or unknown_boss_alias, and skip_reason such as provider_unavailable. It must not silently no-op.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-semantic-low-confidence-not-hardcoded",
+    "category": "session_timeline_privacy",
+    "precondition": "A low-confidence game failure hint is detected but no high-confidence rule or structured LLM fallback result is available",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Low-confidence slang and unknown boss aliases only trigger fallback / trace observability. They must not be hardcoded into final boss names, death counts, boss_cleared, or other state updates unless rule evidence is high-confidence or LLM fallback returns a structured result.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {

@@ -559,6 +559,8 @@ const semanticExtractionDebug = {
     source: "llm_fallback",
     confidence: "medium",
     fallback_reason: null,
+    skip_reason: null,
+    parse_error: null,
     applied_updates: ["memory_candidate_created"]
   },
   llm_called: true,
@@ -2061,6 +2063,64 @@ describe("App", () => {
         expect.objectContaining({ type: "assistant_reply_completed" })
       ])
     );
+  });
+
+  it("emits observable semantic trace events for low-confidence no-op game hints", async () => {
+    const lowConfidenceTrace = {
+      ...semanticExtractionDebug,
+      latest_user_message: "低置信游戏语义 / 18 字",
+      rule_result: { game_event: { type: "none" } },
+      rule_confidence: 0,
+      raw_rule_confidence: 0,
+      ambiguity_detected: true,
+      fallback_reason: "unknown_boss_alias",
+      source: "none",
+      confidence: "low",
+      applied_updates: [],
+      extraction_trace: {
+        source: "none",
+        confidence: "low",
+        fallback_reason: "unknown_boss_alias",
+        skip_reason: "provider_unavailable",
+        parse_error: null,
+        applied_updates: []
+      },
+      llm_called: false,
+      semantic_extraction_model: null,
+      semantic_extraction_latency_ms: 0,
+      provider_latency_ms: 0,
+      llm_result: null,
+      final_decision: { game_event: { type: "none" } },
+      skip_reason: "provider_unavailable",
+      parse_error: null
+    };
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(lowConfidenceTrace));
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "我在那个骑马金甲大哥那里又寄了几次。");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() =>
+      expect(eventBus.getRecentEvents(20)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "semantic_extraction_traced",
+            source: "none",
+            confidence: "low",
+            fallback_reason: "unknown_boss_alias",
+            skip_reason: "provider_unavailable",
+            applied_updates: []
+          })
+        ])
+      )
+    );
+    const semanticEvent = eventBus.getRecentEvents(20).find((event) => event.type === "semantic_extraction_traced");
+    expect(JSON.stringify(semanticEvent)).not.toContain("骑马金甲大哥");
   });
 
   it("does not speak assistant replies when Voice Output is disabled", async () => {
@@ -3752,10 +3812,11 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("Rei 显示回复片段");
     expect(eventStream).toHaveTextContent("使用游戏知识");
     expect(eventStream).toHaveTextContent("已使用本地知识");
+    expect(eventStream).toHaveTextContent(/用户消息 \d+ 字/);
     expect(eventStream).not.toHaveTextContent("user_message_sent");
     expect(eventStream).not.toHaveTextContent("assistant_reply_segment_shown");
     expect(eventStream).not.toHaveTextContent("bundled");
-    expect(eventStream).toHaveTextContent("Margit 怎么打？");
+    expect(eventStream).not.toHaveTextContent("Margit 怎么打？");
     expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
@@ -3971,7 +4032,8 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("后端状态变化");
     expect(eventStream).toHaveTextContent("正在启动");
     expect(eventStream).not.toHaveTextContent("starting");
-    expect(eventStream).toHaveTextContent("我现在卡在女武神");
+    expect(eventStream).toHaveTextContent(/用户消息 \d+ 字/);
+    expect(eventStream).not.toHaveTextContent("我现在卡在女武神");
     expect(eventStream).toHaveTextContent("第 1 段 / 5 字");
     expect(eventStream).not.toHaveTextContent("先别贪刀。");
   });
@@ -4000,8 +4062,10 @@ describe("App", () => {
     const rows = within(eventStream as HTMLElement).getAllByRole("listitem");
     expect(rows).toHaveLength(20);
     expect(eventStream).not.toHaveTextContent("event-4");
-    expect(eventStream).toHaveTextContent("event-5");
-    expect(eventStream).toHaveTextContent("event-24");
+    expect(eventStream).not.toHaveTextContent("event-5");
+    expect(eventStream).not.toHaveTextContent("event-24");
+    expect(rows[0]).toHaveTextContent("用户发送消息");
+    expect(rows[19]).toHaveTextContent("用户发送消息");
   });
 
   it("forces chat scroll to bottom when the user sends a message", async () => {

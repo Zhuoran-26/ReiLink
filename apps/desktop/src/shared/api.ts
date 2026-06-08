@@ -437,6 +437,8 @@ export type SemanticExtractionDebugResponse = {
     source: "rule" | "llm_fallback" | "mixed" | "none";
     confidence: "high" | "medium" | "low";
     fallback_reason: string | null;
+    skip_reason?: string | null;
+    parse_error?: string | null;
     applied_updates: string[];
   };
   llm_called: boolean;

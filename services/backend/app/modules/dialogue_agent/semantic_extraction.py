@@ -76,6 +76,7 @@ def extract_semantics(
         llm_called=llm_called,
         rule_confidence=rule_confidence,
         fallback_reason=ambiguity_reason or (None if not should_call_llm else "low_confidence_rule"),
+        skip_reason=None if llm_called else skip_reason,
         parse_error=parse_error,
     )
     pending_reason = _pending_reason(final_decision)
@@ -146,6 +147,8 @@ _latest_debug: dict[str, Any] = {
         "confidence": "low",
         "fallback_reason": None,
         "applied_updates": [],
+        "skip_reason": "not_run",
+        "parse_error": None,
     },
     "llm_called": False,
     "semantic_extraction_model": None,
@@ -171,7 +174,6 @@ def _rule_result(
     game_state: dict[str, Any],
     session_focus_boss: str | None,
 ) -> dict[str, Any]:
-    del intent
     decision = _empty_decision()
     explicit_boss = _detect_boss(message)
     focused_boss = normalize_terminology(session_focus_boss or "") or None
@@ -180,6 +182,7 @@ def _rule_result(
     clears_boss = _clears_current_boss(message)
     abandons_boss = _abandons_current_boss(message)
     near_clear = _near_clear_signal(_compact(message))
+    state_neutral_question = _is_state_neutral_game_question(message, intent)
 
     if explicit_boss and near_clear:
         decision["game_event"] = _game_event("near_clear", explicit_boss, 0.82, True)
@@ -187,7 +190,7 @@ def _rule_result(
         decision["game_event"] = _game_event("failed_attempt", explicit_boss, 0.97, True)
     elif explicit_boss and clears_boss:
         decision["game_event"] = _game_event("boss_cleared", explicit_boss, 0.97, True)
-    elif explicit_boss:
+    elif explicit_boss and not state_neutral_question:
         decision["game_event"] = _game_event("boss_attempt", explicit_boss, 0.95, True)
     elif near_clear and context_boss:
         decision["game_event"] = _game_event("near_clear", context_boss, 0.82, True)
@@ -206,6 +209,32 @@ def _rule_result(
     if emotion:
         decision["emotion"] = emotion
     return decision
+
+
+def _is_state_neutral_game_question(message: str, intent: str) -> bool:
+    if intent not in {"elden_ring_boss_strategy", "elden_ring_location", "elden_ring_build", "elden_ring_general_help"}:
+        return False
+    compact = _compact(message)
+    question_markers = (
+        "怎么",
+        "怎麼",
+        "如何",
+        "咋",
+        "在哪",
+        "哪里",
+        "哪裡",
+        "攻略",
+        "打法",
+        "二阶段",
+        "二階段",
+        "一阶段",
+        "一階段",
+        "推荐",
+        "推薦",
+        "?",
+        "？",
+    )
+    return any(marker in compact for marker in question_markers)
 
 
 def _game_event(event_type: str, boss_name: str | None, confidence: float, should_update: bool) -> dict[str, Any]:
@@ -280,6 +309,8 @@ def _should_call_llm(message: str, rule_confidence: float, ambiguity_reason: str
 def _has_semantic_signal(message: str) -> bool:
     compact = _compact(message)
     if _has_passive_death_statement(message):
+        return True
+    if _low_confidence_game_semantic_reason(compact):
         return True
     game_markers = (
         "没打过",
@@ -496,10 +527,13 @@ def _extraction_trace(
     llm_called: bool,
     rule_confidence: float,
     fallback_reason: str | None,
+    skip_reason: str | None,
     parse_error: str | None,
 ) -> dict[str, Any]:
     final_confidence = _decision_confidence(final_decision)
-    if final_confidence <= 0:
+    if final_confidence <= 0 and llm_called and llm_result:
+        source = "llm_fallback"
+    elif final_confidence <= 0:
         source = "none"
     elif llm_called and llm_result and final_decision != rule_result:
         source = "llm_fallback"
@@ -513,6 +547,8 @@ def _extraction_trace(
         "source": source,
         "confidence": _confidence_label(max(final_confidence, rule_confidence)),
         "fallback_reason": fallback_reason,
+        "skip_reason": skip_reason,
+        "parse_error": parse_error,
         "applied_updates": _applied_updates(final_decision),
     }
 
@@ -567,6 +603,8 @@ def _safe_message_summary(message: str) -> str:
     compact = _compact(message)
     if _has_passive_death_statement(message):
         return f"被动死亡表达 / {len(message)} 字"
+    if _low_confidence_game_semantic_reason(compact):
+        return f"低置信游戏语义 / {len(message)} 字"
     if any(marker in compact for marker in ("记住", "記住", "记得", "記得", "帮我记", "幫我記")):
         return f"记忆偏好表达 / {len(message)} 字"
     if _has_semantic_signal(message):
@@ -673,6 +711,99 @@ def _ambiguity_reason(message: str) -> str | None:
         return "near_clear_phrase"
     if _unresolved_boss_reference(compact):
         return "unresolved_boss_reference"
+    low_confidence_reason = _low_confidence_game_semantic_reason(compact)
+    if low_confidence_reason:
+        return low_confidence_reason
+    return None
+
+
+def _low_confidence_game_semantic_reason(compact: str) -> str | None:
+    """Detect game-like semantic hints without turning them into final state.
+
+    These markers only make the trace/fallback path observable. Boss identity,
+    death counts, and progress updates still require rule evidence or LLM fallback.
+    """
+
+    if not compact:
+        return None
+    has_slang_failure = any(
+        marker in compact
+        for marker in (
+            "寄了",
+            "寄咯",
+            "打爆",
+            "打烂",
+            "打爛",
+            "锤爆",
+            "錘爆",
+            "薄纱",
+            "薄紗",
+            "被薄纱",
+            "被薄紗",
+            "爆杀",
+            "爆殺",
+        )
+    )
+    has_game_hint = any(
+        marker in compact
+        for marker in (
+            "空洞骑士",
+            "空洞騎士",
+            "hollowknight",
+            "hollow knight",
+            "艾尔登法环",
+            "艾爾登法環",
+            "eldenring",
+            "elden ring",
+            "boss",
+            "二阶段",
+            "二階段",
+            "一阶段",
+            "一階段",
+        )
+    )
+    has_alias_shape = any(
+        marker in compact
+        for marker in (
+            "那个",
+            "那個",
+            "大哥",
+            "家伙",
+            "傢伙",
+            "骑马",
+            "騎馬",
+            "金甲",
+            "拿锤子",
+            "拿錘子",
+            "锤子的",
+            "錘子的",
+        )
+    )
+    has_combat_hint = any(
+        marker in compact
+        for marker in (
+            "打",
+            "砍",
+            "锤",
+            "錘",
+            "杀",
+            "殺",
+            "死",
+            "回",
+            "次",
+            "烦",
+            "煩",
+            "过",
+            "過",
+            "卡",
+        )
+    )
+    if has_alias_shape and (has_slang_failure or has_game_hint or has_combat_hint):
+        return "unknown_boss_alias"
+    if has_slang_failure:
+        return "slang_failure_expression"
+    if has_game_hint and has_combat_hint:
+        return "game_semantic_keywords_no_rule_update"
     return None
 
 

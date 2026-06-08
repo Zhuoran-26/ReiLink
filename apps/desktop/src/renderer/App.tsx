@@ -673,6 +673,7 @@ const valueMap: Record<string, string> = {
   no_candidate_trigger: "暂无可触发项",
   no_active_game: "尚未确定当前游戏",
   no_game_detected: "未检测到游戏",
+  no_semantic_signal: "无明显语义信号",
   no_knowledge_match: "没有可用知识命中",
   no_supported_knowledge: "未支持知识库",
   used: "已使用本地知识",
@@ -699,6 +700,7 @@ const valueMap: Record<string, string> = {
   persona: "人格",
   persona_preference: "互动偏好",
   passive_death_statement: "被动死亡表达",
+  provider_unavailable: "兜底模型不可用",
   playstyle: "玩法",
   playstyle_preference: "玩法偏好",
   pro: "高质量",
@@ -710,6 +712,9 @@ const valueMap: Record<string, string> = {
   repeat_trigger_type: "同类主动陪伴已触发",
   rule: "规则",
   mixed: "规则 + LLM",
+  slang_failure_expression: "低置信失败表达",
+  unknown_boss_alias: "未知 Boss 指代",
+  game_semantic_keywords_no_rule_update: "低置信游戏语义",
   running: "运行中",
   sample: "样例",
   short: "简短",
@@ -864,10 +869,9 @@ const debugListText = (item: unknown): string => {
   return meta ? `${meta}: ${text}` : text;
 };
 
-const truncateEventText = (value: string, maxLength = 64) =>
-  value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
-
 const eventTextLength = (value: string) => `${value.length} 字`;
+
+const userMessageEventSummary = (value: string) => `用户消息 ${eventTextLength(value)}`;
 
 const voiceStopReasonText = (reason?: string) => {
   const labels: Record<string, string> = {
@@ -964,7 +968,7 @@ const overlayPositionText = (position?: string) => {
 const eventSummary = (event: ReiLinkEvent) => {
   switch (event.type) {
     case "user_message_sent":
-      return truncateEventText(event.text);
+      return userMessageEventSummary(event.text);
     case "assistant_reply_started":
       return "开始生成回复";
     case "assistant_reply_segment_shown":
@@ -986,6 +990,8 @@ const eventSummary = (event: ReiLinkEvent) => {
         `语义识别：${debugText(event.source)}`,
         debugText(event.confidence),
         event.fallback_reason ? `原因：${debugText(event.fallback_reason)}` : "",
+        event.skip_reason && event.skip_reason !== "no_semantic_signal" ? `跳过：${debugText(event.skip_reason)}` : "",
+        event.parse_error ? `错误：${debugText(event.parse_error)}` : "",
         event.applied_updates?.length ? debugText(event.applied_updates) : ""
       ].filter(Boolean).join(" / ");
     case "game_session_changed":
@@ -1918,12 +1924,21 @@ export function App() {
 
   const emitSemanticExtractionTrace = useCallback((debug: SemanticExtractionDebugResponse) => {
     const trace = debug.extraction_trace;
-    const source = trace?.source ?? debug.source;
+    const source = trace?.source ?? debug.source ?? "none";
     const confidence = trace?.confidence ?? debug.confidence;
     const fallbackReason = trace?.fallback_reason ?? debug.fallback_reason ?? null;
+    const skipReason = trace?.skip_reason ?? debug.skip_reason ?? null;
+    const parseError = trace?.parse_error ?? debug.parse_error ?? null;
     const appliedUpdates = trace?.applied_updates ?? debug.applied_updates ?? [];
-    if (!source || source === "none") return;
-    const key = JSON.stringify({ source, confidence, fallbackReason, appliedUpdates });
+    const shouldEmit = Boolean(
+      source !== "none"
+      || fallbackReason
+      || parseError
+      || (skipReason && skipReason !== "no_semantic_signal")
+      || appliedUpdates.length
+    );
+    if (!shouldEmit) return;
+    const key = JSON.stringify({ source, confidence, fallbackReason, skipReason, parseError, appliedUpdates });
     if (lastSemanticTraceEventRef.current === key) return;
     lastSemanticTraceEventRef.current = key;
     eventBus.emit({
@@ -1932,6 +1947,8 @@ export function App() {
       source,
       confidence,
       fallback_reason: fallbackReason,
+      skip_reason: skipReason,
+      parse_error: parseError,
       applied_updates: appliedUpdates
     });
   }, []);

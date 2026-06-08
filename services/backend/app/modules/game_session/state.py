@@ -160,6 +160,7 @@ class GameSessionStore:
         fails_boss = _fails_current_boss(user_message)
         clears_boss = _clears_current_boss(user_message)
         abandons_boss = _abandons_current_boss(user_message)
+        state_neutral_question = _is_state_neutral_game_question(user_message, intent)
         semantic_event_type = _semantic_event_type(semantic_game_event)
         semantic_applied = False
         game_name = _detect_current_game(game_status, user_message, intent, explicit_boss or focused_boss, state.current_game)
@@ -186,7 +187,7 @@ class GameSessionStore:
             _mark_boss_failed(state, explicit_boss, now, "current_message")
         elif explicit_boss and clears_boss:
             _clear_boss(state, explicit_boss, now, "current_message")
-        elif explicit_boss:
+        elif explicit_boss and not state_neutral_question:
             _set_current_boss(state, explicit_boss, now, "current_message", 0.95)
         elif fails_boss:
             failed_boss = _context_boss_for_failure(state, focused_boss, now)
@@ -221,7 +222,7 @@ class GameSessionStore:
         game_intent = _derive_game_intent(
             user_message,
             intent,
-            explicit_boss or focused_boss or (state.current_boss.name if state.current_boss else None),
+            None if state_neutral_question else explicit_boss or focused_boss or (state.current_boss.name if state.current_boss else None),
             state.current_activity,
             fails_boss or (semantic_applied and semantic_event_type in {"failed_attempt", "near_clear"}),
             clears_boss or (semantic_applied and semantic_event_type == "boss_cleared"),
@@ -248,7 +249,8 @@ class GameSessionStore:
                 return (
                     f"当前游戏状态：刚刚结束的 boss 是 {session_focus_boss}；"
                     "当前没有正在打的 boss。用户如果问刚刚在打什么，可以引用这个已结束状态。"
-                    "如果用户继续问这个 boss 的打法、二阶段或复盘，可以轻轻承接已打过状态，但要继续回答实际问题；"
+                    "如果用户继续问这个 boss 的打法、二阶段或复盘，可以用一句轻微反问、吐槽或复盘语气承接已打过状态，"
+                    "但要继续回答实际问题；"
                     "不要只停在反问上阻断需求。不要猜新的 boss。"
                 )
             suffix = f"，{pressure}" if pressure else ""
@@ -268,7 +270,8 @@ class GameSessionStore:
                 return (
                     f"当前游戏状态：刚刚结束的 boss 是 {state.last_cleared_boss}；"
                     "当前没有正在打的 boss。用户如果问刚刚在打什么，可以引用这个已结束状态。"
-                    "如果用户继续问这个 boss 的打法、二阶段或复盘，可以轻轻承接已打过状态，但要继续回答实际问题；"
+                    "如果用户继续问这个 boss 的打法、二阶段或复盘，可以用一句轻微反问、吐槽或复盘语气承接已打过状态，"
+                    "但要继续回答实际问题；"
                     "不要只停在反问上阻断需求。不要猜新的 boss。"
                 )
             if state.last_attempted_boss:
@@ -1139,6 +1142,34 @@ def _has_attempt_signal(message: str) -> bool:
     return any(
         word in message
         for word in ("卡在", "卡住", "打", "挑战", "挑戰", "准备", "準備", "试", "試", "再来", "再來", "重试", "重試")
+    )
+
+
+def _is_state_neutral_game_question(message: str, intent: str) -> bool:
+    if intent not in {"elden_ring_boss_strategy", "elden_ring_location", "elden_ring_build", "elden_ring_general_help"}:
+        return False
+    compact = re.sub(r"\s+", "", message.lower())
+    return any(
+        marker in compact
+        for marker in (
+            "怎么",
+            "怎麼",
+            "如何",
+            "咋",
+            "在哪",
+            "哪里",
+            "哪裡",
+            "攻略",
+            "打法",
+            "二阶段",
+            "二階段",
+            "一阶段",
+            "一階段",
+            "推荐",
+            "推薦",
+            "?",
+            "？",
+        )
     )
 
 

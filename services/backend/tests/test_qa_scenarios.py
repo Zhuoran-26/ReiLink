@@ -404,6 +404,8 @@ def test_session_timeline_scenarios_have_required_fields():
         "session-timeline-proactive-safe",
         "session-timeline-proactive-safe-gating",
         "session-timeline-semantic-trace-safe",
+        "session-timeline-semantic-low-confidence-observable",
+        "session-timeline-semantic-low-confidence-not-hardcoded",
         "session-timeline-memory-actions-safe",
         "session-timeline-clear-current-session",
         "session-timeline-limit-and-sanitize",

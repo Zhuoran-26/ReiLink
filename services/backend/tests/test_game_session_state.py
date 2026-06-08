@@ -383,7 +383,7 @@ def test_cleared_boss_summary_does_not_block_strategy_followup(tmp_path):
     summary = store.build_prompt_summary(now + timedelta(minutes=2))
 
     assert "刚刚结束的 boss 是 恶兆妖鬼 Margit" in summary
-    assert "可以轻轻承接已打过状态" in summary
+    assert "可以用一句轻微反问、吐槽或复盘语气承接已打过状态" in summary
     assert "继续回答实际问题" in summary
     assert "不要只停在反问上阻断需求" in summary
 

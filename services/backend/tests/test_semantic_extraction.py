@@ -114,6 +114,16 @@ def test_boss_start_uses_rule_without_llm(monkeypatch):
     assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
 
 
+def test_strategy_question_does_not_reopen_cleared_boss_as_attempt(monkeypatch):
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LLM called")))
+
+    result = sem.extract_semantics("玛尔基特二阶段怎么打？", "elden_ring_boss_strategy", _game_state("恶兆妖鬼 Margit"))
+
+    assert result["llm_called"] is False
+    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["applied_updates"] == []
+
+
 def test_passive_death_statement_has_safe_trace_without_clearing(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "mock")
 
@@ -185,6 +195,124 @@ def test_passive_death_llm_failure_falls_back_to_rule_trace(monkeypatch):
     assert result["source"] == "rule"
     assert result["final_decision"]["game_event"]["type"] == "failed_attempt"
     assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_slang_failure_expression_has_safe_trace_without_hardcoded_update(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "mock")
+
+    result = sem.extract_semantics("这树守卫给我薄纱了四回，真的烦。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is False
+    assert result["latest_user_message"].startswith("低置信游戏语义 /")
+    assert "这树守卫给我薄纱了四回" not in result["latest_user_message"]
+    assert result["fallback_reason"] == "slang_failure_expression"
+    assert result["skip_reason"] == "provider_unavailable"
+    assert result["source"] == "rule"
+    assert result["confidence"] == "medium"
+    assert "emotion_frustrated" in result["applied_updates"]
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_unknown_boss_alias_failure_is_observable_noop(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "mock")
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is False
+    assert result["latest_user_message"].startswith("低置信游戏语义 /")
+    assert "骑马金甲大哥" not in result["latest_user_message"]
+    assert result["fallback_reason"] == "unknown_boss_alias"
+    assert result["skip_reason"] == "provider_unavailable"
+    assert result["source"] == "none"
+    assert result["confidence"] == "low"
+    assert result["applied_updates"] == []
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_hollow_knight_unknown_alias_failure_is_observable_noop(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "mock")
+
+    result = sem.extract_semantics("空洞骑士里那个一开始拿锤子的家伙把我打爆了。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is False
+    assert result["latest_user_message"].startswith("低置信游戏语义 /")
+    assert "拿锤子的家伙" not in result["latest_user_message"]
+    assert result["fallback_reason"] == "unknown_boss_alias"
+    assert result["skip_reason"] == "provider_unavailable"
+    assert result["source"] == "none"
+    assert result["confidence"] == "low"
+    assert result["applied_updates"] == []
+
+
+def test_game_semantic_hint_no_rule_update_emits_low_confidence_trace(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "mock")
+
+    result = sem.extract_semantics("空洞骑士里这个 boss 二阶段打起来怎么处理。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is False
+    assert result["fallback_reason"] == "game_semantic_keywords_no_rule_update"
+    assert result["skip_reason"] == "provider_unavailable"
+    assert result["source"] == "none"
+    assert result["confidence"] == "low"
+    assert result["applied_updates"] == []
+
+
+def test_low_confidence_game_semantic_calls_llm_fallback_when_provider_available(monkeypatch):
+    calls = []
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+
+    def fake_call(*args, **kwargs):
+        calls.append((args, kwargs))
+        return json.dumps(
+            {
+                "game_event": {
+                    "type": "failed_attempt",
+                    "boss_name": "大树守卫",
+                    "confidence": 0.82,
+                    "should_update_current_boss": True,
+                },
+                "memory_candidate": {
+                    "should_create_pending": False,
+                    "type": "none",
+                    "text": "",
+                    "confidence": 0,
+                    "reason": "",
+                },
+                "emotion": {"type": "frustrated", "intensity": 0.55},
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(sem, "_call_deepseek_flash", fake_call)
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert calls
+    assert result["llm_called"] is True
+    assert result["fallback_reason"] == "unknown_boss_alias"
+    assert result["skip_reason"] is None
+    assert result["source"] == "llm_fallback"
+    assert "boss_failed" in result["applied_updates"]
+    assert "boss_detected" in result["applied_updates"]
+    assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
+
+
+def test_low_confidence_game_semantic_llm_unavailable_degrades_safely(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "")
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is False
+    assert result["fallback_reason"] == "unknown_boss_alias"
+    assert result["skip_reason"] == "provider_unavailable"
+    assert result["source"] == "none"
+    serialized = json.dumps(result, ensure_ascii=False).lower()
+    assert "api_key" not in serialized
+    assert ".env" not in serialized
+    assert "authorization" not in serialized
+    assert "我在那个骑马金甲大哥那里又寄了几次" not in result["latest_user_message"]
 
 
 def test_short_guide_preference_creates_pending_candidate():
