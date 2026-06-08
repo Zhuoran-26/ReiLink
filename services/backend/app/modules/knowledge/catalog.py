@@ -242,12 +242,15 @@ class GameCatalog:
 
     def detect_explicit_game_switch(self, user_message: str) -> GameSwitchDetection | None:
         target = _extract_explicit_switch_target(user_message)
-        if not target:
-            return None
-        game = self._match_by_any_catalog_name(target, self.games())
-        if game:
-            return GameSwitchDetection(game=game, display_name=game.display_name)
-        return GameSwitchDetection(game=None, display_name=target, confidence=0.75)
+        if target:
+            game = self._match_by_any_catalog_name(target, self.games())
+            if game:
+                return GameSwitchDetection(game=game, display_name=game.display_name)
+            return GameSwitchDetection(game=None, display_name=target, confidence=0.75)
+        phrase_match = _match_explicit_catalog_game_switch(user_message, self.games())
+        if phrase_match:
+            return GameSwitchDetection(game=phrase_match, display_name=phrase_match.display_name)
+        return None
 
     @staticmethod
     def _match_manual_override(
@@ -499,10 +502,30 @@ def _first_text(*values: str | None) -> str | None:
 
 _SWITCH_TARGET_PATTERNS = (
     re.compile(r"(?:不是|不在|没在|沒有在|没有在)玩[^，,。！？?]+.*?(?:是|改成|换成|換成)(?:在)?玩(?P<game>[^，,。！？?]+)", re.IGNORECASE),
+    re.compile(r"(?:换到|換到|切到|切去|切回|换回|換回|回到|回)(?P<game>[^，,。！？?]+)", re.IGNORECASE),
     re.compile(r"(?:换个游戏|換個遊戲|换游戏|換遊戲|不聊[^，,。！？?]*了).*?(?:我)?(?:现在|現在|目前)?(?:在)?玩(?!过|過)(?P<game>[^，,。！？?]+)", re.IGNORECASE),
     re.compile(r"(?:我|俺|咱|现在|現在|目前|今天|今晚|这会儿|這會兒).{0,6}玩(?:一个|一個)?叫(?P<game>[^，,。！？?]+?)的游戏", re.IGNORECASE),
     re.compile(r"(?:我|俺|咱|现在|現在|目前|今天|今晚|这会儿|這會兒).{0,6}(?:在玩|玩(?!过|過)|开了|開了|打开了|打開了|去玩|改玩)(?P<game>[^，,。！？?]+)", re.IGNORECASE),
 )
+
+
+def _match_explicit_catalog_game_switch(text: str, games: list[GameCatalogEntry]) -> GameCatalogEntry | None:
+    if not text.strip():
+        return None
+    compact_text = _compact(_normalize(text))
+    signal_patterns = (
+        r"(?:换到|換到|切到|切去|切回|换回|換回|回到|回).{0,16}",
+        r"(?:我|现在|現在|目前|今天|今晚).{0,6}(?:在玩|玩|在).{0,16}",
+        r"(?:今天|今晚).{0,4}(?:打|玩).{0,16}",
+    )
+    for game in games:
+        for name in _catalog_names(game):
+            compact_name = _compact(_normalize(name))
+            if len(compact_name) < 2 or compact_name not in compact_text:
+                continue
+            if any(re.search(f"{pattern}{re.escape(compact_name)}|{re.escape(compact_name)}{pattern}", compact_text) for pattern in signal_patterns):
+                return game
+    return None
 
 
 def _extract_explicit_switch_target(text: str) -> str | None:

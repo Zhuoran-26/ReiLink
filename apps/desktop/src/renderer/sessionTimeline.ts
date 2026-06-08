@@ -113,6 +113,8 @@ export const sessionTimelineItemsFromEvent = (event: ReiLinkEvent): SessionTimel
       }
       if (typeof event.frustration_count === "number" && Number.isFinite(event.frustration_count) && event.frustration_count > 0) {
         items.push(createTimelineItem(timestamp, "frustration_changed", "game_session", `挫败状态升高：${event.frustration_count}`));
+      } else if (event.activity === "frustration_calm") {
+        items.push(createTimelineItem(timestamp, "frustration_changed", "game_session", "挫败状态缓和"));
       }
       if (clearedBoss && clearedBoss !== "无") {
         items.push(createTimelineItem(timestamp, "boss_cleared", "game_session", `击败 Boss：${clearedBoss}`));

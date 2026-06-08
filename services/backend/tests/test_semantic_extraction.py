@@ -142,6 +142,24 @@ def test_personal_preference_with_remember_creates_pending_candidate():
     assert "喜欢吃菠萝" in candidate["text"]
 
 
+def test_explicit_playstyle_memory_request_creates_pending_candidate():
+    result = sem.extract_semantics("记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。", "casual_chat", _game_state())
+
+    candidate = result["final_decision"]["memory_candidate"]
+    assert result["llm_called"] is False
+    assert candidate["should_create_pending"] is True
+    assert candidate["type"] == "playstyle_preference"
+    assert "先探索地图" in candidate["text"]
+    assert "直接硬打" in candidate["text"]
+
+
+def test_negative_memory_request_does_not_create_pending_candidate():
+    result = sem.extract_semantics("以后不用记住这个，只是我这次随便说一下。", "casual_chat", _game_state())
+
+    candidate = result["final_decision"]["memory_candidate"]
+    assert candidate["should_create_pending"] is False
+
+
 def test_persona_preference_creates_low_confidence_pending_candidate():
     result = sem.extract_semantics("我喜欢你经常笑的样子", "casual_chat", _game_state())
 

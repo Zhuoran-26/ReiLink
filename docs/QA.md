@@ -436,6 +436,12 @@ packaged `.app` 手动 smoke 最低步骤：
 - Timeline 可记录安全摘要：切换游戏、检测到 Boss、死亡次数变化、挫败状态变化、击败 Boss、使用知识、主动陪伴已显示、记忆已接受、记忆已忽略。
 - Game Context 变化应显示类似 `切换游戏：Elden Ring` 的短摘要。
 - Game Session 变化应显示类似 `检测到 Boss：Margit`、`死亡次数更新：3`、`挫败状态升高：2`、`击败 Boss：Margit`。
+- 死亡次数必须区分绝对值和增量：`已经死了3次`、`我现在死了4次`、`目前死了5次` 应设置为对应数字；`又死了两次` 应在当前次数上增加 2；`死麻了`、`一直死`、`打不过` 不应乱写具体 death count。
+- `我有点冷静下来了` 或等价表达应让 Game Session 挫败状态缓和，并在 Timeline 显示 `挫败状态缓和` 或等价安全摘要。
+- 显式游戏切换必须覆盖 `我换到空洞骑士了`、`我现在玩空洞骑士`、`今天打空洞骑士`、`我回法环了`、`我现在在艾尔登法环`；后续 Boss / Knowledge Retrieval 应跟随新的 current game。
+- Boss alias 回归必须覆盖 `恶兆妖鬼玛尔基特 / 玛尔基特 / Margit` 和 Hollow Knight 的 `假骑士 / False Knight`。
+- 已击败 Boss 后继续问打法时，Rei 可以轻轻承接“已经打过”的上下文，但不能只用反问阻断；仍应回答用户实际攻略 / 复盘需求。
+- 显式记忆回归：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 应创建 pending memory；`以后不用记住这个，只是我这次随便说一下` 不应创建 pending memory。
 - Knowledge Retrieval 使用成功时应显示 `使用知识` 类摘要，只允许游戏名或安全 topic/title；不得显示完整 snippet、knowledge 文件路径或 prompt。
 - Proactive 显示时应记录 `主动陪伴已显示` 和安全 trigger 标签，不显示完整 proactive / assistant 文本。
 - Pending Memory 接受或忽略时应记录 `记忆已接受` / `记忆已忽略`，不显示 memory 原文、evidence 或 raw payload。

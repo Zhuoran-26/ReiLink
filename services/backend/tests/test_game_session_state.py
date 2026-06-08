@@ -22,6 +22,72 @@ def test_explicit_current_boss_updates_game_session_state(tmp_path):
     assert state.current_boss.confidence >= 0.9
 
 
+def test_explicit_game_boss_absolute_deaths_and_frustration(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+
+    state = store.update_from_user_message(
+        "我现在在艾尔登法环打恶兆妖鬼玛尔基特，已经死了3次，有点烦。",
+        "casual_chat",
+        _idle_status(),
+        now,
+    )
+
+    assert state.current_game == "Elden Ring"
+    assert state.current_boss is not None
+    assert state.current_boss.name == "恶兆妖鬼 Margit"
+    assert state.death_count == 3
+    assert state.frustration_count >= 1
+    assert state.current_activity == "boss_failed"
+
+
+def test_absolute_death_count_updates_do_not_increment_by_one(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在恶兆妖鬼", "casual_chat", _idle_status(), now)
+
+    four = store.update_from_user_message("我现在死了4次。", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+    five = store.update_from_user_message("我现在死了5次。", "casual_chat", _idle_status(), now + timedelta(minutes=2))
+
+    assert four.death_count == 4
+    assert five.death_count == 5
+
+
+def test_incremental_death_count_uses_current_count(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在恶兆妖鬼，已经死了3次。", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message("又死了两次。", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+
+    assert state.death_count == 5
+
+
+def test_calm_phrase_clears_frustration_state(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在恶兆妖鬼，有点烦。", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message("我有点冷静下来了。", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+
+    assert state.frustration_count == 0
+    assert state.current_activity == "frustration_calm"
+
+
+def test_hollow_knight_boss_alias_uses_existing_game_context(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    state = store.load()
+    state.current_game = "空洞骑士"
+    store.save(state)
+
+    updated = store.update_from_user_message("我现在在打假骑士。", "casual_chat", _idle_status(), now)
+
+    assert updated.current_game == "空洞骑士"
+    assert updated.current_boss is not None
+    assert updated.current_boss.name == "False Knight"
+
+
 def test_elliptical_death_loop_uses_fresh_current_boss(tmp_path):
     store = GameSessionStore(tmp_path / "game_session_state.json")
     now = datetime.now(timezone.utc)
@@ -264,6 +330,20 @@ def test_history_summary_after_boss_cleared_does_not_claim_current(tmp_path):
     assert "刚刚结束的 boss 是 老将欧尼尔" in summary
     assert "当前没有正在打的 boss" in summary
     assert "女武神已结束" not in summary
+
+
+def test_cleared_boss_summary_does_not_block_strategy_followup(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在恶兆妖鬼", "casual_chat", _idle_status(), now)
+    store.update_from_user_message("我终于打过玛尔基特了", "casual_chat", _idle_status(), now + timedelta(minutes=1))
+
+    summary = store.build_prompt_summary(now + timedelta(minutes=2))
+
+    assert "刚刚结束的 boss 是 恶兆妖鬼 Margit" in summary
+    assert "可以轻轻承接已打过状态" in summary
+    assert "继续回答实际问题" in summary
+    assert "不要只停在反问上阻断需求" in summary
 
 
 def test_stale_current_boss_is_not_injected_as_current(tmp_path):

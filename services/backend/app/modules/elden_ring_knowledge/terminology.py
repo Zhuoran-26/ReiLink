@@ -22,6 +22,7 @@ TERMINOLOGY_MAP: dict[str, str] = {
     "Margit": "恶兆妖鬼 Margit",
     "O'Neil": "老将欧尼尔",
     "O’Neil": "老将欧尼尔",
+    "False Knight": "False Knight",
     "Summon": "召唤",
 }
 

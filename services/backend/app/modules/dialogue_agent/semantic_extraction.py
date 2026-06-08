@@ -196,6 +196,8 @@ def _game_event(event_type: str, boss_name: str | None, confidence: float, shoul
 
 def _rule_memory_candidate(message: str) -> dict[str, Any] | None:
     compact = _compact(message)
+    if _negative_memory_request(compact):
+        return None
     if _mentions_short_guide_preference(compact):
         return _memory_candidate("guide_preference", "玩家喜欢简短的游戏攻略", 0.94, "explicit guide preference")
     if _mentions_long_guide_preference(compact):
@@ -204,6 +206,13 @@ def _rule_memory_candidate(message: str) -> dict[str, Any] | None:
         return _memory_candidate("guide_preference", "玩家不喜欢攻略站式回答", 0.9, "explicit guide preference")
     if _mentions_spirit_ashes_preference(compact):
         return _memory_candidate("playstyle_preference", "玩家不喜欢召唤骨灰，倾向自己打", 0.95, "explicit playstyle preference")
+    if _mentions_exploration_before_boss_preference(compact):
+        return _memory_candidate(
+            "playstyle_preference",
+            "玩家打 Boss 前喜欢先探索地图，不喜欢直接硬打",
+            0.94,
+            "explicit playstyle memory request",
+        )
     if _mentions_persona_preference(compact):
         return _memory_candidate("persona_preference", "玩家表达了对 Rei 表达方式的偏好", 0.68, "possible persona preference")
     personal_preference = _explicit_personal_preference(compact)
@@ -612,6 +621,8 @@ def _mentions_persona_preference(compact: str) -> bool:
 
 
 def _explicit_personal_preference(compact: str) -> str | None:
+    if _negative_memory_request(compact):
+        return None
     if not re.search(r"(?:记住|記住|记得|記得|帮我记|幫我記)", compact):
         return None
     match = re.search(r"我(喜欢|喜歡|不喜欢|不喜歡)([^，。,.!?！？]{1,24})", compact)
@@ -622,6 +633,37 @@ def _explicit_personal_preference(compact: str) -> str | None:
     if not value:
         return None
     return f"{verb}{value}"
+
+
+def _mentions_exploration_before_boss_preference(compact: str) -> bool:
+    if not re.search(r"(?:记住|記住|记得|記得|帮我记|幫我記)", compact):
+        return False
+    if _negative_memory_request(compact):
+        return False
+    has_boss_context = "boss" in compact or "打boss" in compact or "打Boss".lower() in compact
+    has_exploration = any(marker in compact for marker in ("先探索", "探索地图", "探索地圖", "先跑图", "先跑圖"))
+    has_hard_push_dislike = any(marker in compact for marker in ("不喜欢直接硬打", "不喜歡直接硬打", "不想直接硬打", "不要直接硬打"))
+    return has_boss_context and (has_exploration or has_hard_push_dislike)
+
+
+def _negative_memory_request(compact: str) -> bool:
+    return any(
+        marker in compact
+        for marker in (
+            "不用记住",
+            "不用記住",
+            "不要记住",
+            "不要記住",
+            "别记住",
+            "別記住",
+            "别记",
+            "別記",
+            "不用记",
+            "不用記",
+            "不需要记住",
+            "不需要記住",
+        )
+    )
 
 
 def _compact(text: str) -> str:

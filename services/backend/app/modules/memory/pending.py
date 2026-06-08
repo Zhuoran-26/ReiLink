@@ -185,6 +185,23 @@ class PendingMemoryQueue:
                 )
             )
 
+        playstyle_preference = _explicit_boss_exploration_preference(normalized_message)
+        if playstyle_preference:
+            candidates.append(
+                PendingMemory(
+                    id=str(uuid.uuid4()),
+                    type="playstyle",
+                    text=f"玩家{playstyle_preference}",
+                    source="explicit_user_statement",
+                    confidence=0.94,
+                    status="pending",
+                    created_at=now,
+                    updated_at=now,
+                    evidence=evidence,
+                    payload={"playstyle": playstyle_preference},
+                )
+            )
+
         semantic_candidate = _semantic_memory_candidate(semantic_extraction, now, evidence)
         if semantic_candidate:
             candidates.append(semantic_candidate)
@@ -426,6 +443,8 @@ def _mentions_companion_style_preference(message: str) -> bool:
 
 def _explicit_personal_preference(message: str) -> str | None:
     compact = _normalize_text(message)
+    if _negative_memory_request(compact):
+        return None
     if not re.search(r"(?:记住|記住|记得|記得|帮我记|幫我記)", compact):
         return None
     match = re.search(r"我(喜欢|喜歡|不喜欢|不喜歡)([^，。,.!?！？]{1,24})", compact)
@@ -436,6 +455,40 @@ def _explicit_personal_preference(message: str) -> str | None:
     if not value:
         return None
     return f"{verb}{value}"
+
+
+def _explicit_boss_exploration_preference(message: str) -> str | None:
+    compact = _normalize_text(message)
+    if _negative_memory_request(compact):
+        return None
+    if not re.search(r"(?:记住|記住|记得|記得|帮我记|幫我記)", compact):
+        return None
+    has_boss_context = "boss" in compact or "打boss" in compact
+    has_exploration = any(marker in compact for marker in ("先探索", "探索地图", "探索地圖", "先跑图", "先跑圖"))
+    has_hard_push_dislike = any(marker in compact for marker in ("不喜欢直接硬打", "不喜歡直接硬打", "不想直接硬打", "不要直接硬打"))
+    if not has_boss_context or not (has_exploration or has_hard_push_dislike):
+        return None
+    return "打 Boss 前喜欢先探索地图，不喜欢直接硬打"
+
+
+def _negative_memory_request(compact: str) -> bool:
+    return any(
+        marker in compact
+        for marker in (
+            "不用记住",
+            "不用記住",
+            "不要记住",
+            "不要記住",
+            "别记住",
+            "別記住",
+            "别记",
+            "別記",
+            "不用记",
+            "不用記",
+            "不需要记住",
+            "不需要記住",
+        )
+    )
 
 
 def _explicitly_mentions_current_attempt(message: str) -> bool:

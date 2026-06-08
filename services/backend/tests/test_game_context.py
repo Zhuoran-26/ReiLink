@@ -164,6 +164,40 @@ def test_explicit_user_switch_overrides_session_game_and_clears_old_boss(tmp_pat
     assert PendingMemoryQueue().list() == []
 
 
+def test_explicit_user_switch_supports_switch_to_and_return_phrases(tmp_path):
+    resolver = _resolver(tmp_path, process_names=[])
+    state = resolver.game_session.load()
+    state.current_game = "艾尔登法环"
+    resolver.game_session.save(state)
+
+    hollow = resolver.resolve(user_message="我换到空洞骑士了。", sync_session=True)
+    assert hollow.active_game_id == "hollow_knight"
+    assert hollow.active_game_display_name == "空洞骑士"
+    assert hollow.active_source == "user_switch"
+    assert resolver.game_session.load().current_game == "空洞骑士"
+
+    elden = resolver.resolve(user_message="我回法环了。", sync_session=True)
+    assert elden.active_game_id == "elden_ring"
+    assert elden.active_game_display_name == "艾尔登法环"
+    assert elden.active_source == "user_switch"
+    assert resolver.game_session.load().current_game == "艾尔登法环"
+
+
+def test_explicit_user_switch_supports_currently_in_game_phrase(tmp_path):
+    resolver = _resolver(tmp_path, process_names=[])
+
+    context = resolver.resolve(user_message="我现在在艾尔登法环打恶兆妖鬼玛尔基特。", sync_session=True)
+
+    assert context.active_game_id == "elden_ring"
+    assert context.active_game_display_name == "艾尔登法环"
+    assert context.active_source == "user_switch"
+
+    hollow = resolver.resolve(user_message="今天打空洞骑士。", sync_session=True)
+    assert hollow.active_game_id == "hollow_knight"
+    assert hollow.active_game_display_name == "空洞骑士"
+    assert hollow.active_source == "user_switch"
+
+
 def test_explicit_user_switch_with_negated_old_game_uses_new_game(tmp_path):
     resolver = _resolver(tmp_path, process_names=[])
     state = resolver.game_session.load()

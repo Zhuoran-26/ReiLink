@@ -162,16 +162,24 @@ class GameSessionStore:
         abandons_boss = _abandons_current_boss(user_message)
         semantic_event_type = _semantic_event_type(semantic_game_event)
         semantic_applied = False
-        game_name = _detect_current_game(game_status, user_message, intent, explicit_boss or focused_boss)
+        game_name = _detect_current_game(game_status, user_message, intent, explicit_boss or focused_boss, state.current_game)
 
         state.last_user_intent = intent
         state.last_updated_at = now.isoformat()
         if game_name:
             state.current_game = game_name
 
-        if _has_death_signal(user_message):
-            state.death_count += 1
-        if _has_frustration_signal(user_message):
+        death_update = _death_count_update(user_message, state, explicit_boss or focused_boss)
+        if death_update:
+            mode, value = death_update
+            if mode == "absolute":
+                state.death_count = value
+            else:
+                state.death_count += value
+        calm_signal = _has_calm_signal(user_message)
+        if calm_signal:
+            state.frustration_count = 0
+        elif _has_frustration_signal(user_message):
             state.frustration_count += 1
 
         if explicit_boss and fails_boss:
@@ -207,6 +215,8 @@ class GameSessionStore:
                 state.current_activity = "unclear_boss_reference"
         elif _is_game_related(intent, user_message, explicit_boss or focused_boss):
             state.current_activity = _detect_activity(user_message, intent)
+        elif calm_signal:
+            state.current_activity = "frustration_calm"
 
         game_intent = _derive_game_intent(
             user_message,
@@ -237,7 +247,9 @@ class GameSessionStore:
             if not state.current_boss and state.last_cleared_boss == session_focus_boss:
                 return (
                     f"当前游戏状态：刚刚结束的 boss 是 {session_focus_boss}；"
-                    "当前没有正在打的 boss。用户如果问刚刚在打什么，可以引用这个已结束状态。不要猜新的 boss。"
+                    "当前没有正在打的 boss。用户如果问刚刚在打什么，可以引用这个已结束状态。"
+                    "如果用户继续问这个 boss 的打法、二阶段或复盘，可以轻轻承接已打过状态，但要继续回答实际问题；"
+                    "不要只停在反问上阻断需求。不要猜新的 boss。"
                 )
             suffix = f"，{pressure}" if pressure else ""
             return f"当前游戏状态：当前会话焦点是 {session_focus_boss}{suffix}。短期会话焦点优先于长期记忆。"
@@ -255,7 +267,9 @@ class GameSessionStore:
             if state.last_cleared_boss:
                 return (
                     f"当前游戏状态：刚刚结束的 boss 是 {state.last_cleared_boss}；"
-                    "当前没有正在打的 boss。用户如果问刚刚在打什么，可以引用这个已结束状态。不要猜新的 boss。"
+                    "当前没有正在打的 boss。用户如果问刚刚在打什么，可以引用这个已结束状态。"
+                    "如果用户继续问这个 boss 的打法、二阶段或复盘，可以轻轻承接已打过状态，但要继续回答实际问题；"
+                    "不要只停在反问上阻断需求。不要猜新的 boss。"
                 )
             if state.last_attempted_boss:
                 return (
@@ -349,16 +363,48 @@ def _detect_current_game(
     message: str,
     intent: str,
     boss: str | None,
+    current_game: str | None = None,
 ) -> str | None:
     if game_status.get("detected_game_id") and not game_status.get("knowledge_game_id"):
         return None
     if game_status.get("game_name"):
         return str(game_status["game_name"])
+    explicit_message_game = _detect_message_game(message)
+    if explicit_message_game:
+        return explicit_message_game
+    boss_game = _game_for_boss(boss)
+    if boss_game:
+        return boss_game
+    if current_game and (boss or _is_supported_game_name(current_game)):
+        return current_game
     if game_status.get("game_id") == "elden_ring" or boss or intent.startswith("elden_ring"):
         return "Elden Ring"
     if any(word in message.lower() for word in ("艾尔登", "艾爾登", "elden ring", "交界地")):
         return "Elden Ring"
     return None
+
+
+def _detect_message_game(message: str) -> str | None:
+    compact = re.sub(r"[\s_\-:：·•.。?？!！'\"“”‘’]+", "", normalize_terminology(message).lower())
+    if any(word in compact for word in ("空洞骑士", "空洞騎士", "hollowknight")):
+        return "空洞骑士"
+    if any(word in compact for word in ("艾尔登法环", "艾爾登法環", "eldenring", "法环", "法環")):
+        return "Elden Ring"
+    return None
+
+
+def _game_for_boss(boss: str | None) -> str | None:
+    normalized = normalize_terminology(boss or "")
+    if normalized == "False Knight":
+        return "空洞骑士"
+    if normalized in {"恶兆妖鬼 Margit", "女武神", "大树守卫", "拉塔恩", "老将欧尼尔"}:
+        return "Elden Ring"
+    return None
+
+
+def _is_supported_game_name(value: str | None) -> bool:
+    normalized = normalize_terminology(value or "").casefold()
+    return normalized in {"elden ring", "艾尔登法环", "空洞骑士", "hollow knight"}
 
 
 def _is_game_related(intent: str, message: str, boss: str | None) -> bool:
@@ -918,8 +964,114 @@ def _abandons_current_boss(message: str) -> bool:
     )
 
 
+_CHINESE_NUMERAL_VALUES = {
+    "零": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "兩": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+}
+
+
+def _death_count_update(
+    message: str,
+    state: GameSessionState,
+    boss: str | None,
+) -> tuple[str, int] | None:
+    compact = re.sub(r"\s+", "", normalize_terminology(message).lower())
+    increment = _death_increment(compact)
+    if increment is not None:
+        return ("increment", increment)
+    absolute = _absolute_death_count(compact, state, boss)
+    if absolute is not None:
+        return ("absolute", absolute)
+    if _has_death_signal(message):
+        return ("increment", 1)
+    return None
+
+
+def _death_increment(compact: str) -> int | None:
+    patterns = (
+        r"(?:刚刚|剛剛|刚才|剛才)?又(?:死|挂|掛)(?:了)?(?P<count>[0-9一二两兩三四五六七八九十]{0,3})次?",
+        r"再(?:死|挂|掛)(?:了)?(?P<count>[0-9一二两兩三四五六七八九十]{0,3})次?",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, compact)
+        if not match:
+            continue
+        value = _parse_small_count(match.group("count") or "1")
+        if value is not None and value > 0:
+            return value
+    return None
+
+
+def _absolute_death_count(
+    compact: str,
+    state: GameSessionState,
+    boss: str | None,
+) -> int | None:
+    patterns = (
+        r"(?:死亡次数|死亡次數)(?:是|到|更新到)?(?P<count>[0-9一二两兩三四五六七八九十]{1,3})",
+        r"(?:已经|已經|目前|现在|現在|总共|總共)?(?:死|死亡|挂|掛)(?:了)?(?P<count>[0-9一二两兩三四五六七八九十]{1,3})次",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, compact)
+        if not match:
+            continue
+        value = _parse_small_count(match.group("count"))
+        if value is not None:
+            return value
+
+    if not _has_count_context(compact, state, boss):
+        return None
+    match = re.search(r"卡(?:了)?(?P<count>[0-9一二两兩三四五六七八九十]{1,3})次", compact)
+    if not match:
+        return None
+    return _parse_small_count(match.group("count"))
+
+
+def _has_count_context(compact: str, state: GameSessionState, boss: str | None) -> bool:
+    return bool(
+        boss
+        or state.current_boss
+        or any(marker in compact for marker in ("boss", "打不过", "打不過", "死", "死亡", "挂", "掛"))
+    )
+
+
+def _parse_small_count(value: str | None) -> int | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return int(text)
+    if text == "十":
+        return 10
+    if text.startswith("十") and len(text) == 2:
+        tail = _CHINESE_NUMERAL_VALUES.get(text[1])
+        return 10 + tail if tail is not None else None
+    if text.endswith("十") and len(text) == 2:
+        head = _CHINESE_NUMERAL_VALUES.get(text[0])
+        return head * 10 if head is not None else None
+    if "十" in text and len(text) == 3:
+        head = _CHINESE_NUMERAL_VALUES.get(text[0])
+        tail = _CHINESE_NUMERAL_VALUES.get(text[2])
+        if head is not None and tail is not None:
+            return head * 10 + tail
+    if len(text) == 1:
+        return _CHINESE_NUMERAL_VALUES.get(text)
+    return None
+
+
 def _has_death_signal(message: str) -> bool:
-    return any(word in message for word in ("又死", "死了", "一直死", "死太多", "死亡"))
+    return any(word in message for word in ("又死", "死了", "一直死", "死太多", "死亡", "挂了", "掛了"))
 
 
 def _has_frustration_signal(message: str) -> bool:
@@ -927,6 +1079,30 @@ def _has_frustration_signal(message: str) -> bool:
     return emotion in {"frustrated", "death_loop"} or _fails_current_boss(message) or any(
         word in message
         for word in ("烦", "紅溫", "红温", "破防", "打不过", "打不過", "还是不行", "還是不行", "过不去", "卡住", "卡在")
+    )
+
+
+def _has_calm_signal(message: str) -> bool:
+    compact = re.sub(r"\s+", "", message.lower())
+    return any(
+        marker in compact
+        for marker in (
+            "冷静下来了",
+            "冷靜下來了",
+            "冷静了",
+            "冷靜了",
+            "缓过来了",
+            "緩過來了",
+            "不烦了",
+            "不煩了",
+            "没那么烦",
+            "沒那麼煩",
+            "好多了",
+            "稳住了",
+            "穩住了",
+            "平静了",
+            "平靜了",
+        )
     )
 
 

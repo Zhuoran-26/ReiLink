@@ -100,6 +100,34 @@ def test_explicit_personal_preference_with_remember_creates_pending_memory():
     assert created[0]["source"] == "explicit_user_statement"
 
 
+def test_explicit_boss_exploration_preference_creates_pending_memory():
+    created = PendingMemoryQueue().generate_and_enqueue(
+        "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。",
+        "",
+        "casual_chat",
+        _now(),
+        {},
+    )
+
+    assert len(created) == 1
+    assert created[0]["type"] == "playstyle"
+    assert created[0]["text"] == "玩家打 Boss 前喜欢先探索地图，不喜欢直接硬打"
+    assert created[0]["source"] == "explicit_user_statement"
+
+
+def test_negative_memory_request_does_not_create_pending_memory():
+    created = PendingMemoryQueue().generate_and_enqueue(
+        "以后不用记住这个，只是我这次随便说一下。",
+        "",
+        "casual_chat",
+        _now(),
+        {},
+    )
+
+    assert created == []
+    assert PendingMemoryQueue().list() == []
+
+
 def test_semantic_memory_candidate_creates_pending_memory():
     semantic = {
         "final_decision": {

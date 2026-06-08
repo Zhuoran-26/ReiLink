@@ -2,7 +2,7 @@
 
 ## 中文
 
-Updated: 2026-06-08
+Updated: 2026-06-09
 
 ### 当前阶段
 
@@ -135,6 +135,9 @@ dev/codex-reilink
 - Timeline 是当前 renderer session 内的游戏过程安全摘要，不是 memory、prompt raw log 或完整聊天记录；v1 不持久化，刷新或重启后清空。
 - 当前可从安全 Event Bus 事件生成短摘要：游戏切换、Boss 检测、死亡次数变化、挫败状态变化、Boss 击败、知识检索使用、主动陪伴显示、pending memory 接受 / 忽略。
 - 每条 item 只显示时间和短摘要，例如 `切换游戏：Elden Ring`、`检测到 Boss：Margit`、`死亡次数更新：3`、`使用知识：Margit phase 2 tips`、`记忆已接受`。
+- Session Timeline v1 manual acceptance bugfix 已补齐：死亡次数会区分绝对值表达（如 `已经死了3次`、`我现在死了4次`）和增量表达（如 `又死了两次`）；`我有点冷静下来了` 可记录挫败状态缓和；`我换到空洞骑士了`、`我回法环了`、`我现在在艾尔登法环` 等显式游戏切换会更新 Game Context；`假骑士 / False Knight` 可在 Hollow Knight 上下文中识别为 Boss。
+- 显式记忆指令已加强：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 会生成 pending memory；`不用 / 不要 / 别记住` 等否定记忆请求不会生成 pending memory。
+- 已击败 Boss 后继续问攻略时，Rei 可以轻轻承接“已经打过”的上下文，但仍应继续回答实际问题，不应只停在反问上阻断需求。
 - Timeline 最多保留最近有限条目，并对摘要做截断和脱敏；不显示 raw prompt、完整 user message、完整 assistant reply、完整 ASR transcript、memory 原文全文、knowledge snippet 全文、API key、`.env`、完整本地路径、raw stdout/stderr 或 raw JSON。
 - Debug Panel 提供 `清空时间线`，只清空当前 timeline，不清空 Event Stream、聊天、memory、game session 或 Local ASR 设置。
 
@@ -209,7 +212,7 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-08
+Updated: 2026-06-09
 
 ### Current Stage
 
@@ -342,6 +345,9 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - The timeline is a current renderer-session-only safe game-process summary. It is not memory, not a raw prompt log, and not a full chat transcript; v1 is not persisted and clears on refresh or restart.
 - It can generate short items from safe Event Bus events for game switches, boss detection, death count changes, frustration changes, boss clears, knowledge usage, proactive messages, and pending memory accept / ignore actions.
 - Each item shows only time plus a short summary, such as `切换游戏：Elden Ring`, `检测到 Boss：Margit`, `死亡次数更新：3`, `使用知识：Margit phase 2 tips`, or `记忆已接受`.
+- The Session Timeline v1 manual-acceptance bugfix now distinguishes absolute death counts (`已经死了3次`, `我现在死了4次`) from incremental counts (`又死了两次`), records calm/frustration easing, recognizes explicit Elden Ring / Hollow Knight switches, and resolves `假骑士 / False Knight` in Hollow Knight context.
+- Explicit memory requests now cover the playstyle preference `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打`, while negated requests such as `不用 / 不要 / 别记住` remain non-memory.
+- After a boss is cleared, Rei may lightly acknowledge that context when the user asks for more strategy, but should still answer the actual question instead of stopping at a blocking rhetorical question.
 - The timeline keeps a bounded recent list and redacts/truncates summaries. It must not show raw prompts, full user messages, full assistant replies, full ASR transcripts, full memory text, full knowledge snippets, API keys, `.env`, full local paths, raw stdout/stderr, or raw JSON.
 - `清空时间线` clears only the current timeline and does not clear Event Stream, chat, memory, game session, or Local ASR settings.
 

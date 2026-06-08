@@ -55,6 +55,20 @@ describe("sessionTimeline", () => {
     ]);
   });
 
+  it("records frustration easing without leaking chat text", () => {
+    const items = sessionTimelineItemsFromEvent({
+      type: "game_session_changed",
+      timestamp,
+      game: "Elden Ring",
+      activity: "frustration_calm",
+      death_count: 5,
+      frustration_count: 0
+    });
+
+    expect(items.map((item) => item.summary)).toContain("挫败状态缓和");
+    expect(items.map((item) => item.summary).join(" ")).not.toContain("冷静下来了");
+  });
+
   it("records knowledge usage without leaking snippets or local paths", () => {
     const longSnippet = "Margit phase 2 tips ".repeat(10);
     const items = sessionTimelineItemsFromEvent({
