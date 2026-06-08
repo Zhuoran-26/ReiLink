@@ -2,13 +2,15 @@
 
 ## 中文
 
-Updated: 2026-06-06
+Updated: 2026-06-08
 
 ### 当前阶段
 
 当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，并进入 Voice / Local ASR / Overlay Safe Mode regression freeze 阶段。
+
+截至本次阶段冻结，Voice Output v1 / v1.1、Local ASR v1、Local ASR Native File Picker v1 和 Overlay v1.1 macOS safe mode 已作为当前稳定回归基线记录。macOS Overlay auto-show 仍故意 fail-closed，后续恢复必须单独立项并通过 packaged `.app` QA checklist。
 
 v0.2-pre 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示、standalone runtime、本地数据目录、多游戏知识维护和 release readiness 更清晰、更稳定。
 
@@ -55,6 +57,7 @@ dev/codex-reilink
 - Voice Input v1 fallback：push-to-talk Web Speech UI、安全 fallback、不自动发送。
 - Main chat Local ASR voice input：Local ASR ready 时主聊天语音按钮优先走本地录音/转写，Web Speech 作为 fallback。
 - Voice Interaction MVP：系统 TTS + 用户配置 Local ASR + transcript-first UX + 隐私安全事件摘要。
+- Overlay v1.1：默认关闭的独立透明悬浮层、Settings 开关、位置预设、背景透明度、1～3 条安全短消息气泡和 overlay lifecycle Event Stream。
 - Event Bus / Event Stream。
 - Prompt Preview。
 - Debug Dashboard。
@@ -83,9 +86,15 @@ dev/codex-reilink
 - Local Data Controls：Settings 中查看 / 打开本地数据目录，并复用 Demo Reset / reset controls。
 - Audio Capture / Temp File probe。
 - Local ASR staged foundation and main chat integration：feasibility plan、config detection、CLI probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge、whisper-like output parsing hardening、manual setup guide、主聊天语音按钮 provider selection。
-- Local ASR Settings persistence / Setup UI：Settings 中保存、清除、刷新本地 ASR binary / model / converter 路径，保存到用户数据目录并 fallback 到 env。
+- Local ASR Settings persistence / Setup UI：Settings 中保存、清除、刷新本地 ASR binary / model / converter 路径，提供原生文件选择按钮，保存到用户数据目录并 fallback 到 env。
 
 ### 当前 Voice / Local ASR 状态
+
+- Voice Output v1 / v1.1 已稳定：默认关闭，Test Voice、rate / volume 和系统中文语音优先可用；Event Stream 只记录播放生命周期安全摘要。
+- Local ASR v1 已稳定：使用用户本地 whisper-like binary、model 和 ffmpeg / converter；ReiLink 不内置 whisper binary、model 或 ffmpeg，不接云 ASR，不上传音频。
+- Local ASR transcript-first 边界保持稳定：识别结果只填入输入框，不自动发送；用户确认点击发送后才进入 chat flow；未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
+- Local ASR Settings 支持路径持久化；Settings 输入框显示完整本地路径是正常编辑行为，但 Event Stream / Debug / Raw JSON 不显示完整路径。
+- Local ASR Native File Picker v1 已加入：用户可为 binary、model、converter 点击 `选择...` 打开系统原生文件选择器；file picker 只填入路径，不读取、不复制、不上传文件，仍需用户点击保存配置。
 
 - Voice Output 已完成并可用：支持 Test Voice、rate / volume、中文语音优先，`tts_started` 只在真实 `utterance.onstart` 后触发，`tts_completed` / `tts_error` 映射到安全中文摘要。
 - Voice Output 当前使用系统 `speechSynthesis`，不是角色级配音；“Rei”等名字和语气可能不自然，后续可研究本地角色 TTS 或更自然的 voice provider，但当前不接商业 TTS。
@@ -93,7 +102,7 @@ dev/codex-reilink
 - Electron packaged 环境中的 Web Speech Recognition 服务不可靠，当前不作为稳定主路径；Local ASR ready 时主聊天语音按钮优先使用本地 ASR。
 - Local ASR 已接入主聊天语音按钮：provider selection 为 `local_asr` -> `web_speech` -> `unavailable`；本地转写成功后 transcript 只填入输入框，仍需手动发送。
 - Local ASR v1.1 已补齐输出规范化和 UX polish：`zh-CN` 归一为 whisper `zh`，ASR transcript 返回前 trim / 折叠空白 / 轻量繁转简，成功状态提示 `转写完成，请确认后发送`，timeout 提示可尝试更小模型或更短录音。
-- Local ASR Setup UI v1 已补齐：用户可在 Settings -> Voice Input 保存本地 ASR binary、model 和 converter 路径；用户配置优先，env fallback 次之，完整路径不进入 Event Stream / Debug / Raw JSON。
+- Local ASR Setup UI v1 已补齐：用户可在 Settings -> Voice Input 手动输入或通过原生文件选择器填入本地 ASR binary、model 和 converter 路径；用户配置优先，env fallback 次之，完整路径不进入 Event Stream / Debug / Raw JSON。
 - Local ASR v1 已达到 packaged app 可配置 MVP：真实用户手动验证已通过，包括 packaged `.app` 非黑屏、后端自启动、无 shell env 配置、Settings 持久化、重启后配置仍存在、Check Local ASR 可启动、主聊天按钮显示本地语音识别可用。
 - Local ASR release regression checklist 已建立在 `docs/QA.md` 和 `docs/qa/voice_input_local_asr_scenarios.json`，覆盖 packaged clean start、no-env setup、settings persistence、主聊天语音按钮、简体化、不自动发送、隐私和 clear fallback。
 - Local ASR staged foundation 已完成：feasibility plan、config detection、CLI probe、Audio Capture / Temp File probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge 和 whisper-like parsing QA。
@@ -101,6 +110,23 @@ dev/codex-reilink
 - Local ASR 当前不提交 whisper binary，不提交 model，不提交 ffmpeg / converter binary，不接入云 ASR 或商业 ASR。
 - Local ASR manual setup guide 已新增；真实 whisper.cpp / model / converter 仍由用户手动配置，不随 app 内置。
 - 真实 whisper 手动 smoke 仍是 manual release regression，不是自动测试依赖。
+
+### 当前 Overlay 状态
+
+- Overlay v1.1 已建立底座：Settings 中新增 `Overlay / 游戏悬浮层`，默认关闭，开关、位置、透明度和消息数量持久化在 app settings。
+- Overlay v1 Foundation 和 v1.1 配置项已实现，但当前 macOS 状态应描述为 safe mode / experimental freeze，而不是完整可用的游戏悬浮气泡功能。
+- Overlay v1.1 Regression Freeze 已确认当前安全基线：用户手动测试已验证 ReiLink 主窗口不再闪烁、不始终置顶、可切出 / 切回、Dock 和 `⌘ + Tab` 可见、Settings 和 `强制关闭悬浮层` 可操作。
+- Electron main process 可创建独立 overlay window；窗口为 frameless、transparent、always-on-top、不可聚焦，并忽略鼠标输入。非 macOS 可使用 `skipTaskbar`；macOS 当前避免让 overlay window 影响整个 ReiLink Dock / app switcher 入口。
+- Overlay 已和 ReiLink 主窗口解耦显示：ReiLink 主窗口 / Settings 前台时会销毁或隐藏运行时 overlay window，避免遮挡 Settings、select/dropdown 或 macOS window controls。macOS 当前采用 emergency fail-closed 策略，切到游戏或其他 app 后也不自动显示 overlay，优先保证主窗口不闪烁、不置顶、不抢焦点。
+- Settings 中的 Overlay 开关使用普通按钮组，并提供 `强制关闭悬浮层` 兜底入口；用户在 ReiLink 主窗口前台开启 Overlay 时只改变持久化 enabled 状态，不会立刻把 always-on-top window 显示到主窗口上方。
+- Overlay renderer 通过 packaged/dev 共用的 `index.html?overlay=1#overlay` 标记加载，视觉上是右侧轻量半透明 Rei 短消息气泡层，不渲染完整 ReiLink sidebar、Settings、Debug 或聊天输入。
+- Overlay 支持右上、右中、右下、左上、左中、左下位置预设；默认右中，并按 primary display workArea 计算窗口位置。
+- Overlay 支持 0.35～0.95 背景透明度；默认 0.72，只影响背景层，不降低文字透明度。
+- Overlay 只显示最近 1～3 条安全短摘要；默认 2 条，没有内容时显示 `Rei 正安静待机。`。
+- assistant 最终回复和 proactive message 只会把截断/脱敏后的安全摘要推送到 overlay；不会传 raw prompt、完整 assistant reply、完整用户输入、memory、debug raw JSON、完整 transcript、API key、`.env`、完整路径、raw stdout 或 raw stderr。
+- Event Stream 已加入 overlay lifecycle 安全事件：开关变化、设置变化、位置更新、窗口显示/隐藏、内容更新和错误摘要；内容更新只显示来源、字数和消息数量。
+- 当前不实现 HUD / 敌人 / 玩家位置识别，不做画面理解或自动避让，不做拖拽或锁定位置。
+- 后续需单独恢复 macOS overlay auto-show，并在恢复前通过 checklist 验证：不调用 `mainWindow.focus()` 抢焦点、不触发 app activation loop、不隐藏 Dock / `⌘ + Tab`、主窗口前台时 overlay 隐藏、Settings 始终可关闭 Overlay、packaged `.app` 人工验证通过。当前优先保证主窗口稳定性、Dock / `⌘ + Tab` 可见和 Settings 可关闭。
 
 ### 当前 Knowledge Retrieval 状态
 
@@ -126,11 +152,12 @@ dev/codex-reilink
 - Windows packaging。
 - Knowledge pack expansion。
 - Embedding / hybrid retrieval research。
-- Local ASR native file picker。
 - Local ASR model setup helper。
 - Local ASR accuracy tuning、timeout tuning 和 optional larger model guidance。
 - Character TTS / natural voice output。
-- Overlay v1。
+- Overlay v1.1 packaged release smoke。
+- Overlay v1.2 Drag / Lock Mode。
+- Overlay 自动避让和 HUD-aware placement research。
 - Live2D v1。
 - Multi-companion system。
 
@@ -151,7 +178,7 @@ dev/codex-reilink
 - RAG / vector database / embeddings。
 - Cloud ASR / commercial ASR。
 - Bundled whisper binary、model files 或 ffmpeg binary。
-- Live2D / Vision / Overlay。
+- Live2D / Vision / advanced Overlay interactions。
 - Multi-character system。
 
 ### 验证基线
@@ -172,13 +199,15 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-06
+Updated: 2026-06-08
 
 ### Current Stage
 
 Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, and the project is now in Voice / Local ASR / Overlay Safe Mode regression freeze.
+
+As of this freeze, Voice Output v1 / v1.1, Local ASR v1, Local ASR Native File Picker v1, and Overlay v1.1 macOS safe mode are the current stable regression baseline. macOS Overlay auto-show intentionally remains fail-closed and must be restored only in a separate task with packaged-app QA.
 
 The v0.2-pre focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, standalone runtime, local data directories, multi-game knowledge maintenance, and release readiness clearer and more stable.
 
@@ -225,6 +254,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Voice Input v1 fallback: push-to-talk Web Speech UI, safe fallback, and no auto-send.
 - Main chat Local ASR voice input: when Local ASR is ready, the main chat voice button prefers local record/transcribe, with Web Speech kept as fallback.
 - Voice Interaction MVP: system TTS + user-configured Local ASR + transcript-first UX + privacy-safe event summaries.
+- Overlay v1.1: default-off independent transparent overlay, Settings toggle, position presets, background opacity, 1-3 safe short Rei message bubbles, and overlay lifecycle Event Stream events.
 - Event Bus / Event Stream.
 - Prompt Preview.
 - Debug Dashboard.
@@ -253,9 +283,15 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Local Data Controls: Settings can show / open the local data directory and reuse Demo Reset / reset controls.
 - Audio Capture / Temp File probe.
 - Local ASR staged foundation and main chat integration: feasibility plan, config detection, CLI probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, whisper-like output parsing hardening, manual setup guide, and main chat voice provider selection.
-- Local ASR Settings persistence / Setup UI: users can save, clear, and refresh local ASR binary / model / converter paths in Settings; saved user data falls back to env when absent.
+- Local ASR Settings persistence / Setup UI: users can save, clear, refresh, and fill local ASR binary / model / converter paths with native file picker buttons in Settings; saved user data falls back to env when absent.
 
 ### Current Voice / Local ASR Status
+
+- Voice Output v1 / v1.1 is stable: default off, Test Voice, rate / volume, and Chinese system voice preference are available, with privacy-safe Event Stream lifecycle summaries.
+- Local ASR v1 is stable: it uses user-provided local whisper-like binaries, model files, and ffmpeg / converter binaries. ReiLink does not bundle whisper, models, ffmpeg, cloud ASR, or commercial ASR.
+- Local ASR keeps the transcript-first boundary: recognized text only fills the input, is not auto-sent, and enters chat flow only after the user confirms by sending. Unconfirmed transcripts do not enter memory, prompt, retrieval, or game context.
+- Local ASR Settings persist user paths. Full local paths may appear in Settings edit inputs as normal editable values, but not in Event Stream / Debug / Raw JSON.
+- Local ASR Native File Picker v1 is available for binary, model, and converter paths. The picker only fills the path field; it does not read, copy, upload, or save files until the user saves settings.
 
 - Voice Output is implemented and usable: Test Voice, rate / volume, Chinese voice preference, `tts_started` only after the real `utterance.onstart`, and safe Chinese Event Stream summaries.
 - Voice Output currently uses system `speechSynthesis`, not character-grade voice acting; names like "Rei" and the tone may sound unnatural. A local character TTS or more natural voice provider can be researched later, but commercial TTS is not part of the current scope.
@@ -263,7 +299,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Web Speech Recognition is not reliable in the packaged Electron runtime and is not the stable main path; when Local ASR is ready, the main chat voice button prefers Local ASR.
 - Local ASR is wired into the main chat voice button: provider selection is `local_asr` -> `web_speech` -> `unavailable`; successful local transcripts only fill the input and still require manual send.
 - Local ASR v1.1 now includes transcript output polish: `zh-CN` is normalized to whisper `zh`, ASR transcripts are trimmed / whitespace-collapsed / lightly normalized to Simplified Chinese before filling the input, success asks the user to confirm before sending, and timeouts suggest a smaller model or shorter recording.
-- Local ASR Setup UI v1 is complete: users can save local ASR binary, model, and converter paths from Settings -> Voice Input; saved user settings take priority over env fallback, and full paths stay out of Event Stream / Debug / Raw JSON.
+- Local ASR Setup UI v1 is complete: users can type or use native file picker buttons to fill local ASR binary, model, and converter paths from Settings -> Voice Input; saved user settings take priority over env fallback, and full paths stay out of Event Stream / Debug / Raw JSON.
 - Local ASR v1 has reached a packaged-app configurable MVP: real user manual validation has passed for non-black packaged startup, backend auto-start, no-shell-env setup, Settings persistence, restart persistence, Check Local ASR startup, and main-chat local voice availability.
 - Local ASR release regression checklists now live in `docs/QA.md` and `docs/qa/voice_input_local_asr_scenarios.json`, covering packaged clean start, no-env setup, settings persistence, main-chat voice button behavior, Simplified Chinese transcript output, no auto-send, privacy, and clear fallback.
 - Local ASR staged foundation is complete: feasibility plan, config detection, CLI probe, Audio Capture / Temp File probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, and whisper-like parsing QA.
@@ -271,6 +307,23 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Local ASR does not commit a whisper binary, model file, ffmpeg / converter binary, cloud ASR, or commercial ASR integration.
 - The Local ASR manual setup guide has been added; real whisper.cpp / model / converter remains user-configured and is not bundled with the app.
 - Real whisper manual smoke remains a manual release regression check and is not an automated test dependency.
+
+### Current Overlay Status
+
+- Overlay v1.1 is in place: Settings now includes `Overlay / 游戏悬浮层`, defaults to off, and persists enabled state, position, opacity, and message count through app settings.
+- Overlay v1 Foundation and v1.1 configuration are implemented, but the current macOS state should be described as safe mode / experimental freeze, not as a fully available in-game bubble overlay.
+- Overlay v1.1 Regression Freeze has a confirmed safety baseline: user manual testing verified that the ReiLink main window no longer flickers, no longer stays always-on-top, can switch away and back, remains visible in Dock and `⌘ + Tab`, and keeps Settings plus `强制关闭悬浮层` operable.
+- The Electron main process can create a separate overlay window that is frameless, transparent, always-on-top, non-focusable, and ignores mouse input. Non-macOS can use `skipTaskbar`; macOS currently avoids letting the overlay window affect the whole ReiLink Dock / app switcher entry.
+- Overlay visibility is separated from the enabled setting: the runtime overlay window is destroyed or hidden while the ReiLink main window / Settings is foreground, so it does not cover Settings, select/dropdown controls, or macOS window controls. macOS currently uses an emergency fail-closed policy and does not auto-show overlay after switching away, prioritizing normal main-window focus behavior.
+- The Settings Overlay control uses regular buttons and includes a `强制关闭悬浮层` fallback; enabling Overlay while ReiLink is foreground only persists enabled state and does not immediately show an always-on-top window above the main UI.
+- The overlay renderer loads through the shared packaged/dev `index.html?overlay=1#overlay` marker and renders a restrained right-side translucent Rei short-message bubble layer without the full ReiLink sidebar, Settings, Debug, or chat input.
+- Overlay supports top-right, middle-right, bottom-right, top-left, middle-left, and bottom-left presets; the default is middle-right and bounds are calculated within the primary display workArea.
+- Overlay supports 0.35-0.95 background opacity; the default is 0.72 and only affects the background layer, not text alpha.
+- Overlay shows only the latest 1-3 safe short summaries; the default is 2, and with no content it shows `Rei 正安静待机。`.
+- Completed assistant replies and proactive messages send only truncated/redacted safe summaries to overlay; raw prompt, full assistant reply, full user input, memory, debug raw JSON, full transcript, API keys, `.env`, full paths, raw stdout, and raw stderr are excluded.
+- Event Stream includes safe overlay lifecycle events for enabled changes, settings changes, position updates, show/hide, content updates, and errors; content updates expose only source, character count, and message count.
+- The current scope does not include HUD / enemy / player-position detection, vision, automatic avoidance, dragging, or locking.
+- A later macOS-specific overlay pass should restore auto-show only after passing the checklist: no `mainWindow.focus()` focus stealing, no app activation loop, no hidden Dock / `⌘ + Tab`, overlay hidden while the main window is foreground, Settings always able to disable Overlay, and packaged `.app` manual verification complete. The current priority is main-window stability, Dock / `⌘ + Tab` visibility, and keeping Settings able to disable Overlay.
 
 ### Current Knowledge Retrieval Status
 
@@ -296,11 +349,12 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Windows packaging.
 - Knowledge pack expansion.
 - Embedding / hybrid retrieval research.
-- Local ASR native file picker.
 - Local ASR model setup helper.
 - Local ASR accuracy tuning, timeout tuning, and optional larger-model guidance.
 - Character TTS / natural voice output.
-- Overlay v1.
+- Overlay v1.1 packaged release smoke.
+- Overlay v1.2 Drag / Lock Mode.
+- Overlay automatic avoidance and HUD-aware placement research.
 - Live2D v1.
 - Multi-companion system.
 
@@ -321,7 +375,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - RAG / vector database / embeddings.
 - Cloud ASR / commercial ASR.
 - Bundled whisper binaries, model files, or ffmpeg binaries.
-- Live2D / Vision / Overlay.
+- Live2D / Vision / advanced Overlay interactions.
 - Multi-character system.
 
 ### Verification Baseline

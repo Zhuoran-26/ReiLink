@@ -1,0 +1,192 @@
+[
+  {
+    "id": "overlay-default-off",
+    "category": "overlay",
+    "precondition": "Fresh app settings or an older settings file without overlay_enabled",
+    "expected_status": "overlay_disabled",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Settings shows Overlay / 游戏悬浮层 with the 关闭 button active, and no overlay window is visible.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-enable-shows-window",
+    "category": "overlay",
+    "precondition": "Desktop app is running, backend settings are loaded, Overlay has been enabled, and ReiLink is not the foreground app",
+    "expected_status": "overlay_visibility_suppressed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Switching Overlay to 开启 while Settings is foreground only persists enabled state. On macOS safe mode, switching away from ReiLink keeps auto-show fail-closed and no bubble appears; on non-macOS, a transparent frameless always-on-top small overlay window may appear without stealing focus.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-placeholder-quiet",
+    "category": "overlay",
+    "precondition": "Overlay is enabled and there is no recent safe assistant or proactive message",
+    "expected_status": "overlay_placeholder",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay shows a restrained idle placeholder such as Rei 正安静待机。 without showing debug content.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "memory", "debug", "full transcript"]
+  },
+  {
+    "id": "overlay-assistant-summary-truncated",
+    "category": "overlay_privacy",
+    "precondition": "Overlay is enabled and an assistant reply has completed",
+    "expected_status": "overlay_content_updated",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay shows only a 1-3 message Rei bubble list using truncated safe summaries, with the latest assistant summary visible.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "memory", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-proactive-summary",
+    "category": "overlay",
+    "precondition": "Overlay is enabled and proactive companion emits a safe short message",
+    "expected_status": "overlay_content_updated",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay may show the proactive safe short message as a Rei bubble without affecting the main chat flow.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "memory", "debug", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-position-preset-moves-window",
+    "category": "overlay",
+    "precondition": "Overlay is enabled and Settings is open",
+    "expected_status": "overlay_window_moved",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Changing the Overlay position preset to any allowed corner or side preset updates the configured bounds within the primary display work area without forcing the overlay above Settings.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-opacity-background-readable",
+    "category": "overlay",
+    "precondition": "Overlay is enabled and Settings is open",
+    "expected_status": "overlay_settings_changed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Changing Overlay background opacity between 0.35 and 0.95 updates the translucent background while Rei message text remains readable and does not force the overlay above Settings.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "debug", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-message-count-limit",
+    "category": "overlay_privacy",
+    "precondition": "Overlay is enabled and several safe assistant or proactive messages have been shown",
+    "expected_status": "overlay_content_updated",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Changing Overlay message count to 1, 2, or 3 limits the bubble list to that many latest safe summaries only.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "memory", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "overlay-main-window-foreground-suppressed",
+    "category": "overlay",
+    "precondition": "Overlay is enabled while the ReiLink main window or Settings remains foreground",
+    "expected_status": "overlay_visibility_suppressed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay remains enabled but the runtime window is hidden or destroyed while ReiLink is the active app, so Settings controls and macOS window buttons stay visible and operable. On macOS safe mode, it should remain fail-closed after switching away from ReiLink.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "overlay-renderer-isolated",
+    "category": "overlay_packaged",
+    "precondition": "Overlay is enabled and shown in dev or packaged mode",
+    "expected_status": "overlay_visible",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay BrowserWindow loads the overlay-marked renderer entry and shows only the bubble or placeholder surface, not the full ReiLink sidebar, chat, Settings, Debug Panel, or input box.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "memory", "debug panel", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-settings-force-close",
+    "category": "overlay",
+    "precondition": "Overlay is enabled or suspected to be stuck above the main UI",
+    "expected_status": "overlay_hidden",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Settings exposes a reliable 强制关闭悬浮层 button that sets overlay_enabled to off and hides or destroys the overlay window without needing a native select dropdown.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "overlay-disable-hides-window",
+    "category": "overlay",
+    "precondition": "Overlay is currently enabled and visible",
+    "expected_status": "overlay_hidden",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Switching Overlay to 关闭 or using 强制关闭悬浮层 hides or destroys the overlay window and does not change main chat messages.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript"]
+  },
+  {
+    "id": "overlay-settings-persist-after-restart",
+    "category": "overlay",
+    "precondition": "Overlay setting has been changed and the app is restarted",
+    "expected_status": "overlay_setting_persisted",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Overlay enabled state, position preset, opacity, and message count are restored from app settings after restart; default remains off for fresh settings.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full local path"]
+  },
+  {
+    "id": "overlay-event-stream-safe",
+    "category": "overlay_privacy",
+    "precondition": "Overlay has been enabled, updated, and disabled at least once",
+    "expected_status": "overlay_events_safe",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Event Stream shows overlay lifecycle summaries, message counts, and character counts only.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "overlay-packaged-dev-smoke",
+    "category": "overlay_packaged",
+    "precondition": "Desktop app is opened in dev or packaged smoke mode",
+    "expected_status": "overlay_visibility_suppressed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Main window is not black, Settings contains Overlay config, foreground enabling does not cover Settings, position and opacity settings save, disabling or force-closing hides the window, and macOS safe mode does not auto-show a bubble after switching away.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
+  },
+  {
+    "id": "overlay-macos-safe-mode-fail-closed",
+    "category": "overlay_packaged",
+    "precondition": "Packaged macOS app has Overlay enabled and the user switches to Finder or a browser",
+    "expected_status": "overlay_visibility_suppressed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "macOS safe mode keeps Overlay auto-show disabled: no bubble appears, ReiLink does not steal focus, Dock and Cmd+Tab remain visible, and Settings can still disable Overlay when returning to ReiLink.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "overlay-window-lifecycle-regression-freeze",
+    "category": "overlay_packaged",
+    "precondition": "Packaged macOS app is opened in window mode or fullscreen mode during Overlay regression smoke",
+    "expected_status": "overlay_visibility_suppressed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "ReiLink does not flicker, does not stay always-on-top, does not disappear from Dock or Cmd+Tab, does not auto-focus after switching away, and does not hide traffic lights or break close/minimize/fullscreen controls.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "overlay-safe-mode-regression-freeze-manual",
+    "category": "overlay_packaged",
+    "precondition": "Current macOS packaged app is smoke-tested after Overlay safe mode freeze and Local ASR file picker work",
+    "expected_status": "overlay_visibility_suppressed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Packaged ReiLink starts non-black, remains visible in Dock and Cmd+Tab, can switch to Finder or a browser without focus stealing, keeps Settings operable, keeps Overlay foreground auto-show fail-closed, exposes 强制关闭悬浮层, and does not flicker, stay always-on-top, or hide traffic lights.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "overlay-macos-autoshow-restore-checklist",
+    "category": "overlay_packaged",
+    "precondition": "A future change attempts to restore macOS Overlay auto-show",
+    "expected_status": "overlay_events_safe",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Before restoring auto-show, verify no mainWindow.focus focus stealing, no app activation loop, no macOS skipTaskbar strategy that hides the whole app, Overlay route only renders OverlayApp, foreground ReiLink hides overlay, Settings can always disable Overlay, Dock and Cmd+Tab remain visible, and packaged app manual smoke passes.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "full local path"]
+  }
+]

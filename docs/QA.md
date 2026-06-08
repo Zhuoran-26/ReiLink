@@ -11,6 +11,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/retrieval_scenarios.json`
 - `docs/qa/voice_input_scenarios.json`
 - `docs/qa/voice_input_local_asr_scenarios.json`
+- `docs/qa/overlay_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -33,12 +34,70 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - 运行 `make package-desktop`。
 - 直接打开 `apps/desktop/release/ReiLink-darwin-<arch>/ReiLink.app`，不要打开 dev renderer。
 - UI 不是黑屏。
+- ReiLink 应出现在 macOS Dock 和 `⌘ + Tab` 程序切换器；点击 Dock 图标或通过 `⌘ + Tab` 切回时，应能回到主窗口，且不应因为 overlay lifecycle 反复抢焦点。
 - 后端最终显示已连接，或 health endpoint 返回 `{"status":"ok"}`。
 - packaged app 使用内置 backend binary 或健康的外部 backend，启动来源显示为用户可读摘要。
 - bundled knowledge resources 可用。
 - Settings Panel、Debug Panel、Event Stream 可见。
 - `.env`、API key、memory、session 和用户数据不复制进 `.app`。
 - app 退出后，由 app 自启动的 backend 没有残留进程。
+
+### 1.5 Voice / Local ASR / Overlay Safe Mode 阶段冻结人工验收
+
+本节用于当前阶段 Regression Freeze。它不表示 macOS Overlay auto-show 已恢复；macOS 下不自动出现小气泡是当前预期。
+
+#### A. Desktop Window Stability
+
+1. packaged app 启动不黑屏。
+2. ReiLink 出现在 Dock。
+3. ReiLink 出现在 `⌘ + Tab`。
+4. 可以切到 Finder / 浏览器。
+5. ReiLink 不自动抢回焦点。
+6. ReiLink 不始终置顶。
+7. 主窗口边框和 macOS traffic lights 不疯狂闪烁。
+8. Settings 可操作。
+9. 关闭 / 最小化 / 全屏按钮正常。
+
+#### B. Overlay Safe Mode
+
+1. Overlay 默认关闭。
+2. Settings 中 Overlay safe mode 文案可见。
+3. 开启 Overlay 后 ReiLink 前台不显示小气泡，这是当前预期。
+4. Settings 不被遮挡。
+5. Settings 可以关闭 Overlay。
+6. `强制关闭悬浮层` 按钮可用。
+7. 位置 / 透明度 / 消息数量配置可保存。
+8. macOS 下 auto-show 暂时不出现小气泡，这是当前预期。
+9. Event Stream 不泄露 raw prompt、API key、`.env`、完整路径、完整 transcript、stdout/stderr 或 raw JSON。
+10. 后续恢复 auto-show 前必须人工验证 packaged `.app`。
+
+#### C. Local ASR Native File Picker
+
+1. Local ASR Setup 三个路径旁有 `选择...` 按钮。
+2. 点击按钮会打开系统原生 file picker。
+3. 取消选择不清空原路径。
+4. whisper binary 选择只更新 binary path。
+5. model 选择只更新 model path。
+6. converter 选择只更新 converter path。
+7. 保存后 Refresh Status 能读取配置。
+8. Check Local ASR 能正常 probe。
+9. 重启后配置仍存在。
+10. 主聊天语音输入仍可识别并填入输入框。
+11. transcript 不自动发送。
+12. Event Stream / Debug 不显示完整路径、stdout/stderr、transcript、API key 或 `.env`。
+
+#### D. Voice / ASR Regression
+
+1. Voice Output 默认关闭。
+2. Test Voice 可用。
+3. TTS 不朗读完整敏感内容到 Event Stream。
+4. Web Speech fallback 不作为可靠主路径。
+5. Local ASR ready 状态可显示。
+6. Record & Transcribe 可用。
+7. 识别结果填入输入框但不自动发送。
+8. 用户确认后才进入 chat flow。
+9. accepted memory 才进入 prompt。
+10. proactive 内容不进入 memory。
 
 ### 2. Voice Output 回归检查
 
@@ -125,7 +184,8 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 2. No-env Local ASR setup:
    - 不依赖 `REILINK_LOCAL_ASR_BINARY` / `REILINK_LOCAL_ASR_MODEL` / `REILINK_AUDIO_CONVERTER_BINARY`。
    - Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 可见。
-   - 输入 ASR binary path、model path 和 audio converter path。
+   - ASR binary path、model path 和 audio converter path 旁边可见 `选择...` 按钮。
+   - 可手动输入路径，或点击 `选择...` 打开系统原生 file picker 后填入对应路径；取消选择不应清空原路径。
    - 点击 `保存配置 / Save`，再点击 `重新检测 / Refresh Status`。
    - Local ASR status 变为 ready。
    - UI 只显示 safe basename：`whisper-cli`、`ggml-base.bin`、`ffmpeg`。
@@ -161,15 +221,15 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
    - 真实识别准确率取决于模型大小、录音质量和硬件性能。
    - `base` 模型是速度 / 准确率折中；更大模型可能更准确但更慢。
    - packaged `.app` 若用户未配置路径，会显示安全 fallback。
-   - native file picker 尚未实现，当前使用文本路径输入。
+   - native file picker 只填入 Settings 输入框，不读取模型内容、不复制文件、不上传文件；仍需点击 `保存配置 / Save` 才持久化。
 
 - 当前 Web Speech Recognition 在 Electron packaged app 中可能暴露 API，但识别服务不可用；Local ASR ready 时主聊天语音按钮应走本地转写，Local ASR not ready 时才显示 `语音识别服务不可用` 或明确 unavailable fallback，不崩溃。
 - v1 仍保留输入框入口、安全 fallback、系统听写提示和“不自动发送”的边界。
 - 当前 Local ASR Config Detection v1 只检测解析后的配置，不执行 whisper / ASR binary，不录音，不转写，不上传音频，不下载模型，不把模型或用户数据写入 `.app`。
 - Local ASR 配置来源优先级：Settings 中的用户配置优先，其次是 `REILINK_LOCAL_ASR_BINARY` / `REILINK_LOCAL_ASR_MODEL` / `REILINK_AUDIO_CONVERTER_BINARY` 环境变量 fallback，最后是未配置。
-- Settings 的 `本地 ASR 配置 / Local ASR Setup` 可保存本地识别程序、模型文件和音频转换工具路径；保存位置为 backend `settings.data_dir/local_asr_settings.json`，不写入 repo、`.env` 或 packaged `.app`。
+- Settings 的 `本地 ASR 配置 / Local ASR Setup` 可保存本地识别程序、模型文件和音频转换工具路径；路径可手动输入，也可通过原生 file picker 填入。保存位置为 backend `settings.data_dir/local_asr_settings.json`，不写入 repo、`.env` 或 packaged `.app`。
 - Settings API `GET /api/voice-input/local-asr/settings` 只返回 configured booleans、source 和安全 basename；`PUT` 只保存路径字符串，不执行、不下载、不复制；`DELETE` 清除用户配置并回落到 env 或 none。
-- 完整路径只允许出现在 Settings 编辑输入框和本地 settings JSON 文件中；Event Stream、Debug Panel、Raw JSON、chat 和文档示例不得出现真实用户名路径。
+- 完整路径只允许出现在 Settings 编辑输入框、file picker 返回填入值和本地 settings JSON 文件中；Event Stream、Debug Panel、Raw JSON、chat 和文档示例不得出现真实用户名路径。
 - Settings / Debug Panel 应显示 `本地语音识别 / Local ASR` 状态；状态包括未配置、缺少本地识别程序、识别程序不可执行、缺少本地语音模型、已就绪。
 - 未配置：用户配置和 env fallback 都没有可用 binary/model，或只配置了识别程序但未配置模型；显示用户可读中文提示，Voice Input 仍回退到系统听写提示。
 - 缺少本地识别程序：配置了 binary 但文件不存在；UI 只显示安全文件名，不显示完整路径。
@@ -234,7 +294,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 本冒烟只用于开发者或用户本机手动验证真实 whisper.cpp / model / converter 链路，不是自动测试依赖，也不代表 ReiLink 内置模型、ASR binary 或 converter binary。详细配置步骤见 `docs/local-asr-manual-setup.md`。
 
 - 用户自行准备本地 whisper.cpp-compatible binary、model 文件和可选 converter；不要下载或提交到 repo。
-- 优先在 Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 输入并保存本地 binary / model / converter 路径；env fallback 仍可用于开发或启动脚本。
+- 优先在 Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 输入，或通过 `选择...` 按钮选择并保存本地 binary / model / converter 路径；env fallback 仍可用于开发或启动脚本。
 - Settings -> Voice Input 中 config detection 应显示 ready；缺少文件或不可执行时只显示安全摘要。
 - `Check Local ASR` 应返回 succeeded；失败或超时只显示中文安全状态。
 - `Audio Capture Test` 应录音成功，显示 duration、size、MIME，并清理临时音频。
@@ -284,7 +344,88 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - `Audio Capture Test`、`Record & Transcribe`、主聊天语音按钮、`Test Voice` 和 Knowledge Retrieval 入口仍可见。
 - 退出后 backend 无残留。
 
-### 5. Knowledge Retrieval 回归检查
+### 5. Overlay v1.1 回归检查
+
+机器可读场景见 `docs/qa/overlay_scenarios.json`。
+
+- `Overlay / 游戏悬浮层` 默认关闭。
+- Settings 中可用普通按钮切换 Overlay 开启 / 关闭，并可设置位置预设、背景透明度和显示消息数量；关闭 app 再打开后仍保持上次设置。
+- Settings 中应存在可靠关闭入口：`强制关闭悬浮层` 点击后应立即把 overlay_enabled 设为关闭并隐藏 / 销毁 overlay window。
+- Overlay 位置预设只使用右上、右中、右下、左上、左中、左下；默认 `右中`，移动时应保持在 primary display workArea 内。
+- Overlay 背景透明度范围为 0.35～0.95，默认 0.72；调整后只影响浮层背景，文字仍应清晰可读。
+- Overlay 显示消息数量只能是 1～3，默认 2。
+- ReiLink 主窗口前台点击开启时只保存 enabled 状态，不应立即出现盖在 Settings 上方的 overlay window；macOS 当前采用 emergency fail-closed 策略，切换到其他 app 后也可以继续保持隐藏，优先保证 ReiLink 不抢焦点、不闪烁。
+- Overlay window 应是透明、无边框、always-on-top，并保持小窗口 bounds，不应是主窗口大小或整屏大小；非 macOS 可使用 `skipTaskbar`，macOS 不应让 overlay window 隐藏整个 ReiLink Dock / `⌘ + Tab` 入口。
+- Overlay renderer 应只显示 overlay bubble / placeholder；不得渲染完整 ReiLink sidebar、聊天主界面、Settings、Debug Panel、输入框或完整 App layout。
+- Overlay 整体是半透明短消息层，不应像普通桌面通知窗口。
+- Overlay 不抢主窗口焦点；开启、更新内容和关闭时主聊天输入仍可继续使用。
+- ReiLink 主窗口或 Settings 位于前台时，Overlay 即使已开启也应隐藏或销毁，不遮挡 Settings、select/dropdown、slider、button 或 macOS 关闭 / 最小化 / 全屏按钮。
+- 非 macOS 切换到其他 app 或游戏窗口后，如果 `overlay_enabled=true`，Overlay 可以重新显示；macOS 当前允许 fail-closed，不自动显示 overlay，以避免 app activation / focus loop。切回 ReiLink 主窗口后 overlay 应保持隐藏。
+- Overlay 不接收输入，不显示输入框、按钮、debug 面板、Raw JSON、memory 或 prompt。
+- 没有消息时显示克制 placeholder，例如 `Rei 正安静待机。`。
+- assistant 最终回复完成后，Overlay 只显示截断后的 Rei 短摘要；不要显示完整 assistant reply。
+- proactive short hint 可作为 Rei 短消息显示；不影响主窗口聊天流程。
+- Overlay 最多显示最近 1～3 条安全短消息，每条消息应保留 `Rei` 小标识或等价头像占位。
+- 关闭 Overlay 后悬浮窗消失，主窗口聊天和 Voice Output / Voice Input / Knowledge Retrieval 不受影响。
+- Event Stream 可显示 `悬浮层开关变化`、`悬浮层设置变化`、`悬浮层位置更新`、`悬浮层显示`、`悬浮层隐藏`、`悬浮层暂时隐藏`、`悬浮层内容更新` 或等价中文安全摘要。
+- Event Stream 只显示来源、消息数量、字符数、窗口状态、位置预设和透明度数值，不显示完整 assistant reply、完整用户输入、memory、raw prompt、API key、`.env`、Authorization、完整路径、完整 transcript、raw stdout 或 raw stderr。
+- Debug Raw JSON 的 settings 可显示 overlay 开关、位置、透明度和消息数量，不显示 overlay 消息文本。
+- Dev smoke 至少覆盖：启动不黑屏、Settings 中 Overlay 配置可见、默认关闭、前台开启不覆盖 Settings、位置切换生效、透明度变化可读、消息数量限制生效、不抢焦点、不接收输入、发送消息后只更新短摘要、关闭 / 强制关闭后隐藏、Event Stream 安全事件可见；非 macOS 可额外验证切走后小型 overlay bubble 出现。
+- Packaged `.app` smoke 如本次未执行，需要在 release 前补做：直接打开 packaged app，确认 app 出现在 Dock / `⌘ + Tab`，窗口模式和全屏模式都不闪烁、不始终置顶、不自动抢回焦点，并验证 Settings 开启 / 关闭 / 强制关闭 / 位置 / 透明度。
+- 本阶段不实现 HUD / 敌人 / 玩家位置识别，不做画面理解，不做自动避让，不做拖拽或锁定位置。
+
+#### Overlay v1.1 Regression Freeze / Safe Mode
+
+当前稳定状态：
+
+- Overlay 默认关闭。
+- Settings 可开启 / 关闭 Overlay，且位置、透明度、显示消息数设置可保存。
+- `强制关闭悬浮层` 可用，用于异常时立即关闭并保存 `overlay_enabled=off`。
+- ReiLink 主窗口或 Settings 前台时 Overlay 不显示，优先保证 Settings 和窗口按钮可操作。
+- macOS 下 overlay auto-show 当前 fail-closed：开启后切到其他 app 也不会自动显示小气泡，这是当前预期。
+- 主窗口稳定性优先于 Overlay 显示；如两者冲突，继续保持 Overlay fail-closed。
+
+以下问题必须回归防止复发：
+
+- Overlay 不能渲染完整 ReiLink App，只能渲染 OverlayApp / bubble surface。
+- Overlay 不能遮挡 Settings、select/dropdown、slider、button。
+- Overlay 不能遮挡 macOS traffic lights。
+- Overlay 不能导致 Settings 无法关闭 Overlay。
+- Overlay 不能导致 ReiLink 从 Dock 或 `⌘ + Tab` 消失。
+- Overlay 不能导致主窗口疯狂闪烁。
+- Overlay 不能导致 ReiLink 始终置顶。
+- Overlay 不能导致切到其他 app 后自动抢回焦点。
+- Overlay 不能破坏主窗口关闭 / 最小化 / 全屏按钮。
+- Overlay content / Event Stream 不能泄露 raw prompt、API key、`.env`、完整路径、完整 transcript、stdout/stderr 或 raw JSON。
+
+后续恢复 macOS auto-show 前必须满足：
+
+- 不调用 `mainWindow.focus()` 抢焦点。
+- 不让 overlay window 触发 app activation loop。
+- 不使用会隐藏整个 ReiLink app 的 macOS `skipTaskbar` 策略。
+- Overlay route 必须稳定只渲染 OverlayApp，不渲染完整 App。
+- 主窗口前台时 overlay 必须隐藏或销毁。
+- 用户必须始终能从 Settings 关闭 Overlay，并能使用 `强制关闭悬浮层` 兜底。
+- Dock / `⌘ + Tab` 必须保持 ReiLink 可见。
+- packaged `.app` 必须人工验证窗口模式和全屏模式。
+
+packaged `.app` 手动 smoke 最低步骤：
+
+1. 打开 packaged ReiLink。
+2. 确认窗口不闪烁。
+3. 确认 ReiLink 不始终置顶。
+4. 确认 Dock 可见。
+5. 确认 `⌘ + Tab` 可见。
+6. 切到 Finder / 浏览器。
+7. 切到其他 app 后确认 ReiLink 不抢回焦点。
+8. 切回 ReiLink。
+9. 在 Settings 开启 / 关闭 Overlay。
+10. 点击 `强制关闭悬浮层`。
+11. 确认 Overlay 不遮挡 Settings。
+12. 确认 Overlay 不导致 ReiLink 左上角窗口按钮消失。
+13. 确认 macOS 下 auto-show 暂时不出现小气泡，这是当前预期。
+
+### 6. Knowledge Retrieval 回归检查
 
 #### Elden Ring 命中
 
@@ -403,7 +544,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - 不注入空 knowledge 模板。
 - 不强行编知识包内容。
 
-### 6. Debug / Event Stream 隐私检查
+### 7. Debug / Event Stream 隐私检查
 
 必须不能出现：
 
@@ -433,7 +574,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - Voice Input lifecycle 摘要、字数、语言和中文错误。
 - backend health summary。
 
-### 7. Packaged `.app` Release Smoke Checklist
+### 8. Packaged `.app` Release Smoke Checklist
 
 - 如果 backend 代码、schema、knowledge loading 或 runtime 发生变化，重新运行 `make package-backend`。
 - 重新运行 `make package-desktop`。
@@ -450,7 +591,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - `.env` 不复制进 `.app`。
 - app 退出后，自启动 backend 无残留。
 
-### 8. Release 前 Runtime Sanity
+### 9. Release 前 Runtime Sanity
 
 - `make lint`
 - `make test-desktop`
@@ -462,7 +603,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - 如果 runtime / packaging / backend binary / knowledge loading 变更：`make package-backend && make package-desktop`
 - packaged `.app` smoke 至少覆盖：非黑屏、backend health ok、bundled knowledge、Voice Output controls、Event Stream privacy。
 
-### 9. Known Limitations
+### 10. Known Limitations
 
 - `below_threshold` 依赖当前知识包内容和评分阈值，手动测试时可优先用机器可读场景文件里的弱相关示例。
 - `no_pack` 依赖 catalog 中仍有 planned / unsupported 游戏；当前可用 `只狼` 做手动场景。

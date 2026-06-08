@@ -7,6 +7,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "retrieval_scenarios.json"
 VOICE_INPUT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_scenarios.json"
 VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_local_asr_scenarios.json"
+OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
 README_EN_PATH = REPO_ROOT / "README.en.md"
@@ -62,6 +63,18 @@ ALLOWED_LOCAL_ASR_STATUSES = {
     "audio_conversion_invalid_input",
     "audio_conversion_cleanup_failed",
 }
+ALLOWED_OVERLAY_STATUSES = {
+    "overlay_disabled",
+    "overlay_visible",
+    "overlay_placeholder",
+    "overlay_content_updated",
+    "overlay_hidden",
+    "overlay_setting_persisted",
+    "overlay_settings_changed",
+    "overlay_window_moved",
+    "overlay_visibility_suppressed",
+    "overlay_events_safe",
+}
 
 
 def _load_scenarios() -> list[dict]:
@@ -88,6 +101,14 @@ def _load_voice_input_local_asr_scenarios() -> list[dict]:
     return data
 
 
+def _load_overlay_scenarios() -> list[dict]:
+    data = json.loads(OVERLAY_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def test_qa_scenarios_file_is_valid_json():
     scenarios = _load_scenarios()
 
@@ -106,11 +127,18 @@ def test_voice_input_local_asr_scenarios_file_is_valid_json():
     assert len(scenarios) >= 12
 
 
+def test_overlay_scenarios_file_is_valid_json():
+    scenarios = _load_overlay_scenarios()
+
+    assert len(scenarios) >= 8
+
+
 def test_qa_scenario_ids_are_unique_and_categories_are_present():
     scenarios = [
         *_load_scenarios(),
         *_load_voice_input_scenarios(),
         *_load_voice_input_local_asr_scenarios(),
+        *_load_overlay_scenarios(),
     ]
     ids = [item.get("id") for item in scenarios]
 
@@ -143,7 +171,12 @@ def test_retrieval_scenarios_include_explicit_game_query_switch_cases():
 
 
 def test_forbidden_terms_are_arrays_when_present():
-    for item in [*_load_scenarios(), *_load_voice_input_scenarios(), *_load_voice_input_local_asr_scenarios()]:
+    for item in [
+        *_load_scenarios(),
+        *_load_voice_input_scenarios(),
+        *_load_voice_input_local_asr_scenarios(),
+        *_load_overlay_scenarios(),
+    ]:
         forbidden_terms = item.get("forbidden_terms", [])
         assert isinstance(forbidden_terms, list)
         assert all(isinstance(term, str) and term for term in forbidden_terms)
@@ -264,6 +297,10 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         "local-asr-transcript-simplified-chinese",
         "local-asr-no-auto-send",
         "local-asr-no-context-pollution",
+        "local-asr-native-picker-cancel-keeps-input",
+        "local-asr-native-picker-fill-and-save",
+        "local-asr-native-picker-regression-freeze",
+        "voice-local-asr-regression-freeze",
         "local-asr-privacy-no-full-paths",
         "local-asr-clear-config-fallback",
         "local-asr-backend-no-residual-process",
@@ -286,6 +323,46 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
             assert item["should_upload_audio"] is False
 
 
+def test_overlay_scenarios_have_required_fields():
+    scenarios = _load_overlay_scenarios()
+
+    assert {
+        "overlay-default-off",
+        "overlay-enable-shows-window",
+        "overlay-placeholder-quiet",
+        "overlay-assistant-summary-truncated",
+        "overlay-proactive-summary",
+        "overlay-position-preset-moves-window",
+        "overlay-opacity-background-readable",
+        "overlay-message-count-limit",
+        "overlay-main-window-foreground-suppressed",
+        "overlay-renderer-isolated",
+        "overlay-settings-force-close",
+        "overlay-disable-hides-window",
+        "overlay-settings-persist-after-restart",
+        "overlay-event-stream-safe",
+        "overlay-macos-safe-mode-fail-closed",
+        "overlay-window-lifecycle-regression-freeze",
+        "overlay-safe-mode-regression-freeze-manual",
+        "overlay-macos-autoshow-restore-checklist",
+    } <= {item.get("id") for item in scenarios}
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "raw prompt",
+        "raw JSON",
+    }
+    for item in scenarios:
+        assert item.get("category") in {"overlay", "overlay_privacy", "overlay_packaged"}
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert item.get("expected_status") in ALLOWED_OVERLAY_STATUSES
+        assert item.get("should_accept_input") is False
+        assert item.get("should_show_full_reply") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
 def test_voice_input_local_asr_release_regression_scenarios_are_present():
     scenarios = _load_voice_input_local_asr_scenarios()
     by_id = {item["id"]: item for item in scenarios}
@@ -301,6 +378,8 @@ def test_voice_input_local_asr_release_regression_scenarios_are_present():
         "local-asr-transcript-simplified-chinese",
         "local-asr-no-auto-send",
         "local-asr-no-context-pollution",
+        "local-asr-native-picker-regression-freeze",
+        "voice-local-asr-regression-freeze",
         "local-asr-privacy-no-full-paths",
         "local-asr-clear-config-fallback",
         "local-asr-backend-no-residual-process",
@@ -362,3 +441,29 @@ def test_readme_qa_links_point_to_existing_files():
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup
     assert "Voice Interaction MVP" in voice_mvp_release_notes
     assert "No cloud ASR" in voice_mvp_release_notes
+
+
+def test_regression_freeze_docs_cover_voice_asr_overlay_safe_mode():
+    qa_doc = QA_DOC_PATH.read_text(encoding="utf-8")
+    project_status = PROJECT_STATUS_PATH.read_text(encoding="utf-8")
+    overlay_scenarios = {item["id"] for item in _load_overlay_scenarios()}
+    local_asr_scenarios = {item["id"] for item in _load_voice_input_local_asr_scenarios()}
+
+    assert "Voice / Local ASR / Overlay Safe Mode 阶段冻结人工验收" in qa_doc
+    assert "Desktop Window Stability" in qa_doc
+    assert "Overlay Safe Mode" in qa_doc
+    assert "Local ASR Native File Picker" in qa_doc
+    assert "Voice / ASR Regression" in qa_doc
+    assert "macOS 下 auto-show 暂时不出现小气泡，这是当前预期" in qa_doc
+    assert "transcript 不自动发送" in qa_doc
+
+    assert "Voice Output v1 / v1.1 已稳定" in project_status
+    assert "Local ASR v1 已稳定" in project_status
+    assert "Local ASR Native File Picker v1 已加入" in project_status
+    assert "file picker 只填入路径，不读取、不复制、不上传文件" in project_status
+    assert "macOS Overlay auto-show 仍故意 fail-closed" in project_status
+    assert "不是完整可用的游戏悬浮气泡功能" in project_status
+
+    assert "overlay-safe-mode-regression-freeze-manual" in overlay_scenarios
+    assert "local-asr-native-picker-regression-freeze" in local_asr_scenarios
+    assert "voice-local-asr-regression-freeze" in local_asr_scenarios

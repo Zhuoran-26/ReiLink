@@ -1,15 +1,47 @@
-import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, shell } from "electron";
+import type { WebContents } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 import { BackendRuntimeManager } from "./backendRuntime.js";
+import { selectLocalFile, type LocalFilePickerRequest } from "./localFilePicker.js";
 import { openLocalDataDir } from "./localData.js";
+import { createMainWindowOptions, restoreMainWindowForActivation } from "./mainWindow.js";
+import {
+  calculateOverlayBounds,
+  configureOverlayWindowForClickThrough,
+  createOverlayRendererUrl,
+  createOverlayWindowOptions,
+  shouldOverlayBeVisible
+} from "./overlayWindow.js";
+import {
+  createOverlayMessage,
+  createOverlayState,
+  normalizeOverlayConfig,
+  OVERLAY_MAX_MESSAGES,
+  type OverlayConfig,
+  type OverlayConfigUpdate,
+  type OverlayContentUpdate,
+  type OverlayMessage,
+  type OverlayState
+} from "../shared/overlay.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const APP_PROTOCOL = "app";
 let backendRuntime: BackendRuntimeManager | null = null;
+let mainWindow: BrowserWindow | null = null;
+let overlayWindow: BrowserWindow | null = null;
+let overlayEnabled = false;
+let overlayConfig: OverlayConfig = normalizeOverlayConfig();
+let overlayMessages: OverlayMessage[] = [];
+let overlayUpdatedAt: string | null = null;
+let overlayVisibilityRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 const isDevRenderer = () => Boolean(process.env.VITE_DEV_SERVER_URL);
+
+const showDockIcon = () => {
+  if (process.platform === "darwin") void app.dock?.show();
+};
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -47,19 +79,138 @@ const registerPackagedRendererProtocol = () => {
   });
 };
 
-const createWindow = () => {
-  const win = new BrowserWindow({
-    width: 1120,
-    height: 780,
-    minWidth: 900,
-    minHeight: 640,
-    backgroundColor: "#111318",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false
+const overlayState = (): OverlayState =>
+  createOverlayState(
+    overlayEnabled,
+    Boolean(overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()),
+    overlayMessages,
+    overlayUpdatedAt,
+    overlayConfig
+  );
+
+const broadcastOverlayState = () => {
+  const state = overlayState();
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("overlay:state", state);
+    }
+  }
+  return state;
+};
+
+const overlayRendererUrl = () => {
+  const devUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:5173";
+  return createOverlayRendererUrl(isDevRenderer() ? devUrl : `${APP_PROTOCOL}://./index.html`);
+};
+
+const overlayBounds = () => {
+  const { workArea } = screen.getPrimaryDisplay();
+  return calculateOverlayBounds(workArea, overlayConfig.position);
+};
+
+const isMainWindowFocused = () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused());
+
+const isMainWindowSender = (sender: WebContents) =>
+  Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === sender.id);
+
+const shouldShowOverlayWindow = () =>
+  shouldOverlayBeVisible({
+    overlayEnabled,
+    mainWindowFocused: isMainWindowFocused(),
+    appActive: app.isReady() && app.isActive(),
+    platform: process.platform
+  });
+
+const cancelOverlayVisibilityRefresh = () => {
+  if (overlayVisibilityRefreshTimer) {
+    clearTimeout(overlayVisibilityRefreshTimer);
+    overlayVisibilityRefreshTimer = null;
+  }
+};
+
+const destroyOverlayWindow = () => {
+  cancelOverlayVisibilityRefresh();
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    const currentOverlayWindow = overlayWindow;
+    overlayWindow = null;
+    currentOverlayWindow.destroy();
+  }
+  return broadcastOverlayState();
+};
+
+const applyOverlayVisibility = (createIfNeeded = true) => {
+  if (!shouldShowOverlayWindow()) return destroyOverlayWindow();
+  if (!createIfNeeded && (!overlayWindow || overlayWindow.isDestroyed())) return broadcastOverlayState();
+  const window = createOverlayWindow();
+  window.setBounds(overlayBounds());
+  if (!window.isVisible()) {
+    window.showInactive();
+  }
+  window.webContents.send("overlay:state", overlayState());
+  return broadcastOverlayState();
+};
+
+const scheduleOverlayVisibilityRefresh = () => {
+  cancelOverlayVisibilityRefresh();
+  overlayVisibilityRefreshTimer = setTimeout(() => {
+    overlayVisibilityRefreshTimer = null;
+    applyOverlayVisibility();
+  }, 80);
+};
+
+const createOverlayWindow = () => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
+  const bounds = overlayBounds();
+  overlayWindow = new BrowserWindow(createOverlayWindowOptions(bounds, path.join(__dirname, "preload.cjs")));
+  configureOverlayWindowForClickThrough(overlayWindow);
+  overlayWindow.on("closed", () => {
+    overlayWindow = null;
+    broadcastOverlayState();
+  });
+  overlayWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
+    console.error("[ReiLink] overlay renderer failed to load", { errorCode, errorDescription });
+  });
+  void overlayWindow.loadURL(overlayRendererUrl()).then(() => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send("overlay:state", overlayState());
+      applyOverlayVisibility(false);
     }
   });
+  return overlayWindow;
+};
+
+const setOverlayEnabledFromRenderer = (enabled: boolean, sender: WebContents) => {
+  overlayEnabled = enabled;
+  if (!enabled || isMainWindowSender(sender)) return destroyOverlayWindow();
+  return applyOverlayVisibility();
+};
+
+const setOverlayConfig = (config: OverlayConfigUpdate, sender?: WebContents) => {
+  const previousPosition = overlayConfig.position;
+  overlayConfig = normalizeOverlayConfig({ ...overlayConfig, ...config });
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    if (previousPosition !== overlayConfig.position) {
+      overlayWindow.setBounds(overlayBounds());
+    }
+    overlayWindow.webContents.send("overlay:state", overlayState());
+  }
+  if (sender && isMainWindowSender(sender)) return destroyOverlayWindow();
+  return broadcastOverlayState();
+};
+
+const updateOverlayContent = (content: OverlayContentUpdate) => {
+  const nextMessage = createOverlayMessage(content, `overlay-${Date.now()}`);
+  overlayMessages = [...overlayMessages, nextMessage].slice(-OVERLAY_MAX_MESSAGES);
+  overlayUpdatedAt = nextMessage.timestamp;
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send("overlay:state", overlayState());
+  }
+  return broadcastOverlayState();
+};
+
+const createWindow = () => {
+  const win = new BrowserWindow(createMainWindowOptions(path.join(__dirname, "preload.cjs")));
+  mainWindow = win;
 
   win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
     console.error("[ReiLink] renderer failed to load", {
@@ -71,6 +222,20 @@ const createWindow = () => {
 
   win.webContents.on("render-process-gone", (_event, details) => {
     console.error("[ReiLink] renderer process gone", details);
+  });
+
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      destroyOverlayWindow();
+    }
+  });
+  win.on("focus", () => {
+    cancelOverlayVisibilityRefresh();
+    destroyOverlayWindow();
+  });
+  win.on("blur", () => {
+    scheduleOverlayVisibilityRefresh();
   });
 
   const devUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:5173";
@@ -85,6 +250,7 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
+  showDockIcon();
   registerPackagedRendererProtocol();
   backendRuntime = new BackendRuntimeManager({
     appUserDataPath: app.getPath("userData"),
@@ -101,6 +267,17 @@ app.whenReady().then(() => {
     backendRuntime?.setAutoStartEnabled(Boolean(enabled))
   );
   ipcMain.handle("local-data:open-dir", () => openLocalDataDir(app.getPath("userData"), shell));
+  ipcMain.handle("local-file:select", (_event, request: LocalFilePickerRequest) =>
+    selectLocalFile(request, {
+      appUserDataPath: app.getPath("userData"),
+      dialog,
+      homeDir: app.getPath("home")
+    })
+  );
+  ipcMain.handle("overlay:get-status", () => overlayState());
+  ipcMain.handle("overlay:set-enabled", (event, enabled: boolean) => setOverlayEnabledFromRenderer(Boolean(enabled), event.sender));
+  ipcMain.handle("overlay:set-config", (event, config: OverlayConfigUpdate) => setOverlayConfig(config, event.sender));
+  ipcMain.handle("overlay:update-content", (_event, content: OverlayContentUpdate) => updateOverlayContent(content));
   void backendRuntime.ensureBackend();
   createWindow();
 });
@@ -114,5 +291,11 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  cancelOverlayVisibilityRefresh();
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  } else {
+    restoreMainWindowForActivation(mainWindow);
+  }
+  destroyOverlayWindow();
 });

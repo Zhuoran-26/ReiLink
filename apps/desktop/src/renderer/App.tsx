@@ -47,7 +47,17 @@ import {
   UserProfileMemory
 } from "../shared/api";
 import type { ReiLinkEvent } from "../shared/events";
-import type { BackendRuntimeStatus } from "../shared/runtime";
+import {
+  normalizeOverlayConfig,
+  OVERLAY_DEFAULT_MESSAGE_COUNT,
+  OVERLAY_DEFAULT_OPACITY,
+  OVERLAY_DEFAULT_POSITION,
+  sanitizeOverlayText,
+  type OverlayConfig,
+  type OverlayContentUpdate,
+  type OverlayMessageSource
+} from "../shared/overlay";
+import type { BackendRuntimeStatus, LocalFilePickerKind } from "../shared/runtime";
 import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
 import { eventBus } from "./eventBus";
 import { voiceInput, type VoiceInputStatus } from "./voiceInput";
@@ -79,6 +89,7 @@ type LocalAsrSettingsDraft = {
   local_asr_model_path: string;
   audio_converter_binary_path: string;
 };
+type LocalAsrSettingsDraftPathKey = keyof LocalAsrSettingsDraft;
 
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
 
@@ -412,6 +423,10 @@ const defaultAppSettings: AppSettings = {
   proactive_companion: "off",
   proactive_sensitivity: "low",
   auto_game_detection: "on",
+  overlay_enabled: "off",
+  overlay_position: OVERLAY_DEFAULT_POSITION,
+  overlay_opacity: OVERLAY_DEFAULT_OPACITY,
+  overlay_message_count: OVERLAY_DEFAULT_MESSAGE_COUNT,
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -432,6 +447,12 @@ const normalizeAppSettings = (
 });
 
 const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSettings, patch: Partial<AppSettings> = {}) => ({
+  overlay_enabled: hasAppSetting(settings, "overlay_enabled") ? settings.overlay_enabled : patch.overlay_enabled ?? previous.overlay_enabled,
+  overlay_position: hasAppSetting(settings, "overlay_position") ? settings.overlay_position : patch.overlay_position ?? previous.overlay_position,
+  overlay_opacity: hasAppSetting(settings, "overlay_opacity") ? settings.overlay_opacity : patch.overlay_opacity ?? previous.overlay_opacity,
+  overlay_message_count: hasAppSetting(settings, "overlay_message_count")
+    ? settings.overlay_message_count
+    : patch.overlay_message_count ?? previous.overlay_message_count,
   voice_output: hasAppSetting(settings, "voice_output") ? settings.voice_output : patch.voice_output ?? previous.voice_output,
   voice_rate: hasAppSetting(settings, "voice_rate") ? settings.voice_rate : patch.voice_rate ?? previous.voice_rate,
   voice_volume: hasAppSetting(settings, "voice_volume") ? settings.voice_volume : patch.voice_volume ?? previous.voice_volume
@@ -904,6 +925,18 @@ const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
   return "";
 };
 
+const overlayPositionText = (position?: string) => {
+  const labels: Record<string, string> = {
+    "top-right": "右上",
+    "middle-right": "右中",
+    "bottom-right": "右下",
+    "top-left": "左上",
+    "middle-left": "左中",
+    "bottom-left": "左下"
+  };
+  return labels[position ?? ""] ?? "右中";
+};
+
 const eventSummary = (event: ReiLinkEvent) => {
   switch (event.type) {
     case "user_message_sent":
@@ -934,6 +967,30 @@ const eventSummary = (event: ReiLinkEvent) => {
       return debugText(event.status);
     case "runtime_status_changed":
       return [debugText(event.backend_source), knowledgeSourceText(event.knowledge_source as BackendRuntimeStatus["knowledge_source"])].join(" / ");
+    case "overlay_enabled_changed":
+      return [event.enabled ? "已开启" : "已关闭", event.visible ? "窗口可见" : "窗口隐藏"].join(" / ");
+    case "overlay_settings_changed":
+      return [
+        overlayPositionText(event.position),
+        `${Math.round(event.opacity * 100)}%`,
+        `${event.max_messages} 条`
+      ].join(" / ");
+    case "overlay_window_shown":
+      return `显示 ${event.message_count} 条短消息`;
+    case "overlay_window_moved":
+      return overlayPositionText(event.position);
+    case "overlay_window_hidden":
+      return "悬浮层已隐藏";
+    case "overlay_visibility_suppressed":
+      return "主窗口前台或 macOS 安全模式，悬浮层暂时隐藏";
+    case "overlay_content_updated":
+      return [
+        event.source ? debugText(event.source) : "",
+        `${event.character_count} 字`,
+        `${event.message_count} 条`
+      ].filter(Boolean).join(" / ");
+    case "overlay_error":
+      return sanitizeOverlayText(event.reason, 48);
     case "tts_started":
       return [voiceEventSourceText(event.source), `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_completed":
@@ -1027,6 +1084,14 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     model_routed: "模型路由完成",
     backend_status_changed: "后端状态变化",
     runtime_status_changed: "运行来源变化",
+    overlay_enabled_changed: "悬浮层开关变化",
+    overlay_settings_changed: "悬浮层设置变化",
+    overlay_window_shown: "悬浮层显示",
+    overlay_window_moved: "悬浮层位置更新",
+    overlay_window_hidden: "悬浮层隐藏",
+    overlay_visibility_suppressed: "悬浮层暂时隐藏",
+    overlay_content_updated: "悬浮层内容更新",
+    overlay_error: "悬浮层失败",
     tts_started: "语音开始播放",
     tts_completed: "语音播放完成",
     tts_stopped: "语音已停止",
@@ -1532,10 +1597,19 @@ export function App() {
   const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
   const [debugActionBusy, setDebugActionBusy] = useState("");
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState("");
   const [backendRuntimeBusy, setBackendRuntimeBusy] = useState(false);
   const [localDataBusy, setLocalDataBusy] = useState("");
   const [gameContextBusy, setGameContextBusy] = useState("");
+  const overlayRuntimeConfig = useMemo<OverlayConfig>(
+    () => normalizeOverlayConfig({
+      position: appSettings.overlay_position,
+      opacity: appSettings.overlay_opacity,
+      max_messages: appSettings.overlay_message_count
+    }),
+    [appSettings.overlay_message_count, appSettings.overlay_opacity, appSettings.overlay_position]
+  );
   const [messages, setMessages] = useState<Message[]>([
     { id: "hello", role: "assistant", text: "我在。想问的时候就说。", createdAt: new Date().toISOString() }
   ]);
@@ -1566,6 +1640,9 @@ export function App() {
   const lastGameSessionEventRef = useRef<string | null>(null);
   const lastKnowledgeEventRef = useRef<string | null>(null);
   const lastModelRouteEventRef = useRef<string | null>(null);
+  const lastOverlayEnabledRef = useRef<boolean | null>(null);
+  const lastOverlayConfigRef = useRef<OverlayConfig | null>(null);
+  const lastOverlayContentRef = useRef<OverlayContentUpdate | null>(null);
   const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
 
   const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
@@ -1767,6 +1844,7 @@ export function App() {
           voiceSettingFallback(currentSettings, previous)
         )
       );
+      setSettingsLoaded(true);
       setLocalDataStatus(await api.localDataStatus());
       setLocalAsrSettings(await api.localAsrSettings());
       const currentLocalAsrStatus = await api.localAsrStatus();
@@ -1791,6 +1869,7 @@ export function App() {
       emitDebugSnapshotEvents(currentGameContext, currentGameSessionDebug, currentChatDebug, currentProviderDebug);
     } catch (error) {
       setBackendStatus("disconnected");
+      setSettingsLoaded(false);
       emitBackendStatusChanged("disconnected");
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "后端未连接"));
@@ -1839,6 +1918,34 @@ export function App() {
     } catch (error) {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "本地 ASR 配置刷新失败"));
+    } finally {
+      setLocalAsrSettingsBusy("");
+    }
+  };
+
+  const selectLocalAsrFile = async (kind: LocalFilePickerKind, field: LocalAsrSettingsDraftPathKey) => {
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.selectLocalFile) {
+      setLocalAsrSettingsMessage("当前桌面端不支持选择文件。");
+      return;
+    }
+    setLocalAsrSettingsBusy(`select-${kind}`);
+    try {
+      setLastError("");
+      setLastRawError("");
+      const result = await runtime.selectLocalFile({
+        kind,
+        currentPath: localAsrSettingsDraft[field]
+      });
+      if (result.canceled || !result.path) return;
+      setLocalAsrSettingsDraft((current) => ({
+        ...current,
+        [field]: result.path ?? current[field]
+      }));
+      setLocalAsrSettingsMessage("已选择文件，请点击保存配置。");
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "选择本地文件失败"));
     } finally {
       setLocalAsrSettingsBusy("");
     }
@@ -2106,6 +2213,45 @@ export function App() {
     }
   };
 
+  const emitOverlayError = useCallback((reason: string) => {
+    eventBus.emit({ type: "overlay_error", timestamp: eventTimestamp(), reason });
+  }, []);
+
+  const forceDisableOverlay = async () => {
+    const runtime = window.reilinkRuntime;
+    try {
+      await runtime?.setOverlayEnabled?.(false);
+      eventBus.emit({ type: "overlay_window_hidden", timestamp: eventTimestamp() });
+    } catch {
+      emitOverlayError("overlay_force_disable_failed");
+    }
+    await updateAppSettings({ overlay_enabled: "off" });
+  };
+
+  const pushOverlayContent = useCallback(async (text: string, source: OverlayMessageSource) => {
+    const update: OverlayContentUpdate = {
+      text: sanitizeOverlayText(text),
+      source,
+      timestamp: eventTimestamp()
+    };
+    lastOverlayContentRef.current = update;
+    if (appSettings.overlay_enabled !== "on") return;
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.updateOverlayContent) return;
+    try {
+      const state = await runtime.updateOverlayContent(update);
+      eventBus.emit({
+        type: "overlay_content_updated",
+        timestamp: eventTimestamp(),
+        source,
+        character_count: update.text.length,
+        message_count: state.messages.length
+      });
+    } catch {
+      emitOverlayError("overlay_content_update_failed");
+    }
+  }, [appSettings.overlay_enabled, emitOverlayError]);
+
   const openLocalDataDirectory = async () => {
     const runtime = window.reilinkRuntime;
     if (!runtime?.openLocalDataDir) {
@@ -2206,6 +2352,77 @@ export function App() {
   }, [appSettings.voice_output]);
 
   useEffect(() => {
+    if (!settingsLoaded) return;
+    const previousConfig = lastOverlayConfigRef.current;
+    const configUnchanged = previousConfig &&
+      previousConfig.position === overlayRuntimeConfig.position &&
+      previousConfig.opacity === overlayRuntimeConfig.opacity &&
+      previousConfig.max_messages === overlayRuntimeConfig.max_messages;
+    if (configUnchanged) return;
+    lastOverlayConfigRef.current = overlayRuntimeConfig;
+
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.setOverlayConfig) {
+      if (appSettings.overlay_enabled === "on") emitOverlayError("overlay_config_runtime_unavailable");
+      return;
+    }
+
+    void runtime.setOverlayConfig(overlayRuntimeConfig).then(() => {
+      eventBus.emit({
+        type: "overlay_settings_changed",
+        timestamp: eventTimestamp(),
+        position: overlayRuntimeConfig.position,
+        opacity: overlayRuntimeConfig.opacity,
+        max_messages: overlayRuntimeConfig.max_messages
+      });
+      if (previousConfig && previousConfig.position !== overlayRuntimeConfig.position) {
+        eventBus.emit({
+          type: "overlay_window_moved",
+          timestamp: eventTimestamp(),
+          position: overlayRuntimeConfig.position
+        });
+      }
+    }).catch(() => emitOverlayError("overlay_settings_update_failed"));
+  }, [appSettings.overlay_enabled, emitOverlayError, overlayRuntimeConfig, settingsLoaded]);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    const enabled = appSettings.overlay_enabled === "on";
+    if (lastOverlayEnabledRef.current === enabled) return;
+    lastOverlayEnabledRef.current = enabled;
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.setOverlayEnabled) {
+      if (enabled) emitOverlayError("overlay_runtime_unavailable");
+      return;
+    }
+    void runtime.setOverlayEnabled(enabled).then(async (state) => {
+      eventBus.emit({
+        type: "overlay_enabled_changed",
+        timestamp: eventTimestamp(),
+        enabled,
+        visible: state.visible
+      });
+      eventBus.emit(
+        state.visible
+          ? { type: "overlay_window_shown", timestamp: eventTimestamp(), message_count: state.messages.length }
+          : enabled
+            ? { type: "overlay_visibility_suppressed", timestamp: eventTimestamp(), reason: "main_window_active" }
+            : { type: "overlay_window_hidden", timestamp: eventTimestamp() }
+      );
+      if (enabled && state.messages.length === 0 && lastOverlayContentRef.current && runtime.updateOverlayContent) {
+        const updated = await runtime.updateOverlayContent(lastOverlayContentRef.current);
+        eventBus.emit({
+          type: "overlay_content_updated",
+          timestamp: eventTimestamp(),
+          source: lastOverlayContentRef.current.source,
+          character_count: lastOverlayContentRef.current.text.length,
+          message_count: updated.messages.length
+        });
+      }
+    }).catch(() => emitOverlayError(enabled ? "overlay_show_failed" : "overlay_hide_failed"));
+  }, [appSettings.overlay_enabled, emitOverlayError, settingsLoaded]);
+
+  useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
 
@@ -2267,13 +2484,14 @@ export function App() {
           trigger_type: response.trigger_type,
           text: response.message
         });
+        void pushOverlayContent(response.message, "proactive");
       }
       setProactiveStatus(await api.proactiveStatus());
     } catch (error) {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "主动陪伴检查失败"));
     }
-  }, [appSettings.proactive_companion, backendStatus, input, queueMessageAutoScroll, sending]);
+  }, [appSettings.proactive_companion, backendStatus, input, pushOverlayContent, queueMessageAutoScroll, sending]);
 
   useEffect(() => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on") return undefined;
@@ -2336,6 +2554,7 @@ export function App() {
         });
       }
       eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
+      void pushOverlayContent(segments.join(" "), "assistant_reply");
       if (appSettings.voice_output === "on" && !spokenAssistantReplyIdsRef.current.has(replyMessageId)) {
         spokenAssistantReplyIdsRef.current.add(replyMessageId);
         voiceOutput.speak(segments.join("\n"), {
@@ -2970,6 +3189,95 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="pro">高质量</option>
                 </select>
               </label>
+              <div className="voiceOutputPanel" role="group" aria-label="Overlay 设置">
+                <div className="settingRow overlayToggleRow">
+                  <span>Overlay / 游戏悬浮层</span>
+                  <div
+                    aria-label="Overlay / 游戏悬浮层"
+                    className="overlayToggleControl"
+                    role="group"
+                  >
+                    <button
+                      aria-label="关闭 Overlay"
+                      aria-pressed={appSettings.overlay_enabled === "off"}
+                      className="overlayToggleButton"
+                      disabled={settingsBusy !== "" && settingsBusy !== "overlay_enabled"}
+                      type="button"
+                      onClick={() => void updateAppSettings({ overlay_enabled: "off" })}
+                    >
+                      关闭
+                    </button>
+                    <button
+                      aria-label="开启 Overlay"
+                      aria-pressed={appSettings.overlay_enabled === "on"}
+                      className="overlayToggleButton"
+                      disabled={settingsBusy !== "" && settingsBusy !== "overlay_enabled"}
+                      type="button"
+                      onClick={() => void updateAppSettings({ overlay_enabled: "on" })}
+                    >
+                      开启
+                    </button>
+                  </div>
+                </div>
+                <button
+                  aria-label="强制关闭悬浮层"
+                  className="smallButton overlayForceOffButton"
+                  type="button"
+                  onClick={() => void forceDisableOverlay()}
+                >
+                  强制关闭悬浮层
+                </button>
+                <label className="settingRow">
+                  <span>位置预设</span>
+                  <select
+                    aria-label="Overlay 位置预设"
+                    disabled={settingsBusy !== ""}
+                    value={appSettings.overlay_position}
+                    onChange={(event) =>
+                      void updateAppSettings({ overlay_position: event.target.value as AppSettings["overlay_position"] })
+                    }
+                  >
+                    <option value="top-right">右上</option>
+                    <option value="middle-right">右中</option>
+                    <option value="bottom-right">右下</option>
+                    <option value="top-left">左上</option>
+                    <option value="middle-left">左中</option>
+                    <option value="bottom-left">左下</option>
+                  </select>
+                </label>
+                <label className="settingRow">
+                  <span>背景透明度</span>
+                  <span className="rangeControl">
+                    <input
+                      aria-label="Overlay 背景透明度"
+                      disabled={settingsBusy !== ""}
+                      max="0.95"
+                      min="0.35"
+                      step="0.01"
+                      type="range"
+                      value={appSettings.overlay_opacity}
+                      onChange={(event) => void updateAppSettings({ overlay_opacity: Number(event.target.value) })}
+                    />
+                    <strong>{Math.round(overlayRuntimeConfig.opacity * 100)}%</strong>
+                  </span>
+                </label>
+                <label className="settingRow">
+                  <span>显示消息数</span>
+                  <select
+                    aria-label="Overlay 显示消息数量"
+                    disabled={settingsBusy !== ""}
+                    value={appSettings.overlay_message_count}
+                    onChange={(event) => void updateAppSettings({ overlay_message_count: Number(event.target.value) })}
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                  </select>
+                </label>
+                <p className="settingHint">默认关闭。开启后只保存设置，ReiLink 前台时不显示，避免遮挡 Settings。</p>
+                <p className="settingHint">macOS 当前为安全模式：自动显示小气泡暂时关闭，以避免抢焦点或影响窗口切换。</p>
+                <p className="settingHint">强制关闭用于异常时立即关闭悬浮层；不显示调试信息、路径、密钥或完整回复。</p>
+              </div>
               <div className="voiceOutputPanel" role="group" aria-label="语音输出设置">
                 <label className="settingRow">
                   <span>语音输出 / Voice Output</span>
@@ -3084,12 +3392,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <strong>{localAsrSourceText(localAsrSettings.source)}</strong>
                   </div>
                   <p className="settingHint">{localAsrSettingsSummaryText(localAsrSettings)}</p>
-                  <label className="localAsrPathField">
-                    <span>本地识别程序 / ASR Binary</span>
+                  <div className="localAsrPathField">
+                    <label htmlFor="local-asr-binary-path">本地识别程序 / ASR Binary</label>
+                    <div className="localAsrPathInputRow">
                     <input
                       aria-label="本地识别程序 / ASR Binary"
                       autoComplete="off"
                       disabled={localAsrSettingsBusy !== ""}
+                      id="local-asr-binary-path"
                       placeholder="/opt/homebrew/bin/whisper-cli"
                       spellCheck={false}
                       type="text"
@@ -3101,13 +3411,26 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         }))
                       }
                     />
-                  </label>
-                  <label className="localAsrPathField">
-                    <span>模型文件 / Model File</span>
+                      <button
+                        aria-label="选择本地识别程序文件"
+                        className="smallButton quiet localAsrBrowseButton"
+                        disabled={localAsrSettingsBusy !== ""}
+                        type="button"
+                        onClick={() => void selectLocalAsrFile("asr_binary", "local_asr_binary_path")}
+                      >
+                        <FolderOpen size={14} />
+                        选择...
+                      </button>
+                    </div>
+                  </div>
+                  <div className="localAsrPathField">
+                    <label htmlFor="local-asr-model-path">模型文件 / Model File</label>
+                    <div className="localAsrPathInputRow">
                     <input
                       aria-label="模型文件 / Model File"
                       autoComplete="off"
                       disabled={localAsrSettingsBusy !== ""}
+                      id="local-asr-model-path"
                       placeholder="~/Library/Application Support/ReiLink/models/ggml-base.bin"
                       spellCheck={false}
                       type="text"
@@ -3119,13 +3442,26 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         }))
                       }
                     />
-                  </label>
-                  <label className="localAsrPathField">
-                    <span>音频转换工具 / Audio Converter</span>
+                      <button
+                        aria-label="选择模型文件"
+                        className="smallButton quiet localAsrBrowseButton"
+                        disabled={localAsrSettingsBusy !== ""}
+                        type="button"
+                        onClick={() => void selectLocalAsrFile("asr_model", "local_asr_model_path")}
+                      >
+                        <FolderOpen size={14} />
+                        选择...
+                      </button>
+                    </div>
+                  </div>
+                  <div className="localAsrPathField">
+                    <label htmlFor="local-asr-converter-path">音频转换工具 / Audio Converter</label>
+                    <div className="localAsrPathInputRow">
                     <input
                       aria-label="音频转换工具 / Audio Converter"
                       autoComplete="off"
                       disabled={localAsrSettingsBusy !== ""}
+                      id="local-asr-converter-path"
                       placeholder="/opt/homebrew/bin/ffmpeg"
                       spellCheck={false}
                       type="text"
@@ -3137,7 +3473,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         }))
                       }
                     />
-                  </label>
+                      <button
+                        aria-label="选择音频转换工具文件"
+                        className="smallButton quiet localAsrBrowseButton"
+                        disabled={localAsrSettingsBusy !== ""}
+                        type="button"
+                        onClick={() => void selectLocalAsrFile("asr_converter", "audio_converter_binary_path")}
+                      >
+                        <FolderOpen size={14} />
+                        选择...
+                      </button>
+                    </div>
+                  </div>
                   <div className="localAsrSetupActions">
                     <button
                       className="smallButton quiet"
@@ -4423,6 +4770,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             proactive_companion: appSettings.proactive_companion,
                             proactive_sensitivity: appSettings.proactive_sensitivity,
                             auto_game_detection: appSettings.auto_game_detection,
+                            overlay_enabled: appSettings.overlay_enabled,
+                            overlay_position: appSettings.overlay_position,
+                            overlay_opacity: appSettings.overlay_opacity,
+                            overlay_message_count: appSettings.overlay_message_count,
                             voice_output: appSettings.voice_output,
                             voice_rate: appSettings.voice_rate,
                             voice_volume: appSettings.voice_volume

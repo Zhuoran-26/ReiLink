@@ -11,6 +11,7 @@ type PackageLocalModule = {
   }) => Promise<{ backendBinaryPath: string; knowledgeGamesPath: string; runtimeResourcesPath: string }>;
   validateStandaloneResources: (options: { resourcesRoot: string; platform?: string }) => Promise<void>;
   setPlistString: (plistText: string, key: string, value: string) => string;
+  removePlistKey: (plistText: string, key: string) => string;
 };
 
 const loadPackageLocal = async () =>
@@ -118,5 +119,29 @@ describe("package-local standalone resources", () => {
     expect(microphoneResult).toContain("用户主动触发的语音输入测试");
     expect(audioCaptureResult).toContain("<key>NSAudioCaptureUsageDescription</key>");
     expect(audioCaptureResult).toContain("用户主动触发的语音输入测试");
+  });
+
+  it("keeps packaged ReiLink visible in Dock and the macOS app switcher", async () => {
+    const { removePlistKey, setPlistString } = await loadPackageLocal();
+    const plist = [
+      "<plist><dict>",
+      "<key>CFBundleExecutable</key>",
+      "<string>Electron</string>",
+      "<key>LSUIElement</key>",
+      "<true/>",
+      "<key>LSBackgroundOnly</key>",
+      "<false/>",
+      "</dict></plist>"
+    ].join("");
+
+    const result = removePlistKey(
+      removePlistKey(setPlistString(plist, "CFBundleExecutable", "ReiLink"), "LSUIElement"),
+      "LSBackgroundOnly"
+    );
+
+    expect(result).toContain("<key>CFBundleExecutable</key>");
+    expect(result).toContain("<string>ReiLink</string>");
+    expect(result).not.toContain("LSUIElement");
+    expect(result).not.toContain("LSBackgroundOnly");
   });
 });

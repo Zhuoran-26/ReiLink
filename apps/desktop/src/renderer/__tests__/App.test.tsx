@@ -22,6 +22,7 @@ import type {
   SetupStatus
 } from "../../shared/api";
 import type { BackendRuntimeStatus, ReilinkRuntimeBridge } from "../../shared/runtime";
+import type { OverlayState } from "../../shared/overlay";
 
 const runningStatus = {
   game_id: "elden_ring",
@@ -668,6 +669,10 @@ const appSettings: AppSettings = {
   proactive_companion: "off",
   proactive_sensitivity: "low",
   auto_game_detection: "on",
+  overlay_enabled: "off",
+  overlay_position: "middle-right",
+  overlay_opacity: 0.72,
+  overlay_message_count: 2,
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -974,7 +979,18 @@ const installAudioCaptureMock = (options: { permissionDenied?: boolean } = {}) =
 
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
   let status = { ...initialStatus };
+  let overlayState: OverlayState = {
+    enabled: false,
+    visible: false,
+    position: "middle-right",
+    opacity: 0.72,
+    messages: [],
+    max_messages: 2,
+    max_message_length: 96,
+    updated_at: null
+  };
   const listeners = new Set<(nextStatus: BackendRuntimeStatus) => void>();
+  const overlayListeners = new Set<(nextState: typeof overlayState) => void>();
   const bridge: ReilinkRuntimeBridge = {
     getBackendStatus: vi.fn(async () => status),
     setBackendAutoStart: vi.fn(async (enabled: boolean) => {
@@ -989,9 +1005,47 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
       return status;
     }),
     openLocalDataDir: vi.fn(async () => ({ ok: true, path: status.user_data_dir, error: null })),
+    selectLocalFile: vi.fn(async () => ({ canceled: true, path: null })),
+    getOverlayStatus: vi.fn(async () => overlayState),
+    setOverlayEnabled: vi.fn(async (enabled: boolean) => {
+      overlayState = { ...overlayState, enabled, visible: false };
+      for (const listener of overlayListeners) listener(overlayState);
+      return overlayState;
+    }),
+    setOverlayConfig: vi.fn(async (config) => {
+      overlayState = {
+        ...overlayState,
+        position: config.position ?? overlayState.position,
+        opacity: config.opacity ?? overlayState.opacity,
+        max_messages: config.max_messages ?? overlayState.max_messages,
+        messages: overlayState.messages.slice(-(config.max_messages ?? overlayState.max_messages))
+      };
+      for (const listener of overlayListeners) listener(overlayState);
+      return overlayState;
+    }),
+    updateOverlayContent: vi.fn(async (content) => {
+      const message = {
+        id: `overlay-${overlayState.messages.length}`,
+        speaker: "Rei" as const,
+        text: content.text,
+        source: content.source ?? "assistant_reply",
+        timestamp: content.timestamp ?? new Date().toISOString()
+      };
+      overlayState = {
+        ...overlayState,
+        messages: [...overlayState.messages, message].slice(-overlayState.max_messages),
+        updated_at: message.timestamp
+      };
+      for (const listener of overlayListeners) listener(overlayState);
+      return overlayState;
+    }),
     onBackendStatus: vi.fn((callback: (nextStatus: BackendRuntimeStatus) => void) => {
       listeners.add(callback);
       return () => listeners.delete(callback);
+    }),
+    onOverlayState: vi.fn((callback: (nextState: typeof overlayState) => void) => {
+      overlayListeners.add(callback);
+      return () => overlayListeners.delete(callback);
     })
   };
   Object.defineProperty(window, "reilinkRuntime", {
@@ -1229,6 +1283,7 @@ const chatResponse = {
   sources: ["data/elden_ring/bosses.json"],
   timestamp: new Date().toISOString()
 };
+let chatResponseStore = { ...chatResponse };
 
 const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   const debugAction = debugActionResponse(url, init);
@@ -1268,7 +1323,7 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
   if (url.endsWith("/api/chat") && init?.method === "POST") {
     if (chatFailureResponse) return chatFailureResponse();
-    return Response.json(chatResponse);
+    return Response.json(chatResponseStore);
   }
   return new Response("missing", { status: 404 });
 };
@@ -1277,6 +1332,7 @@ describe("App", () => {
   beforeEach(() => {
     let uuid = 0;
     resetSettingsResponse();
+    chatResponseStore = { ...chatResponse };
     eventBus.clear();
     scrollToMock = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
       const top = typeof options === "number" ? options : options?.top;
@@ -1353,6 +1409,16 @@ describe("App", () => {
     expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
     expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
+    const overlayToggle = screen.getByRole("group", { name: "Overlay / 游戏悬浮层" });
+    expect(within(overlayToggle).getByRole("button", { name: "关闭 Overlay" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(overlayToggle).getByRole("button", { name: "开启 Overlay" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "强制关闭悬浮层" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("middle-right");
+    expect(screen.getByLabelText("Overlay 背景透明度")).toHaveValue("0.72");
+    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("2");
+    expect(screen.getByText("默认关闭。开启后只保存设置，ReiLink 前台时不显示，避免遮挡 Settings。")).toBeInTheDocument();
+    expect(screen.getByText("macOS 当前为安全模式：自动显示小气泡暂时关闭，以避免抢焦点或影响窗口切换。")).toBeInTheDocument();
+    expect(screen.getByText("强制关闭用于异常时立即关闭悬浮层；不显示调试信息、路径、密钥或完整回复。")).toBeInTheDocument();
     expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
     expect(screen.getByText(/当前状态：已关闭/)).toBeInTheDocument();
     expect(screen.getByText(/本地语音：不可用/)).toBeInTheDocument();
@@ -1451,6 +1517,118 @@ describe("App", () => {
 
     await waitFor(() => expect(runtime.bridge.setBackendAutoStart).toHaveBeenCalledWith(false));
     expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("off");
+  });
+
+  it("syncs the Overlay setting through the Electron runtime bridge", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(false));
+    vi.mocked(runtime.bridge.setOverlayEnabled).mockClear();
+
+    const overlayToggle = await screen.findByRole("group", { name: "Overlay / 游戏悬浮层" });
+    await userEvent.click(within(overlayToggle).getByRole("button", { name: "开启 Overlay" }));
+
+    await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(true));
+    expect(within(overlayToggle).getByRole("button", { name: "开启 Overlay" })).toHaveAttribute("aria-pressed", "true");
+    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_enabled_changed")).toBe(true);
+    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_visibility_suppressed")).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "强制关闭悬浮层" }));
+    await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(false));
+    expect(within(overlayToggle).getByRole("button", { name: "关闭 Overlay" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("syncs Overlay position, opacity, and message count settings", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    await waitFor(() =>
+      expect(runtime.bridge.setOverlayConfig).toHaveBeenCalledWith({
+        position: "middle-right",
+        opacity: 0.72,
+        max_messages: 2
+      })
+    );
+    vi.mocked(runtime.bridge.setOverlayConfig).mockClear();
+
+    await userEvent.selectOptions(await screen.findByLabelText("Overlay 位置预设"), "bottom-left");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ overlay_position: "bottom-left" }) })
+      )
+    );
+    await waitFor(() =>
+      expect(runtime.bridge.setOverlayConfig).toHaveBeenLastCalledWith({
+        position: "bottom-left",
+        opacity: 0.72,
+        max_messages: 2
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText("Overlay 背景透明度"), { target: { value: "0.85" } });
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ overlay_opacity: 0.85 }) })
+      )
+    );
+    await waitFor(() =>
+      expect(runtime.bridge.setOverlayConfig).toHaveBeenLastCalledWith({
+        position: "bottom-left",
+        opacity: 0.85,
+        max_messages: 2
+      })
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Overlay 显示消息数量"), "1");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ overlay_message_count: 1 }) })
+      )
+    );
+    await waitFor(() =>
+      expect(runtime.bridge.setOverlayConfig).toHaveBeenLastCalledWith({
+        position: "bottom-left",
+        opacity: 0.85,
+        max_messages: 1
+      })
+    );
+    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("bottom-left");
+    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("1");
+    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_settings_changed")).toBe(true);
+    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_window_moved")).toBe(true);
+  });
+
+  it("sends only a sanitized short assistant summary to Overlay", async () => {
+    appSettingsStore = { ...appSettingsStore, overlay_enabled: "on" };
+    chatResponseStore = {
+      ...chatResponse,
+      reply: "这是一条很长的回复，包含 /Users/aragoto/Desktop/ReiLink/services/backend/.env 和 API key，还有后面很多很多不该完整显示的文字。先停一下，看动作，再试一次。继续观察距离、翻滚时机、精力条、走位和节奏，这些内容都不应该完整塞进悬浮层。继续追加很多很多很多很多很多很多很多安全但冗长的内容。",
+      reply_segments: [
+        "这是一条很长的回复，包含 /Users/aragoto/Desktop/ReiLink/services/backend/.env 和 API key，还有后面很多很多不该完整显示的文字。先停一下，看动作，再试一次。继续观察距离、翻滚时机、精力条、走位和节奏，这些内容都不应该完整塞进悬浮层。继续追加很多很多很多很多很多很多很多安全但冗长的内容。"
+      ]
+    };
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(true));
+    await userEvent.type(await screen.findByLabelText("聊天输入"), "Margit 怎么打？");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    await waitFor(() => expect(runtime.bridge.updateOverlayContent).toHaveBeenCalled());
+    const content = vi.mocked(runtime.bridge.updateOverlayContent).mock.calls.at(-1)?.[0];
+    expect(content?.text.length).toBeLessThanOrEqual(96);
+    expect(content?.text).toContain("…");
+    expect(content?.text).not.toContain("/Users/aragoto");
+    expect(content?.text).not.toContain(".env");
+    expect(content?.text).not.toContain("API key");
+    expect(eventBus.getRecentEvents().some((event) =>
+      event.type === "overlay_content_updated" &&
+      event.character_count <= 96 &&
+      event.message_count === 1
+    )).toBe(true);
   });
 
   it("opens the local data directory through the runtime bridge", async () => {
@@ -1748,6 +1926,16 @@ describe("App", () => {
       )
     );
 
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Overlay / 游戏悬浮层" })).getByRole("button", { name: "开启 Overlay" })
+    );
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ overlay_enabled: "on" }) })
+      )
+    );
+
     await userEvent.selectOptions(screen.getByLabelText("语音输出 / Voice Output"), "on");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1977,9 +2165,78 @@ describe("App", () => {
     expect(screen.getByLabelText("本地识别程序 / ASR Binary")).toBeInTheDocument();
     expect(screen.getByLabelText("模型文件 / Model File")).toBeInTheDocument();
     expect(screen.getByLabelText("音频转换工具 / Audio Converter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择本地识别程序文件" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "选择模型文件" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "选择音频转换工具文件" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "保存配置 / Save" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "清除配置 / Clear" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "重新检测 / Refresh Status" })).toBeEnabled();
+  });
+
+  it("fills only the selected Local ASR path field from the native file picker", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    const binaryInput = await screen.findByLabelText("本地识别程序 / ASR Binary");
+    const modelInput = screen.getByLabelText("模型文件 / Model File");
+    const converterInput = screen.getByLabelText("音频转换工具 / Audio Converter");
+
+    await userEvent.type(binaryInput, "/Users/aragoto/private/old-whisper-cli");
+    vi.mocked(runtime.bridge.selectLocalFile).mockResolvedValueOnce({ canceled: true, path: null });
+    await userEvent.click(screen.getByRole("button", { name: "选择本地识别程序文件" }));
+    await waitFor(() =>
+      expect(runtime.bridge.selectLocalFile).toHaveBeenLastCalledWith({
+        kind: "asr_binary",
+        currentPath: "/Users/aragoto/private/old-whisper-cli"
+      })
+    );
+    expect(binaryInput).toHaveValue("/Users/aragoto/private/old-whisper-cli");
+
+    vi.mocked(runtime.bridge.selectLocalFile).mockResolvedValueOnce({
+      canceled: false,
+      path: "/Users/aragoto/private/whisper-cli"
+    });
+    await userEvent.click(screen.getByRole("button", { name: "选择本地识别程序文件" }));
+    await waitFor(() => expect(binaryInput).toHaveValue("/Users/aragoto/private/whisper-cli"));
+    expect(modelInput).toHaveValue("");
+    expect(converterInput).toHaveValue("");
+
+    vi.mocked(runtime.bridge.selectLocalFile).mockResolvedValueOnce({
+      canceled: false,
+      path: "/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin"
+    });
+    await userEvent.click(screen.getByRole("button", { name: "选择模型文件" }));
+    await waitFor(() =>
+      expect(runtime.bridge.selectLocalFile).toHaveBeenLastCalledWith({
+        kind: "asr_model",
+        currentPath: ""
+      })
+    );
+    await waitFor(() =>
+      expect(modelInput).toHaveValue("/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin")
+    );
+    expect(binaryInput).toHaveValue("/Users/aragoto/private/whisper-cli");
+    expect(converterInput).toHaveValue("");
+
+    vi.mocked(runtime.bridge.selectLocalFile).mockResolvedValueOnce({
+      canceled: false,
+      path: "/opt/homebrew/bin/ffmpeg"
+    });
+    await userEvent.click(screen.getByRole("button", { name: "选择音频转换工具文件" }));
+    await waitFor(() =>
+      expect(runtime.bridge.selectLocalFile).toHaveBeenLastCalledWith({
+        kind: "asr_converter",
+        currentPath: ""
+      })
+    );
+    await waitFor(() => expect(converterInput).toHaveValue("/opt/homebrew/bin/ffmpeg"));
+    expect(binaryInput).toHaveValue("/Users/aragoto/private/whisper-cli");
+    expect(modelInput).toHaveValue("/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin");
+    expect(screen.getByText("已选择文件，请点击保存配置。")).toBeInTheDocument();
+
+    expect(JSON.stringify(eventBus.getRecentEvents(50))).not.toContain("/Users/aragoto/private/whisper-cli");
+    expect(JSON.stringify(eventBus.getRecentEvents(50))).not.toContain("ggml-base.bin");
+    expect(JSON.stringify(eventBus.getRecentEvents(50))).not.toContain("/opt/homebrew/bin/ffmpeg");
   });
 
   it("saves Local ASR paths, shows basenames, and keeps debug surfaces safe", async () => {
@@ -3523,6 +3780,54 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("not_game_related");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
+  });
+
+  it("sanitizes Overlay error summaries in Event Stream", () => {
+    render(
+      <EventStreamPanel
+        events={[
+          {
+            type: "overlay_error",
+            timestamp: new Date().toISOString(),
+            reason: "raw stderr from /Users/aragoto/Library/Application Support/ReiLink/.env with API key"
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).toHaveTextContent("悬浮层失败");
+    expect(eventStream).not.toHaveTextContent("raw stderr");
+    expect(eventStream).not.toHaveTextContent("/Users/aragoto");
+    expect(eventStream).not.toHaveTextContent("Application Support");
+    expect(eventStream).not.toHaveTextContent(".env");
+    expect(eventStream).not.toHaveTextContent("API key");
+  });
+
+  it("shows a safe Overlay suppression summary in Event Stream", () => {
+    render(
+      <EventStreamPanel
+        events={[
+          {
+            type: "overlay_visibility_suppressed",
+            timestamp: new Date().toISOString(),
+            reason: "main_window_active"
+          }
+        ]}
+        open
+        onOpenChange={() => undefined}
+      />
+    );
+
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).toHaveTextContent("悬浮层暂时隐藏");
+    expect(eventStream).toHaveTextContent("主窗口前台或 macOS 安全模式，悬浮层暂时隐藏");
+    expect(eventStream).not.toHaveTextContent("main_window_active");
+    expect(eventStream).not.toHaveTextContent(".env");
+    expect(eventStream).not.toHaveTextContent("/Users/aragoto");
+    expect(eventStream).not.toHaveTextContent("raw stderr");
   });
 
   it("shows an empty Event Stream state when there are no events", () => {

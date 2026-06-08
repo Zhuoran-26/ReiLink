@@ -483,6 +483,10 @@ export type AppSettings = {
   proactive_companion: "on" | "off";
   proactive_sensitivity: "low" | "normal" | "high";
   auto_game_detection: "on" | "off";
+  overlay_enabled: "on" | "off";
+  overlay_position: "top-right" | "middle-right" | "bottom-right" | "top-left" | "middle-left" | "bottom-left";
+  overlay_opacity: number;
+  overlay_message_count: number;
   voice_output: "on" | "off";
   voice_rate: number;
   voice_volume: number;

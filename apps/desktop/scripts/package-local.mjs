@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { access, chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -64,12 +64,22 @@ export async function packageLocal(options = {}) {
   let plist = await readFile(plistPath, "utf8");
   plist = setPlistString(plist, "CFBundleName", appName);
   plist = setPlistString(plist, "CFBundleDisplayName", appName);
+  plist = setPlistString(plist, "CFBundleExecutable", appName);
   plist = setPlistString(plist, "CFBundleIdentifier", "com.reilink.desktop");
+  plist = removePlistKey(plist, "LSUIElement");
+  plist = removePlistKey(plist, "LSBackgroundOnly");
   plist = setPlistString(plist, "NSMicrophoneUsageDescription", microphoneUsageDescription);
   plist = setPlistString(plist, "NSAudioCaptureUsageDescription", microphoneUsageDescription);
   await writeFile(plistPath, plist, "utf8");
 
-  await chmod(path.join(outputApp, "Contents", "MacOS", "Electron"), 0o755).catch(() => undefined);
+  const macOSDir = path.join(outputApp, "Contents", "MacOS");
+  const electronExecutable = path.join(macOSDir, "Electron");
+  const reilinkExecutable = path.join(macOSDir, appName);
+  await rename(electronExecutable, reilinkExecutable).catch(async (error) => {
+    if (error?.code !== "ENOENT") throw error;
+    await requirePath(reilinkExecutable, "Packaged ReiLink executable is missing.");
+  });
+  await chmod(reilinkExecutable, 0o755).catch(() => undefined);
 
   return {
     backendBinaryPath: path.join(resourcesRoot, "backend", backendBinaryNameForPlatform(currentPlatform)),
@@ -170,6 +180,13 @@ export function setPlistString(plistText, key, value) {
     return plistText.replace("</dict>", `\t<key>${key}</key>\n\t<string>${value}</string>\n</dict>`);
   }
   return plistText.replace(pattern, `$1${value}$3`);
+}
+
+export function removePlistKey(plistText, key) {
+  return plistText.replace(
+    new RegExp(`\\s*<key>${key}</key>\\s*(?:<(?:true|false)\\/>|<string>[^<]*</string>|<integer>[^<]*</integer>)`, "g"),
+    ""
+  );
 }
 
 async function validateRendererIndex(indexPath) {

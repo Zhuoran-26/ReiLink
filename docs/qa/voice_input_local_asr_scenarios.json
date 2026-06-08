@@ -992,6 +992,50 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "raw transcript", "base64", "raw prompt"]
   },
   {
+    "id": "local-asr-native-picker-cancel-keeps-input",
+    "category": "voice_input_local_asr",
+    "precondition": "Settings -> Voice Input -> Local ASR Setup has existing text in one path input and the user opens the native picker",
+    "expected_status": "local_asr_not_configured",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Canceling the native file picker leaves the existing input unchanged and does not save, execute, copy, upload, or read any local file.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full transcript", "base64", "raw prompt"]
+  },
+  {
+    "id": "local-asr-native-picker-fill-and-save",
+    "category": "voice_input_local_asr_privacy",
+    "precondition": "Settings -> Voice Input -> Local ASR Setup is visible and the user chooses ASR binary, model, and converter files",
+    "expected_status": "local_asr_ready",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Each native file picker button fills only its matching input field. Settings are persisted only after Save, Refresh Status can read the saved config, and Debug/Event surfaces show safe basenames rather than full paths.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64", "raw prompt"]
+  },
+  {
+    "id": "local-asr-native-picker-regression-freeze",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Packaged app is opened during the Voice / Local ASR / Overlay Safe Mode freeze and Local ASR Setup is inspected",
+    "expected_status": "local_asr_ready",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Local ASR Setup shows three 选择... buttons, canceling a native picker keeps the current input, selecting binary/model/converter updates only the matching field, Save persists settings, Refresh Status and Check Local ASR still work, restart keeps settings, and Debug/Event surfaces never show full paths or transcripts.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "raw transcript", "base64", "raw prompt"]
+  },
+  {
+    "id": "voice-local-asr-regression-freeze",
+    "category": "voice_input_local_asr_packaged",
+    "precondition": "Voice Output, Voice Input, and Local ASR are manually regressed before a merge-ready freeze",
+    "expected_status": "local_asr_ready",
+    "manual_only": true,
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Voice Output remains default off with Test Voice available, Web Speech is not treated as the reliable packaged path, Local ASR ready is visible, Record & Transcribe fills the input without auto-send, accepted memory is the only memory that enters prompt, and proactive content does not enter memory.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "raw transcript", "base64", "raw prompt"]
+  },
+  {
     "id": "local-asr-privacy-no-full-paths",
     "category": "voice_input_local_asr_privacy",
     "precondition": "Local ASR settings, probe, audio capture, and transcription have all been exercised in a release smoke pass",

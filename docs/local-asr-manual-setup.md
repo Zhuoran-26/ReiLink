@@ -14,7 +14,7 @@ This guide is for optional, manual verification of ReiLink Local ASR with a user
 - Before the user clicks send, the transcript does not enter memory, prompt preview, knowledge retrieval, or game context.
 - Local ASR uses `zh` as the backend whisper language by default. UI language may show `zh-CN`; the backend normalizes that to `zh` before launching the local CLI.
 - ASR transcripts are trimmed, whitespace-collapsed, and lightly normalized from Traditional Chinese to Simplified Chinese before they fill the input. This only applies to ASR transcripts.
-- Local ASR paths can be saved from Settings into the backend user data directory. They are not written into the repo, `.env`, or packaged `.app`.
+- Local ASR paths can be typed or selected with native file picker buttons in Settings, then saved into the backend user data directory. They are not written into the repo, `.env`, or packaged `.app`.
 
 ## 2. Prerequisites / 前置条件
 
@@ -59,7 +59,7 @@ Do not commit model files, whisper binaries, converter binaries, or local path c
 Recommended path:
 
 1. Open Settings -> Voice Input.
-2. In `本地 ASR 配置 / Local ASR Setup`, enter the local ASR binary path, model path, and optional audio converter path.
+2. In `本地 ASR 配置 / Local ASR Setup`, enter the local ASR binary path, model path, and optional audio converter path, or use the `选择...` buttons beside each field.
 3. Click `保存配置 / Save`.
 4. Click `重新检测 / Refresh Status`.
 
@@ -70,6 +70,8 @@ The saved file lives under the backend user data directory as:
 ```
 
 It stores only the user-provided path strings. The save action does not execute, download, or copy any binary or model.
+
+The native file picker only fills the selected path into the matching input field. Canceling the picker keeps the existing input unchanged, and selecting a file does not read model contents, copy files, upload files, or save the setting until you click `保存配置 / Save`.
 
 Environment variables are still supported as fallback when no saved user setting exists.
 
@@ -103,6 +105,7 @@ Run these steps in order:
    - binary configured
    - model configured
    - converter configured when needed
+   You can type paths manually or use the `选择...` buttons; either way, click `保存配置 / Save` before refreshing status.
 4. Check Local ASR config status:
    - ready / missing / not executable
 5. Click `Check Local ASR`.
@@ -138,7 +141,8 @@ Use this checklist before freezing a release that touches voice input, Settings,
 2. No-env setup:
    - Start without relying on `REILINK_LOCAL_ASR_BINARY`, `REILINK_LOCAL_ASR_MODEL`, or `REILINK_AUDIO_CONVERTER_BINARY`.
    - Open Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup`.
-   - Enter the ASR binary path, model path, and audio converter path.
+   - Enter the ASR binary path, model path, and audio converter path manually, or use the `选择...` buttons.
+   - Canceling the native file picker does not clear existing input values.
    - Save, then refresh status.
    - Confirm status becomes ready and UI shows only safe basenames.
 3. Save / refresh / restart persistence:
