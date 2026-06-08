@@ -297,6 +297,8 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         "local-asr-transcript-simplified-chinese",
         "local-asr-no-auto-send",
         "local-asr-no-context-pollution",
+        "local-asr-native-picker-cancel-keeps-input",
+        "local-asr-native-picker-fill-and-save",
         "local-asr-privacy-no-full-paths",
         "local-asr-clear-config-fallback",
         "local-asr-backend-no-residual-process",

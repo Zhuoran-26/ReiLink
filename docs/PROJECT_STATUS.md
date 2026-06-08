@@ -84,7 +84,7 @@ dev/codex-reilink
 - Local Data Controls：Settings 中查看 / 打开本地数据目录，并复用 Demo Reset / reset controls。
 - Audio Capture / Temp File probe。
 - Local ASR staged foundation and main chat integration：feasibility plan、config detection、CLI probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge、whisper-like output parsing hardening、manual setup guide、主聊天语音按钮 provider selection。
-- Local ASR Settings persistence / Setup UI：Settings 中保存、清除、刷新本地 ASR binary / model / converter 路径，保存到用户数据目录并 fallback 到 env。
+- Local ASR Settings persistence / Setup UI：Settings 中保存、清除、刷新本地 ASR binary / model / converter 路径，提供原生文件选择按钮，保存到用户数据目录并 fallback 到 env。
 
 ### 当前 Voice / Local ASR 状态
 
@@ -94,7 +94,7 @@ dev/codex-reilink
 - Electron packaged 环境中的 Web Speech Recognition 服务不可靠，当前不作为稳定主路径；Local ASR ready 时主聊天语音按钮优先使用本地 ASR。
 - Local ASR 已接入主聊天语音按钮：provider selection 为 `local_asr` -> `web_speech` -> `unavailable`；本地转写成功后 transcript 只填入输入框，仍需手动发送。
 - Local ASR v1.1 已补齐输出规范化和 UX polish：`zh-CN` 归一为 whisper `zh`，ASR transcript 返回前 trim / 折叠空白 / 轻量繁转简，成功状态提示 `转写完成，请确认后发送`，timeout 提示可尝试更小模型或更短录音。
-- Local ASR Setup UI v1 已补齐：用户可在 Settings -> Voice Input 保存本地 ASR binary、model 和 converter 路径；用户配置优先，env fallback 次之，完整路径不进入 Event Stream / Debug / Raw JSON。
+- Local ASR Setup UI v1 已补齐：用户可在 Settings -> Voice Input 手动输入或通过原生文件选择器填入本地 ASR binary、model 和 converter 路径；用户配置优先，env fallback 次之，完整路径不进入 Event Stream / Debug / Raw JSON。
 - Local ASR v1 已达到 packaged app 可配置 MVP：真实用户手动验证已通过，包括 packaged `.app` 非黑屏、后端自启动、无 shell env 配置、Settings 持久化、重启后配置仍存在、Check Local ASR 可启动、主聊天按钮显示本地语音识别可用。
 - Local ASR release regression checklist 已建立在 `docs/QA.md` 和 `docs/qa/voice_input_local_asr_scenarios.json`，覆盖 packaged clean start、no-env setup、settings persistence、主聊天语音按钮、简体化、不自动发送、隐私和 clear fallback。
 - Local ASR staged foundation 已完成：feasibility plan、config detection、CLI probe、Audio Capture / Temp File probe、Backend ASR Transcription Bridge、Audio Format Conversion bridge 和 whisper-like parsing QA。
@@ -143,7 +143,6 @@ dev/codex-reilink
 - Windows packaging。
 - Knowledge pack expansion。
 - Embedding / hybrid retrieval research。
-- Local ASR native file picker。
 - Local ASR model setup helper。
 - Local ASR accuracy tuning、timeout tuning 和 optional larger model guidance。
 - Character TTS / natural voice output。
@@ -273,7 +272,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Local Data Controls: Settings can show / open the local data directory and reuse Demo Reset / reset controls.
 - Audio Capture / Temp File probe.
 - Local ASR staged foundation and main chat integration: feasibility plan, config detection, CLI probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, whisper-like output parsing hardening, manual setup guide, and main chat voice provider selection.
-- Local ASR Settings persistence / Setup UI: users can save, clear, and refresh local ASR binary / model / converter paths in Settings; saved user data falls back to env when absent.
+- Local ASR Settings persistence / Setup UI: users can save, clear, refresh, and fill local ASR binary / model / converter paths with native file picker buttons in Settings; saved user data falls back to env when absent.
 
 ### Current Voice / Local ASR Status
 
@@ -283,7 +282,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Web Speech Recognition is not reliable in the packaged Electron runtime and is not the stable main path; when Local ASR is ready, the main chat voice button prefers Local ASR.
 - Local ASR is wired into the main chat voice button: provider selection is `local_asr` -> `web_speech` -> `unavailable`; successful local transcripts only fill the input and still require manual send.
 - Local ASR v1.1 now includes transcript output polish: `zh-CN` is normalized to whisper `zh`, ASR transcripts are trimmed / whitespace-collapsed / lightly normalized to Simplified Chinese before filling the input, success asks the user to confirm before sending, and timeouts suggest a smaller model or shorter recording.
-- Local ASR Setup UI v1 is complete: users can save local ASR binary, model, and converter paths from Settings -> Voice Input; saved user settings take priority over env fallback, and full paths stay out of Event Stream / Debug / Raw JSON.
+- Local ASR Setup UI v1 is complete: users can type or use native file picker buttons to fill local ASR binary, model, and converter paths from Settings -> Voice Input; saved user settings take priority over env fallback, and full paths stay out of Event Stream / Debug / Raw JSON.
 - Local ASR v1 has reached a packaged-app configurable MVP: real user manual validation has passed for non-black packaged startup, backend auto-start, no-shell-env setup, Settings persistence, restart persistence, Check Local ASR startup, and main-chat local voice availability.
 - Local ASR release regression checklists now live in `docs/QA.md` and `docs/qa/voice_input_local_asr_scenarios.json`, covering packaged clean start, no-env setup, settings persistence, main-chat voice button behavior, Simplified Chinese transcript output, no auto-send, privacy, and clear fallback.
 - Local ASR staged foundation is complete: feasibility plan, config detection, CLI probe, Audio Capture / Temp File probe, Backend ASR Transcription Bridge, Audio Format Conversion bridge, and whisper-like parsing QA.
@@ -332,7 +331,6 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Windows packaging.
 - Knowledge pack expansion.
 - Embedding / hybrid retrieval research.
-- Local ASR native file picker.
 - Local ASR model setup helper.
 - Local ASR accuracy tuning, timeout tuning, and optional larger-model guidance.
 - Character TTS / natural voice output.

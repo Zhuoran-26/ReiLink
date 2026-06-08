@@ -41,10 +41,23 @@ export type OpenLocalDataDirResult = {
   error: string | null;
 };
 
+export type LocalFilePickerKind = "asr_binary" | "asr_model" | "asr_converter";
+
+export type LocalFilePickerRequest = {
+  kind: LocalFilePickerKind;
+  currentPath?: string;
+};
+
+export type LocalFilePickerResult = {
+  canceled: boolean;
+  path: string | null;
+};
+
 export type ReilinkRuntimeBridge = {
   getBackendStatus: () => Promise<BackendRuntimeStatus>;
   setBackendAutoStart: (enabled: boolean) => Promise<BackendRuntimeStatus>;
   openLocalDataDir: () => Promise<OpenLocalDataDirResult>;
+  selectLocalFile: (request: LocalFilePickerRequest) => Promise<LocalFilePickerResult>;
   getOverlayStatus: () => Promise<OverlayState>;
   setOverlayEnabled: (enabled: boolean) => Promise<OverlayState>;
   setOverlayConfig: (config: OverlayConfigUpdate) => Promise<OverlayState>;

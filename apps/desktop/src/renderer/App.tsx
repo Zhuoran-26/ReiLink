@@ -57,7 +57,7 @@ import {
   type OverlayContentUpdate,
   type OverlayMessageSource
 } from "../shared/overlay";
-import type { BackendRuntimeStatus } from "../shared/runtime";
+import type { BackendRuntimeStatus, LocalFilePickerKind } from "../shared/runtime";
 import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
 import { eventBus } from "./eventBus";
 import { voiceInput, type VoiceInputStatus } from "./voiceInput";
@@ -89,6 +89,7 @@ type LocalAsrSettingsDraft = {
   local_asr_model_path: string;
   audio_converter_binary_path: string;
 };
+type LocalAsrSettingsDraftPathKey = keyof LocalAsrSettingsDraft;
 
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
 
@@ -1922,6 +1923,34 @@ export function App() {
     }
   };
 
+  const selectLocalAsrFile = async (kind: LocalFilePickerKind, field: LocalAsrSettingsDraftPathKey) => {
+    const runtime = window.reilinkRuntime;
+    if (!runtime?.selectLocalFile) {
+      setLocalAsrSettingsMessage("当前桌面端不支持选择文件。");
+      return;
+    }
+    setLocalAsrSettingsBusy(`select-${kind}`);
+    try {
+      setLastError("");
+      setLastRawError("");
+      const result = await runtime.selectLocalFile({
+        kind,
+        currentPath: localAsrSettingsDraft[field]
+      });
+      if (result.canceled || !result.path) return;
+      setLocalAsrSettingsDraft((current) => ({
+        ...current,
+        [field]: result.path ?? current[field]
+      }));
+      setLocalAsrSettingsMessage("已选择文件，请点击保存配置。");
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "选择本地文件失败"));
+    } finally {
+      setLocalAsrSettingsBusy("");
+    }
+  };
+
   const saveLocalAsrSettings = async () => {
     const payload: LocalAsrSettingsUpdate = {};
     const binaryPath = localAsrSettingsDraft.local_asr_binary_path.trim();
@@ -3363,12 +3392,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <strong>{localAsrSourceText(localAsrSettings.source)}</strong>
                   </div>
                   <p className="settingHint">{localAsrSettingsSummaryText(localAsrSettings)}</p>
-                  <label className="localAsrPathField">
-                    <span>本地识别程序 / ASR Binary</span>
+                  <div className="localAsrPathField">
+                    <label htmlFor="local-asr-binary-path">本地识别程序 / ASR Binary</label>
+                    <div className="localAsrPathInputRow">
                     <input
                       aria-label="本地识别程序 / ASR Binary"
                       autoComplete="off"
                       disabled={localAsrSettingsBusy !== ""}
+                      id="local-asr-binary-path"
                       placeholder="/opt/homebrew/bin/whisper-cli"
                       spellCheck={false}
                       type="text"
@@ -3380,13 +3411,26 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         }))
                       }
                     />
-                  </label>
-                  <label className="localAsrPathField">
-                    <span>模型文件 / Model File</span>
+                      <button
+                        aria-label="选择本地识别程序文件"
+                        className="smallButton quiet localAsrBrowseButton"
+                        disabled={localAsrSettingsBusy !== ""}
+                        type="button"
+                        onClick={() => void selectLocalAsrFile("asr_binary", "local_asr_binary_path")}
+                      >
+                        <FolderOpen size={14} />
+                        选择...
+                      </button>
+                    </div>
+                  </div>
+                  <div className="localAsrPathField">
+                    <label htmlFor="local-asr-model-path">模型文件 / Model File</label>
+                    <div className="localAsrPathInputRow">
                     <input
                       aria-label="模型文件 / Model File"
                       autoComplete="off"
                       disabled={localAsrSettingsBusy !== ""}
+                      id="local-asr-model-path"
                       placeholder="~/Library/Application Support/ReiLink/models/ggml-base.bin"
                       spellCheck={false}
                       type="text"
@@ -3398,13 +3442,26 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         }))
                       }
                     />
-                  </label>
-                  <label className="localAsrPathField">
-                    <span>音频转换工具 / Audio Converter</span>
+                      <button
+                        aria-label="选择模型文件"
+                        className="smallButton quiet localAsrBrowseButton"
+                        disabled={localAsrSettingsBusy !== ""}
+                        type="button"
+                        onClick={() => void selectLocalAsrFile("asr_model", "local_asr_model_path")}
+                      >
+                        <FolderOpen size={14} />
+                        选择...
+                      </button>
+                    </div>
+                  </div>
+                  <div className="localAsrPathField">
+                    <label htmlFor="local-asr-converter-path">音频转换工具 / Audio Converter</label>
+                    <div className="localAsrPathInputRow">
                     <input
                       aria-label="音频转换工具 / Audio Converter"
                       autoComplete="off"
                       disabled={localAsrSettingsBusy !== ""}
+                      id="local-asr-converter-path"
                       placeholder="/opt/homebrew/bin/ffmpeg"
                       spellCheck={false}
                       type="text"
@@ -3416,7 +3473,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         }))
                       }
                     />
-                  </label>
+                      <button
+                        aria-label="选择音频转换工具文件"
+                        className="smallButton quiet localAsrBrowseButton"
+                        disabled={localAsrSettingsBusy !== ""}
+                        type="button"
+                        onClick={() => void selectLocalAsrFile("asr_converter", "audio_converter_binary_path")}
+                      >
+                        <FolderOpen size={14} />
+                        选择...
+                      </button>
+                    </div>
+                  </div>
                   <div className="localAsrSetupActions">
                     <button
                       className="smallButton quiet"

@@ -1005,6 +1005,7 @@ const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
       return status;
     }),
     openLocalDataDir: vi.fn(async () => ({ ok: true, path: status.user_data_dir, error: null })),
+    selectLocalFile: vi.fn(async () => ({ canceled: true, path: null })),
     getOverlayStatus: vi.fn(async () => overlayState),
     setOverlayEnabled: vi.fn(async (enabled: boolean) => {
       overlayState = { ...overlayState, enabled, visible: false };
@@ -2164,9 +2165,78 @@ describe("App", () => {
     expect(screen.getByLabelText("本地识别程序 / ASR Binary")).toBeInTheDocument();
     expect(screen.getByLabelText("模型文件 / Model File")).toBeInTheDocument();
     expect(screen.getByLabelText("音频转换工具 / Audio Converter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择本地识别程序文件" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "选择模型文件" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "选择音频转换工具文件" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "保存配置 / Save" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "清除配置 / Clear" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "重新检测 / Refresh Status" })).toBeEnabled();
+  });
+
+  it("fills only the selected Local ASR path field from the native file picker", async () => {
+    const runtime = installRuntimeBridge(backendRuntimeStatus);
+    render(<App />);
+
+    const binaryInput = await screen.findByLabelText("本地识别程序 / ASR Binary");
+    const modelInput = screen.getByLabelText("模型文件 / Model File");
+    const converterInput = screen.getByLabelText("音频转换工具 / Audio Converter");
+
+    await userEvent.type(binaryInput, "/Users/aragoto/private/old-whisper-cli");
+    vi.mocked(runtime.bridge.selectLocalFile).mockResolvedValueOnce({ canceled: true, path: null });
+    await userEvent.click(screen.getByRole("button", { name: "选择本地识别程序文件" }));
+    await waitFor(() =>
+      expect(runtime.bridge.selectLocalFile).toHaveBeenLastCalledWith({
+        kind: "asr_binary",
+        currentPath: "/Users/aragoto/private/old-whisper-cli"
+      })
+    );
+    expect(binaryInput).toHaveValue("/Users/aragoto/private/old-whisper-cli");
+
+    vi.mocked(runtime.bridge.selectLocalFile).mockResolvedValueOnce({
+      canceled: false,
+      path: "/Users/aragoto/private/whisper-cli"
+    });
+    await userEvent.click(screen.getByRole("button", { name: "选择本地识别程序文件" }));
+    await waitFor(() => expect(binaryInput).toHaveValue("/Users/aragoto/private/whisper-cli"));
+    expect(modelInput).toHaveValue("");
+    expect(converterInput).toHaveValue("");
+
+    vi.mocked(runtime.bridge.selectLocalFile).mockResolvedValueOnce({
+      canceled: false,
+      path: "/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin"
+    });
+    await userEvent.click(screen.getByRole("button", { name: "选择模型文件" }));
+    await waitFor(() =>
+      expect(runtime.bridge.selectLocalFile).toHaveBeenLastCalledWith({
+        kind: "asr_model",
+        currentPath: ""
+      })
+    );
+    await waitFor(() =>
+      expect(modelInput).toHaveValue("/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin")
+    );
+    expect(binaryInput).toHaveValue("/Users/aragoto/private/whisper-cli");
+    expect(converterInput).toHaveValue("");
+
+    vi.mocked(runtime.bridge.selectLocalFile).mockResolvedValueOnce({
+      canceled: false,
+      path: "/opt/homebrew/bin/ffmpeg"
+    });
+    await userEvent.click(screen.getByRole("button", { name: "选择音频转换工具文件" }));
+    await waitFor(() =>
+      expect(runtime.bridge.selectLocalFile).toHaveBeenLastCalledWith({
+        kind: "asr_converter",
+        currentPath: ""
+      })
+    );
+    await waitFor(() => expect(converterInput).toHaveValue("/opt/homebrew/bin/ffmpeg"));
+    expect(binaryInput).toHaveValue("/Users/aragoto/private/whisper-cli");
+    expect(modelInput).toHaveValue("/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin");
+    expect(screen.getByText("已选择文件，请点击保存配置。")).toBeInTheDocument();
+
+    expect(JSON.stringify(eventBus.getRecentEvents(50))).not.toContain("/Users/aragoto/private/whisper-cli");
+    expect(JSON.stringify(eventBus.getRecentEvents(50))).not.toContain("ggml-base.bin");
+    expect(JSON.stringify(eventBus.getRecentEvents(50))).not.toContain("/opt/homebrew/bin/ffmpeg");
   });
 
   it("saves Local ASR paths, shows basenames, and keeps debug surfaces safe", async () => {

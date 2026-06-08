@@ -4,6 +4,7 @@ const runtimeBridge = {
   getBackendStatus: () => ipcRenderer.invoke("backend-runtime:get-status"),
   setBackendAutoStart: (enabled) => ipcRenderer.invoke("backend-runtime:set-auto-start", enabled),
   openLocalDataDir: () => ipcRenderer.invoke("local-data:open-dir"),
+  selectLocalFile: (request) => ipcRenderer.invoke("local-file:select", request),
   getOverlayStatus: () => ipcRenderer.invoke("overlay:get-status"),
   setOverlayEnabled: (enabled) => ipcRenderer.invoke("overlay:set-enabled", enabled),
   setOverlayConfig: (config) => ipcRenderer.invoke("overlay:set-config", config),

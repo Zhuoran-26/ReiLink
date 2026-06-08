@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, net, protocol, screen, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, shell } from "electron";
 import type { WebContents } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 import { BackendRuntimeManager } from "./backendRuntime.js";
+import { selectLocalFile, type LocalFilePickerRequest } from "./localFilePicker.js";
 import { openLocalDataDir } from "./localData.js";
 import { createMainWindowOptions, restoreMainWindowForActivation } from "./mainWindow.js";
 import {
@@ -266,6 +267,13 @@ app.whenReady().then(() => {
     backendRuntime?.setAutoStartEnabled(Boolean(enabled))
   );
   ipcMain.handle("local-data:open-dir", () => openLocalDataDir(app.getPath("userData"), shell));
+  ipcMain.handle("local-file:select", (_event, request: LocalFilePickerRequest) =>
+    selectLocalFile(request, {
+      appUserDataPath: app.getPath("userData"),
+      dialog,
+      homeDir: app.getPath("home")
+    })
+  );
   ipcMain.handle("overlay:get-status", () => overlayState());
   ipcMain.handle("overlay:set-enabled", (event, enabled: boolean) => setOverlayEnabledFromRenderer(Boolean(enabled), event.sender));
   ipcMain.handle("overlay:set-config", (event, config: OverlayConfigUpdate) => setOverlayConfig(config, event.sender));

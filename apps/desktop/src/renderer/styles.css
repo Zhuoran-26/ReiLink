@@ -1008,9 +1008,16 @@ button {
   font-size: 12px;
 }
 
-.localAsrPathField span {
+.localAsrPathField label {
   color: #dce4f6;
   font-weight: 620;
+}
+
+.localAsrPathInputRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
 }
 
 .localAsrPathField input {
@@ -1032,6 +1039,11 @@ button {
 
 .localAsrPathField input:disabled {
   opacity: 0.64;
+}
+
+.localAsrBrowseButton {
+  min-width: 86px;
+  justify-content: center;
 }
 
 .localAsrSetupActions {
@@ -1481,6 +1493,10 @@ button {
   }
 
   .demoResetActions {
+    grid-template-columns: 1fr;
+  }
+
+  .localAsrPathInputRow {
     grid-template-columns: 1fr;
   }
 

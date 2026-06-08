@@ -127,7 +127,8 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 2. No-env Local ASR setup:
    - 不依赖 `REILINK_LOCAL_ASR_BINARY` / `REILINK_LOCAL_ASR_MODEL` / `REILINK_AUDIO_CONVERTER_BINARY`。
    - Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 可见。
-   - 输入 ASR binary path、model path 和 audio converter path。
+   - ASR binary path、model path 和 audio converter path 旁边可见 `选择...` 按钮。
+   - 可手动输入路径，或点击 `选择...` 打开系统原生 file picker 后填入对应路径；取消选择不应清空原路径。
    - 点击 `保存配置 / Save`，再点击 `重新检测 / Refresh Status`。
    - Local ASR status 变为 ready。
    - UI 只显示 safe basename：`whisper-cli`、`ggml-base.bin`、`ffmpeg`。
@@ -163,15 +164,15 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
    - 真实识别准确率取决于模型大小、录音质量和硬件性能。
    - `base` 模型是速度 / 准确率折中；更大模型可能更准确但更慢。
    - packaged `.app` 若用户未配置路径，会显示安全 fallback。
-   - native file picker 尚未实现，当前使用文本路径输入。
+   - native file picker 只填入 Settings 输入框，不读取模型内容、不复制文件、不上传文件；仍需点击 `保存配置 / Save` 才持久化。
 
 - 当前 Web Speech Recognition 在 Electron packaged app 中可能暴露 API，但识别服务不可用；Local ASR ready 时主聊天语音按钮应走本地转写，Local ASR not ready 时才显示 `语音识别服务不可用` 或明确 unavailable fallback，不崩溃。
 - v1 仍保留输入框入口、安全 fallback、系统听写提示和“不自动发送”的边界。
 - 当前 Local ASR Config Detection v1 只检测解析后的配置，不执行 whisper / ASR binary，不录音，不转写，不上传音频，不下载模型，不把模型或用户数据写入 `.app`。
 - Local ASR 配置来源优先级：Settings 中的用户配置优先，其次是 `REILINK_LOCAL_ASR_BINARY` / `REILINK_LOCAL_ASR_MODEL` / `REILINK_AUDIO_CONVERTER_BINARY` 环境变量 fallback，最后是未配置。
-- Settings 的 `本地 ASR 配置 / Local ASR Setup` 可保存本地识别程序、模型文件和音频转换工具路径；保存位置为 backend `settings.data_dir/local_asr_settings.json`，不写入 repo、`.env` 或 packaged `.app`。
+- Settings 的 `本地 ASR 配置 / Local ASR Setup` 可保存本地识别程序、模型文件和音频转换工具路径；路径可手动输入，也可通过原生 file picker 填入。保存位置为 backend `settings.data_dir/local_asr_settings.json`，不写入 repo、`.env` 或 packaged `.app`。
 - Settings API `GET /api/voice-input/local-asr/settings` 只返回 configured booleans、source 和安全 basename；`PUT` 只保存路径字符串，不执行、不下载、不复制；`DELETE` 清除用户配置并回落到 env 或 none。
-- 完整路径只允许出现在 Settings 编辑输入框和本地 settings JSON 文件中；Event Stream、Debug Panel、Raw JSON、chat 和文档示例不得出现真实用户名路径。
+- 完整路径只允许出现在 Settings 编辑输入框、file picker 返回填入值和本地 settings JSON 文件中；Event Stream、Debug Panel、Raw JSON、chat 和文档示例不得出现真实用户名路径。
 - Settings / Debug Panel 应显示 `本地语音识别 / Local ASR` 状态；状态包括未配置、缺少本地识别程序、识别程序不可执行、缺少本地语音模型、已就绪。
 - 未配置：用户配置和 env fallback 都没有可用 binary/model，或只配置了识别程序但未配置模型；显示用户可读中文提示，Voice Input 仍回退到系统听写提示。
 - 缺少本地识别程序：配置了 binary 但文件不存在；UI 只显示安全文件名，不显示完整路径。
@@ -236,7 +237,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 本冒烟只用于开发者或用户本机手动验证真实 whisper.cpp / model / converter 链路，不是自动测试依赖，也不代表 ReiLink 内置模型、ASR binary 或 converter binary。详细配置步骤见 `docs/local-asr-manual-setup.md`。
 
 - 用户自行准备本地 whisper.cpp-compatible binary、model 文件和可选 converter；不要下载或提交到 repo。
-- 优先在 Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 输入并保存本地 binary / model / converter 路径；env fallback 仍可用于开发或启动脚本。
+- 优先在 Settings -> Voice Input -> `本地 ASR 配置 / Local ASR Setup` 输入，或通过 `选择...` 按钮选择并保存本地 binary / model / converter 路径；env fallback 仍可用于开发或启动脚本。
 - Settings -> Voice Input 中 config detection 应显示 ready；缺少文件或不可执行时只显示安全摘要。
 - `Check Local ASR` 应返回 succeeded；失败或超时只显示中文安全状态。
 - `Audio Capture Test` 应录音成功，显示 duration、size、MIME，并清理临时音频。
