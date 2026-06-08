@@ -299,6 +299,8 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         "local-asr-no-context-pollution",
         "local-asr-native-picker-cancel-keeps-input",
         "local-asr-native-picker-fill-and-save",
+        "local-asr-native-picker-regression-freeze",
+        "voice-local-asr-regression-freeze",
         "local-asr-privacy-no-full-paths",
         "local-asr-clear-config-fallback",
         "local-asr-backend-no-residual-process",
@@ -341,6 +343,7 @@ def test_overlay_scenarios_have_required_fields():
         "overlay-event-stream-safe",
         "overlay-macos-safe-mode-fail-closed",
         "overlay-window-lifecycle-regression-freeze",
+        "overlay-safe-mode-regression-freeze-manual",
         "overlay-macos-autoshow-restore-checklist",
     } <= {item.get("id") for item in scenarios}
     required_forbidden_terms = {
@@ -375,6 +378,8 @@ def test_voice_input_local_asr_release_regression_scenarios_are_present():
         "local-asr-transcript-simplified-chinese",
         "local-asr-no-auto-send",
         "local-asr-no-context-pollution",
+        "local-asr-native-picker-regression-freeze",
+        "voice-local-asr-regression-freeze",
         "local-asr-privacy-no-full-paths",
         "local-asr-clear-config-fallback",
         "local-asr-backend-no-residual-process",
@@ -436,3 +441,29 @@ def test_readme_qa_links_point_to_existing_files():
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup
     assert "Voice Interaction MVP" in voice_mvp_release_notes
     assert "No cloud ASR" in voice_mvp_release_notes
+
+
+def test_regression_freeze_docs_cover_voice_asr_overlay_safe_mode():
+    qa_doc = QA_DOC_PATH.read_text(encoding="utf-8")
+    project_status = PROJECT_STATUS_PATH.read_text(encoding="utf-8")
+    overlay_scenarios = {item["id"] for item in _load_overlay_scenarios()}
+    local_asr_scenarios = {item["id"] for item in _load_voice_input_local_asr_scenarios()}
+
+    assert "Voice / Local ASR / Overlay Safe Mode 阶段冻结人工验收" in qa_doc
+    assert "Desktop Window Stability" in qa_doc
+    assert "Overlay Safe Mode" in qa_doc
+    assert "Local ASR Native File Picker" in qa_doc
+    assert "Voice / ASR Regression" in qa_doc
+    assert "macOS 下 auto-show 暂时不出现小气泡，这是当前预期" in qa_doc
+    assert "transcript 不自动发送" in qa_doc
+
+    assert "Voice Output v1 / v1.1 已稳定" in project_status
+    assert "Local ASR v1 已稳定" in project_status
+    assert "Local ASR Native File Picker v1 已加入" in project_status
+    assert "file picker 只填入路径，不读取、不复制、不上传文件" in project_status
+    assert "macOS Overlay auto-show 仍故意 fail-closed" in project_status
+    assert "不是完整可用的游戏悬浮气泡功能" in project_status
+
+    assert "overlay-safe-mode-regression-freeze-manual" in overlay_scenarios
+    assert "local-asr-native-picker-regression-freeze" in local_asr_scenarios
+    assert "voice-local-asr-regression-freeze" in local_asr_scenarios

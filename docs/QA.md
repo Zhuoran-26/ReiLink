@@ -42,6 +42,63 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `.env`、API key、memory、session 和用户数据不复制进 `.app`。
 - app 退出后，由 app 自启动的 backend 没有残留进程。
 
+### 1.5 Voice / Local ASR / Overlay Safe Mode 阶段冻结人工验收
+
+本节用于当前阶段 Regression Freeze。它不表示 macOS Overlay auto-show 已恢复；macOS 下不自动出现小气泡是当前预期。
+
+#### A. Desktop Window Stability
+
+1. packaged app 启动不黑屏。
+2. ReiLink 出现在 Dock。
+3. ReiLink 出现在 `⌘ + Tab`。
+4. 可以切到 Finder / 浏览器。
+5. ReiLink 不自动抢回焦点。
+6. ReiLink 不始终置顶。
+7. 主窗口边框和 macOS traffic lights 不疯狂闪烁。
+8. Settings 可操作。
+9. 关闭 / 最小化 / 全屏按钮正常。
+
+#### B. Overlay Safe Mode
+
+1. Overlay 默认关闭。
+2. Settings 中 Overlay safe mode 文案可见。
+3. 开启 Overlay 后 ReiLink 前台不显示小气泡，这是当前预期。
+4. Settings 不被遮挡。
+5. Settings 可以关闭 Overlay。
+6. `强制关闭悬浮层` 按钮可用。
+7. 位置 / 透明度 / 消息数量配置可保存。
+8. macOS 下 auto-show 暂时不出现小气泡，这是当前预期。
+9. Event Stream 不泄露 raw prompt、API key、`.env`、完整路径、完整 transcript、stdout/stderr 或 raw JSON。
+10. 后续恢复 auto-show 前必须人工验证 packaged `.app`。
+
+#### C. Local ASR Native File Picker
+
+1. Local ASR Setup 三个路径旁有 `选择...` 按钮。
+2. 点击按钮会打开系统原生 file picker。
+3. 取消选择不清空原路径。
+4. whisper binary 选择只更新 binary path。
+5. model 选择只更新 model path。
+6. converter 选择只更新 converter path。
+7. 保存后 Refresh Status 能读取配置。
+8. Check Local ASR 能正常 probe。
+9. 重启后配置仍存在。
+10. 主聊天语音输入仍可识别并填入输入框。
+11. transcript 不自动发送。
+12. Event Stream / Debug 不显示完整路径、stdout/stderr、transcript、API key 或 `.env`。
+
+#### D. Voice / ASR Regression
+
+1. Voice Output 默认关闭。
+2. Test Voice 可用。
+3. TTS 不朗读完整敏感内容到 Event Stream。
+4. Web Speech fallback 不作为可靠主路径。
+5. Local ASR ready 状态可显示。
+6. Record & Transcribe 可用。
+7. 识别结果填入输入框但不自动发送。
+8. 用户确认后才进入 chat flow。
+9. accepted memory 才进入 prompt。
+10. proactive 内容不进入 memory。
+
 ### 2. Voice Output 回归检查
 
 - `语音输出 / Voice Output` 默认关闭。

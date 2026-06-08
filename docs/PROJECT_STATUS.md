@@ -8,7 +8,9 @@ Updated: 2026-06-08
 
 当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，并进入 Overlay v1.1 regression freeze / macOS safe mode 明示阶段。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，并进入 Voice / Local ASR / Overlay Safe Mode regression freeze 阶段。
+
+截至本次阶段冻结，Voice Output v1 / v1.1、Local ASR v1、Local ASR Native File Picker v1 和 Overlay v1.1 macOS safe mode 已作为当前稳定回归基线记录。macOS Overlay auto-show 仍故意 fail-closed，后续恢复必须单独立项并通过 packaged `.app` QA checklist。
 
 v0.2-pre 的重点不是新增核心玩法或扩大业务范围，而是让首次启动、开发启动、公开展示、standalone runtime、本地数据目录、多游戏知识维护和 release readiness 更清晰、更稳定。
 
@@ -88,6 +90,12 @@ dev/codex-reilink
 
 ### 当前 Voice / Local ASR 状态
 
+- Voice Output v1 / v1.1 已稳定：默认关闭，Test Voice、rate / volume 和系统中文语音优先可用；Event Stream 只记录播放生命周期安全摘要。
+- Local ASR v1 已稳定：使用用户本地 whisper-like binary、model 和 ffmpeg / converter；ReiLink 不内置 whisper binary、model 或 ffmpeg，不接云 ASR，不上传音频。
+- Local ASR transcript-first 边界保持稳定：识别结果只填入输入框，不自动发送；用户确认点击发送后才进入 chat flow；未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
+- Local ASR Settings 支持路径持久化；Settings 输入框显示完整本地路径是正常编辑行为，但 Event Stream / Debug / Raw JSON 不显示完整路径。
+- Local ASR Native File Picker v1 已加入：用户可为 binary、model、converter 点击 `选择...` 打开系统原生文件选择器；file picker 只填入路径，不读取、不复制、不上传文件，仍需用户点击保存配置。
+
 - Voice Output 已完成并可用：支持 Test Voice、rate / volume、中文语音优先，`tts_started` 只在真实 `utterance.onstart` 后触发，`tts_completed` / `tts_error` 映射到安全中文摘要。
 - Voice Output 当前使用系统 `speechSynthesis`，不是角色级配音；“Rei”等名字和语气可能不自然，后续可研究本地角色 TTS 或更自然的 voice provider，但当前不接商业 TTS。
 - Voice Input v1 已完成 push-to-talk fallback：Web Speech transcript 只填入输入框，不自动发送；未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
@@ -106,6 +114,7 @@ dev/codex-reilink
 ### 当前 Overlay 状态
 
 - Overlay v1.1 已建立底座：Settings 中新增 `Overlay / 游戏悬浮层`，默认关闭，开关、位置、透明度和消息数量持久化在 app settings。
+- Overlay v1 Foundation 和 v1.1 配置项已实现，但当前 macOS 状态应描述为 safe mode / experimental freeze，而不是完整可用的游戏悬浮气泡功能。
 - Overlay v1.1 Regression Freeze 已确认当前安全基线：用户手动测试已验证 ReiLink 主窗口不再闪烁、不始终置顶、可切出 / 切回、Dock 和 `⌘ + Tab` 可见、Settings 和 `强制关闭悬浮层` 可操作。
 - Electron main process 可创建独立 overlay window；窗口为 frameless、transparent、always-on-top、不可聚焦，并忽略鼠标输入。非 macOS 可使用 `skipTaskbar`；macOS 当前避免让 overlay window 影响整个 ReiLink Dock / app switcher 入口。
 - Overlay 已和 ReiLink 主窗口解耦显示：ReiLink 主窗口 / Settings 前台时会销毁或隐藏运行时 overlay window，避免遮挡 Settings、select/dropdown 或 macOS window controls。macOS 当前采用 emergency fail-closed 策略，切到游戏或其他 app 后也不自动显示 overlay，优先保证主窗口不闪烁、不置顶、不抢焦点。
@@ -117,7 +126,7 @@ dev/codex-reilink
 - assistant 最终回复和 proactive message 只会把截断/脱敏后的安全摘要推送到 overlay；不会传 raw prompt、完整 assistant reply、完整用户输入、memory、debug raw JSON、完整 transcript、API key、`.env`、完整路径、raw stdout 或 raw stderr。
 - Event Stream 已加入 overlay lifecycle 安全事件：开关变化、设置变化、位置更新、窗口显示/隐藏、内容更新和错误摘要；内容更新只显示来源、字数和消息数量。
 - 当前不实现 HUD / 敌人 / 玩家位置识别，不做画面理解或自动避让，不做拖拽或锁定位置。
-- 后续需单独恢复 macOS overlay auto-show，并在恢复前通过 checklist 验证：不调用 `mainWindow.focus()` 抢焦点、不触发 app activation loop、不隐藏 Dock / `⌘ + Tab`、主窗口前台时 overlay 隐藏、Settings 始终可关闭 Overlay、packaged `.app` 人工验证通过。
+- 后续需单独恢复 macOS overlay auto-show，并在恢复前通过 checklist 验证：不调用 `mainWindow.focus()` 抢焦点、不触发 app activation loop、不隐藏 Dock / `⌘ + Tab`、主窗口前台时 overlay 隐藏、Settings 始终可关闭 Overlay、packaged `.app` 人工验证通过。当前优先保证主窗口稳定性、Dock / `⌘ + Tab` 可见和 Settings 可关闭。
 
 ### 当前 Knowledge Retrieval 状态
 
@@ -190,13 +199,15 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-07
+Updated: 2026-06-08
 
 ### Current Stage
 
 Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, and the project is now in Overlay v1.1 regression freeze / macOS safe mode clarification.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, and the project is now in Voice / Local ASR / Overlay Safe Mode regression freeze.
+
+As of this freeze, Voice Output v1 / v1.1, Local ASR v1, Local ASR Native File Picker v1, and Overlay v1.1 macOS safe mode are the current stable regression baseline. macOS Overlay auto-show intentionally remains fail-closed and must be restored only in a separate task with packaged-app QA.
 
 The v0.2-pre focus is not adding major core features or expanding product scope. It is making first run, developer startup, public presentation, standalone runtime, local data directories, multi-game knowledge maintenance, and release readiness clearer and more stable.
 
@@ -276,6 +287,12 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 
 ### Current Voice / Local ASR Status
 
+- Voice Output v1 / v1.1 is stable: default off, Test Voice, rate / volume, and Chinese system voice preference are available, with privacy-safe Event Stream lifecycle summaries.
+- Local ASR v1 is stable: it uses user-provided local whisper-like binaries, model files, and ffmpeg / converter binaries. ReiLink does not bundle whisper, models, ffmpeg, cloud ASR, or commercial ASR.
+- Local ASR keeps the transcript-first boundary: recognized text only fills the input, is not auto-sent, and enters chat flow only after the user confirms by sending. Unconfirmed transcripts do not enter memory, prompt, retrieval, or game context.
+- Local ASR Settings persist user paths. Full local paths may appear in Settings edit inputs as normal editable values, but not in Event Stream / Debug / Raw JSON.
+- Local ASR Native File Picker v1 is available for binary, model, and converter paths. The picker only fills the path field; it does not read, copy, upload, or save files until the user saves settings.
+
 - Voice Output is implemented and usable: Test Voice, rate / volume, Chinese voice preference, `tts_started` only after the real `utterance.onstart`, and safe Chinese Event Stream summaries.
 - Voice Output currently uses system `speechSynthesis`, not character-grade voice acting; names like "Rei" and the tone may sound unnatural. A local character TTS or more natural voice provider can be researched later, but commercial TTS is not part of the current scope.
 - Voice Input v1 push-to-talk fallback is implemented: Web Speech transcripts only fill the input and are not auto-sent; unconfirmed transcripts do not enter memory, prompt, knowledge retrieval, or game context.
@@ -294,6 +311,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 ### Current Overlay Status
 
 - Overlay v1.1 is in place: Settings now includes `Overlay / 游戏悬浮层`, defaults to off, and persists enabled state, position, opacity, and message count through app settings.
+- Overlay v1 Foundation and v1.1 configuration are implemented, but the current macOS state should be described as safe mode / experimental freeze, not as a fully available in-game bubble overlay.
 - Overlay v1.1 Regression Freeze has a confirmed safety baseline: user manual testing verified that the ReiLink main window no longer flickers, no longer stays always-on-top, can switch away and back, remains visible in Dock and `⌘ + Tab`, and keeps Settings plus `强制关闭悬浮层` operable.
 - The Electron main process can create a separate overlay window that is frameless, transparent, always-on-top, non-focusable, and ignores mouse input. Non-macOS can use `skipTaskbar`; macOS currently avoids letting the overlay window affect the whole ReiLink Dock / app switcher entry.
 - Overlay visibility is separated from the enabled setting: the runtime overlay window is destroyed or hidden while the ReiLink main window / Settings is foreground, so it does not cover Settings, select/dropdown controls, or macOS window controls. macOS currently uses an emergency fail-closed policy and does not auto-show overlay after switching away, prioritizing normal main-window focus behavior.
@@ -305,7 +323,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Completed assistant replies and proactive messages send only truncated/redacted safe summaries to overlay; raw prompt, full assistant reply, full user input, memory, debug raw JSON, full transcript, API keys, `.env`, full paths, raw stdout, and raw stderr are excluded.
 - Event Stream includes safe overlay lifecycle events for enabled changes, settings changes, position updates, show/hide, content updates, and errors; content updates expose only source, character count, and message count.
 - The current scope does not include HUD / enemy / player-position detection, vision, automatic avoidance, dragging, or locking.
-- A later macOS-specific overlay pass should restore auto-show only after passing the checklist: no `mainWindow.focus()` focus stealing, no app activation loop, no hidden Dock / `⌘ + Tab`, overlay hidden while the main window is foreground, Settings always able to disable Overlay, and packaged `.app` manual verification complete.
+- A later macOS-specific overlay pass should restore auto-show only after passing the checklist: no `mainWindow.focus()` focus stealing, no app activation loop, no hidden Dock / `⌘ + Tab`, overlay hidden while the main window is foreground, Settings always able to disable Overlay, and packaged `.app` manual verification complete. The current priority is main-window stability, Dock / `⌘ + Tab` visibility, and keeping Settings able to disable Overlay.
 
 ### Current Knowledge Retrieval Status
 

@@ -170,6 +170,16 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
+    "id": "overlay-safe-mode-regression-freeze-manual",
+    "category": "overlay_packaged",
+    "precondition": "Current macOS packaged app is smoke-tested after Overlay safe mode freeze and Local ASR file picker work",
+    "expected_status": "overlay_visibility_suppressed",
+    "should_accept_input": false,
+    "should_show_full_reply": false,
+    "expected_behavior": "Packaged ReiLink starts non-black, remains visible in Dock and Cmd+Tab, can switch to Finder or a browser without focus stealing, keeps Settings operable, keeps Overlay foreground auto-show fail-closed, exposes 强制关闭悬浮层, and does not flicker, stay always-on-top, or hide traffic lights.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full assistant reply", "full user input", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
     "id": "overlay-macos-autoshow-restore-checklist",
     "category": "overlay_packaged",
     "precondition": "A future change attempts to restore macOS Overlay auto-show",
