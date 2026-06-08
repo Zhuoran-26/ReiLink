@@ -41,6 +41,48 @@ def test_explicit_game_boss_absolute_deaths_and_frustration(tmp_path):
     assert state.current_activity == "boss_failed"
 
 
+@pytest.mark.parametrize(
+    ("message", "expected_boss", "expected_deaths"),
+    [
+        ("我在大树守卫，被杀了4次，有点烦。", "大树守卫", 4),
+        ("我被大树守卫杀了4次，有点烦。", "大树守卫", 4),
+        ("大树守卫把我杀了4次。", "大树守卫", 4),
+        ("被玛尔基特杀了3次。", "恶兆妖鬼 Margit", 3),
+    ],
+)
+def test_passive_death_statements_are_failed_attempts_not_clears(tmp_path, message, expected_boss, expected_deaths):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+
+    state = store.update_from_user_message(message, "casual_chat", _idle_status(), now)
+
+    assert state.current_game == "Elden Ring"
+    assert state.current_boss is not None
+    assert state.current_boss.name == expected_boss
+    assert state.death_count == expected_deaths
+    assert state.current_activity == "boss_failed"
+    assert state.last_failed_boss == expected_boss
+    assert state.last_cleared_boss is None
+    assert not any(entry.name == expected_boss and entry.status == "cleared" for entry in state.boss_history)
+
+
+def test_hollow_knight_passive_death_uses_existing_game_context(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    state = store.load()
+    state.current_game = "空洞骑士"
+    store.save(state)
+
+    updated = store.update_from_user_message("被假骑士打死两次。", "casual_chat", _idle_status(), now)
+
+    assert updated.current_game == "空洞骑士"
+    assert updated.current_boss is not None
+    assert updated.current_boss.name == "False Knight"
+    assert updated.death_count == 2
+    assert updated.current_activity == "boss_failed"
+    assert updated.last_cleared_boss is None
+
+
 def test_absolute_death_count_updates_do_not_increment_by_one(tmp_path):
     store = GameSessionStore(tmp_path / "game_session_state.json")
     now = datetime.now(timezone.utc)

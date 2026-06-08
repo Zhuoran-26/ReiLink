@@ -7,6 +7,7 @@ from app.modules.dialogue_agent.semantic_extraction import get_latest_semantic_e
 from app.modules.game_session.state import GameSessionStore
 from app.modules.memory.profile import PlayerMemory
 from app.modules.memory.store import ConversationStore
+from app.modules.proactive.trigger import ProactiveCompanion
 from app.schemas.api import ChatDebugResponse, MemoryDebugResponse, PromptPreviewResponse
 
 router = APIRouter(tags=["debug"])
@@ -65,6 +66,7 @@ def debug_game_session() -> dict:
 @router.post("/debug/game-session/reset")
 def reset_game_session() -> dict:
     GameSessionStore().reset()
+    ProactiveCompanion().suppress_after_system_action("reset_game_session")
     return {"status": "reset"}
 
 

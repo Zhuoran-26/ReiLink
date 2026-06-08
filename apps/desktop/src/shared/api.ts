@@ -427,6 +427,18 @@ export type SemanticExtractionDebugResponse = {
   latest_user_message: string | null;
   rule_result: Record<string, unknown> | null;
   rule_confidence: number;
+  raw_rule_confidence?: number;
+  ambiguity_detected?: boolean;
+  fallback_reason?: string | null;
+  source?: "rule" | "llm_fallback" | "mixed" | "none";
+  confidence?: "high" | "medium" | "low";
+  applied_updates?: string[];
+  extraction_trace?: {
+    source: "rule" | "llm_fallback" | "mixed" | "none";
+    confidence: "high" | "medium" | "low";
+    fallback_reason: string | null;
+    applied_updates: string[];
+  };
   llm_called: boolean;
   semantic_extraction_model: string | null;
   semantic_extraction_latency_ms: number;

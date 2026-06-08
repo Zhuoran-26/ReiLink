@@ -36,6 +36,15 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
+    "id": "session-timeline-passive-death-not-cleared",
+    "category": "session_timeline",
+    "precondition": "The user says a passive death sentence such as 我被大树守卫杀了4次, 被玛尔基特杀了3次, or 被假骑士打死两次",
+    "expected_status": "timeline_item_added",
+    "should_store_full_text": false,
+    "expected_behavior": "Game Session records a failed attempt and the correct death count, keeps or detects the Boss, and does not record boss_cleared. Semantic trace may show passive_death_statement as a fallback reason without storing the full user sentence.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
     "id": "session-timeline-game-switch-hollow-knight-false-knight",
     "category": "session_timeline",
     "precondition": "The user switches from Elden Ring to Hollow Knight and then says they are fighting 假骑士",
@@ -88,6 +97,24 @@
     "should_store_full_text": false,
     "expected_behavior": "Timeline adds 主动陪伴已显示 with a safe trigger label and does not show the full proactive or assistant text.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full proactive text", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-proactive-safe-gating",
+    "category": "session_timeline_privacy",
+    "precondition": "The user performs system actions, recently received a normal assistant reply, calms down after frustration, or has repeated proactive trigger candidates",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "System actions suppress proactive briefly; recent normal assistant replies prevent immediate proactive interjection; calm state clears old repeated-death/frustration triggers; non-silence proactive triggers do not repeat the same type consecutively; silence may repeat only after cooldown. Proactive wording is short question-based by scene, such as 你还好吗, 没关系吧, or 还在吗.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full proactive text", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-semantic-trace-safe",
+    "category": "session_timeline_privacy",
+    "precondition": "Semantic Extraction runs rule-first and optionally calls LLM fallback for passive-death, near-clear, or unresolved-reference expressions",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Debug / Event Stream show only safe trace fields such as source, confidence, fallback_reason, and applied_updates. Confidence is shown as high, medium, or low; full user messages, prompt JSON, raw provider responses, paths, and transcripts are not shown.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
     "id": "session-timeline-memory-actions-safe",

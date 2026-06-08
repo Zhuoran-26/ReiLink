@@ -17,6 +17,7 @@ from app.modules.game_session.state import (
     _clears_current_boss,
     _detect_boss,
     _fails_current_boss,
+    _has_passive_death_statement,
     _near_clear_signal,
 )
 
@@ -64,18 +65,31 @@ def extract_semantics(
             llm_result = _parse_llm_json(raw)
         except Exception as exc:  # noqa: BLE001 - semantic extraction must never break chat.
             extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
-            parse_error = str(exc)
+            parse_error = _safe_parse_error(exc)
             logger.warning("semantic extraction skipped parse_error=%s", parse_error)
 
     final_decision = _merge_decisions(rule_result, llm_result)
+    trace = _extraction_trace(
+        final_decision=final_decision,
+        rule_result=rule_result,
+        llm_result=llm_result,
+        llm_called=llm_called,
+        rule_confidence=rule_confidence,
+        fallback_reason=ambiguity_reason or (None if not should_call_llm else "low_confidence_rule"),
+        parse_error=parse_error,
+    )
     pending_reason = _pending_reason(final_decision)
     debug = {
-        "latest_user_message": normalized_message,
+        "latest_user_message": _safe_message_summary(normalized_message),
         "rule_result": rule_result,
         "rule_confidence": round(rule_confidence, 3),
         "raw_rule_confidence": round(raw_rule_confidence, 3),
         "ambiguity_detected": bool(ambiguity_reason),
-        "fallback_reason": ambiguity_reason or (None if not should_call_llm else "low_confidence_rule"),
+        "fallback_reason": trace["fallback_reason"],
+        "source": trace["source"],
+        "confidence": trace["confidence"],
+        "applied_updates": trace["applied_updates"],
+        "extraction_trace": trace,
         "llm_called": llm_called,
         "semantic_extraction_model": extraction_model if llm_called else None,
         "semantic_extraction_latency_ms": extraction_latency_ms,
@@ -124,6 +138,15 @@ _latest_debug: dict[str, Any] = {
     "raw_rule_confidence": 0.0,
     "ambiguity_detected": False,
     "fallback_reason": None,
+    "source": "none",
+    "confidence": "low",
+    "applied_updates": [],
+    "extraction_trace": {
+        "source": "none",
+        "confidence": "low",
+        "fallback_reason": None,
+        "applied_updates": [],
+    },
     "llm_called": False,
     "semantic_extraction_model": None,
     "semantic_extraction_latency_ms": 0,
@@ -256,6 +279,8 @@ def _should_call_llm(message: str, rule_confidence: float, ambiguity_reason: str
 
 def _has_semantic_signal(message: str) -> bool:
     compact = _compact(message)
+    if _has_passive_death_statement(message):
+        return True
     game_markers = (
         "没打过",
         "沒打過",
@@ -276,6 +301,11 @@ def _has_semantic_signal(message: str) -> bool:
         "差点赢",
         "差點贏",
         "又死",
+        "被杀",
+        "被殺",
+        "打死",
+        "把我杀",
+        "把我殺",
         "换一个",
         "換一個",
         "不打这个",
@@ -459,6 +489,91 @@ def _merge_decisions(rule_result: dict[str, Any], llm_result: dict[str, Any] | N
     return final
 
 
+def _extraction_trace(
+    final_decision: dict[str, Any],
+    rule_result: dict[str, Any],
+    llm_result: dict[str, Any] | None,
+    llm_called: bool,
+    rule_confidence: float,
+    fallback_reason: str | None,
+    parse_error: str | None,
+) -> dict[str, Any]:
+    final_confidence = _decision_confidence(final_decision)
+    if final_confidence <= 0:
+        source = "none"
+    elif llm_called and llm_result and final_decision != rule_result:
+        source = "llm_fallback"
+    elif llm_called and llm_result:
+        source = "mixed"
+    else:
+        source = "rule"
+    if parse_error and source != "none":
+        source = "rule"
+    return {
+        "source": source,
+        "confidence": _confidence_label(max(final_confidence, rule_confidence)),
+        "fallback_reason": fallback_reason,
+        "applied_updates": _applied_updates(final_decision),
+    }
+
+
+def _safe_parse_error(exc: Exception) -> str:
+    if isinstance(exc, TimeoutError):
+        return "semantic_extraction_timeout"
+    if isinstance(exc, (json.JSONDecodeError, ValueError)):
+        return "semantic_extraction_parse_error"
+    return "semantic_extraction_provider_error"
+
+
+def _confidence_label(value: float) -> str:
+    if value >= 0.9:
+        return "high"
+    if value >= 0.7:
+        return "medium"
+    return "low"
+
+
+def _applied_updates(decision: dict[str, Any]) -> list[str]:
+    updates: list[str] = []
+    game_event = decision.get("game_event") or {}
+    event_type = str(game_event.get("type") or "none")
+    if event_type in {"failed_attempt", "near_clear"}:
+        updates.append("boss_failed")
+    elif event_type == "boss_cleared":
+        updates.append("boss_cleared")
+    elif event_type == "boss_attempt":
+        updates.append("boss_changed")
+    elif event_type == "boss_switch":
+        updates.append("boss_switched")
+    if game_event.get("boss_name") and event_type != "none":
+        updates.append("boss_detected")
+
+    memory_candidate = decision.get("memory_candidate") or {}
+    if memory_candidate.get("should_create_pending"):
+        updates.append("memory_candidate_created")
+
+    emotion = decision.get("emotion") or {}
+    emotion_type = str(emotion.get("type") or "none")
+    if emotion_type == "frustrated":
+        updates.append("emotion_frustrated")
+    elif emotion_type == "tired":
+        updates.append("emotion_tired")
+    elif emotion_type == "calm":
+        updates.append("emotion_calm")
+    return updates
+
+
+def _safe_message_summary(message: str) -> str:
+    compact = _compact(message)
+    if _has_passive_death_statement(message):
+        return f"被动死亡表达 / {len(message)} 字"
+    if any(marker in compact for marker in ("记住", "記住", "记得", "記得", "帮我记", "幫我記")):
+        return f"记忆偏好表达 / {len(message)} 字"
+    if _has_semantic_signal(message):
+        return f"游戏状态表达 / {len(message)} 字"
+    return f"无明显语义信号 / {len(message)} 字"
+
+
 def _pending_reason(decision: dict[str, Any]) -> str | None:
     candidate = decision.get("memory_candidate") or {}
     if not candidate.get("should_create_pending"):
@@ -552,6 +667,8 @@ def _latest_unresolved_boss(game_state: dict[str, Any]) -> str | None:
 
 def _ambiguity_reason(message: str) -> str | None:
     compact = _compact(message)
+    if _has_passive_death_statement(message):
+        return "passive_death_statement"
     if _near_clear_signal(compact):
         return "near_clear_phrase"
     if _unresolved_boss_reference(compact):

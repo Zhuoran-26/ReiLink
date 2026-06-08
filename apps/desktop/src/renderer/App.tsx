@@ -467,6 +467,7 @@ const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSetti
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 const PROACTIVE_CHECK_INTERVAL_MS = 30000;
+const PROACTIVE_SYSTEM_ACTION_SUPPRESSION_MS = 180000;
 const AUTO_SCROLL_THRESHOLD_PX = 120;
 const EVENT_STREAM_LIMIT = 20;
 const TEST_VOICE_TEXT = "你好，我是 Rei。语音输出测试。";
@@ -609,6 +610,8 @@ const valueMap: Record<string, string> = {
   auto: "自动",
   boss_attempt: "挑战中",
   boss_cleared: "已通过",
+  boss_changed: "Boss 已更新",
+  boss_detected: "检测到 Boss",
   boss_failed: "挑战失败",
   casual_chat: "闲聊",
   casual_or_short_reply: "日常短回复",
@@ -650,15 +653,20 @@ const valueMap: Record<string, string> = {
   high: "高",
   hide: "隐藏",
   idle: "空闲",
-  idle_silence: "空闲沉默",
+  idle_silence: "沉默陪伴",
   ignored: "已忽略",
   initial_grace: "初始等待中",
   late_night: "深夜提醒",
   low: "低",
+  low_confidence_rule: "规则置信度较低",
+  llm_fallback: "LLM 兜底",
   manual: "手动选择",
   user_switch: "用户切换",
   detector: "自动检测",
   session: "对话状态",
+  semantic_extraction_parse_error: "语义识别解析失败",
+  semantic_extraction_provider_error: "语义识别服务失败",
+  semantic_extraction_timeout: "语义识别超时",
   medium: "中",
   "memory boss conflicts with fresh game state": "记忆里的 Boss 与当前游戏状态冲突",
   minimal: "minimal（自然）",
@@ -690,13 +698,18 @@ const valueMap: Record<string, string> = {
   pending: "待确认",
   persona: "人格",
   persona_preference: "互动偏好",
+  passive_death_statement: "被动死亡表达",
   playstyle: "玩法",
   playstyle_preference: "玩法偏好",
   pro: "高质量",
   profile: "长期记忆",
   recent_user_message: "刚刚发言",
+  recent_assistant_reply: "刚回复过",
   relationship_preference: "互动偏好",
   repeated_death: "反复死亡",
+  repeat_trigger_type: "同类主动陪伴已触发",
+  rule: "规则",
+  mixed: "规则 + LLM",
   running: "运行中",
   sample: "样例",
   short: "简短",
@@ -716,6 +729,11 @@ const valueMap: Record<string, string> = {
   user_stop: "用户停止",
   unavailable: "当前环境不支持",
   waiting_for_user_activity_after_proactive: "等待用户回应",
+  system_action_suppression: "系统操作后暂不打扰",
+  memory_candidate_created: "生成待确认记忆",
+  emotion_frustrated: "识别到挫败",
+  emotion_tired: "识别到疲惫",
+  emotion_calm: "识别到冷静",
   weak: "较弱",
   current_game: "当前运行游戏",
   user_message: "对话识别",
@@ -963,6 +981,13 @@ const eventSummary = (event: ReiLinkEvent) => {
       return event.memory_id;
     case "game_context_changed":
       return [debugText(event.game), debugText(event.source)].join(" / ");
+    case "semantic_extraction_traced":
+      return [
+        `语义识别：${debugText(event.source)}`,
+        debugText(event.confidence),
+        event.fallback_reason ? `原因：${debugText(event.fallback_reason)}` : "",
+        event.applied_updates?.length ? debugText(event.applied_updates) : ""
+      ].filter(Boolean).join(" / ");
     case "game_session_changed":
       return [
         debugText(event.game),
@@ -1095,6 +1120,7 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     pending_memory_accepted: "记忆已保存",
     pending_memory_ignored: "记忆已忽略",
     game_context_changed: "游戏上下文变化",
+    semantic_extraction_traced: "语义识别来源",
     game_session_changed: "游戏状态变化",
     knowledge_used: "使用游戏知识",
     model_routed: "模型路由完成",
@@ -1702,12 +1728,18 @@ export function App() {
   const lastGameSessionEventRef = useRef<string | null>(null);
   const lastKnowledgeEventRef = useRef<string | null>(null);
   const lastModelRouteEventRef = useRef<string | null>(null);
+  const lastSemanticTraceEventRef = useRef<string | null>(null);
   const lastOverlayEnabledRef = useRef<boolean | null>(null);
   const lastOverlayConfigRef = useRef<OverlayConfig | null>(null);
   const lastOverlayContentRef = useRef<OverlayContentUpdate | null>(null);
   const sessionTimelineBaselineReadyRef = useRef(false);
   const sessionTimelineUserActiveRef = useRef(false);
   const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
+  const proactiveSuppressedUntilRef = useRef(0);
+
+  const suppressProactiveAfterSystemAction = useCallback(() => {
+    proactiveSuppressedUntilRef.current = Date.now() + PROACTIVE_SYSTEM_ACTION_SUPPRESSION_MS;
+  }, []);
 
   const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
     voiceOutput.stop(reason);
@@ -1884,6 +1916,26 @@ export function App() {
     );
   }, [emitGameContextChanged, emitGameSessionChanged, emitKnowledgeUsed, emitModelRouted]);
 
+  const emitSemanticExtractionTrace = useCallback((debug: SemanticExtractionDebugResponse) => {
+    const trace = debug.extraction_trace;
+    const source = trace?.source ?? debug.source;
+    const confidence = trace?.confidence ?? debug.confidence;
+    const fallbackReason = trace?.fallback_reason ?? debug.fallback_reason ?? null;
+    const appliedUpdates = trace?.applied_updates ?? debug.applied_updates ?? [];
+    if (!source || source === "none") return;
+    const key = JSON.stringify({ source, confidence, fallbackReason, appliedUpdates });
+    if (lastSemanticTraceEventRef.current === key) return;
+    lastSemanticTraceEventRef.current = key;
+    eventBus.emit({
+      type: "semantic_extraction_traced",
+      timestamp: eventTimestamp(),
+      source,
+      confidence,
+      fallback_reason: fallbackReason,
+      applied_updates: appliedUpdates
+    });
+  }, []);
+
   const recordPendingMemories = useCallback((memories: PendingMemory[], emitCreated: boolean) => {
     const previousIds = knownPendingMemoryIdsRef.current;
     if (emitCreated) {
@@ -1937,7 +1989,9 @@ export function App() {
       setProactiveStatus(await api.proactiveStatus());
       const currentGameSessionDebug = await api.gameSessionDebug();
       setGameSessionDebug(currentGameSessionDebug);
-      setSemanticDebug(await api.semanticExtractionDebug());
+      const currentSemanticDebug = await api.semanticExtractionDebug();
+      setSemanticDebug(currentSemanticDebug);
+      emitSemanticExtractionTrace(currentSemanticDebug);
       setPromptPreview(await api.promptPreview());
       recordPendingMemories(await api.pendingMemories(), Boolean(options.emitPendingMemoryCreated));
       emitDebugSnapshotEvents(currentGameContext, currentGameSessionDebug, currentChatDebug, currentProviderDebug);
@@ -1949,10 +2003,11 @@ export function App() {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "后端未连接"));
     }
-  }, [emitBackendStatusChanged, emitDebugSnapshotEvents, recordPendingMemories]);
+  }, [emitBackendStatusChanged, emitDebugSnapshotEvents, emitSemanticExtractionTrace, recordPendingMemories]);
 
   const updateAppSettings = async (patch: Partial<AppSettings>) => {
     const busyKey = Object.keys(patch)[0] ?? "settings";
+    suppressProactiveAfterSystemAction();
     setSettingsBusy(busyKey);
     try {
       setLastError("");
@@ -1980,6 +2035,7 @@ export function App() {
   };
 
   const refreshLocalAsrSetup = async (message = "本地 ASR 状态已刷新") => {
+    suppressProactiveAfterSystemAction();
     setLocalAsrSettingsBusy("refresh");
     try {
       setLastError("");
@@ -2027,6 +2083,7 @@ export function App() {
   };
 
   const saveLocalAsrSettings = async () => {
+    suppressProactiveAfterSystemAction();
     const payload: LocalAsrSettingsUpdate = {};
     const binaryPath = localAsrSettingsDraft.local_asr_binary_path.trim();
     const modelPath = localAsrSettingsDraft.local_asr_model_path.trim();
@@ -2058,6 +2115,7 @@ export function App() {
   };
 
   const clearLocalAsrSettings = async () => {
+    suppressProactiveAfterSystemAction();
     setLocalAsrSettingsBusy("clear");
     try {
       setLastError("");
@@ -2079,6 +2137,7 @@ export function App() {
 
   const checkLocalAsr = async () => {
     if (localAsrStatus.status !== "local_asr_ready" || localAsrProbeChecking) return;
+    suppressProactiveAfterSystemAction();
     setLocalAsrProbeChecking(true);
     try {
       setLocalAsrProbe(await api.probeLocalAsr());
@@ -2553,6 +2612,7 @@ export function App() {
 
   const checkProactive = useCallback(async () => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on" || sending) return;
+    if (Date.now() < proactiveSuppressedUntilRef.current) return;
     try {
       const response = await api.checkProactive("default", Boolean(input.trim()), backendStatus === "connected");
       if (response.should_send && response.message) {
@@ -2699,6 +2759,7 @@ export function App() {
     if (action === "reset-memory" && !window.confirm("这会清空本地记忆，无法撤销。确定继续吗？")) {
       return;
     }
+    suppressProactiveAfterSystemAction();
     setDebugActionBusy(action);
     try {
       setLastError("");
@@ -2736,6 +2797,7 @@ export function App() {
   };
 
   const clearCurrentChat = () => {
+    suppressProactiveAfterSystemAction();
     queueMessageAutoScroll(true);
     setMessages([]);
   };
@@ -2761,6 +2823,7 @@ export function App() {
     }
 
     setDebugActionBusy(`demo-${action}`);
+    suppressProactiveAfterSystemAction();
     setDemoResetFeedback("");
     try {
       setLastError("");
@@ -4793,6 +4856,22 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                    <h3>语义识别</h3>
 	                    <dl className="debugFacts">
                       <div>
+                        <dt>{formatDebugLabel("source")}</dt>
+                        <dd>{debugText(semanticDebug.source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("confidence")}</dt>
+                        <dd>{debugText(semanticDebug.confidence)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("fallback_reason")}</dt>
+                        <dd>{debugText(semanticDebug.fallback_reason)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("applied_updates")}</dt>
+                        <dd>{debugText(semanticDebug.applied_updates)}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("latest_user_message")}</dt>
                         <dd>{debugText(semanticDebug.latest_user_message)}</dd>
                       </div>
@@ -4803,7 +4882,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         </dd>
                       </div>
                       <div>
-                        <dt>{formatDebugLabel("confidence")}</dt>
+                        <dt>{formatDebugLabel("rule_confidence")}</dt>
                         <dd>{Number(semanticDebug.rule_confidence ?? 0).toFixed(2)}</dd>
                       </div>
                       <div>

@@ -681,6 +681,8 @@ def _latest_unresolved_boss(state: GameSessionState, exclude: set[str] | None = 
 
 def _clears_current_boss(message: str) -> bool:
     compact = re.sub(r"\s+", "", message.lower())
+    if _has_passive_death_statement(message):
+        return False
     if _near_clear_signal(compact):
         return False
     if _fails_current_boss(message):
@@ -728,6 +730,8 @@ def _fails_current_boss(message: str) -> bool:
     compact = re.sub(r"\s+", "", message.lower())
     if _has_negated_failure_correction(compact) and not _has_later_failure_after_correction(compact):
         return False
+    if _has_passive_death_statement(message):
+        return True
     if _near_clear_signal(compact):
         return True
     return any(
@@ -990,6 +994,9 @@ def _death_count_update(
     increment = _death_increment(compact)
     if increment is not None:
         return ("increment", increment)
+    passive = _passive_death_count(compact)
+    if passive is not None:
+        return ("absolute", passive)
     absolute = _absolute_death_count(compact, state, boss)
     if absolute is not None:
         return ("absolute", absolute)
@@ -1038,6 +1045,18 @@ def _absolute_death_count(
     return _parse_small_count(match.group("count"))
 
 
+def _passive_death_count(compact: str) -> int | None:
+    patterns = (
+        r"被.{0,24}(?:杀|殺|打死|砍死|弄死)(?:了)?(?P<count>[0-9一二两兩三四五六七八九十]{1,3})次",
+        r".{0,24}把我(?:杀|殺|打死|砍死|弄死)(?:了)?(?P<count>[0-9一二两兩三四五六七八九十]{1,3})次",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, compact)
+        if match:
+            return _parse_small_count(match.group("count"))
+    return None
+
+
 def _has_count_context(compact: str, state: GameSessionState, boss: str | None) -> bool:
     return bool(
         boss
@@ -1071,7 +1090,17 @@ def _parse_small_count(value: str | None) -> int | None:
 
 
 def _has_death_signal(message: str) -> bool:
-    return any(word in message for word in ("又死", "死了", "一直死", "死太多", "死亡", "挂了", "掛了"))
+    return _has_passive_death_statement(message) or any(
+        word in message for word in ("又死", "死了", "一直死", "死太多", "死亡", "挂了", "掛了")
+    )
+
+
+def _has_passive_death_statement(message: str) -> bool:
+    compact = re.sub(r"\s+", "", normalize_terminology(message).lower())
+    return bool(
+        re.search(r"被.{0,24}(?:杀|殺|打死|砍死|弄死)(?:了)?[0-9一二两兩三四五六七八九十]{0,3}次?", compact)
+        or re.search(r".{0,24}把我(?:杀|殺|打死|砍死|弄死)(?:了)?[0-9一二两兩三四五六七八九十]{0,3}次?", compact)
+    )
 
 
 def _has_frustration_signal(message: str) -> bool:

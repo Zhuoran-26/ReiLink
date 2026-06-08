@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from app.modules.memory.pending import PendingMemoryQueue
 from app.modules.memory.profile import PlayerMemory
 from app.modules.memory.store import ConversationStore
+from app.modules.proactive.trigger import ProactiveCompanion
 from app.schemas.api import (
     EpisodeMemory,
     MemoryEntry,
@@ -39,6 +40,7 @@ def episodes() -> list[dict]:
 def reset() -> dict[str, str]:
     PlayerMemory().reset()
     PendingMemoryQueue().clear_all()
+    ProactiveCompanion().suppress_after_system_action("reset_memory")
     return {"status": "reset"}
 
 
@@ -66,6 +68,7 @@ def ignore_pending_memory(memory_id: str) -> dict:
 @router.post("/memory/pending/clear", response_model=PendingMemoryClearResponse)
 def clear_pending_memories() -> dict[str, str]:
     PendingMemoryQueue().clear()
+    ProactiveCompanion().suppress_after_system_action("clear_pending_memories")
     return {"status": "cleared"}
 
 

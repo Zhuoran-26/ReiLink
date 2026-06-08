@@ -440,10 +440,21 @@ packaged `.app` 手动 smoke 最低步骤：
 - `我有点冷静下来了` 或等价表达应让 Game Session 挫败状态缓和，并在 Timeline 显示 `挫败状态缓和` 或等价安全摘要。
 - 显式游戏切换必须覆盖 `我换到空洞骑士了`、`我现在玩空洞骑士`、`今天打空洞骑士`、`我回法环了`、`我现在在艾尔登法环`；后续 Boss / Knowledge Retrieval 应跟随新的 current game。
 - Boss alias 回归必须覆盖 `恶兆妖鬼玛尔基特 / 玛尔基特 / Margit` 和 Hollow Knight 的 `假骑士 / False Knight`。
+- 被动死亡表达必须记录为失败尝试而不是击败：`我在大树守卫，被杀了4次，有点烦`、`我被大树守卫杀了4次`、`被玛尔基特杀了3次`、`被假骑士打死两次` 应更新 Boss、death count 与 failed activity，不应出现 boss_cleared。
+- Semantic Extraction Debug 应显示安全 trace：`source`、`confidence`、`fallback_reason`、`applied_updates`。被动死亡 / near-clear / 指代不明等容易误判表达应能看到 fallback reason；provider 不可用或 fallback 失败时仍安全回退到 rule-first，不阻断 chat。
+- 语义识别置信度验收：高置信规则可以直接应用；被动死亡等歧义风险表达应降低调度置信度以允许 LLM fallback；最终显示的 confidence 只用 high / medium / low，不展示 raw prompt、raw JSON 或完整用户输入。
 - 已击败 Boss 后继续问打法时，Rei 可以轻轻承接“已经打过”的上下文，但不能只用反问阻断；仍应回答用户实际攻略 / 复盘需求。
 - 显式记忆回归：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 应创建 pending memory；`以后不用记住这个，只是我这次随便说一下` 不应创建 pending memory。
 - Knowledge Retrieval 使用成功时应显示 `使用知识` 类摘要，只允许游戏名或安全 topic/title；不得显示完整 snippet、knowledge 文件路径或 prompt。
 - Proactive 显示时应记录 `主动陪伴已显示` 和安全 trigger 标签，不显示完整 proactive / assistant 文本。
+- 主动陪伴场景区分验收：
+  - 明确烦躁、红温、破防或 frustration count 升高时，优先归为挫败场景，文案应是短疑问句，如 `你还好吗？`。
+  - 单纯 death count 增长且没有明确挫败信号时，归为反复死亡场景，文案应是短疑问句，如 `没关系吧？`。
+  - 没有状态性信号但长时间无回复时，才归为沉默陪伴，文案应是低打扰短疑问句，如 `还在吗？`。
+  - 主动陪伴应在最近 Rei 正常回复后一段时间才触发，不应紧跟普通 assistant reply 插话。
+  - 重置记忆、清空 pending memory、重置 game session、Settings / Local ASR 保存或刷新、Debug reset 后应短暂抑制 proactive，并同步已观察到的 death / frustration 状态。
+  - 用户表达冷静或 Game Session 进入 `frustration_calm` 后，不应继续用旧死亡 / 旧挫败状态触发 repeated_death 或 frustration_loop。
+  - 非沉默类型触发后不能连续触发同一类型；如果后续场景变成另一类，可以由另一类接管。沉默陪伴允许在冷却后重复，但仍受 idle threshold 和 cooldown 控制。
 - Pending Memory 接受或忽略时应记录 `记忆已接受` / `记忆已忽略`，不显示 memory 原文、evidence 或 raw payload。
 - `清空时间线` 应只清空当前 timeline，不清空 Event Stream、聊天、memory、game session 或 Local ASR 设置。
 - Timeline 最多保留最近有限条目，长摘要应截断。

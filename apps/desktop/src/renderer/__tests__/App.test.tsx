@@ -546,9 +546,21 @@ const unknownPromptPreview = {
 };
 
 const semanticExtractionDebug = {
-  latest_user_message: "我喜欢简短的游戏攻略",
+  latest_user_message: "记忆偏好表达 / 10 字",
   rule_result: { game_event: { type: "none" }, memory_candidate: { type: "guide_preference" } },
   rule_confidence: 0.65,
+  raw_rule_confidence: 0.65,
+  ambiguity_detected: false,
+  fallback_reason: null,
+  source: "llm_fallback",
+  confidence: "medium",
+  applied_updates: ["memory_candidate_created"],
+  extraction_trace: {
+    source: "llm_fallback",
+    confidence: "medium",
+    fallback_reason: null,
+    applied_updates: ["memory_candidate_created"]
+  },
   llm_called: true,
   semantic_extraction_model: "deepseek-v4-flash",
   semantic_extraction_latency_ms: 42,
@@ -3881,7 +3893,7 @@ describe("App", () => {
         type: "proactive_message_shown",
         timestamp: new Date().toISOString(),
         trigger_type: "repeated_death",
-        text: "你开始急了。完整 proactive 文本不应该进入 timeline。"
+        text: "没关系吧？完整 proactive 文本不应该进入 timeline。"
       });
       eventBus.emit({
         type: "pending_memory_accepted",
@@ -3907,7 +3919,7 @@ describe("App", () => {
     expect(timeline).not.toHaveTextContent("/Users/aragoto");
     expect(timeline).not.toHaveTextContent(".env");
     expect(timeline).not.toHaveTextContent("raw prompt");
-    expect(timeline).not.toHaveTextContent("你开始急了");
+    expect(timeline).not.toHaveTextContent("没关系吧");
     expect(timeline).not.toHaveTextContent("pending-1");
 
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
@@ -4018,7 +4030,7 @@ describe("App", () => {
     proactiveCheckStore = {
       should_send: true,
       trigger_type: "repeated_death",
-      message: "你开始急了。",
+      message: "没关系吧？",
       reason: "death_delta=2",
       cooldown_remaining_seconds: 0,
       idle_for_seconds: 120,
@@ -4044,7 +4056,7 @@ describe("App", () => {
       await vi.advanceTimersByTimeAsync(30000);
     });
 
-    expect(screen.getByText("你开始急了。")).toBeInTheDocument();
+    expect(screen.getByText("没关系吧？")).toBeInTheDocument();
     expect(scrollToMock).not.toHaveBeenCalled();
   });
 
@@ -4059,7 +4071,7 @@ describe("App", () => {
     proactiveCheckStore = {
       should_send: true,
       trigger_type: "repeated_death",
-      message: "你开始急了。",
+      message: "没关系吧？",
       reason: "death_delta=2",
       cooldown_remaining_seconds: 0,
       idle_for_seconds: 120,
@@ -4085,7 +4097,7 @@ describe("App", () => {
       await vi.advanceTimersByTimeAsync(30000);
     });
 
-    expect(screen.getByText("你开始急了。")).toBeInTheDocument();
+    expect(screen.getByText("没关系吧？")).toBeInTheDocument();
     expect(scrollToMock).toHaveBeenCalledWith(expect.objectContaining({ top: 1400, behavior: "smooth" }));
   });
 
@@ -4118,7 +4130,7 @@ describe("App", () => {
     proactiveCheckStore = {
       should_send: true,
       trigger_type: "repeated_death",
-      message: "你开始急了。",
+      message: "没关系吧？",
       reason: "death_delta=2",
       cooldown_remaining_seconds: 0,
       idle_for_seconds: 120,
@@ -4141,7 +4153,7 @@ describe("App", () => {
       await vi.advanceTimersByTimeAsync(30000);
     });
 
-    const proactiveMessage = screen.getByText("你开始急了。");
+    const proactiveMessage = screen.getByText("没关系吧？");
     const bubble = proactiveMessage.closest("article");
     expect(screen.getByText(/主动 · 反复死亡/)).toBeInTheDocument();
     expect(bubble).toHaveClass("messageBubble", "assistant", "proactive");
@@ -4151,7 +4163,7 @@ describe("App", () => {
         expect.objectContaining({
           type: "proactive_message_shown",
           trigger_type: "repeated_death",
-          text: "你开始急了。"
+          text: "没关系吧？"
         })
       ])
     );

@@ -15,13 +15,13 @@ def _enable(sensitivity: str = "low", now: datetime | None = None) -> None:
     ProactiveCompanion().update_settings(enabled=True, sensitivity=sensitivity, now=now)
 
 
-def _append_user(session_id: str, message: str, timestamp: datetime) -> None:
+def _append_user(session_id: str, message: str, timestamp: datetime, assistant_reply: str = "嗯。") -> None:
     ConversationStore().append(
         session_id=session_id,
         game_id="elden_ring",
         persona_id="rei_like",
         user_message=message,
-        assistant_reply="嗯。",
+        assistant_reply=assistant_reply,
         timestamp=timestamp,
     )
 
@@ -38,24 +38,29 @@ def test_proactive_disabled_never_triggers(monkeypatch):
     assert result["block_reason"] == "disabled"
 
 
-def test_idle_silence_after_threshold_triggers(monkeypatch):
+def test_idle_silence_after_threshold_sends_low_interrupt_question(monkeypatch):
     monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_idle_seconds", 30)
     monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_initial_grace_seconds", 5)
     now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
-    _enable(now=now - timedelta(seconds=40))
-    _append_user("idle", "你好", now - timedelta(seconds=31))
+    _enable(now=now - timedelta(minutes=10))
+    _append_user("idle", "你好", now - timedelta(minutes=4))
 
     result = ProactiveCompanion().check(session_id="idle", now=now)
 
     assert result["should_send"] is True
     assert result["trigger_type"] == "idle_silence"
-    assert 0 < len(result["message"]) <= 12
+    assert result["message"].endswith("？")
+    assert result["requires_user_activity_after_proactive"] is False
+    assert ConversationStore().read_session("idle")[-1].assistant_message_type == "proactive"
+    persisted = ProactiveCompanion().load()
+    assert persisted.last_triggered_type == "idle_silence"
+    assert persisted.requires_user_activity_after_proactive is False
 
 
 def test_repeated_death_triggers_from_game_state():
     now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
     _enable(now=now)
-    _append_user("death", "我又死了", now - timedelta(minutes=2))
+    _append_user("death", "我又死了", now - timedelta(minutes=4))
     GameSessionStore().save(
         GameSessionState(
             current_game="Elden Ring",
@@ -68,31 +73,107 @@ def test_repeated_death_triggers_from_game_state():
 
     assert result["should_send"] is True
     assert result["trigger_type"] == "repeated_death"
-    assert result["message"]
+    assert result["message"].endswith("？")
+
+
+def test_frustration_priority_keeps_death_and_frustration_from_overlapping():
+    now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    _enable(now=now)
+    _append_user("death-frustration", "我又死了，好烦", now - timedelta(minutes=4))
+    GameSessionStore().save(GameSessionState(current_game="Elden Ring", death_count=2, frustration_count=2))
+
+    result = ProactiveCompanion().check(session_id="death-frustration", now=now)
+
+    assert result["should_send"] is True
+    assert result["trigger_type"] == "frustration_loop"
+    assert result["message"].endswith("？")
+    assert "repeated_death" not in result["active_candidate_triggers"]
+
+
+def test_recent_assistant_reply_blocks_textual_proactive():
+    now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    _enable(now=now - timedelta(minutes=20))
+    _append_user("recent-reply", "我又死了", now - timedelta(seconds=60))
+    GameSessionStore().save(GameSessionState(current_game="Elden Ring", death_count=2))
+
+    result = ProactiveCompanion().check(session_id="recent-reply", now=now)
+
+    assert result["should_send"] is False
+    assert result["reason"] == "recent_assistant_reply"
+    assert result["block_reason"] == "recent_assistant_reply"
+    assert result["trigger_type"] == "repeated_death"
+    assert result["message"] == ""
+
+
+def test_memory_reset_suppresses_proactive_and_syncs_old_game_state():
+    client = TestClient(app)
+    now = datetime.now(timezone.utc)
+    _enable(now=now - timedelta(minutes=20))
+    _append_user("system-reset", "我又死了", now - timedelta(minutes=4))
+    GameSessionStore().save(GameSessionState(current_game="Elden Ring", death_count=4, frustration_count=2))
+
+    reset = client.post("/api/memory/reset")
+    result = ProactiveCompanion().check(session_id="system-reset", now=datetime.now(timezone.utc))
+
+    assert reset.status_code == 200
+    assert result["should_send"] is False
+    assert result["reason"] == "system_action_suppression"
+    assert result["block_reason"] == "system_action_suppression"
+    persisted = ProactiveCompanion().load()
+    assert persisted.last_observed_death_count == 4
+    assert persisted.last_observed_frustration_count == 2
+    assert persisted.suppression_reason == "reset_memory"
+
+
+def test_calm_context_blocks_old_repeated_death_candidate():
+    now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    _enable(now=now - timedelta(minutes=20))
+    _append_user("calm", "我又死了，好烦", now - timedelta(minutes=7))
+    _append_user("calm", "我有点冷静下来了。", now - timedelta(minutes=4))
+    GameSessionStore().save(
+        GameSessionState(
+            current_game="Elden Ring",
+            death_count=6,
+            frustration_count=0,
+            current_activity="frustration_calm",
+        )
+    )
+
+    result = ProactiveCompanion().check(session_id="calm", now=now)
+
+    assert result["should_send"] is False
+    assert result["reason"] == "no_candidate"
+    assert "repeated_death" not in result["active_candidate_triggers"]
+    assert "frustration_loop" not in result["active_candidate_triggers"]
+    persisted = ProactiveCompanion().load()
+    assert persisted.last_observed_death_count == 6
+    assert persisted.last_observed_frustration_count == 0
 
 
 def test_late_night_triggers_with_active_boss():
     now = datetime(2026, 5, 31, 23, 45, tzinfo=timezone.utc)
     _enable(now=now)
-    _append_user("late", "再打一把", now - timedelta(minutes=2))
+    _append_user("late", "再打一把", now - timedelta(minutes=4))
     GameSessionStore().save(GameSessionState(current_game="Elden Ring", last_attempted_boss="恶兆妖鬼 Margit"))
 
     result = ProactiveCompanion().check(session_id="late", now=now)
 
     assert result["should_send"] is True
     assert result["trigger_type"] == "late_night"
+    assert result["message"].endswith("？")
 
 
 def test_frustration_loop_triggers():
     now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
     _enable(now=now)
-    _append_user("frustrated", "好烦，还是不行", now - timedelta(minutes=3))
-    _append_user("frustrated", "真的烦死了", now - timedelta(minutes=2))
+    _append_user("frustrated", "好烦，还是不行", now - timedelta(minutes=5))
+    _append_user("frustrated", "真的烦死了", now - timedelta(minutes=4))
 
     result = ProactiveCompanion().check(session_id="frustrated", now=now)
 
     assert result["should_send"] is True
     assert result["trigger_type"] == "frustration_loop"
+    assert result["message"].endswith("？")
 
 
 def test_cooldown_blocks_repeat(monkeypatch):
@@ -124,6 +205,8 @@ def test_proactive_message_does_not_enter_pending_memory_or_change_game_state():
     after = GameSessionStore().debug_state(now=now)
 
     assert result["should_send"] is True
+    assert result["trigger_type"] == "idle_silence"
+    assert result["message"].endswith("？")
     assert PendingMemoryQueue().list() == []
     assert after == before
     entries = ConversationStore().read_session("safe")
@@ -183,20 +266,22 @@ def test_idle_silence_waits_for_initial_grace(monkeypatch):
     assert result["should_send"] is False
     assert result["trigger_type"] == "none"
     assert result["initial_grace_remaining_seconds"] > 0
-    assert result["block_reason"] == "initial_grace"
+    assert result["block_reason"] in {"initial_grace", "recent_assistant_reply"}
 
 
-def test_idle_silence_triggers_after_initial_grace_and_threshold(monkeypatch):
+def test_idle_silence_is_observable_after_initial_grace_and_threshold(monkeypatch):
     monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_idle_seconds", 3)
     monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_initial_grace_seconds", 5)
     now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
     _enable(now=now - timedelta(seconds=6))
-    _append_user("grace-done", "你好", now - timedelta(seconds=40))
+    _append_user("grace-done", "你好", now - timedelta(minutes=4))
 
     result = ProactiveCompanion().check(session_id="grace-done", now=now)
 
     assert result["should_send"] is True
     assert result["trigger_type"] == "idle_silence"
+    assert result["message"].endswith("？")
+    assert result["requires_user_activity_after_proactive"] is False
     assert result["idle_for_seconds"] >= 3
     assert result["block_reason"] == "eligible"
 
@@ -216,7 +301,7 @@ def test_proactive_status_returns_idle_timing_fields(monkeypatch):
     assert status["last_user_activity_at"] == (now - timedelta(seconds=7)).isoformat()
     assert status["idle_for_seconds"] == 7
     assert status["idle_threshold_seconds"] == 30
-    assert status["block_reason"] in {"no_candidate_trigger", "initial_grace", "eligible"}
+    assert status["block_reason"] in {"no_candidate_trigger", "initial_grace", "eligible", "recent_assistant_reply"}
 
 
 def test_cooldown_and_idle_threshold_are_separate_debug_fields(monkeypatch):
@@ -281,7 +366,7 @@ def test_settings_route_enable_records_enabled_at_and_blocks_old_idle(monkeypatc
     result = client.post("/api/proactive/check", json={"session_id": "settings-enable"}).json()
     assert result["should_send"] is False
     assert result["trigger_type"] == "none"
-    assert result["block_reason"] == "initial_grace"
+    assert result["block_reason"] == "system_action_suppression"
 
 
 def test_persisted_on_state_initializes_without_retoggle(monkeypatch):
@@ -304,16 +389,57 @@ def test_proactive_trigger_requires_user_activity_before_next_trigger(monkeypatc
     monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_idle_seconds", 30)
     now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
     _enable(now=now - timedelta(minutes=20))
-    _append_user("consecutive", "你好", now - timedelta(seconds=40))
+    _append_user("consecutive", "我又死了", now - timedelta(minutes=4))
+    GameSessionStore().save(GameSessionState(current_game="Elden Ring", death_count=2))
     first = ProactiveCompanion().check(session_id="consecutive", now=now)
 
     second = ProactiveCompanion().check(session_id="consecutive", now=now + timedelta(minutes=20))
 
     assert first["should_send"] is True
+    assert first["trigger_type"] == "repeated_death"
     assert second["should_send"] is False
     assert second["reason"] == "waiting_for_user_activity_after_proactive"
     assert second["block_reason"] == "waiting_for_user_activity_after_proactive"
     assert second["requires_user_activity_after_proactive"] is True
+
+
+def test_non_idle_trigger_type_does_not_repeat_after_user_activity(monkeypatch):
+    monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_global_cooldown_seconds", 0)
+    monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_type_cooldown_seconds", 0)
+    monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_user_grace_seconds", 0)
+    now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    _enable(now=now - timedelta(minutes=20))
+    _append_user("no-repeat", "我又死了", now - timedelta(minutes=10))
+    GameSessionStore().save(GameSessionState(current_game="Elden Ring", death_count=2))
+    first = ProactiveCompanion().check(session_id="no-repeat", now=now)
+
+    _append_user("no-repeat", "又死了一次", now + timedelta(minutes=1))
+    GameSessionStore().save(GameSessionState(current_game="Elden Ring", death_count=4))
+    second = ProactiveCompanion().check(session_id="no-repeat", now=now + timedelta(minutes=5))
+
+    assert first["should_send"] is True
+    assert first["trigger_type"] == "repeated_death"
+    assert second["should_send"] is False
+    assert second["reason"] == "repeat_trigger_type"
+    assert second["block_reason"] == "repeat_trigger_type"
+
+
+def test_idle_silence_may_repeat_after_cooldown(monkeypatch):
+    monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_idle_seconds", 3)
+    monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_initial_grace_seconds", 1)
+    monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_global_cooldown_seconds", 1)
+    monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_type_cooldown_seconds", 1)
+    now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    _enable(now=now - timedelta(minutes=20))
+    _append_user("idle-repeat", "你好", now - timedelta(minutes=20))
+    first = ProactiveCompanion().check(session_id="idle-repeat", now=now)
+    second = ProactiveCompanion().check(session_id="idle-repeat", now=now + timedelta(seconds=2))
+
+    assert first["should_send"] is True
+    assert first["trigger_type"] == "idle_silence"
+    assert second["should_send"] is True
+    assert second["trigger_type"] == "idle_silence"
+    assert second["requires_user_activity_after_proactive"] is False
 
 
 def test_user_activity_clears_proactive_wait_and_recalculates(monkeypatch):
@@ -324,19 +450,24 @@ def test_user_activity_clears_proactive_wait_and_recalculates(monkeypatch):
     monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_user_grace_seconds", 0)
     now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
     _enable(now=now - timedelta(minutes=20))
-    _append_user("user-reset", "你好", now - timedelta(minutes=20))
+    _append_user("user-reset", "我又死了", now - timedelta(minutes=20))
+    GameSessionStore().save(GameSessionState(current_game="Elden Ring", death_count=2))
     first = ProactiveCompanion().check(session_id="user-reset", now=now)
     assert first["should_send"] is True
 
     _append_user("user-reset", "我回来了", now + timedelta(seconds=1))
     status = ProactiveCompanion().status(session_id="user-reset", now=now + timedelta(seconds=1))
     assert status["requires_user_activity_after_proactive"] is False
-    assert status["block_reason"] == "no_candidate_trigger"
-    assert status["next_possible_trigger_at"] is not None
+    assert status["block_reason"] in {"no_candidate_trigger", "recent_assistant_reply"}
+    if status["block_reason"] == "no_candidate_trigger":
+        assert status["next_possible_trigger_at"] is not None
+    else:
+        assert status["next_possible_trigger_at"] is None
 
-    second = ProactiveCompanion().check(session_id="user-reset", now=now + timedelta(seconds=5))
+    GameSessionStore().save(GameSessionState(current_game="Elden Ring", death_count=4, frustration_count=2))
+    second = ProactiveCompanion().check(session_id="user-reset", now=now + timedelta(minutes=5))
     assert second["should_send"] is True
-    assert second["trigger_type"] == "idle_silence"
+    assert second["trigger_type"] == "frustration_loop"
 
 
 def test_next_possible_is_null_while_waiting_for_user_after_proactive(monkeypatch):
@@ -346,7 +477,8 @@ def test_next_possible_is_null_while_waiting_for_user_after_proactive(monkeypatc
     monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_type_cooldown_seconds", 1)
     now = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
     _enable(now=now - timedelta(minutes=20))
-    _append_user("no-mislead", "你好", now - timedelta(minutes=20))
+    _append_user("no-mislead", "我又死了", now - timedelta(minutes=20))
+    GameSessionStore().save(GameSessionState(current_game="Elden Ring", death_count=2))
     first = ProactiveCompanion().check(session_id="no-mislead", now=now)
     assert first["should_send"] is True
 

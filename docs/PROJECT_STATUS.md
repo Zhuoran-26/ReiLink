@@ -42,9 +42,9 @@ dev/codex-reilink
 - Multi-part replies。
 - Settings Panel。
 - Game Session State。
-- Semantic Extraction。
+- Semantic Extraction，包含 rule-first、LLM fallback 与安全 trace 可观察性。
 - Pending Memory confirmation。
-- Proactive Companion，包含 cooldown 与阻断规则。
+- Proactive Companion，包含 cooldown、系统操作抑制、最近回复冷却、场景优先级与同类触发去重。
 - Local Game Detector。
 - Manual Game Context Control。
 - Unsupported Game fallback。
@@ -136,6 +136,11 @@ dev/codex-reilink
 - 当前可从安全 Event Bus 事件生成短摘要：游戏切换、Boss 检测、死亡次数变化、挫败状态变化、Boss 击败、知识检索使用、主动陪伴显示、pending memory 接受 / 忽略。
 - 每条 item 只显示时间和短摘要，例如 `切换游戏：Elden Ring`、`检测到 Boss：Margit`、`死亡次数更新：3`、`使用知识：Margit phase 2 tips`、`记忆已接受`。
 - Session Timeline v1 manual acceptance bugfix 已补齐：死亡次数会区分绝对值表达（如 `已经死了3次`、`我现在死了4次`）和增量表达（如 `又死了两次`）；`我有点冷静下来了` 可记录挫败状态缓和；`我换到空洞骑士了`、`我回法环了`、`我现在在艾尔登法环` 等显式游戏切换会更新 Game Context；`假骑士 / False Knight` 可在 Hollow Knight 上下文中识别为 Boss。
+- 被动死亡表达已纳入 Game Session / Semantic Extraction 回归：`我被大树守卫杀了4次`、`被玛尔基特杀了3次`、`被假骑士打死两次` 等应记录为 failed attempt 与 death count，不应误判为 boss_cleared。
+- Semantic Extraction Debug 现在显示安全 trace：`source`（rule / LLM 兜底 / mixed）、`confidence`（high / medium / low）、`fallback_reason` 与 `applied_updates`。Debug / Event Stream 只显示安全摘要，不显示完整 user message、raw prompt、raw JSON、路径或 transcript。
+- 置信度设计保持可解释：高置信规则直接应用；被动死亡、near-clear、指代不明等“容易误判”的表达会降低调度置信度以允许 LLM fallback；fallback 失败时保留 rule-first 结果并记录安全 trace。
+- Proactive Companion 现在先判断场景，再决定低打扰短问句：明确烦躁 / 红温 / frustration count 优先归为挫败（如 `你还好吗？`），单纯死亡次数增长归为反复死亡（如 `没关系吧？`），没有状态性信号时才用沉默陪伴（如 `还在吗？`），深夜活跃局面用深夜提醒。非沉默类型触发后会等待用户回应并避免连续触发同一类型；沉默陪伴允许在冷却后重复，但仍受 idle threshold / cooldown 控制。
+- 系统操作（重置记忆、清空 pending memory、重置 game session、Settings / Local ASR 保存或刷新、Debug reset 等）会短暂抑制主动陪伴，并同步已观察到的死亡 / 挫败计数，避免操作后立刻弹出旧状态 proactive。
 - 显式记忆指令已加强：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 会生成 pending memory；`不用 / 不要 / 别记住` 等否定记忆请求不会生成 pending memory。
 - 已击败 Boss 后继续问攻略时，Rei 可以轻轻承接“已经打过”的上下文，但仍应继续回答实际问题，不应只停在反问上阻断需求。
 - Timeline 最多保留最近有限条目，并对摘要做截断和脱敏；不显示 raw prompt、完整 user message、完整 assistant reply、完整 ASR transcript、memory 原文全文、knowledge snippet 全文、API key、`.env`、完整本地路径、raw stdout/stderr 或 raw JSON。
@@ -252,9 +257,9 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Multi-part replies.
 - Settings Panel.
 - Game Session State.
-- Semantic Extraction.
+- Semantic Extraction with rule-first handling, LLM fallback, and privacy-safe trace observability.
 - Pending Memory confirmation.
-- Proactive Companion with cooldown and blocking safeguards.
+- Proactive Companion with cooldowns, system-action suppression, recent-reply grace, scene priority, and same-trigger de-duplication.
 - Local Game Detector.
 - Manual Game Context Control.
 - Unsupported Game fallback.
@@ -346,6 +351,11 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - It can generate short items from safe Event Bus events for game switches, boss detection, death count changes, frustration changes, boss clears, knowledge usage, proactive messages, and pending memory accept / ignore actions.
 - Each item shows only time plus a short summary, such as `切换游戏：Elden Ring`, `检测到 Boss：Margit`, `死亡次数更新：3`, `使用知识：Margit phase 2 tips`, or `记忆已接受`.
 - The Session Timeline v1 manual-acceptance bugfix now distinguishes absolute death counts (`已经死了3次`, `我现在死了4次`) from incremental counts (`又死了两次`), records calm/frustration easing, recognizes explicit Elden Ring / Hollow Knight switches, and resolves `假骑士 / False Knight` in Hollow Knight context.
+- Passive death statements are covered by Game Session / Semantic Extraction regression: `我被大树守卫杀了4次`, `被玛尔基特杀了3次`, and `被假骑士打死两次` should become failed attempts with death counts, not boss_cleared.
+- Semantic Extraction Debug now exposes a safe trace: `source` (rule / LLM fallback / mixed), `confidence` (high / medium / low), `fallback_reason`, and `applied_updates`. Debug / Event Stream summaries do not expose full user messages, raw prompts, raw JSON, paths, or transcripts.
+- Confidence is designed to stay explainable: high-confidence rules apply directly; passive-death, near-clear, and unclear-reference expressions lower scheduling confidence so LLM fallback can run when available; fallback failure keeps the rule-first result and records a safe trace.
+- Proactive Companion now separates scenes before choosing a low-interruption question: explicit frustration or frustration count uses frustration wording such as `你还好吗？`; death-count growth without explicit frustration uses repeated-death wording such as `没关系吧？`; idle without stronger state signals uses silence wording such as `还在吗？`; active late-night sessions use late-night wording. Non-silence triggers wait for user activity and avoid consecutive same-type triggers; idle silence may repeat after cooldown but still respects idle threshold and cooldown.
+- System actions such as memory reset, pending-memory clear, game-session reset, Settings / Local ASR save or refresh, and Debug reset briefly suppress proactive checks and sync observed death / frustration counts so old state does not immediately trigger a proactive message.
 - Explicit memory requests now cover the playstyle preference `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打`, while negated requests such as `不用 / 不要 / 别记住` remain non-memory.
 - After a boss is cleared, Rei may lightly acknowledge that context when the user asks for more strategy, but should still answer the actual question instead of stopping at a blocking rhetorical question.
 - The timeline keeps a bounded recent list and redacts/truncates summaries. It must not show raw prompts, full user messages, full assistant replies, full ASR transcripts, full memory text, full knowledge snippets, API keys, `.env`, full local paths, raw stdout/stderr, or raw JSON.

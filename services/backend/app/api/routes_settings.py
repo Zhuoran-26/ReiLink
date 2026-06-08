@@ -19,4 +19,5 @@ def update_settings(payload: AppSettingsUpdate) -> AppSettings:
     saved = store.save(payload)
     if payload.proactive_companion is not None or payload.proactive_sensitivity is not None:
         ProactiveCompanion().sync_settings(previous, saved)
+    ProactiveCompanion().suppress_after_system_action("settings_saved")
     return saved

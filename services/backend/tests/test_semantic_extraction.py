@@ -114,6 +114,79 @@ def test_boss_start_uses_rule_without_llm(monkeypatch):
     assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
 
 
+def test_passive_death_statement_has_safe_trace_without_clearing(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "mock")
+
+    result = sem.extract_semantics("我被大树守卫杀了4次，有点烦。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is False
+    assert result["ambiguity_detected"] is True
+    assert result["fallback_reason"] == "passive_death_statement"
+    assert result["source"] == "rule"
+    assert result["confidence"] == "high"
+    assert result["latest_user_message"].startswith("被动死亡表达 /")
+    assert "我被大树守卫杀了4次" not in result["latest_user_message"]
+    assert "boss_failed" in result["applied_updates"]
+    assert "boss_detected" in result["applied_updates"]
+    assert "emotion_frustrated" in result["applied_updates"]
+    assert result["final_decision"]["game_event"]["type"] == "failed_attempt"
+    assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
+
+
+def test_passive_death_statement_calls_llm_fallback_when_provider_available(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(
+        sem,
+        "_call_deepseek_flash",
+        lambda *args, **kwargs: json.dumps(
+            {
+                "game_event": {
+                    "type": "failed_attempt",
+                    "boss_name": "大树守卫",
+                    "confidence": 0.82,
+                    "should_update_current_boss": True,
+                },
+                "memory_candidate": {
+                    "should_create_pending": False,
+                    "type": "none",
+                    "text": "",
+                    "confidence": 0,
+                    "reason": "",
+                },
+                "emotion": {"type": "frustrated", "intensity": 0.6},
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    result = sem.extract_semantics("我被大树守卫杀了4次，有点烦。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is True
+    assert result["fallback_reason"] == "passive_death_statement"
+    assert result["source"] in {"mixed", "llm_fallback"}
+    assert result["confidence"] == "high"
+    assert result["parse_error"] is None
+    assert result["final_decision"]["game_event"]["type"] == "failed_attempt"
+    assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
+
+
+def test_passive_death_llm_failure_falls_back_to_rule_trace(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("provider failed")))
+
+    result = sem.extract_semantics("被玛尔基特杀了3次。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is True
+    assert result["parse_error"] == "semantic_extraction_provider_error"
+    assert "provider failed" not in result["parse_error"]
+    assert result["fallback_reason"] == "passive_death_statement"
+    assert result["source"] == "rule"
+    assert result["final_decision"]["game_event"]["type"] == "failed_attempt"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
 def test_short_guide_preference_creates_pending_candidate():
     result = sem.extract_semantics("我喜欢简短的游戏攻略", "casual_chat", _game_state())
 

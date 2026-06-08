@@ -1,5 +1,6 @@
 from fastapi import APIRouter, File, Form, Request, UploadFile
 
+from app.modules.proactive.trigger import ProactiveCompanion
 from app.modules.voice_input.audio_probe import MAX_AUDIO_UPLOAD_BYTES, process_audio_probe
 from app.modules.voice_input.local_asr_config import get_local_asr_status
 from app.modules.voice_input.local_asr_probe import probe_local_asr_binary
@@ -33,17 +34,23 @@ def local_asr_settings() -> LocalAsrSettingsResponse:
 
 @router.put("/voice-input/local-asr/settings", response_model=LocalAsrSettingsResponse)
 def save_local_asr_settings(update: LocalAsrSettingsUpdate) -> LocalAsrSettingsResponse:
-    return update_local_asr_settings(update)
+    response = update_local_asr_settings(update)
+    ProactiveCompanion().suppress_after_system_action("local_asr_settings_saved")
+    return response
 
 
 @router.delete("/voice-input/local-asr/settings", response_model=LocalAsrSettingsResponse)
 def delete_local_asr_settings() -> LocalAsrSettingsResponse:
-    return clear_local_asr_settings()
+    response = clear_local_asr_settings()
+    ProactiveCompanion().suppress_after_system_action("local_asr_settings_cleared")
+    return response
 
 
 @router.post("/voice-input/local-asr/probe", response_model=LocalAsrProbeResponse)
 def local_asr_probe() -> LocalAsrProbeResponse:
-    return probe_local_asr_binary()
+    response = probe_local_asr_binary()
+    ProactiveCompanion().suppress_after_system_action("local_asr_probe")
+    return response
 
 
 @router.post("/voice-input/local-asr/transcribe", response_model=LocalAsrTranscriptionResponse)
@@ -98,7 +105,9 @@ async def audio_probe(request: Request) -> AudioProbeResponse:
             mime_type=_safe_header(request.headers.get("content-type")),
             temporary_file_cleaned=True,
         )
-    return process_audio_probe(body, request.headers.get("content-type"), duration_ms=duration_ms)
+    response = process_audio_probe(body, request.headers.get("content-type"), duration_ms=duration_ms)
+    ProactiveCompanion().suppress_after_system_action("audio_probe")
+    return response
 
 
 def _safe_header(value: str | None) -> str | None:

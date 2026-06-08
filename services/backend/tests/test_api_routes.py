@@ -598,14 +598,22 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
         "semantic_extraction_latency_ms",
         "provider_latency_ms",
         "llm_result",
-        "final_decision",
-        "fallback_reason",
-        "skip_reason",
-        "why_pending_created",
-        "latency_ms",
-        "parse_error",
-    } <= data.keys()
-    assert data["latest_user_message"] == "我喜欢简短的游戏攻略"
+            "final_decision",
+            "fallback_reason",
+            "source",
+            "confidence",
+            "applied_updates",
+            "extraction_trace",
+            "skip_reason",
+            "why_pending_created",
+            "latency_ms",
+            "parse_error",
+        } <= data.keys()
+    assert data["latest_user_message"].startswith("游戏状态表达 /")
+    assert "我喜欢简短的游戏攻略" not in data["latest_user_message"]
+    assert data["source"] == "rule"
+    assert data["confidence"] == "high"
+    assert "memory_candidate_created" in data["applied_updates"]
     assert data["llm_called"] is False
     assert data["final_decision"]["memory_candidate"]["should_create_pending"] is True
     serialized = json.dumps(data, ensure_ascii=False).lower()

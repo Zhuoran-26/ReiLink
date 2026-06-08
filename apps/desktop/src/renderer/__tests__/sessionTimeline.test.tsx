@@ -92,7 +92,13 @@ describe("sessionTimeline", () => {
         type: "proactive_message_shown",
         timestamp,
         trigger_type: "repeated_death",
-        text: "你开始急了。完整 assistant text 不应该进入这里。"
+        text: "没关系吧？完整 assistant text 不应该进入这里。"
+      }),
+      ...sessionTimelineItemsFromEvent({
+        type: "proactive_message_shown",
+        timestamp,
+        trigger_type: "idle_silence",
+        text: "还在吗？"
       }),
       ...sessionTimelineItemsFromEvent({
         type: "pending_memory_accepted",
@@ -108,10 +114,11 @@ describe("sessionTimeline", () => {
 
     expect(items.map((item) => item.summary)).toEqual([
       "主动陪伴已显示：反复死亡",
+      "主动陪伴已显示：沉默陪伴",
       "记忆已接受",
       "记忆已忽略"
     ]);
-    expect(items.map((item) => item.summary).join(" ")).not.toContain("你开始急了");
+    expect(items.map((item) => item.summary).join(" ")).not.toContain("没关系吧");
     expect(items.map((item) => item.summary).join(" ")).not.toContain("memory-with-full-text");
   });
 

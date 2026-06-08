@@ -44,7 +44,7 @@ const SENSITIVE_PATTERNS = [
 const triggerLabels: Record<string, string> = {
   repeated_death: "反复死亡",
   frustration_loop: "挫败循环",
-  idle_silence: "空闲沉默",
+  idle_silence: "沉默陪伴",
   late_night: "深夜提醒",
   none: "主动陪伴"
 };
