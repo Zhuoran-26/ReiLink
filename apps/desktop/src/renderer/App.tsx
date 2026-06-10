@@ -261,6 +261,11 @@ const emptySemanticExtractionDebug: SemanticExtractionDebugResponse = {
   semantic_extraction_latency_ms: 0,
   provider_latency_ms: 0,
   llm_result: null,
+  llm_shadow: null,
+  llm_shadow_status: "skipped",
+  llm_shadow_confidence: "low",
+  llm_shadow_summary: "未运行",
+  llm_shadow_diff: "规则和 LLM 均无高置信更新",
   final_decision: null,
   skip_reason: null,
   latency_ms: 0,
@@ -562,6 +567,11 @@ const labelMap: Record<string, string> = {
   llm_event: "LLM 游戏事件",
   llm_memory: "LLM 记忆",
   llm_result: "LLM 判断",
+  llm_shadow: "LLM 影子候选",
+  llm_shadow_confidence: "影子置信度",
+  llm_shadow_diff: "规则 / 影子差异",
+  llm_shadow_status: "影子状态",
+  llm_shadow_summary: "影子摘要",
   main_reply_model: "回复模型",
   memory: "记忆摘要",
   manual_override: "手动选择",
@@ -715,6 +725,12 @@ const valueMap: Record<string, string> = {
   slang_failure_expression: "低置信失败表达",
   unknown_boss_alias: "未知 Boss 指代",
   game_semantic_keywords_no_rule_update: "低置信游戏语义",
+  shadow_mode_game_semantics: "影子识别游戏语义",
+  skipped: "已跳过",
+  succeeded: "已完成",
+  invalid_json: "返回 JSON 无效",
+  timeout: "超时",
+  provider_error: "模型服务失败",
   running: "运行中",
   sample: "样例",
   short: "简短",
@@ -965,6 +981,15 @@ const overlayPositionText = (position?: string) => {
   return labels[position ?? ""] ?? "右中";
 };
 
+const semanticShadowStatusText = (status?: string | null) => {
+  const labels: Record<string, string> = {
+    skipped: "已跳过",
+    succeeded: "已完成",
+    failed: "失败"
+  };
+  return labels[status ?? ""] ?? debugText(status);
+};
+
 const eventSummary = (event: ReiLinkEvent) => {
   switch (event.type) {
     case "user_message_sent":
@@ -992,7 +1017,10 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.fallback_reason ? `原因：${debugText(event.fallback_reason)}` : "",
         event.skip_reason && event.skip_reason !== "no_semantic_signal" ? `跳过：${debugText(event.skip_reason)}` : "",
         event.parse_error ? `错误：${debugText(event.parse_error)}` : "",
-        event.applied_updates?.length ? debugText(event.applied_updates) : ""
+        event.applied_updates?.length ? debugText(event.applied_updates) : "",
+        event.llm_shadow_status ? `影子：${semanticShadowStatusText(event.llm_shadow_status)}` : "",
+        event.llm_shadow_summary ? sanitizeSessionTimelineText(event.llm_shadow_summary, 96) : "",
+        event.llm_shadow_diff ? sanitizeSessionTimelineText(event.llm_shadow_diff, 96) : ""
       ].filter(Boolean).join(" / ");
     case "game_session_changed":
       return [
@@ -1930,15 +1958,21 @@ export function App() {
     const skipReason = trace?.skip_reason ?? debug.skip_reason ?? null;
     const parseError = trace?.parse_error ?? debug.parse_error ?? null;
     const appliedUpdates = trace?.applied_updates ?? debug.applied_updates ?? [];
+    const shadowStatus = trace?.llm_shadow_status ?? debug.llm_shadow_status ?? null;
+    const shadowConfidence = trace?.llm_shadow_confidence ?? debug.llm_shadow_confidence ?? null;
+    const shadowSummary = trace?.llm_shadow_summary ?? debug.llm_shadow_summary ?? null;
+    const shadowDiff = trace?.llm_shadow_diff ?? debug.llm_shadow_diff ?? null;
     const shouldEmit = Boolean(
       source !== "none"
       || fallbackReason
       || parseError
       || (skipReason && skipReason !== "no_semantic_signal")
       || appliedUpdates.length
+      || (shadowStatus && shadowStatus !== "skipped")
+      || (shadowSummary && !String(shadowSummary).startsWith("跳过：no_semantic_signal"))
     );
     if (!shouldEmit) return;
-    const key = JSON.stringify({ source, confidence, fallbackReason, skipReason, parseError, appliedUpdates });
+    const key = JSON.stringify({ source, confidence, fallbackReason, skipReason, parseError, appliedUpdates, shadowStatus, shadowConfidence, shadowSummary, shadowDiff });
     if (lastSemanticTraceEventRef.current === key) return;
     lastSemanticTraceEventRef.current = key;
     eventBus.emit({
@@ -1949,7 +1983,11 @@ export function App() {
       fallback_reason: fallbackReason,
       skip_reason: skipReason,
       parse_error: parseError,
-      applied_updates: appliedUpdates
+      applied_updates: appliedUpdates,
+      llm_shadow_status: shadowStatus ?? undefined,
+      llm_shadow_confidence: shadowConfidence ?? undefined,
+      llm_shadow_summary: shadowSummary,
+      llm_shadow_diff: shadowDiff
     });
   }, []);
 
@@ -4907,6 +4945,22 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>
                           <BooleanBadge value={semanticDebug.llm_called} />
                         </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_shadow_status")}</dt>
+                        <dd>{semanticShadowStatusText(semanticDebug.llm_shadow_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_shadow_confidence")}</dt>
+                        <dd>{debugText(semanticDebug.llm_shadow_confidence)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_shadow_summary")}</dt>
+                        <dd>{debugText(semanticDebug.llm_shadow_summary)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_shadow_diff")}</dt>
+                        <dd>{debugText(semanticDebug.llm_shadow_diff)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("model")}</dt>

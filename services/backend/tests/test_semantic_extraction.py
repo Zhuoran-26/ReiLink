@@ -3,6 +3,44 @@ import json
 from app.modules.dialogue_agent import semantic_extraction as sem
 
 
+def _shadow_payload(
+    *,
+    game="unknown",
+    boss="unknown",
+    boss_label=None,
+    death_operation="none",
+    death_value=None,
+    frustration="none",
+    cleared="none",
+    confidence="medium",
+    memory=False,
+    proactive="none",
+    reasoning="候选摘要",
+) -> dict:
+    return {
+        "is_game_related": True,
+        "confidence": confidence,
+        "game": {"operation": "set" if game != "unknown" else "unknown", "value": game, "confidence": confidence},
+        "boss": {
+            "operation": "set" if boss != "unknown" else "unknown",
+            "value": boss,
+            "surface_label": boss_label,
+            "confidence": confidence,
+        },
+        "death_count": {"operation": death_operation, "value": death_value, "confidence": confidence},
+        "frustration": {"operation": frustration, "confidence": confidence},
+        "boss_cleared": {"operation": cleared, "confidence": confidence},
+        "memory_candidate": {
+            "should_create": memory,
+            "kind": "progress" if memory else "none",
+            "safe_summary": "玩家游戏进度候选" if memory else None,
+            "confidence": confidence,
+        },
+        "proactive_signal": {"type": proactive, "confidence": confidence, "reason": "安全短原因" if proactive != "none" else ""},
+        "reasoning_summary": reasoning,
+    }
+
+
 class _FakeResponse:
     def __enter__(self):
         return self
@@ -17,22 +55,7 @@ class _FakeResponse:
                     {
                         "message": {
                             "content": json.dumps(
-                                {
-                                    "game_event": {
-                                        "type": "failed_attempt",
-                                        "boss_name": "Margit",
-                                        "confidence": 0.82,
-                                        "should_update_current_boss": True,
-                                    },
-                                    "memory_candidate": {
-                                        "should_create_pending": False,
-                                        "type": "none",
-                                        "text": "",
-                                        "confidence": 0,
-                                        "reason": "",
-                                    },
-                                    "emotion": {"type": "frustrated", "intensity": 0.55},
-                                },
+                                _shadow_payload(boss="margit", death_operation="increment", death_value=1, frustration="raise"),
                                 ensure_ascii=False,
                             )
                         }
@@ -143,29 +166,14 @@ def test_passive_death_statement_has_safe_trace_without_clearing(monkeypatch):
     assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
 
 
-def test_passive_death_statement_calls_llm_fallback_when_provider_available(monkeypatch):
+def test_passive_death_statement_calls_llm_shadow_when_provider_available(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
     monkeypatch.setattr(
         sem,
         "_call_deepseek_flash",
         lambda *args, **kwargs: json.dumps(
-            {
-                "game_event": {
-                    "type": "failed_attempt",
-                    "boss_name": "大树守卫",
-                    "confidence": 0.82,
-                    "should_update_current_boss": True,
-                },
-                "memory_candidate": {
-                    "should_create_pending": False,
-                    "type": "none",
-                    "text": "",
-                    "confidence": 0,
-                    "reason": "",
-                },
-                "emotion": {"type": "frustrated", "intensity": 0.6},
-            },
+            _shadow_payload(boss="tree_sentinel", death_operation="set", death_value=4, frustration="raise"),
             ensure_ascii=False,
         ),
     )
@@ -174,9 +182,12 @@ def test_passive_death_statement_calls_llm_fallback_when_provider_available(monk
 
     assert result["llm_called"] is True
     assert result["fallback_reason"] == "passive_death_statement"
-    assert result["source"] in {"mixed", "llm_fallback"}
+    assert result["source"] == "rule"
     assert result["confidence"] == "high"
     assert result["parse_error"] is None
+    assert result["llm_shadow_status"] == "succeeded"
+    assert "大树守卫" in result["llm_shadow_summary"]
+    assert "失败次数" in result["llm_shadow_summary"]
     assert result["final_decision"]["game_event"]["type"] == "failed_attempt"
     assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
 
@@ -257,7 +268,40 @@ def test_game_semantic_hint_no_rule_update_emits_low_confidence_trace(monkeypatc
     assert result["applied_updates"] == []
 
 
-def test_low_confidence_game_semantic_calls_llm_fallback_when_provider_available(monkeypatch):
+def test_casual_chat_does_not_trigger_llm_shadow(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("shadow called")))
+
+    result = sem.extract_semantics("今天吃饭了吗？", "casual_chat", _game_state())
+
+    assert result["llm_called"] is False
+    assert result["skip_reason"] == "no_semantic_signal"
+    assert result["llm_shadow_status"] == "skipped"
+
+
+def test_explicit_game_semantics_triggers_llm_shadow_without_overriding_rule(monkeypatch):
+    calls = []
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+
+    def fake_call(*args, **kwargs):
+        calls.append((args, kwargs))
+        return json.dumps(_shadow_payload(boss="tree_sentinel", death_operation="none", confidence="medium"), ensure_ascii=False)
+
+    monkeypatch.setattr(sem, "_call_deepseek_flash", fake_call)
+
+    result = sem.extract_semantics("我去打大树守卫", "casual_chat", _game_state())
+
+    assert calls
+    assert result["llm_called"] is True
+    assert result["llm_shadow_status"] == "succeeded"
+    assert result["source"] == "rule"
+    assert result["final_decision"]["game_event"]["type"] == "boss_attempt"
+    assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
+
+
+def test_low_confidence_game_semantic_calls_llm_shadow_when_provider_available(monkeypatch):
     calls = []
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
@@ -265,22 +309,15 @@ def test_low_confidence_game_semantic_calls_llm_fallback_when_provider_available
     def fake_call(*args, **kwargs):
         calls.append((args, kwargs))
         return json.dumps(
-            {
-                "game_event": {
-                    "type": "failed_attempt",
-                    "boss_name": "大树守卫",
-                    "confidence": 0.82,
-                    "should_update_current_boss": True,
-                },
-                "memory_candidate": {
-                    "should_create_pending": False,
-                    "type": "none",
-                    "text": "",
-                    "confidence": 0,
-                    "reason": "",
-                },
-                "emotion": {"type": "frustrated", "intensity": 0.55},
-            },
+            _shadow_payload(
+                game="elden_ring",
+                boss="tree_sentinel",
+                death_operation="increment",
+                death_value=2,
+                frustration="raise",
+                proactive="repeated_death",
+                confidence="medium",
+            ),
             ensure_ascii=False,
         )
 
@@ -292,10 +329,14 @@ def test_low_confidence_game_semantic_calls_llm_fallback_when_provider_available
     assert result["llm_called"] is True
     assert result["fallback_reason"] == "unknown_boss_alias"
     assert result["skip_reason"] is None
-    assert result["source"] == "llm_fallback"
-    assert "boss_failed" in result["applied_updates"]
-    assert "boss_detected" in result["applied_updates"]
-    assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
+    assert result["source"] == "none"
+    assert result["applied_updates"] == []
+    assert result["llm_shadow_status"] == "succeeded"
+    assert result["llm_shadow"]["boss"]["value"] == "tree_sentinel"
+    assert result["llm_shadow"]["proactive_signal"]["type"] == "repeated_death"
+    assert "规则未识别，LLM 认为可能是 大树守卫" == result["llm_shadow_diff"]
+    assert "大树守卫" in result["llm_shadow_summary"]
+    assert result["final_decision"]["game_event"]["type"] == "none"
 
 
 def test_low_confidence_game_semantic_llm_unavailable_degrades_safely(monkeypatch):
@@ -308,11 +349,115 @@ def test_low_confidence_game_semantic_llm_unavailable_degrades_safely(monkeypatc
     assert result["fallback_reason"] == "unknown_boss_alias"
     assert result["skip_reason"] == "provider_unavailable"
     assert result["source"] == "none"
+    assert result["llm_shadow_status"] == "skipped"
+    assert result["llm_shadow"]["skip_reason"] == "provider_unavailable"
+    assert "provider_unavailable" in result["llm_shadow_summary"]
     serialized = json.dumps(result, ensure_ascii=False).lower()
     assert "api_key" not in serialized
     assert ".env" not in serialized
     assert "authorization" not in serialized
     assert "我在那个骑马金甲大哥那里又寄了几次" not in result["latest_user_message"]
+
+
+def test_hollow_knight_shadow_candidate_does_not_mutate_state(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(
+        sem,
+        "_call_deepseek_flash",
+        lambda *args, **kwargs: json.dumps(
+            _shadow_payload(
+                game="hollow_knight",
+                boss="false_knight",
+                death_operation="increment",
+                death_value=1,
+                frustration="raise",
+            ),
+            ensure_ascii=False,
+        ),
+    )
+
+    result = sem.extract_semantics("空洞骑士里那个一开始拿锤子的家伙把我打爆了。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is True
+    assert result["llm_shadow_status"] == "succeeded"
+    assert result["llm_shadow"]["game"]["value"] == "hollow_knight"
+    assert result["llm_shadow"]["boss"]["value"] == "false_knight"
+    assert "假骑士" in result["llm_shadow_summary"]
+    assert result["applied_updates"] == []
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_shadow_memory_and_proactive_candidates_are_not_applied(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(
+        sem,
+        "_call_deepseek_flash",
+        lambda *args, **kwargs: json.dumps(
+            _shadow_payload(
+                boss="tree_sentinel",
+                death_operation="increment",
+                death_value=3,
+                memory=True,
+                proactive="repeated_death",
+            ),
+            ensure_ascii=False,
+        ),
+    )
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_shadow"]["memory_candidate"]["should_create"] is True
+    assert result["llm_shadow"]["proactive_signal"]["type"] == "repeated_death"
+    assert "memory_candidate_created" not in result["applied_updates"]
+    assert "boss_failed" not in result["applied_updates"]
+    assert result["final_decision"]["memory_candidate"]["should_create_pending"] is False
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_shadow_invalid_json_fails_safely_without_raw_payload(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: "raw prompt /Users/aragoto/private/.env sk-secret")
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is True
+    assert result["llm_shadow_status"] == "failed"
+    assert result["llm_shadow"]["failure_reason"] == "invalid_json"
+    assert result["parse_error"] == "semantic_extraction_parse_error"
+    serialized = json.dumps(result, ensure_ascii=False).lower()
+    assert "raw prompt" not in serialized
+    assert "/users/aragoto" not in serialized
+    assert ".env" not in serialized
+    assert "sk-secret" not in serialized
+
+
+def test_shadow_safe_summary_sanitizes_untrusted_model_text(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    user_message = "我在那个骑马金甲大哥那里又寄了几次。"
+    payload = _shadow_payload(
+        boss="tree_sentinel",
+        boss_label=f"{user_message} /Users/aragoto/private/.env raw prompt sk-secret",
+        memory=True,
+        reasoning=f"{user_message} stdout stderr /Users/aragoto/private/.env",
+    )
+    payload["memory_candidate"]["safe_summary"] = f"{user_message} DEEPSEEK_API_KEY=/Users/aragoto/private/.env"
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: json.dumps(payload, ensure_ascii=False))
+
+    result = sem.extract_semantics(user_message, "casual_chat", _game_state())
+
+    serialized = json.dumps(result["llm_shadow"], ensure_ascii=False).lower()
+    assert user_message not in serialized
+    assert "/users/aragoto" not in serialized
+    assert ".env" not in serialized
+    assert "raw prompt" not in serialized
+    assert "stdout" not in serialized
+    assert "stderr" not in serialized
+    assert "deepseek_api_key" not in serialized
+    assert "sk-secret" not in serialized
 
 
 def test_short_guide_preference_creates_pending_candidate():
@@ -371,29 +516,14 @@ def test_persona_preference_creates_low_confidence_pending_candidate():
     assert 0.6 <= candidate["confidence"] < 0.75
 
 
-def test_llm_fallback_can_resolve_ambiguous_game_event(monkeypatch):
+def test_llm_shadow_does_not_resolve_ambiguous_game_event_directly(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
     monkeypatch.setattr(
         sem,
         "_call_deepseek_flash",
         lambda *args, **kwargs: json.dumps(
-            {
-                "game_event": {
-                    "type": "failed_attempt",
-                    "boss_name": "Margit",
-                    "confidence": 0.82,
-                    "should_update_current_boss": True,
-                },
-                "memory_candidate": {
-                    "should_create_pending": False,
-                    "type": "none",
-                    "text": "",
-                    "confidence": 0,
-                    "reason": "",
-                },
-                "emotion": {"type": "frustrated", "intensity": 0.55},
-            },
+            _shadow_payload(boss="margit", death_operation="increment", death_value=1, frustration="raise"),
             ensure_ascii=False,
         ),
     )
@@ -402,7 +532,9 @@ def test_llm_fallback_can_resolve_ambiguous_game_event(monkeypatch):
 
     assert result["llm_called"] is True
     assert result["parse_error"] is None
-    assert result["final_decision"]["game_event"]["type"] == "failed_attempt"
+    assert result["llm_shadow_status"] == "succeeded"
+    assert result["llm_shadow"]["boss"]["value"] == "margit"
+    assert result["final_decision"]["game_event"]["type"] == "near_clear"
     assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
 
 
@@ -433,22 +565,7 @@ def test_llm_cleared_result_does_not_override_near_clear_rule(monkeypatch):
         sem,
         "_call_deepseek_flash",
         lambda *args, **kwargs: json.dumps(
-            {
-                "game_event": {
-                    "type": "boss_cleared",
-                    "boss_name": "Margit",
-                    "confidence": 0.99,
-                    "should_update_current_boss": True,
-                },
-                "memory_candidate": {
-                    "should_create_pending": False,
-                    "type": "none",
-                    "text": "",
-                    "confidence": 0,
-                    "reason": "",
-                },
-                "emotion": {"type": "none", "intensity": 0},
-            },
+            _shadow_payload(boss="margit", cleared="set_true", confidence="high"),
             ensure_ascii=False,
         ),
     )

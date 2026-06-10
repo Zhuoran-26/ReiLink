@@ -441,9 +441,11 @@ packaged `.app` 手动 smoke 最低步骤：
 - 显式游戏切换必须覆盖 `我换到空洞骑士了`、`我现在玩空洞骑士`、`今天打空洞骑士`、`我回法环了`、`我现在在艾尔登法环`；后续 Boss / Knowledge Retrieval 应跟随新的 current game。
 - Boss alias 回归必须覆盖 `恶兆妖鬼玛尔基特 / 玛尔基特 / Margit` 和 Hollow Knight 的 `假骑士 / False Knight`。
 - 被动死亡表达必须记录为失败尝试而不是击败：`我在大树守卫，被杀了4次，有点烦`、`我被大树守卫杀了4次`、`被玛尔基特杀了3次`、`被假骑士打死两次` 应更新 Boss、death count 与 failed activity，不应出现 boss_cleared。
-- Semantic Extraction Debug 应显示安全 trace：`source`、`confidence`、`fallback_reason`、`skip_reason`、`applied_updates`。被动死亡 / near-clear / 指代不明 / 中文游戏失败 slang 等容易误判表达应能看到 fallback reason；provider 不可用、fallback 失败或 no meaningful update 时也应显示安全 skip / parse reason，不应 silent no-op。
-- 语义识别置信度验收：高置信规则可以直接应用；被动死亡、near-clear、未知 Boss 指代、低置信失败表达等歧义风险表达应降低调度置信度以允许 LLM fallback；最终显示的 confidence 只用 high / medium / low，不展示 raw prompt、raw JSON 或完整用户输入。
-- 低置信语义触发词只能作为 fallback / trace 线索，不应为了测试把 slang 或模糊别名硬编码成最终 Boss、death count 或 boss_cleared；只有规则高置信或 LLM fallback 返回结构化结果时才应用状态更新。
+- Semantic Extraction Debug 应显示安全 trace：`source`、`confidence`、`fallback_reason`、`skip_reason`、`applied_updates`，以及 `llm_shadow_status`、`llm_shadow_summary`、`llm_shadow_diff`。被动死亡 / near-clear / 指代不明 / 中文游戏失败 slang 等容易误判表达应能看到安全原因；provider 不可用、Shadow Mode 失败、invalid JSON 或 no meaningful update 时也应显示安全 skip / parse reason，不应 silent no-op。
+- 语义识别置信度验收：高置信规则可以直接应用；被动死亡、near-clear、未知 Boss 指代、低置信失败表达等歧义风险表达应降低调度置信度以允许 LLM Shadow Mode 产出候选；最终显示的 confidence 只用 high / medium / low，不展示 raw prompt、raw JSON 或完整用户输入。
+- LLM Shadow Mode 只用于可观测性：LLM 影子候选可以显示候选 game / boss / death_count / frustration / boss_cleared / memory / proactive signal 与规则差异，但不能直接修改当前游戏状态、memory 或 proactive 调度。
+- 低置信语义触发词只能作为 trace / Shadow Mode 线索，不应为了测试把 slang 或模糊别名硬编码成最终 Boss、death count 或 boss_cleared；v2 状态更新只来自规则路径，影子候选即使成功也只显示候选和差异。
+- Shadow Mode 回归必须覆盖 provider unavailable、invalid JSON、timeout / provider error：这些场景都要安全降级，不显示 raw provider response、raw prompt、完整路径、API key、`.env`、stdout/stderr 或完整用户输入。
 - 已击败 Boss 后继续问打法时，纯攻略 / 位置 / build 提问不应把已 cleared Boss 重新写成 current boss。Rei 可以轻轻承接“已经打过”的上下文，但不能只用反问阻断；仍应回答用户实际攻略 / 复盘需求。
 - 显式记忆回归：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 应创建 pending memory；`以后不用记住这个，只是我这次随便说一下` 不应创建 pending memory。
 - Knowledge Retrieval 使用成功时应显示 `使用知识` 类摘要，只允许游戏名或安全 topic/title；不得显示完整 snippet、knowledge 文件路径或 prompt。

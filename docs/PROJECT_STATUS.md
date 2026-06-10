@@ -42,7 +42,7 @@ dev/codex-reilink
 - Multi-part replies。
 - Settings Panel。
 - Game Session State。
-- Semantic Extraction，包含 rule-first、LLM fallback 与安全 trace 可观察性。
+- Semantic Extraction，包含 rule-first、LLM Shadow Mode 与安全 trace 可观察性。
 - Pending Memory confirmation。
 - Proactive Companion，包含 cooldown、系统操作抑制、最近回复冷却、场景优先级与同类触发去重。
 - Local Game Detector。
@@ -137,9 +137,10 @@ dev/codex-reilink
 - 每条 item 只显示时间和短摘要，例如 `切换游戏：Elden Ring`、`检测到 Boss：Margit`、`死亡次数更新：3`、`使用知识：Margit phase 2 tips`、`记忆已接受`。
 - Session Timeline v1 manual acceptance bugfix 已补齐：死亡次数会区分绝对值表达（如 `已经死了3次`、`我现在死了4次`）和增量表达（如 `又死了两次`）；`我有点冷静下来了` 可记录挫败状态缓和；`我换到空洞骑士了`、`我回法环了`、`我现在在艾尔登法环` 等显式游戏切换会更新 Game Context；`假骑士 / False Knight` 可在 Hollow Knight 上下文中识别为 Boss。
 - 被动死亡表达已纳入 Game Session / Semantic Extraction 回归：`我被大树守卫杀了4次`、`被玛尔基特杀了3次`、`被假骑士打死两次` 等应记录为 failed attempt 与 death count，不应误判为 boss_cleared。
-- Semantic Extraction Debug 现在显示安全 trace：`source`（rule / LLM 兜底 / mixed / none）、`confidence`（high / medium / low）、`fallback_reason`、`skip_reason` 与 `applied_updates`。Debug / Event Stream 只显示安全摘要，不显示完整 user message、raw prompt、raw JSON、路径或 transcript。
-- 置信度设计保持可解释：高置信规则直接应用；被动死亡、near-clear、指代不明、中文游戏失败 slang 等“容易误判”的表达会降低调度置信度以允许 LLM fallback；provider 不可用、fallback 失败或无 meaningful update 时也会记录安全 trace，而不是 silent no-op。
-- 低置信 slang / 未知 Boss 指代只作为 fallback / trace 触发线索，不直接硬编码成最终 Boss、death count 或 boss_cleared；只有规则高置信或 LLM fallback 返回结构化结果时才应用状态更新。
+- Semantic Extraction v2 进入 LLM Shadow Mode：规则仍是唯一状态落地路径；LLM 只生成结构化影子候选用于 Debug / Event Stream / QA 观察，不直接写入 current game、Boss、death count、frustration、boss_cleared、memory 或 proactive。
+- Semantic Extraction Debug 现在显示安全 trace：`source`（rule / none）、`confidence`（high / medium / low）、`fallback_reason`、`skip_reason`、`applied_updates`，以及 `llm_shadow_status` / `llm_shadow_summary` / `llm_shadow_diff`。Debug / Event Stream 只显示安全摘要，不显示完整 user message、raw prompt、raw JSON、路径或 transcript。
+- 置信度设计保持可解释：高置信规则直接应用；被动死亡、near-clear、指代不明、中文游戏失败 slang 等“容易误判”的表达会降低调度置信度以触发 LLM 影子识别。provider 不可用、影子识别失败、invalid JSON 或 no meaningful update 时也会记录安全 trace，而不是 silent no-op。
+- 低置信 slang / 未知 Boss 指代只作为 trace / Shadow Mode 触发线索，不应为了测试硬编码成最终 Boss、death count 或 boss_cleared；即使 LLM 影子候选给出推测，v2 也只显示候选与规则差异，不自动应用状态更新。
 - Proactive Companion 现在先判断场景，再决定低打扰短问句：明确烦躁 / 红温 / frustration count 优先归为挫败（如 `你还好吗？`），单纯死亡次数增长归为反复死亡（如 `没关系吧？`），没有状态性信号时才用沉默陪伴（如 `还在吗？`），深夜活跃局面用深夜提醒。非沉默类型触发后会等待用户回应并避免连续触发同一类型；沉默陪伴允许在冷却后重复，但仍受 idle threshold / cooldown 控制。
 - 系统操作（重置记忆、清空 pending memory、重置 game session、Settings / Local ASR 保存或刷新、Debug reset 等）会短暂抑制主动陪伴，并同步已观察到的死亡 / 挫败计数，避免操作后立刻弹出旧状态 proactive。
 - 显式记忆指令已加强：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 会生成 pending memory；`不用 / 不要 / 别记住` 等否定记忆请求不会生成 pending memory。
@@ -258,7 +259,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Multi-part replies.
 - Settings Panel.
 - Game Session State.
-- Semantic Extraction with rule-first handling, LLM fallback, and privacy-safe trace observability.
+- Semantic Extraction with rule-first handling, LLM Shadow Mode, and privacy-safe trace observability.
 - Pending Memory confirmation.
 - Proactive Companion with cooldowns, system-action suppression, recent-reply grace, scene priority, and same-trigger de-duplication.
 - Local Game Detector.
@@ -353,9 +354,10 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Each item shows only time plus a short summary, such as `切换游戏：Elden Ring`, `检测到 Boss：Margit`, `死亡次数更新：3`, `使用知识：Margit phase 2 tips`, or `记忆已接受`.
 - The Session Timeline v1 manual-acceptance bugfix now distinguishes absolute death counts (`已经死了3次`, `我现在死了4次`) from incremental counts (`又死了两次`), records calm/frustration easing, recognizes explicit Elden Ring / Hollow Knight switches, and resolves `假骑士 / False Knight` in Hollow Knight context.
 - Passive death statements are covered by Game Session / Semantic Extraction regression: `我被大树守卫杀了4次`, `被玛尔基特杀了3次`, and `被假骑士打死两次` should become failed attempts with death counts, not boss_cleared.
-- Semantic Extraction Debug now exposes a safe trace: `source` (rule / LLM fallback / mixed / none), `confidence` (high / medium / low), `fallback_reason`, `skip_reason`, and `applied_updates`. Debug / Event Stream summaries do not expose full user messages, raw prompts, raw JSON, paths, or transcripts.
-- Confidence is designed to stay explainable: high-confidence rules apply directly; passive-death, near-clear, unclear-reference, and Chinese game-failure slang expressions lower scheduling confidence so LLM fallback can run when available; provider unavailable, fallback failure, or no meaningful update still records a safe trace instead of a silent no-op.
-- Low-confidence slang / unknown Boss references are only fallback / trace hints, not hardcoded final Boss, death-count, or boss-cleared updates. State changes apply only when rule evidence is high-confidence or LLM fallback returns a structured result.
+- Semantic Extraction v2 now uses LLM Shadow Mode: rules remain the only state-application path; the LLM produces structured shadow candidates only for Debug / Event Stream / QA observability and does not directly write current game, Boss, death count, frustration, boss_cleared, memory, or proactive state.
+- Semantic Extraction Debug now exposes a safe trace: `source` (rule / none), `confidence` (high / medium / low), `fallback_reason`, `skip_reason`, `applied_updates`, plus `llm_shadow_status`, `llm_shadow_summary`, and `llm_shadow_diff`. Debug / Event Stream summaries do not expose full user messages, raw prompts, raw JSON, paths, or transcripts.
+- Confidence is designed to stay explainable: high-confidence rules apply directly; passive-death, near-clear, unclear-reference, and Chinese game-failure slang expressions lower scheduling confidence so LLM Shadow Mode can run when available. Provider unavailable, shadow failure, invalid JSON, or no meaningful update still records a safe trace instead of a silent no-op.
+- Low-confidence slang / unknown Boss references are only trace / Shadow Mode triggers, not hardcoded final Boss, death-count, or boss-cleared updates. Even when the LLM shadow produces a candidate, v2 only displays the candidate and rule diff; it does not automatically apply state updates.
 - Proactive Companion now separates scenes before choosing a low-interruption question: explicit frustration or frustration count uses frustration wording such as `你还好吗？`; death-count growth without explicit frustration uses repeated-death wording such as `没关系吧？`; idle without stronger state signals uses silence wording such as `还在吗？`; active late-night sessions use late-night wording. Non-silence triggers wait for user activity and avoid consecutive same-type triggers; idle silence may repeat after cooldown but still respects idle threshold and cooldown.
 - System actions such as memory reset, pending-memory clear, game-session reset, Settings / Local ASR save or refresh, and Debug reset briefly suppress proactive checks and sync observed death / frustration counts so old state does not immediately trigger a proactive message.
 - Explicit memory requests now cover the playstyle preference `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打`, while negated requests such as `不用 / 不要 / 别记住` remain non-memory.

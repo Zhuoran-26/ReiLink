@@ -608,6 +608,11 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
             "why_pending_created",
             "latency_ms",
             "parse_error",
+            "llm_shadow",
+            "llm_shadow_status",
+            "llm_shadow_confidence",
+            "llm_shadow_summary",
+            "llm_shadow_diff",
         } <= data.keys()
     assert data["latest_user_message"].startswith("游戏状态表达 /")
     assert "我喜欢简短的游戏攻略" not in data["latest_user_message"]

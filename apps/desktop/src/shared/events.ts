@@ -20,6 +20,10 @@ export type ReiLinkEvent =
       skip_reason?: string | null;
       parse_error?: string | null;
       applied_updates?: string[];
+      llm_shadow_status?: "skipped" | "succeeded" | "failed";
+      llm_shadow_confidence?: "high" | "medium" | "low";
+      llm_shadow_summary?: string | null;
+      llm_shadow_diff?: string | null;
     }
   | {
       type: "game_session_changed";

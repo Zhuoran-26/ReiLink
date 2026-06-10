@@ -552,25 +552,36 @@ const semanticExtractionDebug = {
   raw_rule_confidence: 0.65,
   ambiguity_detected: false,
   fallback_reason: null,
-  source: "llm_fallback",
+  source: "rule",
   confidence: "medium",
   applied_updates: ["memory_candidate_created"],
   extraction_trace: {
-    source: "llm_fallback",
+    source: "rule",
     confidence: "medium",
     fallback_reason: null,
     skip_reason: null,
     parse_error: null,
-    applied_updates: ["memory_candidate_created"]
+    applied_updates: ["memory_candidate_created"],
+    llm_shadow_status: "skipped",
+    llm_shadow_confidence: "low",
+    llm_shadow_summary: "跳过：no_semantic_signal",
+    llm_shadow_diff: "LLM 影子识别未运行"
   },
-  llm_called: true,
-  semantic_extraction_model: "deepseek-v4-flash",
-  semantic_extraction_latency_ms: 42,
-  provider_latency_ms: 42,
-  llm_result: {
-    game_event: { type: "none" },
-    memory_candidate: { type: "guide_preference" }
+  llm_called: false,
+  semantic_extraction_model: null,
+  semantic_extraction_latency_ms: 0,
+  provider_latency_ms: 0,
+  llm_result: null,
+  llm_shadow: {
+    status: "skipped",
+    confidence: "low",
+    candidate_summary: "跳过：no_semantic_signal",
+    diff_summary: "LLM 影子识别未运行"
   },
+  llm_shadow_status: "skipped",
+  llm_shadow_confidence: "low",
+  llm_shadow_summary: "跳过：no_semantic_signal",
+  llm_shadow_diff: "LLM 影子识别未运行",
   final_decision: {
     game_event: { type: "none" },
     memory_candidate: { type: "guide_preference" }
@@ -2083,13 +2094,27 @@ describe("App", () => {
         fallback_reason: "unknown_boss_alias",
         skip_reason: "provider_unavailable",
         parse_error: null,
-        applied_updates: []
+        applied_updates: [],
+        llm_shadow_status: "skipped",
+        llm_shadow_confidence: "low",
+        llm_shadow_summary: "跳过：provider_unavailable",
+        llm_shadow_diff: "LLM 影子识别未运行"
       },
       llm_called: false,
       semantic_extraction_model: null,
       semantic_extraction_latency_ms: 0,
       provider_latency_ms: 0,
       llm_result: null,
+      llm_shadow: {
+        status: "skipped",
+        confidence: "low",
+        candidate_summary: "跳过：provider_unavailable",
+        diff_summary: "LLM 影子识别未运行"
+      },
+      llm_shadow_status: "skipped",
+      llm_shadow_confidence: "low",
+      llm_shadow_summary: "跳过：provider_unavailable",
+      llm_shadow_diff: "LLM 影子识别未运行",
       final_decision: { game_event: { type: "none" } },
       skip_reason: "provider_unavailable",
       parse_error: null
@@ -2114,12 +2139,86 @@ describe("App", () => {
             confidence: "low",
             fallback_reason: "unknown_boss_alias",
             skip_reason: "provider_unavailable",
+            applied_updates: [],
+            llm_shadow_status: "skipped",
+            llm_shadow_summary: "跳过：provider_unavailable"
+          })
+        ])
+      )
+    );
+    const semanticEvent = eventBus.getRecentEvents(20).find((event) => event.type === "semantic_extraction_traced");
+    expect(JSON.stringify(semanticEvent)).not.toContain("骑马金甲大哥");
+  });
+
+  it("emits safe LLM shadow semantic summaries without applying state", async () => {
+    const shadowTrace = {
+      ...semanticExtractionDebug,
+      latest_user_message: "低置信游戏语义 / 18 字",
+      rule_result: { game_event: { type: "none" } },
+      rule_confidence: 0,
+      raw_rule_confidence: 0,
+      ambiguity_detected: true,
+      fallback_reason: "unknown_boss_alias",
+      source: "none",
+      confidence: "low",
+      applied_updates: [],
+      extraction_trace: {
+        source: "none",
+        confidence: "low",
+        fallback_reason: "unknown_boss_alias",
+        skip_reason: null,
+        parse_error: null,
+        applied_updates: [],
+        llm_shadow_status: "succeeded",
+        llm_shadow_confidence: "medium",
+        llm_shadow_summary: "Boss 候选：大树守卫 / 失败次数候选：increment 2",
+        llm_shadow_diff: "规则未识别，LLM 认为可能是 大树守卫"
+      },
+      llm_called: true,
+      semantic_extraction_model: "deepseek-v4-flash",
+      semantic_extraction_latency_ms: 38,
+      provider_latency_ms: 38,
+      llm_result: null,
+      llm_shadow: {
+        status: "succeeded",
+        confidence: "medium",
+        candidate_summary: "Boss 候选：大树守卫 / 失败次数候选：increment 2",
+        diff_summary: "规则未识别，LLM 认为可能是 大树守卫"
+      },
+      llm_shadow_status: "succeeded",
+      llm_shadow_confidence: "medium",
+      llm_shadow_summary: "Boss 候选：大树守卫 / 失败次数候选：increment 2",
+      llm_shadow_diff: "规则未识别，LLM 认为可能是 大树守卫",
+      final_decision: { game_event: { type: "none" } },
+      skip_reason: null,
+      parse_error: null
+    };
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(shadowTrace));
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "我在那个骑马金甲大哥那里又寄了几次。");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() =>
+      expect(eventBus.getRecentEvents(20)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "semantic_extraction_traced",
+            source: "none",
+            llm_shadow_status: "succeeded",
+            llm_shadow_summary: "Boss 候选：大树守卫 / 失败次数候选：increment 2",
             applied_updates: []
           })
         ])
       )
     );
     const semanticEvent = eventBus.getRecentEvents(20).find((event) => event.type === "semantic_extraction_traced");
+    expect(JSON.stringify(semanticEvent)).toContain("大树守卫");
     expect(JSON.stringify(semanticEvent)).not.toContain("骑马金甲大哥");
   });
 
