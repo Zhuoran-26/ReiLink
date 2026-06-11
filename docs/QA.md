@@ -452,6 +452,12 @@ packaged `.app` 手动 smoke 最低步骤：
 - 如果 ultra-compact fallback 在真实 provider 下仍不稳定，但终态、attempts 和安全诊断清楚，主聊天不受影响，Shadow 不污染状态，则记录为 known limitation：`真实 provider 下 LLM Shadow candidate 成功率仍不稳定；当前阶段保留 Shadow diagnostics，不继续阻塞后续 Persona Pack。`
 - Shadow Mode 后台任务回流必须覆盖：Event Stream 可先显示 `shadow_deferred` / 已调度，但 15～25 秒内应追加安全终态事件，例如 `shadow_succeeded`、`shadow_timeout`、`shadow_invalid_json`、`shadow_auth_failed`、`shadow_provider_unavailable`、`shadow_provider_error`、`shadow_cancelled` 或 `shadow_expired`；不得永久停留在“后台等待”。
 - Shadow Mode 回归必须覆盖 provider unavailable、auth_failed、invalid JSON、timeout / provider error：这些场景都要安全降级，不显示 raw provider response、raw prompt、完整路径、API key、`.env`、stdout/stderr 或完整用户输入。
+- Semantic Shadow QA Freeze 人工验收 A / Basic shadow trace：输入 `我在那个骑马金甲大哥那里又寄了几次。` 后，主聊天应正常回复；Event Stream 可先显示 `shadow_deferred`，但 15～25 秒内必须出现 `shadow_succeeded`、`shadow_timeout`、`shadow_invalid_json`、`shadow_provider_error`、`shadow_auth_failed`、`shadow_provider_unavailable`、`shadow_cancelled` 或 `shadow_expired` 之一，不得永久停在后台等待。
+- Semantic Shadow QA Freeze 人工验收 B / Hollow Knight fuzzy reference：输入 `空洞骑士里那个一开始拿锤子的家伙把我打爆了。` 后应产生 shadow final event；成功时显示安全 candidate summary，失败时显示明确 failure reason 和 attempts 诊断。
+- Semantic Shadow QA Freeze 人工验收 C / Slang failure：输入 `这树守卫给我薄纱了四回，真的烦。` 后应产生 rule / shadow trace；Shadow 可以显示候选理解或失败诊断，但不应直接写状态。
+- Semantic Shadow QA Freeze 人工验收 D / Safety：Shadow Event Stream 不得显示完整用户输入、raw prompt、raw LLM JSON、API key、`.env`、完整本地路径、stdout/stderr 或 ASR transcript。
+- Semantic Shadow QA Freeze 人工验收 E / Non-application boundary：无论 Shadow 成功还是失败，都不能直接改 Game Context、创建 pending memory、触发 proactive 或写长期记忆；如果规则路径独立命中，应在 trace 中能区分 applied_updates 来源。
+- Semantic Shadow QA Freeze 人工验收 F / Diagnostics：Shadow final event 可显示 `response_format_used`、`compat_retry_used`、`ultra_compact_used`、`attempts`、`last_failure`、`json_recovery_stage`、`finish_reason`、`content_length_bucket`、`first_char_type` 等短标签诊断，但不得显示 raw response。
 - 已击败 Boss 后继续问打法时，纯攻略 / 位置 / build 提问不应把已 cleared Boss 重新写成 current boss。Rei 可以轻轻承接“已经打过”的上下文，但不能只用反问阻断；仍应回答用户实际攻略 / 复盘需求。
 - 显式记忆回归：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 应创建 pending memory；`以后不用记住这个，只是我这次随便说一下` 不应创建 pending memory。
 - Knowledge Retrieval 使用成功时应显示 `使用知识` 类摘要，只允许游戏名或安全 topic/title；不得显示完整 snippet、knowledge 文件路径或 prompt。

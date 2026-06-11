@@ -216,6 +216,42 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
+    "id": "session-timeline-semantic-shadow-qa-freeze-fuzzy-reference",
+    "category": "session_timeline_privacy",
+    "precondition": "Packaged QA sends a low-confidence fuzzy boss reference such as a rider in gold armor or a first hammer-wielding enemy",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Main chat replies normally. Event Stream may first append shadow_deferred, then must append a terminal shadow event within the QA window: shadow_succeeded, shadow_timeout, shadow_invalid_json, shadow_auth_failed, shadow_provider_unavailable, shadow_provider_error, shadow_cancelled, or shadow_expired. It must not remain permanently in background waiting.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-semantic-shadow-qa-freeze-slang-failure",
+    "category": "session_timeline_privacy",
+    "precondition": "Packaged QA sends a slang failure expression with a low-confidence death or frustration hint, such as getting stomped several times",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Debug / Event Stream emit a rule and/or shadow trace with safe fields. Shadow may show a candidate summary, skipped reason, or failure reason, but it does not directly apply boss, death_count, frustration, memory, or proactive changes.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-semantic-shadow-qa-freeze-non-application-boundary",
+    "category": "session_timeline_privacy",
+    "precondition": "Semantic Shadow succeeds, fails, times out, or returns ultra-compact fallback diagnostics",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Shadow success means only candidate understanding succeeded. Shadow does not directly change Game Context, create pending memory, write long-term memory, or trigger proactive. If rule-first logic independently applies an update, the trace must keep applied_updates distinguishable from Shadow diagnostics.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full memory text", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-semantic-shadow-qa-freeze-known-limitation",
+    "category": "session_timeline_privacy",
+    "precondition": "Real provider still returns timeout, invalid_json, empty content, or finish_reason length after all allowed attempts",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Event Stream shows a clear terminal status plus safe diagnostics such as attempts, last_failure, json_recovery_stage, finish_reason, content_length_bucket, and first_char_type. This is accepted as the QA Freeze known limitation as long as main chat is unaffected and Shadow does not pollute state.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
     "id": "session-timeline-memory-actions-safe",
     "category": "session_timeline_privacy",
     "precondition": "The user accepts or ignores a pending memory",
