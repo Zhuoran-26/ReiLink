@@ -153,12 +153,21 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
-    "id": "session-timeline-semantic-shadow-invalid-json-safe",
+    "id": "session-timeline-semantic-shadow-real-provider-diagnostics",
     "category": "session_timeline_privacy",
-    "precondition": "LLM Shadow Mode returns invalid JSON, times out, or raises a provider error",
+    "precondition": "The main chat provider config is available and a low-confidence game semantic hint triggers LLM Shadow Mode",
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
-    "expected_behavior": "Debug / Event Stream record llm_shadow_status failed with a safe failure reason such as invalid_json, timeout, or provider_error. Raw provider response, prompt JSON, stack traces, paths, stdout/stderr, and secrets are not shown, and no LLM candidate is applied to state.",
+    "expected_behavior": "Semantic Shadow reuses the main backend provider config, prefers the fast or lightweight model, and records a safe status of succeeded, timeout, auth_failed, invalid_json, provider_error, or provider_unavailable. During API chat, rules remain synchronous while the real LLM shadow diagnostic can complete as a background Debug update. If main chat provider is available, Shadow must not incorrectly report provider_unavailable.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider request body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-semantic-shadow-invalid-json-safe",
+    "category": "session_timeline_privacy",
+    "precondition": "LLM Shadow Mode returns invalid JSON, times out, raises auth_failed, or raises a provider error",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Debug / Event Stream record llm_shadow_status failed with a safe failure reason such as invalid_json, timeout, auth_failed, or provider_error. Raw provider response, prompt JSON, stack traces, paths, stdout/stderr, and secrets are not shown, and no LLM candidate is applied to state.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {

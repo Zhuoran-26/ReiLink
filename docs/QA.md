@@ -445,7 +445,8 @@ packaged `.app` 手动 smoke 最低步骤：
 - 语义识别置信度验收：高置信规则可以直接应用；被动死亡、near-clear、未知 Boss 指代、低置信失败表达等歧义风险表达应降低调度置信度以允许 LLM Shadow Mode 产出候选；最终显示的 confidence 只用 high / medium / low，不展示 raw prompt、raw JSON 或完整用户输入。
 - LLM Shadow Mode 只用于可观测性：LLM 影子候选可以显示候选 game / boss / death_count / frustration / boss_cleared / memory / proactive signal 与规则差异，但不能直接修改当前游戏状态、memory 或 proactive 调度。
 - 低置信语义触发词只能作为 trace / Shadow Mode 线索，不应为了测试把 slang 或模糊别名硬编码成最终 Boss、death count 或 boss_cleared；v2 状态更新只来自规则路径，影子候选即使成功也只显示候选和差异。
-- Shadow Mode 回归必须覆盖 provider unavailable、invalid JSON、timeout / provider error：这些场景都要安全降级，不显示 raw provider response、raw prompt、完整路径、API key、`.env`、stdout/stderr 或完整用户输入。
+- Shadow Mode 真实 provider 回归必须确认复用主 backend provider config，优先使用 fast / lightweight model，并在 API chat 中后台补 Debug 诊断，不拖慢主回复路径；如果主聊天 provider 可用，Shadow 不应误报 `provider_unavailable`。
+- Shadow Mode 回归必须覆盖 provider unavailable、auth_failed、invalid JSON、timeout / provider error：这些场景都要安全降级，不显示 raw provider response、raw prompt、完整路径、API key、`.env`、stdout/stderr 或完整用户输入。
 - 已击败 Boss 后继续问打法时，纯攻略 / 位置 / build 提问不应把已 cleared Boss 重新写成 current boss。Rei 可以轻轻承接“已经打过”的上下文，但不能只用反问阻断；仍应回答用户实际攻略 / 复盘需求。
 - 显式记忆回归：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 应创建 pending memory；`以后不用记住这个，只是我这次随便说一下` 不应创建 pending memory。
 - Knowledge Retrieval 使用成功时应显示 `使用知识` 类摘要，只允许游戏名或安全 topic/title；不得显示完整 snippet、knowledge 文件路径或 prompt。

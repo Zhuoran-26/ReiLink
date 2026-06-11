@@ -82,11 +82,14 @@ class DialogueAgent:
         recent_assistant_replies = self.store.recent_assistant_replies(request.session_id)
         session_focus = resolve_session_focus(request.message, recent_user_messages)
         now = request_started_at
+        semantic_game_state = self.game_session.debug_state(now=now)
+        defer_semantic_shadow = background_tasks is not None
         semantic_extraction = extract_semantics(
             request.message,
             intent_result.intent,
-            self.game_session.debug_state(now=now),
+            semantic_game_state,
             session_focus_boss=session_focus.boss,
+            run_llm_shadow=not defer_semantic_shadow,
         )
         self.game_session.update_from_user_message(
             request.message,
@@ -175,6 +178,14 @@ class DialogueAgent:
                 now,
                 semantic_extraction,
             )
+            if (semantic_extraction.get("llm_shadow") or {}).get("skip_reason") == "shadow_deferred":
+                background_tasks.add_task(
+                    extract_semantics,
+                    request.message,
+                    intent_result.intent,
+                    semantic_game_state,
+                    session_focus_boss=session_focus.boss,
+                )
         else:
             self._safe_memory_update(request.message, reply, intent_result.intent, now, semantic_extraction)
         memory_latency_ms = int((time.perf_counter() - memory_start) * 1000)

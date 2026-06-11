@@ -7,6 +7,7 @@ import time
 import urllib.error
 import urllib.request
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import settings
@@ -44,7 +45,21 @@ SHADOW_MEMORY_KINDS = {"playstyle_preference", "game_preference", "progress", "n
 SHADOW_PROACTIVE_TYPES = {"silent_companion", "frustration_check", "repeated_death", "none"}
 SHADOW_GAME_IDS = {"elden_ring", "hollow_knight", "unknown"}
 SHADOW_BOSS_IDS = {"margit", "tree_sentinel", "false_knight", "unknown"}
-SEMANTIC_LLM_TIMEOUT_SECONDS = 3.0
+SEMANTIC_LLM_TIMEOUT_SECONDS = 12.0
+SEMANTIC_LLM_MIN_TIMEOUT_SECONDS = 8.0
+SEMANTIC_LLM_MAX_TIMEOUT_SECONDS = 15.0
+
+
+class SemanticShadowAuthError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class SemanticShadowProviderConfig:
+    provider: str
+    api_key: str
+    base_url: str
+    model: str
 
 
 def extract_semantics(
@@ -52,6 +67,7 @@ def extract_semantics(
     intent: str,
     game_state: dict[str, Any] | None = None,
     session_focus_boss: str | None = None,
+    run_llm_shadow: bool = True,
 ) -> dict[str, Any]:
     start = time.perf_counter()
     normalized_message = normalize_terminology(user_message.strip())
@@ -67,7 +83,7 @@ def extract_semantics(
     extraction_model = _semantic_extraction_model()
     extraction_latency_ms = 0
 
-    if should_call_llm:
+    if should_call_llm and run_llm_shadow:
         llm_called = True
         llm_start = time.perf_counter()
         try:
@@ -87,6 +103,13 @@ def extract_semantics(
                 diff_summary="LLM 影子识别失败，未应用状态",
             )
             logger.warning("semantic extraction shadow skipped parse_error=%s", parse_error)
+    elif should_call_llm:
+        llm_shadow = _empty_llm_shadow(
+            status="skipped",
+            skip_reason="shadow_deferred",
+            candidate_summary="跳过：shadow_deferred",
+            diff_summary="LLM 影子识别后台等待",
+        )
 
     final_decision = deepcopy(rule_result)
     trace = _extraction_trace(
@@ -373,7 +396,7 @@ def _should_call_llm_shadow(
 ) -> tuple[bool, str]:
     if not _has_shadow_semantic_signal(message, rule_result, ambiguity_reason):
         return False, "no_semantic_signal"
-    if settings.llm_provider.lower().strip() != "deepseek" or not settings.deepseek_api_key:
+    if not _shadow_provider_config():
         return False, "provider_unavailable"
     if ambiguity_reason:
         return True, ambiguity_reason
@@ -541,10 +564,13 @@ def _call_deepseek_flash(
     game_state: dict[str, Any],
     session_focus_boss: str | None,
 ) -> str:
+    provider = _shadow_provider_config()
+    if not provider:
+        raise RuntimeError("semantic shadow provider unavailable")
     prompt = {
-        "current_user_message": user_message,
+        "message": user_message,
         "intent": intent,
-        "session_focus_boss": normalize_terminology(session_focus_boss or "") or None,
+        "focus_boss": normalize_terminology(session_focus_boss or "") or None,
         "game_state": _brief_game_state(game_state),
         "schema": {
             "is_game_related": "boolean",
@@ -569,53 +595,90 @@ def _call_deepseek_flash(
             "reasoning_summary": "short safe summary, no raw user text",
         },
         "instruction": (
-            "只做 Shadow Mode 结构化候选抽取，不要生成对用户的回复。"
-            "不要编造状态；不确定就输出 unknown 或 none，confidence 用 low。"
-            "区分玩家被 Boss 击败 vs 玩家击败 Boss；区分死亡次数绝对值 vs 增量。"
-            "memory 只能输出候选，不要要求保存；proactive 只能输出 signal，不要要求发送。"
-            "不要在 reasoning_summary 或 safe_summary 里复述完整用户原文、路径、密钥、stdout/stderr 或 raw prompt。"
-            "输出严格 JSON，不要 markdown，不要自然语言解释。"
+            "Shadow Mode only. Return JSON only. Do not reply to the user. "
+            "Do not invent state; use unknown/none with low confidence when unsure. "
+            "Distinguish player death from boss cleared, and absolute death count from increment. "
+            "Memory/proactive are candidates only. Do not echo full user text, paths, secrets, stdout/stderr, or raw prompt."
         ),
     }
     payload = {
-        "model": _semantic_extraction_model(),
+        "model": provider.model,
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "你是 ReiLink 的 LLM 语义影子识别器。只输出一个 JSON 对象。"
-                    "字段必须包含 is_game_related、confidence、game、boss、death_count、frustration、"
-                    "boss_cleared、memory_candidate、proactive_signal、reasoning_summary。"
-                    "你的输出只会用于 Debug 候选，不会直接写入状态。"
-                    "不能输出解释，不能输出 markdown。"
+                    "You are ReiLink semantic shadow extractor. Output one JSON object only. "
+                    "Required keys: is_game_related, confidence, game, boss, death_count, frustration, "
+                    "boss_cleared, memory_candidate, proactive_signal, reasoning_summary. "
+                    "The result is debug-only and never directly writes app state."
                 ),
             },
             {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ],
         "temperature": 0,
+        "max_tokens": 700,
         "stream": False,
     }
     request = urllib.request.Request(
-        f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
+        f"{provider.base_url.rstrip('/')}/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {settings.deepseek_api_key}"},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {provider.api_key}"},
         method="POST",
     )
-    timeout = max(0.5, min(float(settings.llm_timeout_seconds or SEMANTIC_LLM_TIMEOUT_SECONDS), SEMANTIC_LLM_TIMEOUT_SECONDS))
+    timeout = _semantic_shadow_timeout_seconds()
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read().decode("utf-8"))
         return str(body["choices"][0]["message"]["content"]).strip()
     except socket.timeout as exc:
         raise TimeoutError(f"semantic extraction timed out after {timeout:g}s") from exc
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            raise SemanticShadowAuthError(f"semantic extraction auth failed: HTTP {exc.code}") from exc
+        raise RuntimeError(f"semantic extraction provider failed: HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError | socket.timeout):
+            raise TimeoutError(f"semantic extraction timed out after {timeout:g}s") from exc
         raise RuntimeError(f"semantic extraction provider failed: {exc}") from exc
     except (KeyError, IndexError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"semantic extraction provider returned invalid response: {exc}") from exc
 
 
 def _semantic_extraction_model() -> str:
+    provider = _shadow_provider_config()
+    if provider:
+        return provider.model
     return settings.deepseek_model_fast or "deepseek-chat"
+
+
+def _shadow_provider_config() -> SemanticShadowProviderConfig | None:
+    provider = settings.llm_provider.lower().strip()
+    if provider == "deepseek":
+        api_key = settings.deepseek_api_key.strip()
+        if not api_key:
+            return None
+        return SemanticShadowProviderConfig(
+            provider="deepseek",
+            api_key=api_key,
+            base_url=settings.deepseek_base_url,
+            model=settings.deepseek_model_fast or settings.deepseek_model or "deepseek-chat",
+        )
+    if provider in {"openai", "openai-compatible"}:
+        api_key = settings.openai_api_key.strip()
+        if not api_key:
+            return None
+        return SemanticShadowProviderConfig(
+            provider="openai",
+            api_key=api_key,
+            base_url=settings.openai_base_url,
+            model=settings.openai_model or "gpt-4o-mini",
+        )
+    return None
+
+
+def _semantic_shadow_timeout_seconds() -> float:
+    configured = float(settings.llm_timeout_seconds or SEMANTIC_LLM_TIMEOUT_SECONDS)
+    return max(SEMANTIC_LLM_MIN_TIMEOUT_SECONDS, min(configured, SEMANTIC_LLM_MAX_TIMEOUT_SECONDS))
 
 
 def _parse_llm_shadow_json(raw: str, user_message: str) -> dict[str, Any]:
@@ -929,6 +992,8 @@ def _extraction_trace(
 
 
 def _safe_parse_error(exc: Exception) -> str:
+    if isinstance(exc, SemanticShadowAuthError):
+        return "semantic_extraction_auth_failed"
     if isinstance(exc, TimeoutError):
         return "semantic_extraction_timeout"
     if isinstance(exc, (json.JSONDecodeError, ValueError)):
@@ -937,6 +1002,8 @@ def _safe_parse_error(exc: Exception) -> str:
 
 
 def _shadow_failure_reason(exc: Exception) -> str:
+    if isinstance(exc, SemanticShadowAuthError):
+        return "auth_failed"
     if isinstance(exc, TimeoutError):
         return "timeout"
     if isinstance(exc, (json.JSONDecodeError, ValueError)):

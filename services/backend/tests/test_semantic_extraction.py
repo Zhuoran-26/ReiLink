@@ -1,4 +1,6 @@
 import json
+import socket
+import urllib.error
 
 from app.modules.dialogue_agent import semantic_extraction as sem
 
@@ -42,6 +44,12 @@ def _shadow_payload(
 
 
 class _FakeResponse:
+    def __init__(self, content: str | None = None):
+        self.content = content or json.dumps(
+            _shadow_payload(boss="margit", death_operation="increment", death_value=1, frustration="raise"),
+            ensure_ascii=False,
+        )
+
     def __enter__(self):
         return self
 
@@ -53,12 +61,7 @@ class _FakeResponse:
             {
                 "choices": [
                     {
-                        "message": {
-                            "content": json.dumps(
-                                _shadow_payload(boss="margit", death_operation="increment", death_value=1, frustration="raise"),
-                                ensure_ascii=False,
-                            )
-                        }
+                        "message": {"content": self.content}
                     }
                 ]
             },
@@ -357,6 +360,151 @@ def test_low_confidence_game_semantic_llm_unavailable_degrades_safely(monkeypatc
     assert ".env" not in serialized
     assert "authorization" not in serialized
     assert "我在那个骑马金甲大哥那里又寄了几次" not in result["latest_user_message"]
+
+
+def test_shadow_provider_uses_current_deepseek_config_and_fast_timeout(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["timeout"] = timeout
+        captured["authorization"] = request.headers.get("Authorization")
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return _FakeResponse()
+
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "runtime-key")
+    monkeypatch.setattr(sem.settings, "deepseek_base_url", "https://provider.example/v1")
+    monkeypatch.setattr(sem.settings, "deepseek_model_fast", "deepseek-fast-runtime")
+    monkeypatch.setattr(sem.settings, "llm_timeout_seconds", 20)
+    monkeypatch.setattr(sem.urllib.request, "urlopen", fake_urlopen)
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is True
+    assert result["llm_shadow_status"] == "succeeded"
+    assert result["semantic_extraction_model"] == "deepseek-fast-runtime"
+    assert captured["url"] == "https://provider.example/v1/chat/completions"
+    assert captured["authorization"] == "Bearer runtime-key"
+    assert captured["payload"]["model"] == "deepseek-fast-runtime"
+    assert captured["payload"]["max_tokens"] == 700
+    assert 8 <= captured["timeout"] <= 15
+
+
+def test_shadow_can_use_openai_compatible_provider_config(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        captured["url"] = request.full_url
+        captured["authorization"] = request.headers.get("Authorization")
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return _FakeResponse()
+
+    monkeypatch.setattr(sem.settings, "llm_provider", "openai-compatible")
+    monkeypatch.setattr(sem.settings, "openai_api_key", "compatible-key")
+    monkeypatch.setattr(sem.settings, "openai_base_url", "https://compatible.example")
+    monkeypatch.setattr(sem.settings, "openai_model", "compatible-fast")
+    monkeypatch.setattr(sem.urllib.request, "urlopen", fake_urlopen)
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is True
+    assert result["semantic_extraction_model"] == "compatible-fast"
+    assert captured["url"] == "https://compatible.example/chat/completions"
+    assert captured["authorization"] == "Bearer compatible-key"
+    assert captured["payload"]["model"] == "compatible-fast"
+
+
+def test_shadow_can_be_deferred_without_calling_provider(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("shadow called")))
+
+    result = sem.extract_semantics(
+        "我在那个骑马金甲大哥那里又寄了几次。",
+        "casual_chat",
+        _game_state(),
+        run_llm_shadow=False,
+    )
+
+    assert result["llm_called"] is False
+    assert result["llm_shadow_status"] == "skipped"
+    assert result["llm_shadow"]["skip_reason"] == "shadow_deferred"
+    assert result["llm_shadow_diff"] == "LLM 影子识别后台等待"
+    assert result["applied_updates"] == []
+    assert result["final_decision"]["memory_candidate"]["should_create_pending"] is False
+
+
+def test_shadow_auth_error_is_classified_safely(monkeypatch):
+    def fake_urlopen(request, timeout):
+        del request, timeout
+        raise urllib.error.HTTPError(
+            url="https://provider.example/v1/chat/completions",
+            code=401,
+            msg="Unauthorized",
+            hdrs=None,
+            fp=None,
+        )
+
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem.urllib.request, "urlopen", fake_urlopen)
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is True
+    assert result["llm_shadow_status"] == "failed"
+    assert result["llm_shadow"]["failure_reason"] == "auth_failed"
+    assert result["parse_error"] == "semantic_extraction_auth_failed"
+    assert result["applied_updates"] == []
+
+
+def test_shadow_timeout_is_classified_without_state_writes(monkeypatch):
+    def fake_urlopen(request, timeout):
+        del request, timeout
+        raise socket.timeout("timed out with raw prompt /Users/aragoto/private/.env")
+
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem.urllib.request, "urlopen", fake_urlopen)
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_called"] is True
+    assert result["llm_shadow_status"] == "failed"
+    assert result["llm_shadow"]["failure_reason"] == "timeout"
+    assert result["parse_error"] == "semantic_extraction_timeout"
+    assert result["applied_updates"] == []
+    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["final_decision"]["memory_candidate"]["should_create_pending"] is False
+    serialized = json.dumps(result, ensure_ascii=False).lower()
+    assert "raw prompt" not in serialized
+    assert "/users/aragoto" not in serialized
+    assert ".env" not in serialized
+
+
+def test_shadow_generic_provider_error_is_classified_safely(monkeypatch):
+    def fake_urlopen(request, timeout):
+        del request, timeout
+        raise urllib.error.HTTPError(
+            url="https://provider.example/v1/chat/completions",
+            code=500,
+            msg="Server Error",
+            hdrs=None,
+            fp=None,
+        )
+
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem.urllib.request, "urlopen", fake_urlopen)
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_shadow_status"] == "failed"
+    assert result["llm_shadow"]["failure_reason"] == "provider_error"
+    assert result["parse_error"] == "semantic_extraction_provider_error"
+    assert result["applied_updates"] == []
 
 
 def test_hollow_knight_shadow_candidate_does_not_mutate_state(monkeypatch):
