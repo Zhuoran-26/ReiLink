@@ -1,4 +1,5 @@
 import json
+import inspect
 import socket
 import urllib.error
 
@@ -391,7 +392,15 @@ def test_shadow_provider_uses_current_deepseek_config_and_fast_timeout(monkeypat
     assert captured["url"] == "https://provider.example/v1/chat/completions"
     assert captured["authorization"] == "Bearer runtime-key"
     assert captured["payload"]["model"] == "deepseek-fast-runtime"
-    assert captured["payload"]["max_tokens"] == 700
+    assert captured["payload"]["max_tokens"] == 512
+    assert captured["payload"]["temperature"] == 0
+    assert captured["payload"]["response_format"] == {"type": "json_object"}
+    assert "Return ONLY one JSON object" in captured["payload"]["messages"][0]["content"]
+    user_prompt = json.loads(captured["payload"]["messages"][1]["content"])
+    assert user_prompt["task"] == "semantic_shadow_json"
+    assert "format" in user_prompt
+    assert "chat_history" not in user_prompt
+    assert "messages" not in user_prompt
     assert 8 <= captured["timeout"] <= 15
 
 
@@ -418,6 +427,98 @@ def test_shadow_can_use_openai_compatible_provider_config(monkeypatch):
     assert captured["url"] == "https://compatible.example/chat/completions"
     assert captured["authorization"] == "Bearer compatible-key"
     assert captured["payload"]["model"] == "compatible-fast"
+
+
+def test_shadow_parser_accepts_strict_valid_compact_json():
+    raw = json.dumps(
+        {
+            "related": True,
+            "conf": "medium",
+            "boss": {"op": "set", "value": "tree_sentinel", "label": "大树守卫", "conf": "medium"},
+            "death": {"op": "increment", "value": 2, "conf": "medium"},
+            "frustration": {"op": "raise", "conf": "medium"},
+            "cleared": {"op": "none", "conf": "high"},
+            "memory": {"create": False, "kind": "none", "summary": None, "conf": "low"},
+            "proactive": {"type": "none", "conf": "low"},
+            "summary": "possible failure",
+        },
+        ensure_ascii=False,
+    )
+
+    shadow = sem._parse_llm_shadow_json(raw, "我在那个骑马金甲大哥那里又寄了几次。")
+
+    assert shadow["status"] == "succeeded"
+    assert shadow["json_recovered"] is False
+    assert shadow["boss"]["value"] == "tree_sentinel"
+    assert shadow["death_count"]["operation"] == "increment"
+    assert shadow["death_count"]["value"] == 2
+    assert shadow["frustration"]["operation"] == "raise"
+
+
+def test_shadow_parser_recovers_json_from_markdown_fence():
+    raw = "```json\n" + json.dumps(_shadow_payload(boss="tree_sentinel"), ensure_ascii=False) + "\n```"
+
+    shadow = sem._parse_llm_shadow_json(raw, "我在那个骑马金甲大哥那里又寄了几次。")
+
+    assert shadow["status"] == "succeeded"
+    assert shadow["json_recovered"] is True
+    assert shadow["boss"]["value"] == "tree_sentinel"
+
+
+def test_shadow_json_recovery_is_reported_without_raw_response(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    raw = "```json\n" + json.dumps(_shadow_payload(boss="tree_sentinel"), ensure_ascii=False) + "\n```"
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: raw)
+
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_shadow_status"] == "succeeded"
+    assert result["llm_shadow"]["json_recovered"] is True
+    assert "JSON 已安全恢复" in result["llm_shadow_summary"]
+    serialized = json.dumps(result, ensure_ascii=False)
+    assert "```json" not in serialized
+    assert "骑马金甲大哥" not in serialized
+
+
+def test_shadow_parser_recovers_json_with_prose_prefix_suffix():
+    raw = "好的，结果如下：" + json.dumps(_shadow_payload(boss="false_knight"), ensure_ascii=False) + "\n仅供参考。"
+
+    shadow = sem._parse_llm_shadow_json(raw, "空洞骑士里那个一开始拿锤子的家伙把我打爆了。")
+
+    assert shadow["status"] == "succeeded"
+    assert shadow["json_recovered"] is True
+    assert shadow["boss"]["value"] == "false_knight"
+
+
+def test_shadow_parser_accepts_first_object_from_array():
+    raw = json.dumps([
+        _shadow_payload(boss="tree_sentinel"),
+        _shadow_payload(boss="margit"),
+    ], ensure_ascii=False)
+
+    shadow = sem._parse_llm_shadow_json(raw, "我在那个骑马金甲大哥那里又寄了几次。")
+
+    assert shadow["status"] == "succeeded"
+    assert shadow["json_recovered"] is True
+    assert shadow["boss"]["value"] == "tree_sentinel"
+
+
+def test_shadow_parser_rejects_no_json_and_malformed_json_safely():
+    for raw in ("not json at all", "前缀 {not valid json} 后缀"):
+        try:
+            sem._parse_llm_shadow_json(raw, "我在那个骑马金甲大哥那里又寄了几次。")
+        except ValueError as exc:
+            assert "JSON" in str(exc)
+        else:
+            raise AssertionError("malformed shadow JSON parsed unexpectedly")
+
+
+def test_shadow_parser_does_not_use_eval():
+    source = inspect.getsource(sem._parse_llm_shadow_json) + inspect.getsource(sem._load_llm_shadow_json)
+
+    assert "eval(" not in source
+    assert "exec(" not in source
 
 
 def test_shadow_can_be_deferred_without_calling_provider(monkeypatch):
@@ -547,6 +648,7 @@ def test_background_shadow_invalid_json_produces_final_invalid_json_event(monkey
     final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
     assert final["status"] == "shadow_invalid_json"
     assert final["parse_error"] == "semantic_extraction_parse_error"
+    assert final["llm_shadow_summary"] == "LLM 影子识别失败：invalid_json（已尝试安全恢复）"
 
 
 def test_background_shadow_auth_error_produces_final_auth_failed_event(monkeypatch):

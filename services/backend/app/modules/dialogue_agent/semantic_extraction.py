@@ -520,7 +520,7 @@ def _shadow_event_summary(status: str, debug: dict[str, Any]) -> str:
     if status == "shadow_timeout":
         return "LLM 影子识别超时"
     if status == "shadow_invalid_json":
-        return "LLM 影子识别失败：invalid_json"
+        return "LLM 影子识别失败：invalid_json（已尝试安全恢复）"
     if status == "shadow_auth_failed":
         return "LLM 影子识别失败：auth_failed"
     if status == "shadow_provider_unavailable":
@@ -883,37 +883,38 @@ def _call_deepseek_flash(
     if not provider:
         raise RuntimeError("semantic shadow provider unavailable")
     prompt = {
-        "message": user_message,
+        "task": "semantic_shadow_json",
         "intent": intent,
+        "message": user_message,
         "focus_boss": normalize_terminology(session_focus_boss or "") or None,
         "game_state": _brief_game_state(game_state),
-        "schema": {
-            "is_game_related": "boolean",
-            "confidence": "high | medium | low",
-            "game": {"operation": "set | keep | none | unknown", "value": "elden_ring | hollow_knight | unknown | null", "confidence": "high | medium | low"},
-            "boss": {
-                "operation": "set | keep | clear | none | unknown",
-                "value": "margit | tree_sentinel | false_knight | unknown | null",
-                "surface_label": "safe short label or null",
-                "confidence": "high | medium | low",
-            },
-            "death_count": {"operation": "set | increment | none | unknown", "value": "integer or null", "confidence": "high | medium | low"},
-            "frustration": {"operation": "raise | lower | clear | keep | none | unknown", "confidence": "high | medium | low"},
-            "boss_cleared": {"operation": "set_true | set_false | none | unknown", "confidence": "high | medium | low"},
-            "memory_candidate": {
-                "should_create": "boolean",
-                "kind": "playstyle_preference | game_preference | progress | none",
-                "safe_summary": "short safe summary or null",
-                "confidence": "high | medium | low",
-            },
-            "proactive_signal": {"type": "silent_companion | frustration_check | repeated_death | none", "confidence": "high | medium | low", "reason": "short safe reason"},
-            "reasoning_summary": "short safe summary, no raw user text",
+        "allowed": {
+            "conf": ["high", "medium", "low"],
+            "game": ["elden_ring", "hollow_knight", "unknown", None],
+            "boss": ["margit", "tree_sentinel", "false_knight", "unknown", None],
+            "op": ["set", "keep", "clear", "none", "unknown", "increment", "raise", "lower", "set_true", "set_false"],
+            "proactive": ["silent_companion", "frustration_check", "repeated_death", "none"],
+            "memory_kind": ["playstyle_preference", "game_preference", "progress", "none"],
+        },
+        "format": {
+            "related": True,
+            "conf": "medium",
+            "game": {"op": "unknown", "value": None, "conf": "low"},
+            "boss": {"op": "set", "value": "tree_sentinel", "label": "safe short label or null", "conf": "medium"},
+            "death": {"op": "unknown", "value": None, "conf": "low"},
+            "frustration": {"op": "none", "conf": "low"},
+            "cleared": {"op": "none", "conf": "high"},
+            "memory": {"create": False, "kind": "none", "summary": None, "conf": "low"},
+            "proactive": {"type": "none", "conf": "low"},
+            "signals": ["safe short labels only"],
+            "summary": "safe short summary, no raw user text",
         },
         "instruction": (
-            "Shadow Mode only. Return JSON only. Do not reply to the user. "
-            "Do not invent state; use unknown/none with low confidence when unsure. "
+            "Return ONLY one JSON object. No markdown. No prose. No code fences. No chain-of-thought. "
+            "只输出一个 JSON 对象，不要解释，不要 Markdown，不要代码块。 "
+            "Use the exact compact keys from format. Do not invent state; use unknown/none with low confidence when unsure. "
             "Distinguish player death from boss cleared, and absolute death count from increment. "
-            "Memory/proactive are candidates only. Do not echo full user text, paths, secrets, stdout/stderr, or raw prompt."
+            "Memory/proactive are debug candidates only. Do not echo full user text, paths, secrets, stdout/stderr, or raw prompt."
         ),
     }
     payload = {
@@ -922,16 +923,16 @@ def _call_deepseek_flash(
             {
                 "role": "system",
                 "content": (
-                    "You are ReiLink semantic shadow extractor. Output one JSON object only. "
-                    "Required keys: is_game_related, confidence, game, boss, death_count, frustration, "
-                    "boss_cleared, memory_candidate, proactive_signal, reasoning_summary. "
+                    "You are ReiLink semantic shadow extractor. Return ONLY one JSON object. "
+                    "No markdown, no prose, no code fences, no explanations. "
                     "The result is debug-only and never directly writes app state."
                 ),
             },
             {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ],
         "temperature": 0,
-        "max_tokens": 700,
+        "max_tokens": 512,
+        "response_format": {"type": "json_object"},
         "stream": False,
     }
     request = urllib.request.Request(
@@ -997,21 +998,90 @@ def _semantic_shadow_timeout_seconds() -> float:
 
 
 def _parse_llm_shadow_json(raw: str, user_message: str) -> dict[str, Any]:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
+    parsed, recovered = _load_llm_shadow_json(raw)
+    shadow = _normalize_llm_shadow(parsed, user_message)
+    shadow["json_recovered"] = recovered
+    return shadow
+
+
+def _load_llm_shadow_json(raw: str) -> tuple[dict[str, Any], bool]:
+    text = str(raw or "").lstrip("\ufeff").strip()
+    parsed = _loads_shadow_json_value(text)
+    if isinstance(parsed, dict):
+        return parsed, False
+    if isinstance(parsed, list):
+        first = _first_dict(parsed)
+        if first is not None:
+            return first, True
+
+    unfenced = _strip_json_fence(text)
+    if unfenced != text:
+        parsed = _loads_shadow_json_value(unfenced)
+        if isinstance(parsed, dict):
+            return parsed, True
+        if isinstance(parsed, list):
+            first = _first_dict(parsed)
+            if first is not None:
+                return first, True
+
+    object_text = _extract_first_json_object(unfenced)
+    if object_text:
+        parsed = _loads_shadow_json_value(object_text)
+        if isinstance(parsed, dict):
+            return parsed, True
+
+    raise ValueError("LLM semantic extraction did not return valid JSON")
+
+
+def _loads_shadow_json_value(text: str) -> Any:
+    try:
+        return json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
+def _first_dict(value: list[Any]) -> dict[str, Any] | None:
+    for item in value:
+        if isinstance(item, dict):
+            return item
+    return None
+
+
+def _strip_json_fence(text: str) -> str:
+    stripped = text.strip()
+    match = re.fullmatch(r"```(?:json|JSON)?\s*(.*?)\s*```", stripped, flags=re.DOTALL)
+    return match.group(1).strip() if match else stripped
+
+
+def _extract_first_json_object(text: str) -> str | None:
     start = text.find("{")
-    end = text.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("LLM semantic extraction did not return JSON")
-    parsed = json.loads(text[start : end + 1])
-    if not isinstance(parsed, dict):
-        raise ValueError("LLM semantic extraction JSON is not an object")
-    return _normalize_llm_shadow(parsed, user_message)
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for index, char in enumerate(text[start:], start=start):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == "\"":
+                in_string = False
+            continue
+        if char == "\"":
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return None
 
 
 def _normalize_llm_shadow(data: dict[str, Any], user_message: str) -> dict[str, Any]:
+    data = _expand_compact_llm_shadow(data)
     shadow = _empty_llm_shadow(status="succeeded", skip_reason=None)
     shadow["is_game_related"] = bool(data.get("is_game_related"))
     shadow["confidence"] = _shadow_confidence(data.get("confidence"))
@@ -1084,11 +1154,77 @@ def _normalize_llm_shadow(data: dict[str, Any], user_message: str) -> dict[str, 
     return shadow
 
 
+def _expand_compact_llm_shadow(data: dict[str, Any]) -> dict[str, Any]:
+    if not any(key in data for key in ("related", "conf", "death", "cleared", "memory", "proactive", "summary")):
+        return data
+    expanded = {
+        "is_game_related": data.get("is_game_related", data.get("related", False)),
+        "confidence": data.get("confidence", data.get("conf", "low")),
+        "game": _expand_compact_operation(data.get("game")),
+        "boss": _expand_compact_boss(data.get("boss")),
+        "death_count": _expand_compact_operation(data.get("death") or data.get("death_count")),
+        "frustration": _expand_compact_operation(data.get("frustration")),
+        "boss_cleared": _expand_compact_operation(data.get("cleared") or data.get("boss_cleared")),
+        "memory_candidate": _expand_compact_memory(data.get("memory") or data.get("memory_candidate")),
+        "proactive_signal": _expand_compact_proactive(data.get("proactive") or data.get("proactive_signal")),
+        "reasoning_summary": data.get("reasoning_summary", data.get("summary", "")),
+    }
+    return {**data, **expanded}
+
+
+def _expand_compact_operation(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "operation": value.get("operation", value.get("op", "none")),
+        "value": value.get("value"),
+        "confidence": value.get("confidence", value.get("conf", "low")),
+    }
+
+
+def _expand_compact_boss(value: Any) -> dict[str, Any]:
+    expanded = _expand_compact_operation(value)
+    if isinstance(value, dict):
+        expanded["surface_label"] = value.get("surface_label", value.get("label"))
+    return expanded
+
+
+def _expand_compact_memory(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "should_create": value.get("should_create", value.get("create", False)),
+        "kind": value.get("kind", "none"),
+        "safe_summary": value.get("safe_summary", value.get("summary")),
+        "confidence": value.get("confidence", value.get("conf", "low")),
+    }
+
+
+def _expand_compact_proactive(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "type": value.get("type", "none"),
+        "confidence": value.get("confidence", value.get("conf", "low")),
+        "reason": value.get("reason", ""),
+    }
+
+
 def _finalize_llm_shadow(shadow: dict[str, Any], rule_result: dict[str, Any]) -> dict[str, Any]:
     finalized = deepcopy(shadow)
     finalized["candidate_summary"] = _shadow_candidate_summary(finalized)
+    if finalized.get("json_recovered") and finalized["candidate_summary"]:
+        finalized["candidate_summary"] = _append_json_recovered_summary(finalized["candidate_summary"])
     finalized["diff_summary"] = _shadow_diff_summary(rule_result, finalized)
     return finalized
+
+
+def _append_json_recovered_summary(summary: str) -> str:
+    suffix = "JSON 已安全恢复"
+    if suffix in summary:
+        return summary
+    combined = f"{summary} / {suffix}"
+    return combined if len(combined) <= 96 else f"{summary[: max(0, 93 - len(suffix))]}… / {suffix}"
 
 
 def _shadow_confidence(value: Any) -> str:

@@ -162,6 +162,15 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider request body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
+    "id": "session-timeline-semantic-shadow-json-output-stability",
+    "category": "session_timeline_privacy",
+    "precondition": "Real-provider Semantic Shadow returns strict JSON, fenced JSON, JSON with brief prose around it, an array containing an object, or unrecoverable invalid JSON",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Semantic Shadow asks for a compact JSON-only object and safely parses strict JSON. If the provider wraps the object in Markdown, brief prose, or an array, the parser may recover the first object and show only a short safe recovery summary. If recovery fails, Event Stream records shadow_invalid_json safely. No recovered or failed result writes game state, creates memory, or triggers proactive behavior.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
     "id": "session-timeline-semantic-shadow-background-final-event",
     "category": "session_timeline_privacy",
     "precondition": "API chat defers a real-provider Semantic Shadow attempt for a low-confidence game semantic hint",

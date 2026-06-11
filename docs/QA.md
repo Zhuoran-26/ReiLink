@@ -446,6 +446,7 @@ packaged `.app` 手动 smoke 最低步骤：
 - LLM Shadow Mode 只用于可观测性：LLM 影子候选可以显示候选 game / boss / death_count / frustration / boss_cleared / memory / proactive signal 与规则差异，但不能直接修改当前游戏状态、memory 或 proactive 调度。
 - 低置信语义触发词只能作为 trace / Shadow Mode 线索，不应为了测试把 slang 或模糊别名硬编码成最终 Boss、death count 或 boss_cleared；v2 状态更新只来自规则路径，影子候选即使成功也只显示候选和差异。
 - Shadow Mode 真实 provider 回归必须确认复用主 backend provider config，优先使用 fast / lightweight model，并在 API chat 中后台补 Debug 诊断，不拖慢主回复路径；如果主聊天 provider 可用，Shadow 不应误报 `provider_unavailable`。
+- Shadow Mode 真实 provider JSON 稳定性回归必须确认：请求使用紧凑 JSON-only contract，不要求模型输出解释；解析器可安全恢复严格 JSON、Markdown code fence、前后夹杂简短说明的首个 JSON object，以及数组中的首个 object；无法恢复时显示 `shadow_invalid_json` 安全终态。
 - Shadow Mode 后台任务回流必须覆盖：Event Stream 可先显示 `shadow_deferred` / 已调度，但 15～25 秒内应追加安全终态事件，例如 `shadow_succeeded`、`shadow_timeout`、`shadow_invalid_json`、`shadow_auth_failed`、`shadow_provider_unavailable`、`shadow_provider_error`、`shadow_cancelled` 或 `shadow_expired`；不得永久停留在“后台等待”。
 - Shadow Mode 回归必须覆盖 provider unavailable、auth_failed、invalid JSON、timeout / provider error：这些场景都要安全降级，不显示 raw provider response、raw prompt、完整路径、API key、`.env`、stdout/stderr 或完整用户输入。
 - 已击败 Boss 后继续问打法时，纯攻略 / 位置 / build 提问不应把已 cleared Boss 重新写成 current boss。Rei 可以轻轻承接“已经打过”的上下文，但不能只用反问阻断；仍应回答用户实际攻略 / 复盘需求。
