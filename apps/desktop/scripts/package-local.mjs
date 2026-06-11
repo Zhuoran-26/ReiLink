@@ -99,6 +99,7 @@ export async function bundleStandaloneResources({ repoRoot: sourceRepoRoot, reso
     { name: "games", source: path.join(sourceRepoRoot, "data", "games") },
     { name: "elden_ring", source: path.join(sourceRepoRoot, "data", "elden_ring") }
   ];
+  const structuredReiPersonaSource = path.join(sourceRepoRoot, "personas", "rei");
   const backendResourcesDir = path.join(resourcesRoot, "backend");
   const backendBinaryDest = path.join(backendResourcesDir, binaryName);
   const knowledgeDest = path.join(resourcesRoot, "knowledge", "games");
@@ -126,6 +127,11 @@ export async function bundleStandaloneResources({ repoRoot: sourceRepoRoot, reso
     await rm(path.join(resourcesRoot, item.name), { recursive: true, force: true });
     await cp(item.source, path.join(resourcesRoot, item.name), { recursive: true });
   }
+  await requirePath(
+    path.join(structuredReiPersonaSource, "version.json"),
+    `Required structured persona pack not found at ${structuredReiPersonaSource}.`
+  );
+  await cp(structuredReiPersonaSource, path.join(resourcesRoot, "personas", "rei"), { recursive: true });
 
   await validateStandaloneResources({ resourcesRoot, platform: targetPlatform });
   return { backendBinaryPath: backendBinaryDest, knowledgeGamesPath: knowledgeDest, runtimeResourcesPath: resourcesRoot };
@@ -139,6 +145,8 @@ export async function validateStandaloneResources({ resourcesRoot, platform: tar
     path.join(resourcesRoot, "knowledge", "games", "elden_ring", "snippets.json"),
     path.join(resourcesRoot, "knowledge", "games", "hollow_knight", "snippets.json"),
     path.join(resourcesRoot, "personas", "rei_like.json"),
+    path.join(resourcesRoot, "personas", "rei", "version.json"),
+    path.join(resourcesRoot, "personas", "rei", "persona.md"),
     path.join(resourcesRoot, "persona", "rei_minimal_prompt.json"),
     path.join(resourcesRoot, "games", "game_registry.json")
   ];

@@ -467,6 +467,7 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
         "game_context_summary",
         "session_focus_summary",
         "game_state_summary",
+        "persona_pack_summary",
         "knowledge_summary",
         "memory_summary",
         "final_context_summary",
@@ -480,6 +481,25 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert {"support_status", "knowledge_available", "fallback_reason"} <= data["game_context_summary"].keys()
     assert data["game_state_summary"]["current_boss"]["name"] == "女武神"
     assert data["game_state_summary"]["freshness"] == "fresh"
+    assert data["persona_pack_summary"]["id"] == "rei"
+    assert data["persona_pack_summary"]["enabled"] is True
+    assert data["persona_pack_summary"]["status"] == "loaded"
+    assert data["persona_pack_summary"]["version"] == "1.0.0"
+    assert data["persona_pack_summary"]["raw_content_omitted"] is True
+    assert data["persona_pack_summary"]["path_omitted"] is True
+    assert data["persona_pack_summary"]["fallback_used"] is False
+    assert data["persona_pack_summary"]["persona_section_truncated"] in {True, False}
+    assert "persona" in data["persona_pack_summary"]["injected_sections"]
+    assert data["persona_pack_summary"]["prompt_char_count"] <= data["persona_pack_summary"]["prompt_char_budget"]
+    assert "persona_pack" in data["prompt_order"]
+    persona_block = next(
+        block for block in data["final_context_summary"]["blocks"] if block["name"] == "persona_pack"
+    )
+    assert persona_block["raw_content_omitted"] is True
+    assert persona_block["path_omitted"] is True
+    assert "persona" in persona_block["loaded_sections"]
+    assert "persona" in persona_block["injected_sections"]
+    assert "persona_section_truncated" in persona_block
     assert isinstance(data["memory_summary"]["injected"], list)
     assert isinstance(data["memory_summary"]["skipped"], list)
     assert data["final_context_summary"]["raw_prompt_omitted"] is True
@@ -487,6 +507,58 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert "api_key" not in serialized
     assert "deepseek_api_key" not in serialized
     assert "authorization" not in serialized
+    assert "local-first game companion agent" not in serialized
+    assert "/Users/" not in serialized
+
+
+def test_prompt_preview_sanitizes_sensitive_preview_strings():
+    session_id = "api-prompt-preview-sensitive"
+    client.post(
+        "/api/chat",
+        json={
+            "message": "不要显示 /Users/aragoto/private/.env raw JSON raw stdout DEEPSEEK_API_KEY=secret",
+            "session_id": session_id,
+        },
+    )
+
+    response = client.get(f"/api/debug/prompt-preview?session_id={session_id}")
+
+    assert response.status_code == 200
+    serialized = json.dumps(response.json(), ensure_ascii=False).lower()
+    assert "/users/aragoto" not in serialized
+    assert ".env" not in serialized
+    assert "raw json" not in serialized
+    assert "raw stdout" not in serialized
+    assert "api_key" not in serialized
+    assert "deepseek_api_key" not in serialized
+    assert "secret" not in serialized
+
+
+def test_persona_pack_does_not_bypass_pending_memory_confirmation():
+    client.post("/api/memory/reset")
+    client.post(
+        "/api/chat",
+        json={
+            "message": "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。",
+            "session_id": "api-persona-pack-memory-boundary",
+        },
+    )
+
+    pending_items = client.get("/api/memory/pending").json()
+
+    assert any(item["type"] == "playstyle" and "探索地图" in item["text"] for item in pending_items)
+    assert client.get("/api/memory/profile").json()["preferred_tone"] is None
+
+    client.post("/api/memory/pending/clear")
+    client.post(
+        "/api/chat",
+        json={
+            "message": "以后不用记住这个，只是我这次随便说一下。",
+            "session_id": "api-persona-pack-memory-negative",
+        },
+    )
+
+    assert client.get("/api/memory/pending").json() == []
 
 
 def test_prompt_preview_shows_knowledge_summary():

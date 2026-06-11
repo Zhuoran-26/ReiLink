@@ -22,6 +22,7 @@ const createPackageSourceRepo = async (withBackendBinary = true) => {
   const backendBinary = path.join(repoRoot, "services", "backend", "dist", "reilink-backend");
   const gamesDir = path.join(repoRoot, "data", "knowledge", "games");
   await mkdir(path.join(repoRoot, "data", "personas"), { recursive: true });
+  await mkdir(path.join(repoRoot, "personas", "rei"), { recursive: true });
   await mkdir(path.join(repoRoot, "data", "persona"), { recursive: true });
   await mkdir(path.join(repoRoot, "data", "games"), { recursive: true });
   await mkdir(path.join(repoRoot, "data", "elden_ring"), { recursive: true });
@@ -29,6 +30,24 @@ const createPackageSourceRepo = async (withBackendBinary = true) => {
   await mkdir(path.join(gamesDir, "elden_ring"), { recursive: true });
   await mkdir(path.join(gamesDir, "hollow_knight"), { recursive: true });
   await writeFile(path.join(repoRoot, "data", "personas", "rei_like.json"), "{}\n", "utf8");
+  await writeFile(
+    path.join(repoRoot, "personas", "rei", "version.json"),
+    JSON.stringify(
+      {
+        id: "rei",
+        name: "Rei",
+        version: "1.0.0",
+        language: "zh-CN",
+        description: "test persona pack",
+        created_for: "ReiLink",
+        original_character: true
+      },
+      null,
+      2
+    ) + "\n",
+    "utf8"
+  );
+  await writeFile(path.join(repoRoot, "personas", "rei", "persona.md"), "# Persona\n\nTest Rei persona.\n", "utf8");
   await writeFile(path.join(repoRoot, "data", "persona", "rei_minimal_prompt.json"), "{}\n", "utf8");
   await writeFile(path.join(repoRoot, "data", "persona", "rei_golden_style.json"), "{}\n", "utf8");
   await writeFile(path.join(repoRoot, "data", "persona", "rei_style_examples.json"), "[]\n", "utf8");
@@ -67,6 +86,8 @@ describe("package-local standalone resources", () => {
     await expect(stat(path.join(resourcesRoot, "knowledge", "games", "elden_ring", "snippets.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(resourcesRoot, "knowledge", "games", "hollow_knight", "snippets.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(resourcesRoot, "personas", "rei_like.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(resourcesRoot, "personas", "rei", "version.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(resourcesRoot, "personas", "rei", "persona.md"))).resolves.toBeTruthy();
     await expect(stat(path.join(resourcesRoot, "persona", "rei_minimal_prompt.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(resourcesRoot, "games", "game_registry.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(resourcesRoot, "backend", ".env"))).rejects.toThrow();

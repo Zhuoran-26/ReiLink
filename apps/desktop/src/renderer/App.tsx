@@ -248,6 +248,7 @@ const emptyPromptPreview: PromptPreviewResponse = {
   game_context_summary: {},
   session_focus_summary: {},
   game_state_summary: {},
+  persona_pack_summary: {},
   knowledge_summary: {},
   memory_summary: {},
   final_context_summary: {},
@@ -591,9 +592,13 @@ const labelMap: Record<string, string> = {
   new_message: "新消息打断",
   parse_error: "解析错误",
   persona: "人格",
+  persona_pack: "人格包",
+  persona_pack_enabled: "人格包启用",
   persona_mode: "人格模式",
   previous_game: "上一个游戏",
   prompt_order: "上下文顺序",
+  prompt_char_budget: "人格包预算",
+  prompt_char_count: "人格包长度",
   process_name: "进程名",
   provider_latency_ms: "模型耗时",
   requires_user_activity_after_proactive: "等待用户回应",
@@ -611,6 +616,13 @@ const labelMap: Record<string, string> = {
   snippet_titles: "命中的知识标题",
   snippet_previews: "知识片段预览",
   result_scores: "命中分数",
+  loaded_sections: "已加载段落",
+  injected_sections: "已注入段落",
+  missing_sections: "缺失段落",
+  omitted_sections: "省略段落",
+  persona_section_truncated: "人格包已截断",
+  truncated_sections: "截断段落",
+  raw_content_omitted: "原文已隐藏",
   snippets_count: "命中知识条数",
   support_status: "支持状态",
   supported_games_count: "已支持游戏数",
@@ -2998,6 +3010,7 @@ export function App() {
   const promptModelRoute = asRecord(promptPreview.model_route_summary);
   const promptGameContext = asRecord(promptPreview.game_context_summary);
   const promptGameState = asRecord(promptPreview.game_state_summary);
+  const personaPackSummary = asRecord(promptPreview.persona_pack_summary);
   const promptBossHistory = asArray(promptGameState.boss_history);
   const gameStateSummary = {
     current_game: firstDefined(promptGameState.current_game, gameSessionDebug.current_game),
@@ -5296,6 +5309,52 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <div>
                       <dt>{formatDebugLabel("prompt_order")}</dt>
                       <dd>{formatPromptOrder(promptPreview.prompt_order)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("persona_pack")}</dt>
+                      <dd>
+                        {debugText(personaPackSummary.name)} / v{debugText(personaPackSummary.version)} /{" "}
+                        {debugText(personaPackSummary.status)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("persona_pack_enabled")}</dt>
+                      <dd>{debugText(personaPackSummary.enabled)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("loaded_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.loaded_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("injected_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.injected_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("missing_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.missing_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("omitted_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.omitted_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("persona_section_truncated")}</dt>
+                      <dd>{debugText(personaPackSummary.persona_section_truncated)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("truncated_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.truncated_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("prompt_char_count")}</dt>
+                      <dd>
+                        {debugText(personaPackSummary.prompt_char_count)} /{" "}
+                        {debugText(personaPackSummary.prompt_char_budget)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("raw_content_omitted")}</dt>
+                      <dd>{debugText(personaPackSummary.raw_content_omitted)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("selected_model")}</dt>

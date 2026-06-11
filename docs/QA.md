@@ -13,6 +13,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/voice_input_local_asr_scenarios.json`
 - `docs/qa/overlay_scenarios.json`
 - `docs/qa/session_timeline_scenarios.json`
+- `docs/qa/persona_pack_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -99,6 +100,24 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 8. 用户确认后才进入 chat flow。
 9. accepted memory 才进入 prompt。
 10. proactive 内容不进入 memory。
+
+### 1.6 Rei Persona Pack v1 回归检查
+
+本节用于 Persona Pack v1。它不表示用户自定义角色、Live2D、TTS 音色或 persona 自动学习已开始。
+
+1. `personas/rei/` 包含 persona、voice、boundaries、game companion policy、memory policy、proactive policy、examples、anti examples、references 和 `version.json`。
+2. 主聊天 prompt 使用 structured Rei Persona Pack，但仍保留 base system safety / app identity。
+3. Prompt Preview 继续保留脱敏后的 assembled prompt preview 能力；Event Stream / 普通 Debug 摘要不显示完整 prompt 或 persona markdown。
+4. Debug Panel / Prompt Preview 只显示 persona pack id、version、enabled、status、loaded_sections、injected_sections、missing_sections、fallback 状态、`persona_section_truncated`、truncated_sections、`raw_content_omitted=true` 和 `path_omitted=true`。
+5. Debug Panel / Prompt Preview 不显示完整 prompt、完整 persona markdown、完整用户输入、API key、`.env`、完整本地路径、raw stdout/stderr、raw JSON 或 ASR transcript 全文。
+6. Persona Pack prompt 注入必须有长度预算：persona / voice / boundaries / policies 为主，examples / anti_examples 只取少量精选；内容过长时安全截断并在 Debug summary 显示 `persona_section_truncated`。
+7. Persona Pack 文件和 assembled persona prompt 不包含外部官方 IP / 既有角色标识，例如 Evangelion、Rei Ayanami、NERV、EVA、永雏塔菲、taffy-skill 的具体文本、口癖或设定。
+8. 发送 `我在艾尔登法环打玛尔基特，已经死了3次，有点烦。`，Rei 应先承接挫败，再给一个轻量建议；不应变成客服腔或长篇攻略百科。
+9. 发送 `玛尔基特二阶段怎么打？`，Rei 可以给简短策略，但不要默认展开完整攻略站式打法。
+10. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。`，仍应进入 pending memory confirmation，不应直接写入长期记忆。
+11. 发送 `以后不用记住这个，只是我这次随便说一下。`，不应触发 pending memory。
+12. Persona Pack 不应直接触发 proactive，也不应改变 Semantic Shadow candidate-only 边界。
+13. 打包验证需运行 `make package-backend` 和 `make package-desktop`；packaged `.app` 中 `personas/rei` 应作为只读 resource 可用，缺失时必须 safe fallback，不应黑屏或 backend crash。
 
 ### 2. Voice Output 回归检查
 
@@ -672,6 +691,7 @@ Machine-readable scenarios live at:
 - `docs/qa/retrieval_scenarios.json`
 - `docs/qa/voice_input_scenarios.json`
 - `docs/qa/voice_input_local_asr_scenarios.json`
+- `docs/qa/persona_pack_scenarios.json`
 
 Real Local ASR manual setup and optional smoke guidance lives at `docs/local-asr-manual-setup.md`.
 

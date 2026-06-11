@@ -452,6 +452,7 @@ class PromptPreviewResponse(BaseModel):
     game_context_summary: dict[str, Any] = Field(default_factory=dict)
     session_focus_summary: dict[str, Any] = Field(default_factory=dict)
     game_state_summary: dict[str, Any] = Field(default_factory=dict)
+    persona_pack_summary: dict[str, Any] = Field(default_factory=dict)
     knowledge_summary: dict[str, Any] = Field(default_factory=dict)
     memory_summary: dict[str, Any] = Field(default_factory=dict)
     final_context_summary: dict[str, Any] = Field(default_factory=dict)

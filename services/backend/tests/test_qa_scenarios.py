@@ -9,6 +9,7 @@ VOICE_INPUT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_scenarios.
 VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_local_asr_scenarios.json"
 OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
 SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_scenarios.json"
+PERSONA_PACK_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_pack_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
 README_EN_PATH = REPO_ROOT / "README.en.md"
@@ -83,6 +84,15 @@ ALLOWED_SESSION_TIMELINE_STATUSES = {
     "timeline_privacy_safe",
     "timeline_limited",
 }
+ALLOWED_PERSONA_PACK_STATUSES = {
+    "persona_pack_loaded",
+    "persona_pack_partial",
+    "persona_pack_fallback",
+    "persona_pack_privacy_safe",
+    "persona_pack_budgeted",
+    "persona_pack_original_ip_safe",
+    "persona_pack_packaged",
+}
 
 
 def _load_scenarios() -> list[dict]:
@@ -125,6 +135,14 @@ def _load_session_timeline_scenarios() -> list[dict]:
     return data
 
 
+def _load_persona_pack_scenarios() -> list[dict]:
+    data = json.loads(PERSONA_PACK_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def test_qa_scenarios_file_is_valid_json():
     scenarios = _load_scenarios()
 
@@ -155,6 +173,12 @@ def test_session_timeline_scenarios_file_is_valid_json():
     assert len(scenarios) >= 8
 
 
+def test_persona_pack_scenarios_file_is_valid_json():
+    scenarios = _load_persona_pack_scenarios()
+
+    assert len(scenarios) >= 7
+
+
 def test_qa_scenario_ids_are_unique_and_categories_are_present():
     scenarios = [
         *_load_scenarios(),
@@ -162,6 +186,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_voice_input_local_asr_scenarios(),
         *_load_overlay_scenarios(),
         *_load_session_timeline_scenarios(),
+        *_load_persona_pack_scenarios(),
     ]
     ids = [item.get("id") for item in scenarios]
 
@@ -200,6 +225,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_voice_input_local_asr_scenarios(),
         *_load_overlay_scenarios(),
         *_load_session_timeline_scenarios(),
+        *_load_persona_pack_scenarios(),
     ]:
         forbidden_terms = item.get("forbidden_terms", [])
         assert isinstance(forbidden_terms, list)
@@ -442,6 +468,49 @@ def test_session_timeline_scenarios_have_required_fields():
         assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
 
 
+def test_persona_pack_scenarios_have_required_fields():
+    scenarios = _load_persona_pack_scenarios()
+
+    assert {
+        "persona-pack-loads-complete",
+        "persona-pack-missing-file-fallback",
+        "persona-pack-invalid-version-json",
+        "persona-pack-chat-uses-structured-prompt",
+        "persona-pack-debug-preview-safe",
+        "persona-pack-prompt-budget",
+        "persona-pack-original-ip-boundary",
+        "persona-pack-memory-boundary",
+        "persona-pack-proactive-shadow-boundary",
+        "persona-pack-packaged-backend-resource",
+        "persona-pack-packaged-smoke",
+    } <= {item.get("id") for item in scenarios}
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "raw prompt",
+        "raw JSON",
+        "full user message",
+        "full assistant reply",
+        "full local path",
+        "raw stdout",
+        "raw stderr",
+    }
+    for item in scenarios:
+        assert item.get("category") in {
+            "persona_pack",
+            "persona_pack_privacy",
+            "persona_pack_packaged",
+        }
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert item.get("expected_status") in ALLOWED_PERSONA_PACK_STATUSES
+        assert item.get("should_show_full_prompt") is False
+        assert item.get("should_bypass_memory_confirmation") is False
+        assert item.get("should_trigger_proactive_directly") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
 def test_voice_input_local_asr_release_regression_scenarios_are_present():
     scenarios = _load_voice_input_local_asr_scenarios()
     by_id = {item["id"]: item for item in scenarios}
@@ -514,6 +583,7 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/local-asr-manual-setup.md" in qa_doc
     assert "docs/qa/voice_input_local_asr_scenarios.json" in qa_doc
     assert "docs/qa/session_timeline_scenarios.json" in qa_doc
+    assert "docs/qa/persona_pack_scenarios.json" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
     assert "Voice Interaction MVP" in project_status
     assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup

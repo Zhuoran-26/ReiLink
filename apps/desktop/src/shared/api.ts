@@ -417,6 +417,7 @@ export type PromptPreviewResponse = {
   game_context_summary: Record<string, unknown>;
   session_focus_summary: Record<string, unknown>;
   game_state_summary: Record<string, unknown>;
+  persona_pack_summary: Record<string, unknown>;
   knowledge_summary: Record<string, unknown>;
   memory_summary: Record<string, unknown>;
   final_context_summary: Record<string, unknown>;

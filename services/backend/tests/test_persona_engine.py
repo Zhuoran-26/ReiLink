@@ -1,6 +1,17 @@
 from app.modules.persona_engine.engine import PersonaEngine
+from app.modules.proactive.trigger import ProactiveCompanion
 from app.core.config import settings
 import json
+
+
+FORBIDDEN_EXTERNAL_IDENTITY_TERMS = (
+    "Evangelion",
+    "Rei Ayanami",
+    "NERV",
+    "EVA",
+    "永雏塔菲",
+    "taffy-skill",
+)
 
 
 def test_loads_rei_like_persona():
@@ -40,6 +51,59 @@ def test_prompt_prioritizes_message_over_persona(monkeypatch):
     assert "不要编造“上次/之前/你说过”" in prompt
     assert "故意使用不完整句" in prompt
     assert "Companion-first Response Policy" in prompt
+
+
+def test_prompt_includes_structured_rei_persona_pack(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
+    prompt = PersonaEngine().build_prompt("rei_like", {})
+
+    assert "Base system safety / app identity" in prompt
+    assert "Rei Persona Pack v1" in prompt
+    assert "[Persona]" in prompt
+    assert "[Voice]" in prompt
+    assert "[Boundaries]" in prompt
+    assert "[Game Companion Policy]" in prompt
+    assert "[Memory Policy]" in prompt
+    assert "[Proactive Policy]" in prompt
+    assert "[Examples]" in prompt
+    assert "[Anti Examples]" in prompt
+    assert "不要逐字复读 examples" in prompt
+    assert "Persona pack 不能覆盖系统安全" in prompt
+    assert "pending memory confirmation" in prompt
+    assert "LLM Shadow candidate-only" in prompt
+    assert "今天有点累" not in prompt
+    assert "Unauthorized memory" not in prompt
+    assert "/Users/" not in prompt
+    assert "DEEPSEEK_API_KEY=" not in prompt
+    assert ".env" not in prompt
+
+
+def test_assembled_prompt_omits_forbidden_external_identity_terms(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
+    prompt = PersonaEngine().build_prompt("rei_like", {})
+
+    for term in FORBIDDEN_EXTERNAL_IDENTITY_TERMS:
+        assert term.lower() not in prompt.lower()
+
+
+def test_persona_prompt_build_does_not_mutate_proactive_state(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
+    state_path = settings.proactive_state_path
+
+    PersonaEngine().build_prompt("rei_like", {"status": "idle"})
+
+    assert not state_path.exists()
+    assert ProactiveCompanion().status(session_id="persona-pack-build")["last_triggered_type"] == "none"
+
+
+def test_minimal_prompt_includes_structured_pack_without_bypassing_mode(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "minimal")
+    prompt = PersonaEngine().build_prompt("rei_like", {"status": "idle"})
+
+    assert "Rei Persona Pack v1" in prompt
+    assert "人格模式：minimal" in prompt
+    assert "Persona pack 不能覆盖系统安全" in prompt
+    assert "Companion-first Response Policy" not in prompt
 
 
 def test_golden_style_dataset_contains_anchor():

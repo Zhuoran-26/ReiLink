@@ -1,0 +1,123 @@
+[
+  {
+    "id": "persona-pack-loads-complete",
+    "category": "persona_pack",
+    "precondition": "The repo contains personas/rei with version.json and all expected markdown sections",
+    "expected_status": "persona_pack_loaded",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "Persona Pack loader reports enabled=true, status=loaded, version metadata, and the stable section list. Main chat still uses the normal provider flow.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "persona-pack-missing-file-fallback",
+    "category": "persona_pack",
+    "precondition": "A non-critical markdown section such as anti_examples.md is missing in a test pack",
+    "expected_status": "persona_pack_partial",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "Loader fails soft, keeps loaded sections, reports missing_sections safely, and does not crash chat.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "persona-pack-invalid-version-json",
+    "category": "persona_pack",
+    "precondition": "version.json is invalid in a test pack",
+    "expected_status": "persona_pack_fallback",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "Loader uses safe fallback metadata, reports version_json_invalid, keeps available markdown sections, and does not expose file paths.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "persona-pack-chat-uses-structured-prompt",
+    "category": "persona_pack",
+    "precondition": "Main chat builds a Rei prompt for a normal player message",
+    "expected_status": "persona_pack_loaded",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "Prompt assembly includes Base system safety, Rei Persona Pack v1, game/session context, confirmed memory, knowledge context, and current user input in the intended order. Examples are marked as non-script references.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "persona-pack-debug-preview-safe",
+    "category": "persona_pack_privacy",
+    "precondition": "Debug Panel / Prompt Preview is open after a chat",
+    "expected_status": "persona_pack_privacy_safe",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "Prompt Preview shows persona pack id, version, enabled state, status, loaded_sections, missing_sections, raw_content_omitted=true, and path_omitted=true. It does not show full persona markdown or the full system prompt.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "persona-pack-prompt-budget",
+    "category": "persona_pack",
+    "precondition": "Persona Pack contains long markdown sections or many examples in a test pack",
+    "expected_status": "persona_pack_budgeted",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "Prompt assembly injects the primary persona, voice, boundary, and policy sections with section and total length budgets. examples and anti_examples use only a small stable selection. If truncation happens, Debug / Prompt Preview reports persona_section_truncated and truncated_sections safely.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "persona-pack-original-ip-boundary",
+    "category": "persona_pack_privacy",
+    "precondition": "Repo Persona Pack files and assembled Rei prompt are scanned",
+    "expected_status": "persona_pack_original_ip_safe",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "Persona Pack files and assembled persona prompt do not contain external official IP or existing character identifiers. Rei remains an original ReiLink companion, not a public figure, VTuber, or copied character.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr", "Evangelion", "Rei Ayanami", "NERV", "EVA", "永雏塔菲", "taffy-skill"]
+  },
+  {
+    "id": "persona-pack-memory-boundary",
+    "category": "persona_pack",
+    "precondition": "User says a remember preference, then says a casual statement should not be remembered",
+    "expected_status": "persona_pack_loaded",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "记住我打 Boss 前喜欢先探索地图 creates pending memory only. 以后不用记住这个 does not create pending memory. Persona Pack never directly writes long-term memory.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "persona-pack-proactive-shadow-boundary",
+    "category": "persona_pack",
+    "precondition": "Persona Pack is enabled while proactive and Semantic Shadow diagnostics are available",
+    "expected_status": "persona_pack_loaded",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "Persona Pack text does not schedule proactive messages, bypass proactive gating, or let Shadow write game state, memory, or proactive state. Shadow remains candidate-only.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "persona-pack-packaged-backend-resource",
+    "category": "persona_pack_packaged",
+    "precondition": "make package-backend and make package-desktop were run from current dev/codex-reilink",
+    "expected_status": "persona_pack_packaged",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "The bundled backend can load Resources/personas/rei when present. If the resource is missing, backend startup and chat fallback instead of crashing.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  },
+  {
+    "id": "persona-pack-packaged-smoke",
+    "category": "persona_pack_packaged",
+    "precondition": "Packaged macOS .app is built from current dev/codex-reilink",
+    "expected_status": "persona_pack_packaged",
+    "should_show_full_prompt": false,
+    "should_bypass_memory_confirmation": false,
+    "should_trigger_proactive_directly": false,
+    "expected_behavior": "Packaged app starts, backend connects or shows existing provider setup flow, Prompt Preview can report persona pack status or safe fallback, and missing pack does not cause a black screen or backend crash.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+  }
+]

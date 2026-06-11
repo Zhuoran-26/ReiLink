@@ -389,7 +389,16 @@ const gameSessionDebug = {
 const promptPreview = {
   persona_mode: "minimal",
   current_user_message: "Margit 怎么打？",
-  prompt_order: ["current_user_message", "current_session_context", "session_focus", "game_state", "knowledge", "memory", "persona"],
+  prompt_order: [
+    "base_system_safety",
+    "persona_pack",
+    "current_session_context",
+    "session_focus",
+    "game_state",
+    "memory",
+    "knowledge",
+    "current_user_message"
+  ],
   model_route_summary: {
     selected_model: "deepseek-v4-flash",
     model_route_mode: "auto",
@@ -412,6 +421,26 @@ const promptPreview = {
     last_attempted_boss: "恶兆妖鬼 Margit",
     last_cleared_boss: null,
     boss_history: gameSessionDebug.boss_history
+  },
+  persona_pack_summary: {
+    id: "rei",
+    name: "Rei",
+    version: "1.0.0",
+    language: "zh-CN",
+    enabled: true,
+    status: "loaded",
+    loaded_sections: ["persona", "voice", "boundaries"],
+    injected_sections: ["persona", "voice", "boundaries"],
+    missing_sections: [],
+    omitted_sections: [],
+    errors: [],
+    fallback_used: false,
+    persona_section_truncated: false,
+    truncated_sections: [],
+    prompt_char_count: 1800,
+    prompt_char_budget: 4800,
+    raw_content_omitted: true,
+    path_omitted: true
   },
   knowledge_summary: {
     knowledge_matched: true,
