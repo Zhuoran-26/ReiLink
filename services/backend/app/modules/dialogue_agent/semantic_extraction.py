@@ -86,6 +86,7 @@ def extract_semantics(
     run_llm_shadow: bool = True,
     llm_response_format: bool = True,
     compat_retry_used: bool = False,
+    ultra_compact_used: bool = False,
 ) -> dict[str, Any]:
     start = time.perf_counter()
     normalized_message = normalize_terminology(user_message.strip())
@@ -111,12 +112,14 @@ def extract_semantics(
                 state,
                 session_focus_boss,
                 use_response_format=llm_response_format,
+                ultra_compact=ultra_compact_used,
             )
             extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
             raw, provider_diagnostics = _shadow_response_parts(
                 response,
                 response_format_used=llm_response_format,
                 compat_retry_used=compat_retry_used,
+                ultra_compact_used=ultra_compact_used,
             )
             llm_shadow = _finalize_llm_shadow(
                 _parse_llm_shadow_json(raw, normalized_message, provider_diagnostics=provider_diagnostics),
@@ -131,7 +134,7 @@ def extract_semantics(
                 candidate_summary=f"失败：{_shadow_failure_reason(exc)}",
                 diff_summary="LLM 影子识别失败，未应用状态",
             )
-            llm_shadow.update(_shadow_exception_diagnostics(exc, llm_response_format, compat_retry_used))
+            llm_shadow.update(_shadow_exception_diagnostics(exc, llm_response_format, compat_retry_used, ultra_compact_used))
             logger.warning("semantic extraction shadow skipped parse_error=%s", parse_error)
     elif should_call_llm:
         llm_shadow = _empty_llm_shadow(
@@ -245,6 +248,9 @@ def _empty_llm_shadow(
         "reasoning_summary": "",
         "response_format_used": None,
         "compat_retry_used": False,
+        "ultra_compact_used": False,
+        "attempts": [],
+        "last_failure": None,
         "json_recovery_stage": "not_run",
         "finish_reason": None,
         "content_length_bucket": "empty",
@@ -371,6 +377,17 @@ def run_semantic_shadow_background(
                 llm_response_format=False,
                 compat_retry_used=True,
             )
+        if _should_retry_shadow_ultra_compact(debug):
+            debug = extract_semantics(
+                user_message,
+                intent,
+                game_state,
+                session_focus_boss=session_focus_boss,
+                run_llm_shadow=True,
+                llm_response_format=False,
+                compat_retry_used=True,
+                ultra_compact_used=True,
+            )
     except Exception:  # noqa: BLE001 - background observability must not affect chat.
         logger.exception("semantic extraction shadow background task failed")
         record_semantic_shadow_final_event(
@@ -434,6 +451,16 @@ def _should_retry_shadow_without_response_format(debug: dict[str, Any]) -> bool:
         and shadow.get("failure_reason") == "invalid_json"
         and shadow.get("response_format_used") is True
         and shadow.get("compat_retry_used") is not True
+    )
+
+
+def _should_retry_shadow_ultra_compact(debug: dict[str, Any]) -> bool:
+    shadow = debug.get("llm_shadow") if isinstance(debug.get("llm_shadow"), dict) else {}
+    return (
+        shadow.get("status") == "failed"
+        and shadow.get("failure_reason") == "invalid_json"
+        and shadow.get("compat_retry_used") is True
+        and shadow.get("ultra_compact_used") is not True
     )
 
 
@@ -535,6 +562,9 @@ def _shadow_event_from_debug(
         ),
         "response_format_used": _safe_bool(shadow.get("response_format_used")),
         "compat_retry_used": _safe_bool(shadow.get("compat_retry_used")),
+        "ultra_compact_used": _safe_bool(shadow.get("ultra_compact_used")),
+        "attempts": _safe_attempts(shadow.get("attempts")),
+        "last_failure": _safe_optional_label(shadow.get("last_failure")),
         "json_recovery_stage": _safe_json_recovery_stage(shadow.get("json_recovery_stage")),
         "finish_reason": _safe_optional_label(shadow.get("finish_reason")),
         "content_length_bucket": _safe_content_length_bucket(shadow.get("content_length_bucket")),
@@ -574,14 +604,19 @@ def _shadow_event_summary(status: str, debug: dict[str, Any]) -> str:
     shadow = debug.get("llm_shadow") if isinstance(debug.get("llm_shadow"), dict) else {}
     candidate = _safe_short_text(debug.get("llm_shadow_summary") or shadow.get("candidate_summary"))
     if status == "shadow_succeeded":
+        if shadow.get("ultra_compact_used"):
+            return f"LLM 影子识别完成：模式 ultra_compact / {candidate or '候选已生成'}"
         if shadow.get("compat_retry_used"):
             return f"LLM 影子识别完成：兼容模式 / {candidate or '候选已生成'}"
         return f"LLM 影子识别完成：{candidate or '候选已生成'}"
     if status == "shadow_timeout":
         return "LLM 影子识别超时"
     if status == "shadow_invalid_json":
+        attempts = ">".join(_safe_attempts(shadow.get("attempts"))) or "normal_json"
+        if shadow.get("ultra_compact_used"):
+            return f"失败：ultra_compact invalid_json / attempts:{attempts}"
         if shadow.get("compat_retry_used"):
-            return "LLM 影子识别失败：兼容模式仍 invalid_json"
+            return f"失败：compat invalid_json / attempts:{attempts}"
         if shadow.get("response_format_used"):
             return "LLM 影子识别失败：invalid_json，尝试兼容模式"
         return "LLM 影子识别失败：invalid_json（已尝试安全恢复）"
@@ -636,6 +671,13 @@ def _safe_label_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [_safe_label(item) for item in value if _safe_label(item)][:12]
+
+
+def _safe_attempts(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    allowed = {"normal_json", "compat_retry", "ultra_compact"}
+    return [str(item) for item in value if str(item) in allowed][:3]
 
 
 def _safe_short_text(value: Any) -> str:
@@ -963,11 +1005,12 @@ def _call_deepseek_flash(
     session_focus_boss: str | None,
     *,
     use_response_format: bool = True,
+    ultra_compact: bool = False,
 ) -> str | SemanticShadowProviderResponse:
     provider = _shadow_provider_config()
     if not provider:
         raise RuntimeError("semantic shadow provider unavailable")
-    prompt = {
+    prompt = _ultra_compact_shadow_prompt(user_message, intent, game_state, session_focus_boss) if ultra_compact else {
         "task": "semantic_shadow_json",
         "intent": intent,
         "message": user_message,
@@ -1016,7 +1059,7 @@ def _call_deepseek_flash(
             {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ],
         "temperature": 0,
-        "max_tokens": 512,
+        "max_tokens": 256 if ultra_compact else 512,
         "stream": False,
     }
     if use_response_format:
@@ -1039,6 +1082,7 @@ def _call_deepseek_flash(
             content=text,
             diagnostics={
                 "response_format_used": use_response_format,
+                "ultra_compact_used": ultra_compact,
                 "finish_reason": _safe_optional_label(choice.get("finish_reason") if isinstance(choice, dict) else None),
                 "content_length_bucket": _content_length_bucket(text),
                 "first_char_type": _first_char_type(text),
@@ -1056,6 +1100,43 @@ def _call_deepseek_flash(
         raise RuntimeError(f"semantic extraction provider failed: {exc}") from exc
     except (KeyError, IndexError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"semantic extraction provider returned invalid response: {exc}") from exc
+
+
+def _ultra_compact_shadow_prompt(
+    user_message: str,
+    intent: str,
+    game_state: dict[str, Any],
+    session_focus_boss: str | None,
+) -> dict[str, Any]:
+    return {
+        "task": "semantic_shadow_ultra_json",
+        "intent": intent,
+        "message": user_message,
+        "focus_boss": normalize_terminology(session_focus_boss or "") or None,
+        "game_state": _brief_game_state(game_state),
+        "allowed": {
+            "conf": ["low", "medium", "high"],
+            "game": ["elden_ring", "hollow_knight", "unknown", None],
+            "boss": ["margit", "tree_sentinel", "false_knight", "unknown", None],
+            "frustration": ["none", "raise", "lower"],
+        },
+        "format": {
+            "related": True,
+            "conf": "medium",
+            "game": "elden_ring",
+            "boss": "tree_sentinel",
+            "failure": True,
+            "death_count": None,
+            "frustration": "raise",
+            "signals": ["unknown_boss_alias"],
+            "summary": "short safe summary",
+        },
+        "instruction": (
+            "Return ONLY this tiny JSON object. No markdown. No prose. No code fences. "
+            "只输出极简 JSON 对象，不要解释。Use null/unknown when unsure. "
+            "Do not echo full user text, paths, secrets, stdout/stderr, or raw prompt."
+        ),
+    }
 
 
 def _semantic_extraction_model() -> str:
@@ -1100,16 +1181,21 @@ def _shadow_response_parts(
     *,
     response_format_used: bool,
     compat_retry_used: bool,
+    ultra_compact_used: bool,
 ) -> tuple[str, dict[str, Any]]:
     if isinstance(response, SemanticShadowProviderResponse):
         diagnostics = dict(response.diagnostics)
         diagnostics["response_format_used"] = bool(diagnostics.get("response_format_used", response_format_used))
         diagnostics["compat_retry_used"] = compat_retry_used
+        diagnostics["ultra_compact_used"] = bool(diagnostics.get("ultra_compact_used", ultra_compact_used))
+        diagnostics["attempts"] = _shadow_attempts(response_format_used, compat_retry_used, ultra_compact_used)
         return response.content, diagnostics
     text = str(response or "").strip()
     return text, {
         "response_format_used": response_format_used,
         "compat_retry_used": compat_retry_used,
+        "ultra_compact_used": ultra_compact_used,
+        "attempts": _shadow_attempts(response_format_used, compat_retry_used, ultra_compact_used),
         "finish_reason": None,
         "content_length_bucket": _content_length_bucket(text),
         "first_char_type": _first_char_type(text),
@@ -1121,6 +1207,9 @@ def _shadow_json_diagnostics(raw: str, provider_diagnostics: dict[str, Any] | No
     diagnostics = dict(provider_diagnostics or {})
     diagnostics.setdefault("response_format_used", None)
     diagnostics.setdefault("compat_retry_used", False)
+    diagnostics.setdefault("ultra_compact_used", False)
+    diagnostics["attempts"] = _safe_attempts(diagnostics.get("attempts"))
+    diagnostics["last_failure"] = _safe_optional_label(diagnostics.get("last_failure"))
     diagnostics["finish_reason"] = _safe_optional_label(diagnostics.get("finish_reason"))
     diagnostics["content_length_bucket"] = _safe_content_length_bucket(
         diagnostics.get("content_length_bucket") or _content_length_bucket(text)
@@ -1128,6 +1217,15 @@ def _shadow_json_diagnostics(raw: str, provider_diagnostics: dict[str, Any] | No
     diagnostics["first_char_type"] = _safe_first_char_type(diagnostics.get("first_char_type") or _first_char_type(text))
     diagnostics.setdefault("json_recovery_stage", "failed")
     return diagnostics
+
+
+def _shadow_attempts(response_format_used: bool, compat_retry_used: bool, ultra_compact_used: bool) -> list[str]:
+    attempts = ["normal_json"]
+    if compat_retry_used:
+        attempts.append("compat_retry")
+    if ultra_compact_used:
+        attempts.append("ultra_compact")
+    return attempts
 
 
 def _content_length_bucket(text: str) -> str:
@@ -1326,6 +1424,9 @@ def _normalize_llm_shadow(data: dict[str, Any], user_message: str) -> dict[str, 
 
 
 def _expand_compact_llm_shadow(data: dict[str, Any]) -> dict[str, Any]:
+    ultra = _expand_ultra_compact_llm_shadow(data)
+    if ultra is not None:
+        return {**data, **ultra}
     if not any(key in data for key in ("related", "conf", "death", "cleared", "memory", "proactive", "summary")):
         return data
     expanded = {
@@ -1341,6 +1442,68 @@ def _expand_compact_llm_shadow(data: dict[str, Any]) -> dict[str, Any]:
         "reasoning_summary": data.get("reasoning_summary", data.get("summary", "")),
     }
     return {**data, **expanded}
+
+
+def _expand_ultra_compact_llm_shadow(data: dict[str, Any]) -> dict[str, Any] | None:
+    if not (
+        "failure" in data
+        or isinstance(data.get("game"), str)
+        or isinstance(data.get("boss"), str)
+        or isinstance(data.get("frustration"), str)
+    ):
+        return None
+    confidence = data.get("confidence", data.get("conf", "low"))
+    failure = _shadow_bool(data.get("failure"))
+    death_value = data.get("death_count")
+    death_operation = "increment" if _shadow_death_count_value(death_value) is not None else ("unknown" if failure else "none")
+    return {
+        "is_game_related": data.get("is_game_related", data.get("related", False)),
+        "confidence": confidence,
+        "game": _expand_ultra_scalar_operation(data.get("game"), confidence, SHADOW_GAME_IDS),
+        "boss": _expand_ultra_boss(data.get("boss"), confidence),
+        "death_count": {
+            "operation": death_operation,
+            "value": _shadow_death_count_value(death_value),
+            "confidence": confidence,
+        },
+        "frustration": {
+            "operation": _shadow_operation(data.get("frustration"), {"raise", "lower", "none"}),
+            "confidence": confidence,
+        },
+        "boss_cleared": {"operation": "none", "confidence": "high"},
+        "memory_candidate": {"should_create": False, "kind": "none", "safe_summary": None, "confidence": "low"},
+        "proactive_signal": {"type": "none", "confidence": "low", "reason": ""},
+        "reasoning_summary": data.get("reasoning_summary", data.get("summary", "")),
+    }
+
+
+def _expand_ultra_scalar_operation(value: Any, confidence: Any, allowed_values: set[str]) -> dict[str, Any]:
+    if value is None or value == "":
+        return {"operation": "none", "value": None, "confidence": confidence}
+    text = str(value).strip()
+    if text == "unknown":
+        return {"operation": "unknown", "value": "unknown", "confidence": confidence}
+    if text in allowed_values:
+        return {"operation": "set", "value": text, "confidence": confidence}
+    return {"operation": "unknown", "value": "unknown", "confidence": "low"}
+
+
+def _expand_ultra_boss(value: Any, confidence: Any) -> dict[str, Any]:
+    expanded = _expand_ultra_scalar_operation(value, confidence, SHADOW_BOSS_IDS)
+    expanded["surface_label"] = None
+    return expanded
+
+
+def _shadow_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"true", "yes", "1"}:
+            return True
+        if text in {"false", "no", "0", "none", "null", "unknown"}:
+            return False
+    return False
 
 
 def _expand_compact_operation(value: Any) -> dict[str, Any]:
@@ -1623,7 +1786,12 @@ def _safe_parse_error(exc: Exception) -> str:
     return "semantic_extraction_provider_error"
 
 
-def _shadow_exception_diagnostics(exc: Exception, response_format_used: bool, compat_retry_used: bool) -> dict[str, Any]:
+def _shadow_exception_diagnostics(
+    exc: Exception,
+    response_format_used: bool,
+    compat_retry_used: bool,
+    ultra_compact_used: bool,
+) -> dict[str, Any]:
     if isinstance(exc, SemanticShadowParseError):
         diagnostics = _shadow_json_diagnostics("", exc.diagnostics)
     else:
@@ -1632,11 +1800,16 @@ def _shadow_exception_diagnostics(exc: Exception, response_format_used: bool, co
             {
                 "response_format_used": response_format_used,
                 "compat_retry_used": compat_retry_used,
+                "ultra_compact_used": ultra_compact_used,
+                "attempts": _shadow_attempts(response_format_used, compat_retry_used, ultra_compact_used),
                 "json_recovery_stage": "failed",
             },
         )
     diagnostics["response_format_used"] = response_format_used if diagnostics.get("response_format_used") is None else diagnostics["response_format_used"]
     diagnostics["compat_retry_used"] = compat_retry_used
+    diagnostics["ultra_compact_used"] = ultra_compact_used
+    diagnostics["attempts"] = _shadow_attempts(response_format_used, compat_retry_used, ultra_compact_used)
+    diagnostics["last_failure"] = _shadow_failure_reason(exc)
     diagnostics["json_recovery_stage"] = _safe_json_recovery_stage(diagnostics.get("json_recovery_stage"))
     return diagnostics
 

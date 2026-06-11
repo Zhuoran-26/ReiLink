@@ -508,6 +508,62 @@ def test_shadow_parser_accepts_first_object_from_array():
     assert shadow["boss"]["value"] == "tree_sentinel"
 
 
+def test_shadow_parser_accepts_ultra_compact_json():
+    raw = json.dumps(
+        {
+            "related": True,
+            "conf": "medium",
+            "game": "hollow_knight",
+            "boss": "false_knight",
+            "failure": True,
+            "death_count": 1,
+            "frustration": "raise",
+            "signals": ["unknown_boss_alias"],
+            "summary": "possible false knight failure",
+        },
+        ensure_ascii=False,
+    )
+
+    shadow = sem._parse_llm_shadow_json(
+        raw,
+        "空洞骑士里那个一开始拿锤子的家伙把我打爆了。",
+        provider_diagnostics={"ultra_compact_used": True, "attempts": ["normal_json", "compat_retry", "ultra_compact"]},
+    )
+
+    assert shadow["status"] == "succeeded"
+    assert shadow["ultra_compact_used"] is True
+    assert shadow["attempts"] == ["normal_json", "compat_retry", "ultra_compact"]
+    assert shadow["json_recovery_stage"] == "strict"
+    assert shadow["game"]["value"] == "hollow_knight"
+    assert shadow["boss"]["value"] == "false_knight"
+    assert shadow["death_count"]["operation"] == "increment"
+    assert shadow["death_count"]["value"] == 1
+    assert shadow["frustration"]["operation"] == "raise"
+
+
+def test_shadow_parser_treats_ultra_compact_string_false_as_false():
+    raw = json.dumps(
+        {
+            "related": True,
+            "conf": "low",
+            "game": "elden_ring",
+            "boss": "unknown",
+            "failure": "false",
+            "death_count": None,
+            "frustration": "none",
+            "signals": [],
+            "summary": "game mention only",
+        },
+        ensure_ascii=False,
+    )
+
+    shadow = sem._parse_llm_shadow_json(raw, "随便聊一下艾尔登法环。")
+
+    assert shadow["status"] == "succeeded"
+    assert shadow["death_count"]["operation"] == "none"
+    assert shadow["death_count"]["value"] is None
+
+
 def test_shadow_parser_rejects_no_json_and_malformed_json_safely():
     for raw in ("not json at all", "前缀 {not valid json} 后缀"):
         try:
@@ -651,7 +707,13 @@ def test_background_shadow_timeout_produces_final_timeout_event(monkeypatch):
 def test_background_shadow_invalid_json_produces_final_invalid_json_event(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
-    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: "not json")
+    calls = []
+
+    def fake_call(*args, **kwargs):
+        calls.append((kwargs.get("use_response_format"), kwargs.get("ultra_compact")))
+        return "not json"
+
+    monkeypatch.setattr(sem, "_call_deepseek_flash", fake_call)
     since_id = sem.get_semantic_shadow_events()["latest_id"]
     trace_id = sem.schedule_semantic_shadow_event(
         sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
@@ -660,11 +722,17 @@ def test_background_shadow_invalid_json_produces_final_invalid_json_event(monkey
     sem.run_semantic_shadow_background("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), trace_id=trace_id)
 
     final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
+    assert calls == [(True, False), (False, False), (False, True)]
     assert final["status"] == "shadow_invalid_json"
     assert final["parse_error"] == "semantic_extraction_parse_error"
-    assert final["llm_shadow_summary"] == "LLM 影子识别失败：兼容模式仍 invalid_json"
+    assert final["llm_shadow_summary"] == (
+        "失败：ultra_compact invalid_json / attempts:normal_json>compat_retry>ultra_compact"
+    )
     assert final["response_format_used"] is False
     assert final["compat_retry_used"] is True
+    assert final["ultra_compact_used"] is True
+    assert final["attempts"] == ["normal_json", "compat_retry", "ultra_compact"]
+    assert final["last_failure"] == "invalid_json"
     assert final["json_recovery_stage"] == "failed"
     assert final["content_length_bucket"] == "short"
     assert final["first_char_type"] == "prose"
@@ -698,6 +766,53 @@ def test_background_shadow_retries_without_response_format_after_invalid_json(mo
     assert final["json_recovery_stage"] == "strict"
     assert "兼容模式" in final["llm_shadow_summary"]
     assert final["applied_updates"] == []
+
+
+def test_background_shadow_uses_ultra_compact_after_compat_invalid_json(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    calls = []
+
+    def fake_call(*args, **kwargs):
+        calls.append((kwargs.get("use_response_format"), kwargs.get("ultra_compact")))
+        if kwargs.get("ultra_compact"):
+            return json.dumps(
+                {
+                    "related": True,
+                    "conf": "medium",
+                    "game": "elden_ring",
+                    "boss": "tree_sentinel",
+                    "failure": True,
+                    "death_count": None,
+                    "frustration": "raise",
+                    "signals": ["unknown_boss_alias"],
+                    "summary": "possible tree sentinel failure",
+                },
+                ensure_ascii=False,
+            )
+        return "not json"
+
+    monkeypatch.setattr(sem, "_call_deepseek_flash", fake_call)
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    trace_id = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+
+    sem.run_semantic_shadow_background("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), trace_id=trace_id)
+
+    final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
+    assert calls == [(True, False), (False, False), (False, True)]
+    assert final["status"] == "shadow_succeeded"
+    assert final["response_format_used"] is False
+    assert final["compat_retry_used"] is True
+    assert final["ultra_compact_used"] is True
+    assert final["attempts"] == ["normal_json", "compat_retry", "ultra_compact"]
+    assert final["json_recovery_stage"] == "strict"
+    assert "ultra_compact" in final["llm_shadow_summary"]
+    assert final["applied_updates"] == []
+    assert "final_decision" not in final
+    assert "memory_candidate" not in final
+    assert "proactive_signal" not in final
 
 
 def test_shadow_empty_content_has_safe_diagnostics(monkeypatch):

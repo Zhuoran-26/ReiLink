@@ -176,7 +176,16 @@
     "precondition": "Real-provider Semantic Shadow uses response_format json_object first, but the first response is invalid JSON",
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
-    "expected_behavior": "Background Semantic Shadow may retry once without response_format. If retry succeeds, Event Stream records shadow_succeeded with a compatibility-mode summary and safe diagnostics. If retry also fails, Event Stream records shadow_invalid_json with safe diagnostics. Timeout, auth_failed, provider_unavailable, and provider_error do not trigger a compatibility retry.",
+    "expected_behavior": "Background Semantic Shadow may retry once without response_format. If retry succeeds, Event Stream records shadow_succeeded with a compatibility-mode summary and safe diagnostics. If retry also fails with invalid_json, the next allowed attempt is the ultra-compact fallback. Timeout, auth_failed, provider_unavailable, and provider_error do not trigger compatibility or ultra-compact retries.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
+    "id": "session-timeline-semantic-shadow-ultra-compact-fallback",
+    "category": "session_timeline_privacy",
+    "precondition": "Normal JSON mode and compatibility retry both fail with invalid_json",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Background Semantic Shadow may make one final ultra-compact flat JSON attempt. If it succeeds, Event Stream records shadow_succeeded with an ultra_compact mode summary and no state, memory, or proactive writes. If it fails, Event Stream records shadow_invalid_json with attempts including normal_json, compat_retry, and ultra_compact.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
@@ -185,7 +194,7 @@
     "precondition": "Semantic Shadow completes, fails JSON parsing, retries in compatibility mode, or receives empty content",
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
-    "expected_behavior": "Final shadow events may include response_format_used, compat_retry_used, json_recovery_stage, finish_reason, content_length_bucket, and first_char_type. These fields are short safe labels only and never include raw provider output, prompt text, full user input, paths, secrets, stdout/stderr, or transcript.",
+    "expected_behavior": "Final shadow events may include response_format_used, compat_retry_used, ultra_compact_used, attempts, last_failure, json_recovery_stage, finish_reason, content_length_bucket, and first_char_type. These fields are short safe labels only and never include raw provider output, prompt text, full user input, paths, secrets, stdout/stderr, or transcript.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
