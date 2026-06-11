@@ -80,6 +80,10 @@ def _game_state(current_boss: str | None = None) -> dict:
     }
 
 
+def _shadow_events_since(since_id: int) -> list[dict]:
+    return sem.get_semantic_shadow_events(since_id=since_id)["events"]
+
+
 def test_explicit_current_boss_uses_rule_without_llm(monkeypatch):
     monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LLM called")))
 
@@ -434,6 +438,212 @@ def test_shadow_can_be_deferred_without_calling_provider(monkeypatch):
     assert result["llm_shadow_diff"] == "LLM 影子识别后台等待"
     assert result["applied_updates"] == []
     assert result["final_decision"]["memory_candidate"]["should_create_pending"] is False
+
+
+def test_shadow_deferred_creates_pending_background_trace(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+
+    deferred = sem.extract_semantics(
+        "我在那个骑马金甲大哥那里又寄了几次。",
+        "casual_chat",
+        _game_state(),
+        run_llm_shadow=False,
+    )
+    trace_id = sem.schedule_semantic_shadow_event(deferred)
+
+    events = _shadow_events_since(since_id)
+    assert trace_id.startswith("shadow#")
+    assert events[-1]["trace_id"] == trace_id
+    assert events[-1]["phase"] == "scheduled"
+    assert events[-1]["status"] == "shadow_deferred"
+    assert events[-1]["skip_reason"] == "shadow_deferred"
+    assert "骑马金甲大哥" not in json.dumps(events, ensure_ascii=False)
+
+
+def test_background_shadow_succeeded_produces_final_event_without_state_writes(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(
+        sem,
+        "_call_deepseek_flash",
+        lambda *args, **kwargs: json.dumps(
+            _shadow_payload(
+                boss="tree_sentinel",
+                death_operation="increment",
+                death_value=2,
+                memory=True,
+                proactive="repeated_death",
+            ),
+            ensure_ascii=False,
+        ),
+    )
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    deferred = sem.extract_semantics(
+        "我在那个骑马金甲大哥那里又寄了几次。",
+        "casual_chat",
+        _game_state(),
+        run_llm_shadow=False,
+    )
+    trace_id = sem.schedule_semantic_shadow_event(deferred)
+
+    sem.run_semantic_shadow_background(
+        "我在那个骑马金甲大哥那里又寄了几次。",
+        "casual_chat",
+        _game_state(),
+        trace_id=trace_id,
+    )
+
+    events = _shadow_events_since(since_id)
+    final_events = [event for event in events if event["phase"] == "final" and event["trace_id"] == trace_id]
+    assert final_events
+    final = final_events[-1]
+    assert final["status"] == "shadow_succeeded"
+    assert final["llm_shadow_status"] == "succeeded"
+    assert final["applied_updates"] == []
+    assert "final_decision" not in final
+    assert "memory_candidate" not in final
+    assert "proactive_signal" not in final
+    serialized = json.dumps(events, ensure_ascii=False)
+    assert "骑马金甲大哥" not in serialized
+    assert "raw prompt" not in serialized.lower()
+    assert ".env" not in serialized.lower()
+
+
+def test_background_shadow_timeout_produces_final_timeout_event(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError("raw prompt /Users/x/.env")))
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    trace_id = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+
+    sem.run_semantic_shadow_background("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), trace_id=trace_id)
+
+    events = _shadow_events_since(since_id)
+    final = [event for event in events if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
+    assert final["status"] == "shadow_timeout"
+    assert final["parse_error"] == "semantic_extraction_timeout"
+    serialized = json.dumps(final, ensure_ascii=False).lower()
+    assert "骑马金甲大哥" not in serialized
+    assert "raw prompt" not in serialized
+    assert "/users/" not in serialized
+    assert ".env" not in serialized
+
+
+def test_background_shadow_invalid_json_produces_final_invalid_json_event(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: "not json")
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    trace_id = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+
+    sem.run_semantic_shadow_background("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), trace_id=trace_id)
+
+    final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
+    assert final["status"] == "shadow_invalid_json"
+    assert final["parse_error"] == "semantic_extraction_parse_error"
+
+
+def test_background_shadow_auth_error_produces_final_auth_failed_event(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(
+        sem,
+        "_call_deepseek_flash",
+        lambda *args, **kwargs: (_ for _ in ()).throw(sem.SemanticShadowAuthError("auth failed with secret-token")),
+    )
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    trace_id = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+
+    sem.run_semantic_shadow_background("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), trace_id=trace_id)
+
+    final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
+    assert final["status"] == "shadow_auth_failed"
+    assert final["parse_error"] == "semantic_extraction_auth_failed"
+    assert "secret-token" not in json.dumps(final, ensure_ascii=False)
+
+
+def test_background_shadow_provider_error_produces_final_provider_error_event(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("provider failed")))
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    trace_id = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+
+    sem.run_semantic_shadow_background("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), trace_id=trace_id)
+
+    final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
+    assert final["status"] == "shadow_provider_error"
+    assert final["parse_error"] == "semantic_extraction_provider_error"
+
+
+def test_background_shadow_provider_unavailable_produces_final_event(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    trace_id = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "")
+
+    sem.run_semantic_shadow_background("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), trace_id=trace_id)
+
+    final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
+    assert final["status"] == "shadow_provider_unavailable"
+    assert final["llm_shadow_status"] == "skipped"
+    assert final["skip_reason"] == "provider_unavailable"
+
+
+def test_pending_shadow_trace_expires_with_safe_final_event(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    start = 1000.0
+    monkeypatch.setattr(sem.time, "time", lambda: start)
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    trace_id = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+    monkeypatch.setattr(sem.time, "time", lambda: start + sem.SEMANTIC_SHADOW_EVENT_EXPIRE_SECONDS + 1)
+
+    events = _shadow_events_since(since_id)
+
+    final = [event for event in events if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
+    assert final["status"] == "shadow_expired"
+    assert final["parse_error"] == "semantic_extraction_timeout"
+    assert "超时或已过期" in final["llm_shadow_diff"]
+
+
+def test_consecutive_background_shadow_inputs_append_safe_final_events(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: json.dumps(_shadow_payload(boss="tree_sentinel"), ensure_ascii=False))
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    first_trace = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+    second_trace = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("空洞骑士里那个一开始拿锤子的家伙把我打爆了。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+
+    sem.run_semantic_shadow_background("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), trace_id=first_trace)
+    sem.run_semantic_shadow_background("空洞骑士里那个一开始拿锤子的家伙把我打爆了。", "casual_chat", _game_state(), trace_id=second_trace)
+
+    events = _shadow_events_since(since_id)
+    final_trace_ids = [event["trace_id"] for event in events if event["phase"] == "final"]
+    assert first_trace in final_trace_ids
+    assert second_trace in final_trace_ids
+    serialized = json.dumps(events, ensure_ascii=False)
+    assert "骑马金甲大哥" not in serialized
+    assert "拿锤子的家伙" not in serialized
 
 
 def test_shadow_auth_error_is_classified_safely(monkeypatch):

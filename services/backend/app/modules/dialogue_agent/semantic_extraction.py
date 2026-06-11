@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import re
 import socket
+import threading
 import time
 import urllib.error
 import urllib.request
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import settings
@@ -48,6 +50,8 @@ SHADOW_BOSS_IDS = {"margit", "tree_sentinel", "false_knight", "unknown"}
 SEMANTIC_LLM_TIMEOUT_SECONDS = 12.0
 SEMANTIC_LLM_MIN_TIMEOUT_SECONDS = 8.0
 SEMANTIC_LLM_MAX_TIMEOUT_SECONDS = 15.0
+SEMANTIC_SHADOW_EVENT_LIMIT = 100
+SEMANTIC_SHADOW_EVENT_EXPIRE_SECONDS = 25.0
 
 
 class SemanticShadowAuthError(RuntimeError):
@@ -258,10 +262,321 @@ _latest_debug: dict[str, Any] = {
     "parse_error": None,
 }
 
+_shadow_event_lock = threading.Lock()
+_shadow_event_next_id = 0
+_shadow_trace_next_id = 0
+_shadow_events: list[dict[str, Any]] = []
+_shadow_pending: dict[str, float] = {}
+_shadow_completed_trace_ids: set[str] = set()
+
 
 def _set_latest_debug(debug: dict[str, Any]) -> None:
     global _latest_debug
     _latest_debug = deepcopy(debug)
+
+
+def schedule_semantic_shadow_event(debug: dict[str, Any]) -> str:
+    global _shadow_trace_next_id
+    now = time.time()
+    timestamp = _utc_timestamp()
+    with _shadow_event_lock:
+        _shadow_trace_next_id += 1
+        trace_id = f"shadow#{_shadow_trace_next_id}"
+        _shadow_pending[trace_id] = now
+        _append_shadow_event_locked(
+            _shadow_event_from_debug(
+                debug,
+                trace_id=trace_id,
+                timestamp=timestamp,
+                phase="scheduled",
+                event_status="shadow_deferred",
+                summary="LLM 影子识别后台等待",
+            )
+        )
+    return trace_id
+
+
+def run_semantic_shadow_background(
+    user_message: str,
+    intent: str,
+    game_state: dict[str, Any],
+    *,
+    session_focus_boss: str | None = None,
+    trace_id: str | None = None,
+) -> None:
+    active_trace_id = trace_id or schedule_semantic_shadow_event(
+        {
+            "source": "none",
+            "confidence": "low",
+            "fallback_reason": None,
+            "skip_reason": "shadow_deferred",
+            "applied_updates": [],
+            "llm_shadow": _empty_llm_shadow(skip_reason="shadow_deferred"),
+            "llm_shadow_status": "skipped",
+            "llm_shadow_confidence": "low",
+            "llm_shadow_summary": "跳过：shadow_deferred",
+            "llm_shadow_diff": "LLM 影子识别后台等待",
+            "semantic_extraction_model": _semantic_extraction_model(),
+            "semantic_extraction_latency_ms": 0,
+            "parse_error": None,
+        }
+    )
+    try:
+        debug = extract_semantics(
+            user_message,
+            intent,
+            game_state,
+            session_focus_boss=session_focus_boss,
+            run_llm_shadow=True,
+        )
+    except Exception:  # noqa: BLE001 - background observability must not affect chat.
+        logger.exception("semantic extraction shadow background task failed")
+        record_semantic_shadow_final_event(
+            active_trace_id,
+            {
+                "source": "none",
+                "confidence": "low",
+                "fallback_reason": None,
+                "skip_reason": None,
+                "applied_updates": [],
+                "parse_error": "semantic_extraction_provider_error",
+                "llm_shadow": _empty_llm_shadow(
+                    status="failed",
+                    failure_reason="cancelled",
+                    candidate_summary="失败：cancelled",
+                    diff_summary="LLM 影子识别已取消，未应用状态",
+                ),
+                "llm_shadow_status": "failed",
+                "llm_shadow_confidence": "low",
+                "llm_shadow_summary": "失败：cancelled",
+                "llm_shadow_diff": "LLM 影子识别已取消，未应用状态",
+                "semantic_extraction_model": _semantic_extraction_model(),
+                "semantic_extraction_latency_ms": 0,
+            },
+            event_status="shadow_cancelled",
+        )
+        return
+    record_semantic_shadow_final_event(active_trace_id, debug)
+
+
+def record_semantic_shadow_final_event(
+    trace_id: str,
+    debug: dict[str, Any],
+    *,
+    event_status: str | None = None,
+) -> None:
+    timestamp = _utc_timestamp()
+    with _shadow_event_lock:
+        if trace_id in _shadow_completed_trace_ids:
+            return
+        _shadow_pending.pop(trace_id, None)
+        _shadow_completed_trace_ids.add(trace_id)
+        _trim_completed_trace_ids_locked()
+        status = event_status or _shadow_final_event_status(debug)
+        _append_shadow_event_locked(
+            _shadow_event_from_debug(
+                debug,
+                trace_id=trace_id,
+                timestamp=timestamp,
+                phase="final",
+                event_status=status,
+                summary=_shadow_event_summary(status, debug),
+            )
+        )
+
+
+def get_semantic_shadow_events(since_id: int = 0, limit: int = 50) -> dict[str, Any]:
+    _expire_stale_shadow_events()
+    safe_since = max(0, int(since_id or 0))
+    safe_limit = max(1, min(int(limit or 50), SEMANTIC_SHADOW_EVENT_LIMIT))
+    with _shadow_event_lock:
+        events = [event for event in _shadow_events if int(event.get("id", 0)) > safe_since]
+        return {
+            "events": deepcopy(events[-safe_limit:]),
+            "latest_id": _shadow_event_next_id,
+        }
+
+
+def _append_shadow_event_locked(event: dict[str, Any]) -> None:
+    global _shadow_event_next_id
+    _shadow_event_next_id += 1
+    event["id"] = _shadow_event_next_id
+    _shadow_events.append(event)
+    del _shadow_events[:-SEMANTIC_SHADOW_EVENT_LIMIT]
+
+
+def _expire_stale_shadow_events() -> None:
+    now = time.time()
+    timestamp = _utc_timestamp()
+    with _shadow_event_lock:
+        expired = [
+            trace_id
+            for trace_id, scheduled_at in _shadow_pending.items()
+            if now - scheduled_at >= SEMANTIC_SHADOW_EVENT_EXPIRE_SECONDS
+        ]
+        for trace_id in expired:
+            _shadow_pending.pop(trace_id, None)
+            _shadow_completed_trace_ids.add(trace_id)
+            _append_shadow_event_locked(
+                {
+                    "trace_id": trace_id,
+                    "timestamp": timestamp,
+                    "phase": "final",
+                    "status": "shadow_expired",
+                    "source": "none",
+                    "confidence": "low",
+                    "fallback_reason": None,
+                    "skip_reason": None,
+                    "parse_error": "semantic_extraction_timeout",
+                    "applied_updates": [],
+                    "llm_shadow_status": "failed",
+                    "llm_shadow_confidence": "low",
+                    "llm_shadow_summary": "失败：expired",
+                    "llm_shadow_diff": "LLM 影子识别超时或已过期，未应用状态",
+                    "semantic_extraction_model": _semantic_extraction_model(),
+                    "semantic_extraction_latency_ms": 0,
+                }
+            )
+        if expired:
+            _trim_completed_trace_ids_locked()
+
+
+def _shadow_event_from_debug(
+    debug: dict[str, Any],
+    *,
+    trace_id: str,
+    timestamp: str,
+    phase: str,
+    event_status: str,
+    summary: str,
+) -> dict[str, Any]:
+    trace = debug.get("extraction_trace") if isinstance(debug.get("extraction_trace"), dict) else {}
+    shadow = debug.get("llm_shadow") if isinstance(debug.get("llm_shadow"), dict) else {}
+    skip_reason = "shadow_deferred" if event_status == "shadow_deferred" else (
+        trace.get("skip_reason") or debug.get("skip_reason") or shadow.get("skip_reason")
+    )
+    return {
+        "trace_id": trace_id,
+        "timestamp": timestamp,
+        "phase": phase,
+        "status": event_status,
+        "source": _safe_label(trace.get("source") or debug.get("source") or "none"),
+        "confidence": _safe_confidence(trace.get("confidence") or debug.get("confidence") or "low"),
+        "fallback_reason": _safe_optional_label(trace.get("fallback_reason") or debug.get("fallback_reason")),
+        "skip_reason": _safe_optional_label(skip_reason),
+        "parse_error": _safe_optional_label(trace.get("parse_error") or debug.get("parse_error")),
+        "applied_updates": _safe_label_list(trace.get("applied_updates") or debug.get("applied_updates") or []),
+        "llm_shadow_status": _safe_shadow_status(trace.get("llm_shadow_status") or debug.get("llm_shadow_status") or shadow.get("status")),
+        "llm_shadow_confidence": _safe_confidence(
+            trace.get("llm_shadow_confidence") or debug.get("llm_shadow_confidence") or shadow.get("confidence") or "low"
+        ),
+        "llm_shadow_summary": _safe_short_text(
+            summary
+            or trace.get("llm_shadow_summary")
+            or debug.get("llm_shadow_summary")
+            or shadow.get("candidate_summary")
+        ),
+        "llm_shadow_diff": _safe_short_text(
+            trace.get("llm_shadow_diff")
+            or debug.get("llm_shadow_diff")
+            or shadow.get("diff_summary")
+        ),
+        "semantic_extraction_model": _safe_optional_label(debug.get("semantic_extraction_model")),
+        "semantic_extraction_latency_ms": max(0, int(debug.get("semantic_extraction_latency_ms") or 0)),
+    }
+
+
+def _shadow_final_event_status(debug: dict[str, Any]) -> str:
+    shadow = debug.get("llm_shadow") if isinstance(debug.get("llm_shadow"), dict) else {}
+    status = str(debug.get("llm_shadow_status") or shadow.get("status") or "")
+    if status == "succeeded":
+        return "shadow_succeeded"
+    if status == "skipped":
+        skip_reason = str(shadow.get("skip_reason") or debug.get("skip_reason") or "")
+        if skip_reason == "provider_unavailable":
+            return "shadow_provider_unavailable"
+        return "shadow_cancelled"
+    failure_reason = str(shadow.get("failure_reason") or "")
+    if failure_reason == "timeout":
+        return "shadow_timeout"
+    if failure_reason == "invalid_json":
+        return "shadow_invalid_json"
+    if failure_reason == "auth_failed":
+        return "shadow_auth_failed"
+    if failure_reason == "provider_error":
+        return "shadow_provider_error"
+    if failure_reason == "provider_unavailable":
+        return "shadow_provider_unavailable"
+    if failure_reason == "cancelled":
+        return "shadow_cancelled"
+    return "shadow_provider_error"
+
+
+def _shadow_event_summary(status: str, debug: dict[str, Any]) -> str:
+    shadow = debug.get("llm_shadow") if isinstance(debug.get("llm_shadow"), dict) else {}
+    candidate = _safe_short_text(debug.get("llm_shadow_summary") or shadow.get("candidate_summary"))
+    if status == "shadow_succeeded":
+        return f"LLM 影子识别完成：{candidate or '候选已生成'}"
+    if status == "shadow_timeout":
+        return "LLM 影子识别超时"
+    if status == "shadow_invalid_json":
+        return "LLM 影子识别失败：invalid_json"
+    if status == "shadow_auth_failed":
+        return "LLM 影子识别失败：auth_failed"
+    if status == "shadow_provider_unavailable":
+        return "LLM 影子识别跳过：provider_unavailable"
+    if status == "shadow_expired":
+        return "LLM 影子识别超时或已过期"
+    if status == "shadow_cancelled":
+        return "LLM 影子识别已取消"
+    return "LLM 影子识别失败：provider_error"
+
+
+def _trim_completed_trace_ids_locked() -> None:
+    if len(_shadow_completed_trace_ids) <= SEMANTIC_SHADOW_EVENT_LIMIT * 2:
+        return
+    active_trace_ids = {str(event.get("trace_id")) for event in _shadow_events[-SEMANTIC_SHADOW_EVENT_LIMIT:]}
+    _shadow_completed_trace_ids.intersection_update(active_trace_ids)
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _safe_optional_label(value: Any) -> str | None:
+    text = _safe_label(value)
+    return text or None
+
+
+def _safe_label(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"(?i)bearer\s+[a-z0-9._-]+", "bearer [redacted]", text)
+    text = re.sub(r"(?i)(api[_-]?key|authorization|\.env|stdout|stderr|raw prompt|raw json)", "[redacted]", text)
+    text = re.sub(r"/[^\s]+", "[path]", text)
+    return text[:80]
+
+
+def _safe_confidence(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text in CONFIDENCE_LABELS else "low"
+
+
+def _safe_shadow_status(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text in SHADOW_STATUSES else "skipped"
+
+
+def _safe_label_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_safe_label(item) for item in value if _safe_label(item)][:12]
+
+
+def _safe_short_text(value: Any) -> str:
+    text = _safe_label(value)
+    return text[:120]
 
 
 def _rule_result(

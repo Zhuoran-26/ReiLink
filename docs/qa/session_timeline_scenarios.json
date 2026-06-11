@@ -162,6 +162,15 @@
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider request body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
   },
   {
+    "id": "session-timeline-semantic-shadow-background-final-event",
+    "category": "session_timeline_privacy",
+    "precondition": "API chat defers a real-provider Semantic Shadow attempt for a low-confidence game semantic hint",
+    "expected_status": "timeline_privacy_safe",
+    "should_store_full_text": false,
+    "expected_behavior": "Event Stream may first show a safe scheduled/deferred shadow event, but it must later append a safe terminal event such as shadow_succeeded, shadow_timeout, shadow_invalid_json, shadow_auth_failed, shadow_provider_unavailable, shadow_provider_error, shadow_cancelled, or shadow_expired. The terminal event is appended instead of replacing only the latest debug snapshot, and it does not apply game state, create memory, or trigger proactive behavior.",
+    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider request body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+  },
+  {
     "id": "session-timeline-semantic-shadow-invalid-json-safe",
     "category": "session_timeline_privacy",
     "precondition": "LLM Shadow Mode returns invalid JSON, times out, raises auth_failed, or raises a provider error",

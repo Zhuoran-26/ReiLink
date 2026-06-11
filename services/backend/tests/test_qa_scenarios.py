@@ -409,6 +409,7 @@ def test_session_timeline_scenarios_have_required_fields():
         "session-timeline-semantic-shadow-candidate-not-applied",
         "session-timeline-semantic-shadow-provider-unavailable",
         "session-timeline-semantic-shadow-real-provider-diagnostics",
+        "session-timeline-semantic-shadow-background-final-event",
         "session-timeline-semantic-shadow-invalid-json-safe",
         "session-timeline-memory-actions-safe",
         "session-timeline-clear-current-session",

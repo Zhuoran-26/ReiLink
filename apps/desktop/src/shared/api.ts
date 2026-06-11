@@ -461,6 +461,40 @@ export type SemanticExtractionDebugResponse = {
   parse_error: string | null;
 };
 
+export type SemanticShadowEvent = {
+  id: number;
+  trace_id: string;
+  timestamp: string;
+  phase: "scheduled" | "final";
+  status:
+    | "shadow_deferred"
+    | "shadow_succeeded"
+    | "shadow_timeout"
+    | "shadow_invalid_json"
+    | "shadow_auth_failed"
+    | "shadow_provider_unavailable"
+    | "shadow_provider_error"
+    | "shadow_cancelled"
+    | "shadow_expired";
+  source?: "rule" | "llm_fallback" | "mixed" | "none";
+  confidence?: "high" | "medium" | "low";
+  fallback_reason?: string | null;
+  skip_reason?: string | null;
+  parse_error?: string | null;
+  applied_updates?: string[];
+  llm_shadow_status?: "skipped" | "succeeded" | "failed";
+  llm_shadow_confidence?: "high" | "medium" | "low";
+  llm_shadow_summary?: string | null;
+  llm_shadow_diff?: string | null;
+  semantic_extraction_model?: string | null;
+  semantic_extraction_latency_ms?: number;
+};
+
+export type SemanticShadowEventsResponse = {
+  events: SemanticShadowEvent[];
+  latest_id: number;
+};
+
 export type ProviderDebugResponse = {
   provider: string;
   model: string | null;
@@ -660,6 +694,8 @@ export const api = {
   resetProactive: () => request<ProactiveResetResponse>("/api/proactive/reset", { method: "POST" }),
   gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
   semanticExtractionDebug: () => request<SemanticExtractionDebugResponse>("/api/debug/semantic-extraction/latest"),
+  semanticShadowEvents: (sinceId = 0) =>
+    request<SemanticShadowEventsResponse>(`/api/debug/semantic-shadow/events?since_id=${Math.max(0, Math.floor(sinceId))}`),
   promptPreview: (sessionId = "default") => request<PromptPreviewResponse>(`/api/debug/prompt-preview?session_id=${encodeURIComponent(sessionId)}`),
   pendingMemories: () => request<PendingMemory[]>("/api/memory/pending"),
   acceptPendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/accept`, { method: "POST" }),

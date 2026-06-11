@@ -1345,6 +1345,7 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
   if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
   if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
+  if (url.includes("/api/debug/semantic-shadow/events")) return Response.json({ events: [], latest_id: 0 });
   if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
   if (url.endsWith("/api/chat") && init?.method === "POST") {
     if (chatFailureResponse) return chatFailureResponse();
@@ -2220,6 +2221,61 @@ describe("App", () => {
     const semanticEvent = eventBus.getRecentEvents(20).find((event) => event.type === "semantic_extraction_traced");
     expect(JSON.stringify(semanticEvent)).toContain("大树守卫");
     expect(JSON.stringify(semanticEvent)).not.toContain("骑马金甲大哥");
+  });
+
+  it("polls background LLM shadow final events into Event Stream without raw text", async () => {
+    const finalShadowEvent = {
+      id: 1,
+      trace_id: "shadow#1",
+      timestamp: new Date().toISOString(),
+      phase: "final",
+      status: "shadow_timeout",
+      source: "none",
+      confidence: "low",
+      fallback_reason: "unknown_boss_alias",
+      skip_reason: null,
+      parse_error: "semantic_extraction_timeout",
+      applied_updates: [],
+      llm_shadow_status: "failed",
+      llm_shadow_confidence: "low",
+      llm_shadow_summary: "LLM 影子识别超时",
+      llm_shadow_diff: "LLM 影子识别失败，未应用状态",
+      semantic_extraction_model: "deepseek-v4-flash",
+      semantic_extraction_latency_ms: 12000
+    };
+    let servedShadowEvent = false;
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/api/debug/semantic-shadow/events")) {
+        const events = servedShadowEvent ? [] : [finalShadowEvent];
+        servedShadowEvent = true;
+        return Promise.resolve(Response.json({ events, latest_id: 1 }));
+      }
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(eventBus.getRecentEvents(20)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "semantic_extraction_traced",
+            source: "none",
+            shadow_event_status: "shadow_timeout",
+            llm_shadow_status: "failed",
+            applied_updates: []
+          })
+        ])
+      )
+    );
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    await waitFor(() => expect(eventStream).toHaveTextContent("LLM 影子识别超时"));
+    const serialized = JSON.stringify(eventBus.getRecentEvents(20));
+    expect(serialized).not.toContain("骑马金甲大哥");
+    expect(serialized).not.toContain("raw prompt");
+    expect(serialized).not.toContain(".env");
   });
 
   it("does not speak assistant replies when Voice Output is disabled", async () => {

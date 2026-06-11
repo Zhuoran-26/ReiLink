@@ -15,7 +15,11 @@ from app.modules.dialogue_agent.repetition import (
     is_repetitive_reply,
 )
 from app.modules.dialogue_agent.segmenter import segment_reply
-from app.modules.dialogue_agent.semantic_extraction import extract_semantics
+from app.modules.dialogue_agent.semantic_extraction import (
+    extract_semantics,
+    run_semantic_shadow_background,
+    schedule_semantic_shadow_event,
+)
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.dialogue_agent.style import apply_rei_style
 from app.modules.dialogue_agent.validator import validate_or_repair
@@ -179,12 +183,14 @@ class DialogueAgent:
                 semantic_extraction,
             )
             if (semantic_extraction.get("llm_shadow") or {}).get("skip_reason") == "shadow_deferred":
+                shadow_trace_id = schedule_semantic_shadow_event(semantic_extraction)
                 background_tasks.add_task(
-                    extract_semantics,
+                    run_semantic_shadow_background,
                     request.message,
                     intent_result.intent,
                     semantic_game_state,
                     session_focus_boss=session_focus.boss,
+                    trace_id=shadow_trace_id,
                 )
         else:
             self._safe_memory_update(request.message, reply, intent_result.intent, now, semantic_extraction)

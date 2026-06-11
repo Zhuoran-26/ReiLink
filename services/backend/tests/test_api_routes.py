@@ -3,6 +3,7 @@ import json
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.modules.dialogue_agent import semantic_extraction as sem
 
 client = TestClient(app)
 
@@ -627,6 +628,64 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
     assert "authorization" not in serialized
     assert "bearer" not in serialized
     assert "sk-" not in serialized
+
+
+def test_semantic_shadow_events_endpoint_returns_final_events_without_secrets(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(
+        sem,
+        "_call_deepseek_flash",
+        lambda *args, **kwargs: json.dumps(
+            {
+                "is_game_related": True,
+                "confidence": "medium",
+                "game": {"operation": "unknown", "value": "unknown", "confidence": "low"},
+                "boss": {"operation": "set", "value": "tree_sentinel", "surface_label": None, "confidence": "medium"},
+                "death_count": {"operation": "increment", "value": 1, "confidence": "medium"},
+                "frustration": {"operation": "none", "confidence": "low"},
+                "boss_cleared": {"operation": "none", "confidence": "low"},
+                "memory_candidate": {"should_create": False, "kind": "none", "safe_summary": None, "confidence": "low"},
+                "proactive_signal": {"type": "none", "confidence": "low", "reason": ""},
+                "reasoning_summary": "安全候选",
+            },
+            ensure_ascii=False,
+        ),
+    )
+    since_id = client.get("/api/debug/semantic-shadow/events").json()["latest_id"]
+    deferred = sem.extract_semantics(
+        "我在那个骑马金甲大哥那里又寄了几次。",
+        "casual_chat",
+        {"current_game": "Elden Ring"},
+        run_llm_shadow=False,
+    )
+    trace_id = sem.schedule_semantic_shadow_event(deferred)
+    sem.run_semantic_shadow_background(
+        "我在那个骑马金甲大哥那里又寄了几次。",
+        "casual_chat",
+        {"current_game": "Elden Ring"},
+        trace_id=trace_id,
+    )
+
+    response = client.get(f"/api/debug/semantic-shadow/events?since_id={since_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["latest_id"] >= since_id + 2
+    statuses = [event["status"] for event in data["events"]]
+    assert "shadow_deferred" in statuses
+    assert "shadow_succeeded" in statuses
+    final = [event for event in data["events"] if event["status"] == "shadow_succeeded"][-1]
+    assert final["applied_updates"] == []
+    assert "final_decision" not in final
+    assert "memory_candidate" not in final
+    assert "proactive_signal" not in final
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "骑马金甲大哥" not in serialized
+    assert "api_key" not in serialized
+    assert "authorization" not in serialized
+    assert ".env" not in serialized
+    assert "raw prompt" not in serialized
 
 
 def test_memory_reset_route():

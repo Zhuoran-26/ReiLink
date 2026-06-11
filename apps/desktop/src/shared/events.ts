@@ -24,6 +24,18 @@ export type ReiLinkEvent =
       llm_shadow_confidence?: "high" | "medium" | "low";
       llm_shadow_summary?: string | null;
       llm_shadow_diff?: string | null;
+      shadow_trace_id?: string;
+      shadow_event_phase?: "scheduled" | "final";
+      shadow_event_status?:
+        | "shadow_deferred"
+        | "shadow_succeeded"
+        | "shadow_timeout"
+        | "shadow_invalid_json"
+        | "shadow_auth_failed"
+        | "shadow_provider_unavailable"
+        | "shadow_provider_error"
+        | "shadow_cancelled"
+        | "shadow_expired";
     }
   | {
       type: "game_session_changed";

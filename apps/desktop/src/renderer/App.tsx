@@ -43,6 +43,7 @@ import {
   ProactiveStatusResponse,
   ProviderDebugResponse,
   SemanticExtractionDebugResponse,
+  SemanticShadowEvent,
   SetupStatus,
   UserProfileMemory
 } from "../shared/api";
@@ -98,6 +99,7 @@ type LocalAsrSettingsDraft = {
 type LocalAsrSettingsDraftPathKey = keyof LocalAsrSettingsDraft;
 
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
+const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
 
 const idleStatus: GameStatus = {
   game_id: null,
@@ -993,6 +995,21 @@ const semanticShadowStatusText = (status?: string | null) => {
   return labels[status ?? ""] ?? debugText(status);
 };
 
+const semanticShadowEventStatusText = (status?: string | null) => {
+  const labels: Record<string, string> = {
+    shadow_deferred: "LLM 影子识别已调度",
+    shadow_succeeded: "LLM 影子识别完成",
+    shadow_timeout: "LLM 影子识别超时",
+    shadow_invalid_json: "LLM 影子识别失败：invalid_json",
+    shadow_auth_failed: "LLM 影子识别失败：auth_failed",
+    shadow_provider_unavailable: "LLM 影子识别跳过：provider_unavailable",
+    shadow_provider_error: "LLM 影子识别失败：provider_error",
+    shadow_cancelled: "LLM 影子识别已取消",
+    shadow_expired: "LLM 影子识别超时或已过期"
+  };
+  return labels[status ?? ""] ?? debugText(status);
+};
+
 const eventSummary = (event: ReiLinkEvent) => {
   switch (event.type) {
     case "user_message_sent":
@@ -1017,6 +1034,7 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [
         `语义识别：${debugText(event.source)}`,
         debugText(event.confidence),
+        event.shadow_event_status ? semanticShadowEventStatusText(event.shadow_event_status) : "",
         event.fallback_reason ? `原因：${debugText(event.fallback_reason)}` : "",
         event.skip_reason && event.skip_reason !== "no_semantic_signal" ? `跳过：${debugText(event.skip_reason)}` : "",
         event.parse_error ? `错误：${debugText(event.parse_error)}` : "",
@@ -1766,6 +1784,7 @@ export function App() {
   const lastKnowledgeEventRef = useRef<string | null>(null);
   const lastModelRouteEventRef = useRef<string | null>(null);
   const lastSemanticTraceEventRef = useRef<string | null>(null);
+  const lastSemanticShadowEventIdRef = useRef(0);
   const lastOverlayEnabledRef = useRef<boolean | null>(null);
   const lastOverlayConfigRef = useRef<OverlayConfig | null>(null);
   const lastOverlayContentRef = useRef<OverlayContentUpdate | null>(null);
@@ -1965,6 +1984,7 @@ export function App() {
     const shadowConfidence = trace?.llm_shadow_confidence ?? debug.llm_shadow_confidence ?? null;
     const shadowSummary = trace?.llm_shadow_summary ?? debug.llm_shadow_summary ?? null;
     const shadowDiff = trace?.llm_shadow_diff ?? debug.llm_shadow_diff ?? null;
+    if (skipReason === "shadow_deferred" && shadowStatus === "skipped") return;
     const shouldEmit = Boolean(
       source !== "none"
       || fallbackReason
@@ -1993,6 +2013,41 @@ export function App() {
       llm_shadow_diff: shadowDiff
     });
   }, []);
+
+  const emitSemanticShadowEvents = useCallback((events: SemanticShadowEvent[]) => {
+    for (const event of events) {
+      if (event.id <= lastSemanticShadowEventIdRef.current) continue;
+      lastSemanticShadowEventIdRef.current = Math.max(lastSemanticShadowEventIdRef.current, event.id);
+      eventBus.emit({
+        type: "semantic_extraction_traced",
+        timestamp: event.timestamp,
+        source: event.source ?? "none",
+        confidence: event.confidence ?? "low",
+        fallback_reason: event.fallback_reason ?? null,
+        skip_reason: event.skip_reason ?? null,
+        parse_error: event.parse_error ?? null,
+        applied_updates: event.applied_updates ?? [],
+        llm_shadow_status: event.llm_shadow_status,
+        llm_shadow_confidence: event.llm_shadow_confidence,
+        llm_shadow_summary: event.llm_shadow_summary ?? null,
+        llm_shadow_diff: event.llm_shadow_diff ?? null,
+        shadow_trace_id: event.trace_id,
+        shadow_event_phase: event.phase,
+        shadow_event_status: event.status
+      });
+    }
+  }, []);
+
+  const pollSemanticShadowEvents = useCallback(async () => {
+    if (backendStatus !== "connected" || appSettings.debug_panel !== "show") return;
+    try {
+      const response = await api.semanticShadowEvents(lastSemanticShadowEventIdRef.current);
+      emitSemanticShadowEvents(response.events);
+      lastSemanticShadowEventIdRef.current = Math.max(lastSemanticShadowEventIdRef.current, response.latest_id);
+    } catch {
+      // Keep shadow polling observational only; it must never surface as a user-facing chat error.
+    }
+  }, [appSettings.debug_panel, backendStatus, emitSemanticShadowEvents]);
 
   const recordPendingMemories = useCallback((memories: PendingMemory[], emitCreated: boolean) => {
     const previousIds = knownPendingMemoryIdsRef.current;
@@ -2527,6 +2582,13 @@ export function App() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (backendStatus !== "connected" || appSettings.debug_panel !== "show") return;
+    void pollSemanticShadowEvents();
+    const interval = window.setInterval(() => void pollSemanticShadowEvents(), SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [appSettings.debug_panel, backendStatus, pollSemanticShadowEvents]);
 
   useEffect(() => {
     const unsubscribe = voiceOutput.subscribe(setVoiceStatus);
