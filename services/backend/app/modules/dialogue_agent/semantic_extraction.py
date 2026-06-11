@@ -66,12 +66,26 @@ class SemanticShadowProviderConfig:
     model: str
 
 
+@dataclass(frozen=True)
+class SemanticShadowProviderResponse:
+    content: str
+    diagnostics: dict[str, Any]
+
+
+class SemanticShadowParseError(ValueError):
+    def __init__(self, message: str, diagnostics: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
+
+
 def extract_semantics(
     user_message: str,
     intent: str,
     game_state: dict[str, Any] | None = None,
     session_focus_boss: str | None = None,
     run_llm_shadow: bool = True,
+    llm_response_format: bool = True,
+    compat_retry_used: bool = False,
 ) -> dict[str, Any]:
     start = time.perf_counter()
     normalized_message = normalize_terminology(user_message.strip())
@@ -91,10 +105,21 @@ def extract_semantics(
         llm_called = True
         llm_start = time.perf_counter()
         try:
-            raw = _call_deepseek_flash(normalized_message, intent, state, session_focus_boss)
+            response = _call_deepseek_flash(
+                normalized_message,
+                intent,
+                state,
+                session_focus_boss,
+                use_response_format=llm_response_format,
+            )
             extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
+            raw, provider_diagnostics = _shadow_response_parts(
+                response,
+                response_format_used=llm_response_format,
+                compat_retry_used=compat_retry_used,
+            )
             llm_shadow = _finalize_llm_shadow(
-                _parse_llm_shadow_json(raw, normalized_message),
+                _parse_llm_shadow_json(raw, normalized_message, provider_diagnostics=provider_diagnostics),
                 rule_result,
             )
         except Exception as exc:  # noqa: BLE001 - semantic extraction must never break chat.
@@ -106,6 +131,7 @@ def extract_semantics(
                 candidate_summary=f"失败：{_shadow_failure_reason(exc)}",
                 diff_summary="LLM 影子识别失败，未应用状态",
             )
+            llm_shadow.update(_shadow_exception_diagnostics(exc, llm_response_format, compat_retry_used))
             logger.warning("semantic extraction shadow skipped parse_error=%s", parse_error)
     elif should_call_llm:
         llm_shadow = _empty_llm_shadow(
@@ -217,6 +243,12 @@ def _empty_llm_shadow(
             "reason": "",
         },
         "reasoning_summary": "",
+        "response_format_used": None,
+        "compat_retry_used": False,
+        "json_recovery_stage": "not_run",
+        "finish_reason": None,
+        "content_length_bucket": "empty",
+        "first_char_type": "empty",
     }
 
 
@@ -329,6 +361,16 @@ def run_semantic_shadow_background(
             session_focus_boss=session_focus_boss,
             run_llm_shadow=True,
         )
+        if _should_retry_shadow_without_response_format(debug):
+            debug = extract_semantics(
+                user_message,
+                intent,
+                game_state,
+                session_focus_boss=session_focus_boss,
+                run_llm_shadow=True,
+                llm_response_format=False,
+                compat_retry_used=True,
+            )
     except Exception:  # noqa: BLE001 - background observability must not affect chat.
         logger.exception("semantic extraction shadow background task failed")
         record_semantic_shadow_final_event(
@@ -383,6 +425,16 @@ def record_semantic_shadow_final_event(
                 summary=_shadow_event_summary(status, debug),
             )
         )
+
+
+def _should_retry_shadow_without_response_format(debug: dict[str, Any]) -> bool:
+    shadow = debug.get("llm_shadow") if isinstance(debug.get("llm_shadow"), dict) else {}
+    return (
+        shadow.get("status") == "failed"
+        and shadow.get("failure_reason") == "invalid_json"
+        and shadow.get("response_format_used") is True
+        and shadow.get("compat_retry_used") is not True
+    )
 
 
 def get_semantic_shadow_events(since_id: int = 0, limit: int = 50) -> dict[str, Any]:
@@ -481,6 +533,12 @@ def _shadow_event_from_debug(
             or debug.get("llm_shadow_diff")
             or shadow.get("diff_summary")
         ),
+        "response_format_used": _safe_bool(shadow.get("response_format_used")),
+        "compat_retry_used": _safe_bool(shadow.get("compat_retry_used")),
+        "json_recovery_stage": _safe_json_recovery_stage(shadow.get("json_recovery_stage")),
+        "finish_reason": _safe_optional_label(shadow.get("finish_reason")),
+        "content_length_bucket": _safe_content_length_bucket(shadow.get("content_length_bucket")),
+        "first_char_type": _safe_first_char_type(shadow.get("first_char_type")),
         "semantic_extraction_model": _safe_optional_label(debug.get("semantic_extraction_model")),
         "semantic_extraction_latency_ms": max(0, int(debug.get("semantic_extraction_latency_ms") or 0)),
     }
@@ -516,10 +574,16 @@ def _shadow_event_summary(status: str, debug: dict[str, Any]) -> str:
     shadow = debug.get("llm_shadow") if isinstance(debug.get("llm_shadow"), dict) else {}
     candidate = _safe_short_text(debug.get("llm_shadow_summary") or shadow.get("candidate_summary"))
     if status == "shadow_succeeded":
+        if shadow.get("compat_retry_used"):
+            return f"LLM 影子识别完成：兼容模式 / {candidate or '候选已生成'}"
         return f"LLM 影子识别完成：{candidate or '候选已生成'}"
     if status == "shadow_timeout":
         return "LLM 影子识别超时"
     if status == "shadow_invalid_json":
+        if shadow.get("compat_retry_used"):
+            return "LLM 影子识别失败：兼容模式仍 invalid_json"
+        if shadow.get("response_format_used"):
+            return "LLM 影子识别失败：invalid_json，尝试兼容模式"
         return "LLM 影子识别失败：invalid_json（已尝试安全恢复）"
     if status == "shadow_auth_failed":
         return "LLM 影子识别失败：auth_failed"
@@ -577,6 +641,25 @@ def _safe_label_list(value: Any) -> list[str]:
 def _safe_short_text(value: Any) -> str:
     text = _safe_label(value)
     return text[:120]
+
+
+def _safe_bool(value: Any) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _safe_json_recovery_stage(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text in {"strict", "fenced", "object_extract", "array_first", "failed", "not_run"} else "failed"
+
+
+def _safe_content_length_bucket(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text in {"empty", "short", "medium", "long"} else "empty"
+
+
+def _safe_first_char_type(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text in {"{", "[", "markdown", "prose", "empty", "unknown"} else "unknown"
 
 
 def _rule_result(
@@ -878,7 +961,9 @@ def _call_deepseek_flash(
     intent: str,
     game_state: dict[str, Any],
     session_focus_boss: str | None,
-) -> str:
+    *,
+    use_response_format: bool = True,
+) -> str | SemanticShadowProviderResponse:
     provider = _shadow_provider_config()
     if not provider:
         raise RuntimeError("semantic shadow provider unavailable")
@@ -932,9 +1017,10 @@ def _call_deepseek_flash(
         ],
         "temperature": 0,
         "max_tokens": 512,
-        "response_format": {"type": "json_object"},
         "stream": False,
     }
+    if use_response_format:
+        payload["response_format"] = {"type": "json_object"}
     request = urllib.request.Request(
         f"{provider.base_url.rstrip('/')}/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
@@ -945,7 +1031,19 @@ def _call_deepseek_flash(
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read().decode("utf-8"))
-        return str(body["choices"][0]["message"]["content"]).strip()
+        choice = body["choices"][0]
+        message = choice.get("message") if isinstance(choice, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        text = str(content or "").strip()
+        return SemanticShadowProviderResponse(
+            content=text,
+            diagnostics={
+                "response_format_used": use_response_format,
+                "finish_reason": _safe_optional_label(choice.get("finish_reason") if isinstance(choice, dict) else None),
+                "content_length_bucket": _content_length_bucket(text),
+                "first_char_type": _first_char_type(text),
+            },
+        )
     except socket.timeout as exc:
         raise TimeoutError(f"semantic extraction timed out after {timeout:g}s") from exc
     except urllib.error.HTTPError as exc:
@@ -997,38 +1095,111 @@ def _semantic_shadow_timeout_seconds() -> float:
     return max(SEMANTIC_LLM_MIN_TIMEOUT_SECONDS, min(configured, SEMANTIC_LLM_MAX_TIMEOUT_SECONDS))
 
 
-def _parse_llm_shadow_json(raw: str, user_message: str) -> dict[str, Any]:
-    parsed, recovered = _load_llm_shadow_json(raw)
+def _shadow_response_parts(
+    response: str | SemanticShadowProviderResponse,
+    *,
+    response_format_used: bool,
+    compat_retry_used: bool,
+) -> tuple[str, dict[str, Any]]:
+    if isinstance(response, SemanticShadowProviderResponse):
+        diagnostics = dict(response.diagnostics)
+        diagnostics["response_format_used"] = bool(diagnostics.get("response_format_used", response_format_used))
+        diagnostics["compat_retry_used"] = compat_retry_used
+        return response.content, diagnostics
+    text = str(response or "").strip()
+    return text, {
+        "response_format_used": response_format_used,
+        "compat_retry_used": compat_retry_used,
+        "finish_reason": None,
+        "content_length_bucket": _content_length_bucket(text),
+        "first_char_type": _first_char_type(text),
+    }
+
+
+def _shadow_json_diagnostics(raw: str, provider_diagnostics: dict[str, Any] | None = None) -> dict[str, Any]:
+    text = str(raw or "").lstrip("\ufeff").strip()
+    diagnostics = dict(provider_diagnostics or {})
+    diagnostics.setdefault("response_format_used", None)
+    diagnostics.setdefault("compat_retry_used", False)
+    diagnostics["finish_reason"] = _safe_optional_label(diagnostics.get("finish_reason"))
+    diagnostics["content_length_bucket"] = _safe_content_length_bucket(
+        diagnostics.get("content_length_bucket") or _content_length_bucket(text)
+    )
+    diagnostics["first_char_type"] = _safe_first_char_type(diagnostics.get("first_char_type") or _first_char_type(text))
+    diagnostics.setdefault("json_recovery_stage", "failed")
+    return diagnostics
+
+
+def _content_length_bucket(text: str) -> str:
+    length = len(str(text or "").strip())
+    if length == 0:
+        return "empty"
+    if length <= 256:
+        return "short"
+    if length <= 1200:
+        return "medium"
+    return "long"
+
+
+def _first_char_type(text: str) -> str:
+    stripped = str(text or "").lstrip("\ufeff").strip()
+    if not stripped:
+        return "empty"
+    if stripped.startswith("{"):
+        return "{"
+    if stripped.startswith("["):
+        return "["
+    if stripped.startswith("```"):
+        return "markdown"
+    if stripped[0].isalnum() or "\u4e00" <= stripped[0] <= "\u9fff":
+        return "prose"
+    return "unknown"
+
+
+def _parse_llm_shadow_json(
+    raw: str,
+    user_message: str,
+    *,
+    provider_diagnostics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    diagnostics = _shadow_json_diagnostics(raw, provider_diagnostics)
+    try:
+        parsed, recovered, stage = _load_llm_shadow_json(raw)
+    except ValueError as exc:
+        diagnostics["json_recovery_stage"] = "failed"
+        raise SemanticShadowParseError("LLM semantic extraction did not return valid JSON", diagnostics) from exc
     shadow = _normalize_llm_shadow(parsed, user_message)
     shadow["json_recovered"] = recovered
+    diagnostics["json_recovery_stage"] = stage
+    shadow.update(diagnostics)
     return shadow
 
 
-def _load_llm_shadow_json(raw: str) -> tuple[dict[str, Any], bool]:
+def _load_llm_shadow_json(raw: str) -> tuple[dict[str, Any], bool, str]:
     text = str(raw or "").lstrip("\ufeff").strip()
     parsed = _loads_shadow_json_value(text)
     if isinstance(parsed, dict):
-        return parsed, False
+        return parsed, False, "strict"
     if isinstance(parsed, list):
         first = _first_dict(parsed)
         if first is not None:
-            return first, True
+            return first, True, "array_first"
 
     unfenced = _strip_json_fence(text)
     if unfenced != text:
         parsed = _loads_shadow_json_value(unfenced)
         if isinstance(parsed, dict):
-            return parsed, True
+            return parsed, True, "fenced"
         if isinstance(parsed, list):
             first = _first_dict(parsed)
             if first is not None:
-                return first, True
+                return first, True, "array_first"
 
     object_text = _extract_first_json_object(unfenced)
     if object_text:
         parsed = _loads_shadow_json_value(object_text)
         if isinstance(parsed, dict):
-            return parsed, True
+            return parsed, True, "object_extract"
 
     raise ValueError("LLM semantic extraction did not return valid JSON")
 
@@ -1450,6 +1621,24 @@ def _safe_parse_error(exc: Exception) -> str:
     if isinstance(exc, (json.JSONDecodeError, ValueError)):
         return "semantic_extraction_parse_error"
     return "semantic_extraction_provider_error"
+
+
+def _shadow_exception_diagnostics(exc: Exception, response_format_used: bool, compat_retry_used: bool) -> dict[str, Any]:
+    if isinstance(exc, SemanticShadowParseError):
+        diagnostics = _shadow_json_diagnostics("", exc.diagnostics)
+    else:
+        diagnostics = _shadow_json_diagnostics(
+            "",
+            {
+                "response_format_used": response_format_used,
+                "compat_retry_used": compat_retry_used,
+                "json_recovery_stage": "failed",
+            },
+        )
+    diagnostics["response_format_used"] = response_format_used if diagnostics.get("response_format_used") is None else diagnostics["response_format_used"]
+    diagnostics["compat_retry_used"] = compat_retry_used
+    diagnostics["json_recovery_stage"] = _safe_json_recovery_stage(diagnostics.get("json_recovery_stage"))
+    return diagnostics
 
 
 def _shadow_failure_reason(exc: Exception) -> str:

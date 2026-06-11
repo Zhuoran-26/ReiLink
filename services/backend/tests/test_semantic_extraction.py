@@ -449,6 +449,7 @@ def test_shadow_parser_accepts_strict_valid_compact_json():
 
     assert shadow["status"] == "succeeded"
     assert shadow["json_recovered"] is False
+    assert shadow["json_recovery_stage"] == "strict"
     assert shadow["boss"]["value"] == "tree_sentinel"
     assert shadow["death_count"]["operation"] == "increment"
     assert shadow["death_count"]["value"] == 2
@@ -462,6 +463,7 @@ def test_shadow_parser_recovers_json_from_markdown_fence():
 
     assert shadow["status"] == "succeeded"
     assert shadow["json_recovered"] is True
+    assert shadow["json_recovery_stage"] == "fenced"
     assert shadow["boss"]["value"] == "tree_sentinel"
 
 
@@ -488,6 +490,7 @@ def test_shadow_parser_recovers_json_with_prose_prefix_suffix():
 
     assert shadow["status"] == "succeeded"
     assert shadow["json_recovered"] is True
+    assert shadow["json_recovery_stage"] == "object_extract"
     assert shadow["boss"]["value"] == "false_knight"
 
 
@@ -501,6 +504,7 @@ def test_shadow_parser_accepts_first_object_from_array():
 
     assert shadow["status"] == "succeeded"
     assert shadow["json_recovered"] is True
+    assert shadow["json_recovery_stage"] == "array_first"
     assert shadow["boss"]["value"] == "tree_sentinel"
 
 
@@ -602,6 +606,9 @@ def test_background_shadow_succeeded_produces_final_event_without_state_writes(m
     final = final_events[-1]
     assert final["status"] == "shadow_succeeded"
     assert final["llm_shadow_status"] == "succeeded"
+    assert final["response_format_used"] is True
+    assert final["compat_retry_used"] is False
+    assert final["json_recovery_stage"] == "strict"
     assert final["applied_updates"] == []
     assert "final_decision" not in final
     assert "memory_candidate" not in final
@@ -615,7 +622,13 @@ def test_background_shadow_succeeded_produces_final_event_without_state_writes(m
 def test_background_shadow_timeout_produces_final_timeout_event(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
-    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError("raw prompt /Users/x/.env")))
+    calls = []
+
+    def fake_call(*args, **kwargs):
+        calls.append(kwargs.get("use_response_format"))
+        raise TimeoutError("raw prompt /Users/x/.env")
+
+    monkeypatch.setattr(sem, "_call_deepseek_flash", fake_call)
     since_id = sem.get_semantic_shadow_events()["latest_id"]
     trace_id = sem.schedule_semantic_shadow_event(
         sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
@@ -627,6 +640,7 @@ def test_background_shadow_timeout_produces_final_timeout_event(monkeypatch):
     final = [event for event in events if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
     assert final["status"] == "shadow_timeout"
     assert final["parse_error"] == "semantic_extraction_timeout"
+    assert calls == [True]
     serialized = json.dumps(final, ensure_ascii=False).lower()
     assert "骑马金甲大哥" not in serialized
     assert "raw prompt" not in serialized
@@ -648,17 +662,81 @@ def test_background_shadow_invalid_json_produces_final_invalid_json_event(monkey
     final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
     assert final["status"] == "shadow_invalid_json"
     assert final["parse_error"] == "semantic_extraction_parse_error"
-    assert final["llm_shadow_summary"] == "LLM 影子识别失败：invalid_json（已尝试安全恢复）"
+    assert final["llm_shadow_summary"] == "LLM 影子识别失败：兼容模式仍 invalid_json"
+    assert final["response_format_used"] is False
+    assert final["compat_retry_used"] is True
+    assert final["json_recovery_stage"] == "failed"
+    assert final["content_length_bucket"] == "short"
+    assert final["first_char_type"] == "prose"
 
 
-def test_background_shadow_auth_error_produces_final_auth_failed_event(monkeypatch):
+def test_background_shadow_retries_without_response_format_after_invalid_json(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    calls = []
+
+    def fake_call(*args, **kwargs):
+        use_response_format = kwargs.get("use_response_format")
+        calls.append(use_response_format)
+        if use_response_format:
+            return "not json"
+        return json.dumps(_shadow_payload(boss="tree_sentinel", death_operation="increment", death_value=1), ensure_ascii=False)
+
+    monkeypatch.setattr(sem, "_call_deepseek_flash", fake_call)
+    since_id = sem.get_semantic_shadow_events()["latest_id"]
+    trace_id = sem.schedule_semantic_shadow_event(
+        sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
+    )
+
+    sem.run_semantic_shadow_background("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), trace_id=trace_id)
+
+    final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
+    assert calls == [True, False]
+    assert final["status"] == "shadow_succeeded"
+    assert final["response_format_used"] is False
+    assert final["compat_retry_used"] is True
+    assert final["json_recovery_stage"] == "strict"
+    assert "兼容模式" in final["llm_shadow_summary"]
+    assert final["applied_updates"] == []
+
+
+def test_shadow_empty_content_has_safe_diagnostics(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
     monkeypatch.setattr(
         sem,
         "_call_deepseek_flash",
-        lambda *args, **kwargs: (_ for _ in ()).throw(sem.SemanticShadowAuthError("auth failed with secret-token")),
+        lambda *args, **kwargs: sem.SemanticShadowProviderResponse(
+            content="",
+            diagnostics={
+                "response_format_used": kwargs.get("use_response_format"),
+                "finish_reason": "stop",
+                "content_length_bucket": "empty",
+                "first_char_type": "empty",
+            },
+        ),
     )
+    result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
+
+    assert result["llm_shadow_status"] == "failed"
+    assert result["llm_shadow"]["failure_reason"] == "invalid_json"
+    assert result["llm_shadow"]["content_length_bucket"] == "empty"
+    assert result["llm_shadow"]["first_char_type"] == "empty"
+    assert result["llm_shadow"]["finish_reason"] == "stop"
+    serialized = json.dumps(result, ensure_ascii=False)
+    assert "骑马金甲大哥" not in serialized
+
+
+def test_background_shadow_auth_error_produces_final_auth_failed_event(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    calls = []
+
+    def fake_call(*args, **kwargs):
+        calls.append(kwargs.get("use_response_format"))
+        raise sem.SemanticShadowAuthError("auth failed with secret-token")
+
+    monkeypatch.setattr(sem, "_call_deepseek_flash", fake_call)
     since_id = sem.get_semantic_shadow_events()["latest_id"]
     trace_id = sem.schedule_semantic_shadow_event(
         sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
@@ -669,13 +747,20 @@ def test_background_shadow_auth_error_produces_final_auth_failed_event(monkeypat
     final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
     assert final["status"] == "shadow_auth_failed"
     assert final["parse_error"] == "semantic_extraction_auth_failed"
+    assert calls == [True]
     assert "secret-token" not in json.dumps(final, ensure_ascii=False)
 
 
 def test_background_shadow_provider_error_produces_final_provider_error_event(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
-    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("provider failed")))
+    calls = []
+
+    def fake_call(*args, **kwargs):
+        calls.append(kwargs.get("use_response_format"))
+        raise RuntimeError("provider failed")
+
+    monkeypatch.setattr(sem, "_call_deepseek_flash", fake_call)
     since_id = sem.get_semantic_shadow_events()["latest_id"]
     trace_id = sem.schedule_semantic_shadow_event(
         sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state(), run_llm_shadow=False)
@@ -686,6 +771,7 @@ def test_background_shadow_provider_error_produces_final_provider_error_event(mo
     final = [event for event in _shadow_events_since(since_id) if event["phase"] == "final" and event["trace_id"] == trace_id][-1]
     assert final["status"] == "shadow_provider_error"
     assert final["parse_error"] == "semantic_extraction_provider_error"
+    assert calls == [True]
 
 
 def test_background_shadow_provider_unavailable_produces_final_event(monkeypatch):
