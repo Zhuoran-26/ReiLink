@@ -8,6 +8,9 @@ import json
 FORBIDDEN_EXTERNAL_IDENTITY_TERMS = (
     "Evangelion",
     "Rei Ayanami",
+    "Ayanami",
+    "绫波",
+    "綾波",
     "NERV",
     "EVA",
     "永雏塔菲",
@@ -76,7 +79,12 @@ def test_prompt_includes_structured_rei_persona_pack(monkeypatch):
     assert "影子识别候选边界" in prompt
     assert "冷静寡言" in prompt
     assert "话多程度：1/5" in prompt
+    assert "表达通道很窄" in prompt
+    assert "不是没有情绪" in prompt
+    assert "不要把“也”“还”“嗯”之类变成新口癖" in prompt
     assert "玩家死亡多次" in prompt
+    assert "玩家追问关系或关心" in prompt
+    assert "连续相似问题" in prompt
     assert "今天有点累" not in prompt
     assert "未确认记忆" not in prompt
     assert "/Users/" not in prompt

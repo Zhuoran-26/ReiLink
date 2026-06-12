@@ -13,6 +13,9 @@ from app.modules.persona_engine.persona_pack import (
 FORBIDDEN_EXTERNAL_IDENTITY_TERMS = (
     "Evangelion",
     "Rei Ayanami",
+    "Ayanami",
+    "绫波",
+    "綾波",
     "NERV",
     "EVA",
     "永雏塔菲",
@@ -167,6 +170,11 @@ def test_persona_pack_loads_v11_calibration_sections_from_repo():
     assert "response_patterns" in pack.sections
     assert "style_calibration" in pack.as_safe_summary()["injected_sections"]
     assert "response_patterns" in pack.as_safe_summary()["injected_sections"]
+    prompt_section = pack.as_prompt_section()
+    assert "表达通道很窄" in prompt_section
+    assert "不是没有情绪" in prompt_section
+    assert "不要把“也”“还”“嗯”之类变成新口癖" in prompt_section
+    assert "连续相似问题" in prompt_section
 
 
 def test_persona_pack_runtime_sections_are_chinese_first():

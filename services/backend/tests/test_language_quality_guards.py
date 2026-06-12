@@ -4,6 +4,7 @@ from pathlib import Path
 from app.modules.dialogue_agent.repetition import (
     build_followup_progression_policy,
     build_repetition_guard,
+    build_retry_repetition_guard,
     has_exact_duplicate,
     has_high_frequency_repetition,
     is_repetitive_reply,
@@ -100,7 +101,18 @@ def test_repetition_guard_detects_exact_duplicate_and_semantic_similarity():
     assert has_exact_duplicate(replies) is True
     assert "不要重复刚才的回答" in guard
     assert "用户是在追问，需要推进关系，而不是复述" in guard
+    assert "换观察点、语序或轻微过渡" in guard
+    assert "不要把“也”“还”“嗯”之类轻过渡变成新口癖" in guard
     assert is_repetitive_reply("你问得这么认真，我不知道怎么接。但我没有走开。", replies) is True
+
+
+def test_repetition_retry_guard_allows_light_variation_without_fixed_template():
+    guard = build_retry_repetition_guard("嗯……还行。")
+
+    assert "完全相同或高度相似" in guard
+    assert "允许保留相近意思" in guard
+    assert "不要硬套固定变体" in guard
+    assert "不要复用这版回复：嗯……还行。" in guard
 
 
 def test_followup_progression_policy_is_not_a_fixed_reply_template():

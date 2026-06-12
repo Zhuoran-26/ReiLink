@@ -482,6 +482,7 @@ def test_persona_pack_scenarios_have_required_fields():
         "persona-pack-prompt-budget",
         "persona-pack-chinese-first-runtime",
         "persona-pack-cold-quiet-calibration",
+        "persona-pack-narrow-expression-no-repeat",
         "persona-pack-original-ip-boundary",
         "persona-pack-memory-boundary",
         "persona-pack-proactive-shadow-boundary",

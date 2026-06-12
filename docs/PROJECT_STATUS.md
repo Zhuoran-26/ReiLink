@@ -160,6 +160,7 @@ dev/codex-reilink
 
 - Rei Persona Pack v1.1 已建立在 `personas/rei/`，包含 persona、voice、boundaries、game companion policy、memory policy、proactive policy、style calibration、response patterns、examples、anti examples、references 和 version metadata。
 - v1.1 的 runtime-facing persona markdown 已改为中文优先，目标是更稳定地呈现冷静、寡言、低情绪、有距离感、少量但真实关心的游戏陪伴风格。
+- v1.1 风格校准已进一步收敛到“表达通道窄”的原创冷感画像：不是无情或空白，而是反应压低、先观察事实、少解释感受；同时补充了非硬编码的重复回复防护，允许相近意思的自然变体，但禁止机械复读或滥用固定过渡词。
 - Persona Pack 是 ReiLink 原创角色设定组织方式，不使用 Evangelion、Rei Ayanami、NERV、现有虚拟主播、公开人物或任何官方 IP 元素。
 - 后端 Persona Pack loader 只从 repo 内 `personas/rei/` 或 packaged read-only resources 读取；不接受用户本地任意 persona 路径，不读取用户文件。
 - 缺少 pack、缺少非关键 markdown 或 invalid `version.json` 时 fail-soft：主聊天继续使用内置 Rei guardrails，Debug / Prompt Preview 只显示安全状态、缺失 section 和错误 code。
@@ -397,6 +398,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 
 - Rei Persona Pack v1.1 now lives in `personas/rei/` with persona, voice, boundaries, game companion policy, memory policy, proactive policy, style calibration, response patterns, examples, anti examples, references, and version metadata.
 - v1.1 runtime-facing persona markdown is Chinese-first and calibrates Rei toward calm, terse, low-emotion, slightly distant, lightly caring game companionship.
+- v1.1 calibration now further narrows Rei toward an original narrow-expression cold persona: not emotionless or blank, but low-output, fact-first, and reluctant to explain feelings. It also adds non-hardcoded repetition control: similar meaning may use natural variation, while mechanical repeats and overused transition words are forbidden.
 - The pack is an original ReiLink character organization layer. It does not use Evangelion, Rei Ayanami, NERV, existing VTuber, public-figure, or official IP material.
 - The backend Persona Pack loader reads only repo `personas/rei/` or packaged read-only resources. It does not accept arbitrary user persona paths or read user files.
 - Missing packs, missing non-critical markdown, and invalid `version.json` fail soft. Main chat keeps built-in Rei guardrails, while Debug / Prompt Preview shows only safe status, missing sections, and error codes.

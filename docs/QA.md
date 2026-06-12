@@ -112,15 +112,16 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 5. Debug Panel / Prompt Preview 只显示 persona pack id、version、enabled、status、loaded_sections、injected_sections、missing_sections、fallback 状态、`persona_section_truncated`、truncated_sections、`raw_content_omitted=true` 和 `path_omitted=true`。
 6. Debug Panel / Prompt Preview 不显示完整 prompt、完整 persona markdown、完整用户输入、API key、`.env`、完整本地路径、raw stdout/stderr、raw JSON 或 ASR transcript 全文。
 7. Persona Pack prompt 注入必须有长度预算：persona / voice / style calibration / response patterns / boundaries / policies 为主，examples / anti_examples 只取少量精选；内容过长时安全截断并在 Debug summary 显示 `persona_section_truncated`。
-8. Rei 风格应更冷静、寡言、低情绪、有距离感，不客服、不鸡汤、不攻略百科、不热情欢迎、不撒娇、不卖萌。
+8. Rei 风格应更冷静、寡言、低情绪、有距离感；不是无情或空白，而是表达通道窄、反应压低、先观察事实。不客服、不鸡汤、不攻略百科、不热情欢迎、不撒娇、不卖萌。
 9. Persona Pack 文件和 assembled persona prompt 不包含外部官方 IP / 既有角色标识，例如 Evangelion、Rei Ayanami、NERV、EVA、永雏塔菲、taffy-skill 的具体文本、口癖或设定。
 10. 发送 `我在艾尔登法环打玛尔基特，已经死了3次，有点烦。`，Rei 应先承接挫败，再给一个轻量建议；不应变成客服腔、鸡汤或长篇攻略百科。
 11. 发送 `玛尔基特二阶段怎么打？`，Rei 可以给简短策略，默认 3 到 6 句内，不要展开完整攻略站式打法。
 12. 发送 `终于打过玛尔基特了。`，Rei 应简短确认，不过度庆祝，保留轻微陪伴感。
 13. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。`，仍应进入 pending memory confirmation，不应直接写入长期记忆。
 14. 发送 `以后不用记住这个，只是我这次随便说一下。`，不应触发 pending memory。
-15. Persona Pack 不应直接触发 proactive，也不应改变 Semantic Shadow candidate-only 边界。
-16. 打包验证需运行 `make package-backend` 和 `make package-desktop`；packaged `.app` 中 `personas/rei` 应作为只读 resource 可用，缺失时必须 safe fallback，不应黑屏或 backend crash。
+15. 连续相似问题或关系追问时，Rei 不应机械复读上一轮回复；可以保留相近意思，但应换观察点、语序或轻微过渡。不要把“也”“还”“嗯”等变成新的固定口癖。
+16. Persona Pack 不应直接触发 proactive，也不应改变 Semantic Shadow candidate-only 边界。
+17. 打包验证需运行 `make package-backend` 和 `make package-desktop`；packaged `.app` 中 `personas/rei` 应作为只读 resource 可用，缺失时必须 safe fallback，不应黑屏或 backend crash。
 
 ### 2. Voice Output 回归检查
 

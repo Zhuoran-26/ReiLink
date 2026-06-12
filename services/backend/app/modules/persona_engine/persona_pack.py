@@ -38,7 +38,7 @@ PROMPT_SECTION_KEYS: tuple[str, ...] = (
 )
 PROMPT_SECTION_CHAR_LIMITS: dict[str, int] = {
     "persona": 420,
-    "style_calibration": 760,
+    "style_calibration": 1200,
     "voice": 520,
     "response_patterns": 900,
     "boundaries": 560,

@@ -39,7 +39,10 @@ def build_repetition_guard(recent_replies: list[str]) -> str:
     similar_risk = bool(similar_pair and similar_pair[2] >= 0.82)
     parts: list[str] = []
     if duplicate_risk or similar_risk:
-        parts.append("不要重复刚才的回答。用户是在追问，需要推进关系，而不是复述。")
+        parts.append(
+            "不要重复刚才的回答。用户是在追问，需要推进关系，而不是复述。"
+            "可以保留相近意思，但要换观察点、语序或轻微过渡；不要只改标点。"
+        )
     if repeated:
         phrases = "、".join(repeated)
         parts.append(
@@ -49,9 +52,14 @@ def build_repetition_guard(recent_replies: list[str]) -> str:
     if not parts:
         return (
             "重复控制：最近回复没有明显高频核心句式。仍然要让追问链自然推进，"
-            "不要把不同问题都收束成同一句。"
+            "不要把不同问题都收束成同一句。可以用相近但不相同的短回复，"
+            "但不要把某个过渡词当固定模板。"
         )
-    return "重复控制：" + " ".join(parts) + " 同一追问链要推进，不要原地重复。"
+    return (
+        "重复控制："
+        + " ".join(parts)
+        + " 同一追问链要推进，不要原地重复。不要把“也”“还”“嗯”之类轻过渡变成新口癖。"
+    )
 
 
 def build_followup_progression_policy(current_message: str, recent_user_messages: list[str]) -> str:
@@ -117,6 +125,7 @@ def build_retry_repetition_guard(reply: str) -> str:
     return (
         "重复修正：上一版回复与最近回复完全相同或高度相似。"
         "不要重复刚才的回答。用户是在追问，需要推进关系，而不是复述。"
+        "允许保留相近意思，但要换观察点、语序或一处轻过渡；不要硬套固定变体。"
         f"不要复用这版回复：{reply}"
     )
 
