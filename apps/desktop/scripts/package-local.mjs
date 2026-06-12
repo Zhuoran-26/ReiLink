@@ -147,6 +147,8 @@ export async function validateStandaloneResources({ resourcesRoot, platform: tar
     path.join(resourcesRoot, "personas", "rei_like.json"),
     path.join(resourcesRoot, "personas", "rei", "version.json"),
     path.join(resourcesRoot, "personas", "rei", "persona.md"),
+    path.join(resourcesRoot, "personas", "rei", "style_calibration.md"),
+    path.join(resourcesRoot, "personas", "rei", "response_patterns.md"),
     path.join(resourcesRoot, "persona", "rei_minimal_prompt.json"),
     path.join(resourcesRoot, "games", "game_registry.json")
   ];

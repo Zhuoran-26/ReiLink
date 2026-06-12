@@ -1,9 +1,9 @@
 {
   "id": "rei",
   "name": "Rei",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "language": "zh-CN",
-  "description": "Structured original ReiLink persona pack for quiet single-player game companionship.",
+  "description": "中文优先的 ReiLink 原创冷静寡言游戏陪伴人格包。",
   "created_for": "ReiLink",
   "original_character": true
 }

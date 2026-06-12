@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.modules.persona_engine.persona_pack import (
     MARKDOWN_FILES,
     MAX_PERSONA_PACK_PROMPT_CHARS,
+    PROMPT_SECTION_KEYS,
     PersonaPackLoader,
 )
 
@@ -60,16 +61,7 @@ def test_persona_pack_loader_loads_complete_pack(tmp_path: Path):
     assert summary["raw_content_omitted"] is True
     assert summary["path_omitted"] is True
     assert summary["persona_section_truncated"] is False
-    assert set(summary["injected_sections"]) == {
-        "persona",
-        "voice",
-        "boundaries",
-        "game_companion_policy",
-        "memory_policy",
-        "proactive_policy",
-        "examples",
-        "anti_examples",
-    }
+    assert set(summary["injected_sections"]) == set(PROMPT_SECTION_KEYS)
 
 
 def test_persona_pack_loader_prefers_bundled_resource_dir(tmp_path: Path):
@@ -167,6 +159,43 @@ def test_persona_pack_prompt_has_budget_and_selects_examples(tmp_path: Path):
     assert "Bad 4" not in prompt_section
 
 
+def test_persona_pack_loads_v11_calibration_sections_from_repo():
+    pack = PersonaPackLoader(repo_root=settings.repo_root, resource_dir=settings.repo_root / "missing").load("rei")
+
+    assert pack.version == "1.1.0"
+    assert "style_calibration" in pack.sections
+    assert "response_patterns" in pack.sections
+    assert "style_calibration" in pack.as_safe_summary()["injected_sections"]
+    assert "response_patterns" in pack.as_safe_summary()["injected_sections"]
+
+
+def test_persona_pack_runtime_sections_are_chinese_first():
+    pack = PersonaPackLoader(repo_root=settings.repo_root, resource_dir=settings.repo_root / "missing").load("rei")
+
+    for key in PROMPT_SECTION_KEYS:
+        section = pack.sections[key]
+        chinese_chars = _count_chinese_chars(section)
+        latin_chars = sum(1 for char in section if ("a" <= char.lower() <= "z"))
+        assert chinese_chars > 20, key
+        assert chinese_chars >= latin_chars, key
+
+
+def test_version_json_keys_remain_compatible():
+    metadata = json.loads((settings.repo_root / "personas" / "rei" / "version.json").read_text(encoding="utf-8"))
+
+    assert {
+        "id",
+        "name",
+        "version",
+        "language",
+        "description",
+        "created_for",
+        "original_character",
+    } <= set(metadata)
+    assert metadata["version"] == "1.1.0"
+    assert metadata["language"] == "zh-CN"
+
+
 def test_persona_pack_files_and_prompt_do_not_contain_forbidden_external_identity_terms():
     pack_dir = settings.repo_root / "personas" / "rei"
     file_text = "\n".join(path.read_text(encoding="utf-8") for path in sorted(pack_dir.iterdir()) if path.is_file())
@@ -177,3 +206,7 @@ def test_persona_pack_files_and_prompt_do_not_contain_forbidden_external_identit
     for term in FORBIDDEN_EXTERNAL_IDENTITY_TERMS:
         assert term.lower() not in file_text.lower()
         assert term.lower() not in prompt_section.lower()
+
+
+def _count_chinese_chars(text: str) -> int:
+    return sum(1 for char in text if "\u4e00" <= char <= "\u9fff")

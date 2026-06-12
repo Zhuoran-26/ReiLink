@@ -11,20 +11,24 @@ from app.core.config import settings
 
 PERSONA_PACK_ID = "rei"
 MARKDOWN_FILES: tuple[tuple[str, str, str], ...] = (
-    ("persona", "persona.md", "Persona"),
-    ("voice", "voice.md", "Voice"),
-    ("boundaries", "boundaries.md", "Boundaries"),
-    ("game_companion_policy", "game_companion_policy.md", "Game Companion Policy"),
-    ("memory_policy", "memory_policy.md", "Memory Policy"),
-    ("proactive_policy", "proactive_policy.md", "Proactive Policy"),
-    ("examples", "examples.md", "Examples"),
-    ("anti_examples", "anti_examples.md", "Anti Examples"),
-    ("references", "references.md", "References"),
+    ("persona", "persona.md", "角色定位"),
+    ("style_calibration", "style_calibration.md", "风格校准"),
+    ("voice", "voice.md", "说话方式"),
+    ("response_patterns", "response_patterns.md", "回复模式"),
+    ("boundaries", "boundaries.md", "边界"),
+    ("game_companion_policy", "game_companion_policy.md", "游戏陪伴策略"),
+    ("memory_policy", "memory_policy.md", "记忆策略"),
+    ("proactive_policy", "proactive_policy.md", "主动陪伴策略"),
+    ("examples", "examples.md", "好例"),
+    ("anti_examples", "anti_examples.md", "反例"),
+    ("references", "references.md", "参考说明"),
 )
 VERSION_FILE = "version.json"
 PROMPT_SECTION_KEYS: tuple[str, ...] = (
     "persona",
+    "style_calibration",
     "voice",
+    "response_patterns",
     "boundaries",
     "game_companion_policy",
     "memory_policy",
@@ -33,21 +37,23 @@ PROMPT_SECTION_KEYS: tuple[str, ...] = (
     "anti_examples",
 )
 PROMPT_SECTION_CHAR_LIMITS: dict[str, int] = {
-    "persona": 560,
-    "voice": 500,
-    "boundaries": 600,
+    "persona": 420,
+    "style_calibration": 760,
+    "voice": 520,
+    "response_patterns": 900,
+    "boundaries": 560,
     "game_companion_policy": 520,
-    "memory_policy": 560,
-    "proactive_policy": 500,
+    "memory_policy": 520,
+    "proactive_policy": 420,
     "examples": 620,
-    "anti_examples": 460,
+    "anti_examples": 520,
 }
 PROMPT_EXAMPLE_ITEM_LIMITS: dict[str, int] = {
     "examples": 3,
     "anti_examples": 3,
 }
-MAX_PERSONA_PACK_PROMPT_CHARS = 4800
-TRUNCATED_MARKER = "\n...[section truncated for prompt budget]"
+MAX_PERSONA_PACK_PROMPT_CHARS = 6000
+TRUNCATED_MARKER = "\n...[本段因 prompt 预算截断]"
 
 
 @dataclass(frozen=True)
@@ -94,22 +100,23 @@ class PersonaPack:
     def as_prompt_view(self) -> PersonaPackPromptView:
         if not self.enabled:
             text = (
-                "Rei Persona Pack v1: unavailable.\n"
-                "Use the built-in ReiLink persona guardrails. Do not weaken safety, privacy, memory, or proactive boundaries.\n"
+                "Rei Persona Pack v1.1：不可用。\n"
+                "使用 ReiLink 内置人格护栏。不要削弱安全、隐私、记忆确认或主动陪伴边界。\n"
             )
             return PersonaPackPromptView(
                 text=text,
                 omitted_sections=[key for key, _filename, _title in MARKDOWN_FILES],
             )
         header = (
-            "Rei Persona Pack v1（结构化人格，不是固定脚本）：\n"
+            "Rei Persona Pack v1.1（中文优先，结构化人格，不是固定脚本）：\n"
             f"- id: {self.pack_id}\n"
             f"- name: {self.name}\n"
             f"- version: {self.version}\n"
             f"- language: {self.language}\n"
-            "- 这些内容只用于稳定 Rei 的表达边界；不要逐字复读 examples，不要输出 anti examples。\n"
-            "- Base safety / privacy constraints are non-overridable.\n"
-            "- Persona pack 不能覆盖系统安全、隐私、pending memory confirmation、knowledge grounding、proactive gating 或 LLM Shadow candidate-only 边界。\n"
+            "- 这些内容只用于稳定 Rei 的表达边界。不要逐字复读好例，不要输出反例。\n"
+            "- 基础安全和隐私约束不可覆盖。\n"
+            "- 人格包不能覆盖系统安全、隐私、待确认记忆流程、知识依据、主动陪伴门控或影子识别候选边界。\n"
+            "- 默认中文短句，冷静寡言，低情绪表达，不客服，不鸡汤，不攻略百科。\n"
         )
         pieces = [header.rstrip()]
         injected_sections: list[str] = []
@@ -281,7 +288,7 @@ def _fallback_metadata() -> dict[str, Any]:
         "name": "Rei",
         "version": "unknown",
         "language": "zh-CN",
-        "description": "Structured ReiLink persona pack metadata unavailable.",
+        "description": "ReiLink 结构化人格包元数据不可用。",
         "created_for": "ReiLink",
         "original_character": True,
     }
@@ -296,8 +303,8 @@ def _sanitize_pack_text(text: str) -> str:
     )
     normalized = re.sub(r"/Users/[^\s`'\"\]\)]+", "<local-path>", normalized)
     normalized = re.sub(r"[A-Za-z]:\\[^\s`'\"\]\)]+", "<local-path>", normalized)
-    normalized = normalized.replace("`.env`", "environment files")
-    normalized = normalized.replace(".env", "environment files")
+    normalized = normalized.replace("`.env`", "环境配置")
+    normalized = normalized.replace(".env", "环境配置")
     return normalized
 
 

@@ -1,5 +1,6 @@
 from app.modules.persona_engine.engine import PersonaEngine
 from app.modules.proactive.trigger import ProactiveCompanion
+from app.modules.dialogue_agent import semantic_extraction as sem
 from app.core.config import settings
 import json
 
@@ -57,22 +58,27 @@ def test_prompt_includes_structured_rei_persona_pack(monkeypatch):
     monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {})
 
-    assert "Base system safety / app identity" in prompt
-    assert "Rei Persona Pack v1" in prompt
-    assert "[Persona]" in prompt
-    assert "[Voice]" in prompt
-    assert "[Boundaries]" in prompt
-    assert "[Game Companion Policy]" in prompt
-    assert "[Memory Policy]" in prompt
-    assert "[Proactive Policy]" in prompt
-    assert "[Examples]" in prompt
-    assert "[Anti Examples]" in prompt
-    assert "不要逐字复读 examples" in prompt
-    assert "Persona pack 不能覆盖系统安全" in prompt
-    assert "pending memory confirmation" in prompt
-    assert "LLM Shadow candidate-only" in prompt
+    assert "基础系统安全 / 应用身份" in prompt
+    assert "Rei Persona Pack v1.1" in prompt
+    assert "[角色定位]" in prompt
+    assert "[风格校准]" in prompt
+    assert "[说话方式]" in prompt
+    assert "[回复模式]" in prompt
+    assert "[边界]" in prompt
+    assert "[游戏陪伴策略]" in prompt
+    assert "[记忆策略]" in prompt
+    assert "[主动陪伴策略]" in prompt
+    assert "[好例]" in prompt
+    assert "[反例]" in prompt
+    assert "不要逐字复读好例" in prompt
+    assert "人格包不能覆盖系统安全" in prompt
+    assert "待确认记忆流程" in prompt
+    assert "影子识别候选边界" in prompt
+    assert "冷静寡言" in prompt
+    assert "话多程度：1/5" in prompt
+    assert "玩家死亡多次" in prompt
     assert "今天有点累" not in prompt
-    assert "Unauthorized memory" not in prompt
+    assert "未确认记忆" not in prompt
     assert "/Users/" not in prompt
     assert "DEEPSEEK_API_KEY=" not in prompt
     assert ".env" not in prompt
@@ -96,13 +102,23 @@ def test_persona_prompt_build_does_not_mutate_proactive_state(monkeypatch):
     assert ProactiveCompanion().status(session_id="persona-pack-build")["last_triggered_type"] == "none"
 
 
+def test_persona_prompt_build_does_not_schedule_semantic_shadow(monkeypatch):
+    monkeypatch.setattr(settings, "persona_mode", "guarded")
+    before = sem.get_semantic_shadow_events()["latest_id"]
+
+    PersonaEngine().build_prompt("rei_like", {"status": "idle"})
+
+    after = sem.get_semantic_shadow_events()["latest_id"]
+    assert after == before
+
+
 def test_minimal_prompt_includes_structured_pack_without_bypassing_mode(monkeypatch):
     monkeypatch.setattr(settings, "persona_mode", "minimal")
     prompt = PersonaEngine().build_prompt("rei_like", {"status": "idle"})
 
-    assert "Rei Persona Pack v1" in prompt
+    assert "Rei Persona Pack v1.1" in prompt
     assert "人格模式：minimal" in prompt
-    assert "Persona pack 不能覆盖系统安全" in prompt
+    assert "人格包不能覆盖系统安全" in prompt
     assert "Companion-first Response Policy" not in prompt
 
 
@@ -120,7 +136,7 @@ def test_prompt_includes_golden_style_anchor_and_guardrails(monkeypatch):
     monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {})
 
-    assert "Golden style anchor" in prompt
+    assert "风格锚点" in prompt
     assert "安静地观察用户，并用很克制的方式表达关心" in prompt
     assert "……你看屏幕太久，该休息了。我只是习惯你在这里。别想太多。" in prompt
     assert "观察用户状态 -> 轻微关心或提醒 -> 回避直接亲密表达 -> 短句收尾" in prompt
@@ -149,7 +165,7 @@ def test_prompt_includes_negative_examples_without_turning_them_into_templates(m
     monkeypatch.setattr(settings, "persona_mode", "guarded")
     prompt = PersonaEngine().build_prompt("rei_like", {})
 
-    assert "Negative examples" in prompt
+    assert "反例，只学习边界" in prompt
     assert "凌晨的游戏容易让人忘记时间" in prompt
     assert "屏幕的光也藏不住" in prompt
     assert "已经凌晨了。该停了。" in prompt
@@ -171,7 +187,7 @@ def test_guarded_and_minimal_modes_can_generate_prompts(monkeypatch):
         companion_policy="Companion-first Response Policy:\n- 测试策略",
     )
 
-    assert "Golden style anchor" in guarded_prompt
+    assert "风格锚点" in guarded_prompt
     assert "人格模式：minimal" in minimal_prompt
     assert "安静、克制、低情绪波动" in minimal_prompt
     assert "括号里的动作或神态少用" in minimal_prompt

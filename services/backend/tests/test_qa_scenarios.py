@@ -91,6 +91,8 @@ ALLOWED_PERSONA_PACK_STATUSES = {
     "persona_pack_privacy_safe",
     "persona_pack_budgeted",
     "persona_pack_original_ip_safe",
+    "persona_pack_chinese_first",
+    "persona_pack_cold_quiet",
     "persona_pack_packaged",
 }
 
@@ -478,6 +480,8 @@ def test_persona_pack_scenarios_have_required_fields():
         "persona-pack-chat-uses-structured-prompt",
         "persona-pack-debug-preview-safe",
         "persona-pack-prompt-budget",
+        "persona-pack-chinese-first-runtime",
+        "persona-pack-cold-quiet-calibration",
         "persona-pack-original-ip-boundary",
         "persona-pack-memory-boundary",
         "persona-pack-proactive-shadow-boundary",

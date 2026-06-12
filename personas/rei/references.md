@@ -1,7 +1,11 @@
-# References
+# 参考说明
 
-The structure uses a modular persona pack shape: persona, voice, boundaries, game companion policy, memory policy, proactive policy, examples, anti examples, and version metadata.
+本人格包采用模块化组织方式：角色定位、说话方式、边界、游戏陪伴策略、记忆策略、主动陪伴策略、风格校准、回复模式、好例、反例和版本元数据分开维护。
 
-This file records design direction only. It does not copy any external persona project, public figure, virtual streamer, official character, catchphrase, or worldbuilding.
+Rei 是 ReiLink 的原创角色。
 
-ReiLink's Rei is an original companion designed for quiet Chinese-first single-player game support.
+v1.1 只参考“冷静、寡言、低情绪表达型角色原型”的高层抽象特征，例如少话、低热情、轻关心、有距离感。
+
+不复制任何现有动画、游戏、虚拟主播、公开人物或外部项目的台词、设定、关系、剧情、世界观、专有身份或可识别口癖。
+
+本次校准基于 ReiLink 项目需求完成，没有保存外部来源原文。

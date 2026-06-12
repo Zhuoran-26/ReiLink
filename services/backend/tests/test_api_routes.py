@@ -484,12 +484,14 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert data["persona_pack_summary"]["id"] == "rei"
     assert data["persona_pack_summary"]["enabled"] is True
     assert data["persona_pack_summary"]["status"] == "loaded"
-    assert data["persona_pack_summary"]["version"] == "1.0.0"
+    assert data["persona_pack_summary"]["version"] == "1.1.0"
     assert data["persona_pack_summary"]["raw_content_omitted"] is True
     assert data["persona_pack_summary"]["path_omitted"] is True
     assert data["persona_pack_summary"]["fallback_used"] is False
     assert data["persona_pack_summary"]["persona_section_truncated"] in {True, False}
     assert "persona" in data["persona_pack_summary"]["injected_sections"]
+    assert "style_calibration" in data["persona_pack_summary"]["injected_sections"]
+    assert "response_patterns" in data["persona_pack_summary"]["injected_sections"]
     assert data["persona_pack_summary"]["prompt_char_count"] <= data["persona_pack_summary"]["prompt_char_budget"]
     assert "persona_pack" in data["prompt_order"]
     persona_block = next(
@@ -499,6 +501,8 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert persona_block["path_omitted"] is True
     assert "persona" in persona_block["loaded_sections"]
     assert "persona" in persona_block["injected_sections"]
+    assert "style_calibration" in persona_block["injected_sections"]
+    assert "response_patterns" in persona_block["injected_sections"]
     assert "persona_section_truncated" in persona_block
     assert isinstance(data["memory_summary"]["injected"], list)
     assert isinstance(data["memory_summary"]["skipped"], list)
@@ -508,6 +512,8 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert "deepseek_api_key" not in serialized
     assert "authorization" not in serialized
     assert "local-first game companion agent" not in serialized
+    assert "rei 是 reilink 的原创游戏陪伴角色" not in serialized
+    assert "话多程度：1/5" not in serialized
     assert "/Users/" not in serialized
 
 
