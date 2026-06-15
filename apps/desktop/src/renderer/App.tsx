@@ -3209,6 +3209,24 @@ export function App() {
     : "当前 API Key 未配置，请先完成模型配置。";
   const activeWorkspaceTabs = WORKSPACE_TABS[activeWorkspace];
   const activeWorkspaceTab = workspaceTabs[activeWorkspace] || DEFAULT_WORKSPACE_TABS[activeWorkspace];
+  const settingsWorkspaceTitle = ({
+    app: "应用设置",
+    provider: "模型设置",
+    privacy: "隐私与本地数据",
+    advanced: "高级设置"
+  } as Record<string, string>)[activeWorkspaceTab] || "设置";
+  const settingsWorkspaceDescription = ({
+    app: "基础体验、人格模式、聊天回复长度、游戏检测和主动陪伴。切换 tab 不会清空聊天草稿。",
+    provider: "模型偏好、本地 backend 运行状态和 API Key 加载状态只显示安全摘要。",
+    privacy: "记忆开关、本地数据与演示重置入口。路径只显示安全摘要，不暴露完整本地路径。",
+    advanced: "Overlay、Voice Output、Voice Input 和 Local ASR 等现有高级配置集中在这里。"
+  } as Record<string, string>)[activeWorkspaceTab] || "";
+  const settingsWorkspaceFooter = ({
+    app: `本地保存到 settings.json，不包含密钥。自动游戏检测当前为${debugText(appSettings.auto_game_detection)}。`,
+    provider: "模型配置只显示 provider、模型名和 API Key 加载状态，不显示 .env 或密钥原文。",
+    privacy: "本地数据操作保持显式按钮；不会改变 memory、proactive 或 Shadow Mode 的写入边界。",
+    advanced: "高级设置只复用现有功能入口；本次不实现 Voice v2，也不恢复 Overlay auto-show。"
+  } as Record<string, string>)[activeWorkspaceTab] || "本地保存到 settings.json，不包含密钥。";
 
   const openWorkspace = useCallback((workspaceId: WorkspaceId, tabId?: string) => {
     setActiveWorkspace(workspaceId);
@@ -4384,7 +4402,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             </section>
           )}
 
-          {activeWorkspace === "presentation" && (
+          {activeWorkspace === "presentation" && activeWorkspaceTab === "avatar" && (
             <section className="infoCard" aria-label="Future Presentation / Avatar">
               <div className="cardHeader">
                 <Sparkles size={17} />
@@ -4396,13 +4414,30 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               <p className="settingHint">当前优先级仍是 Voice、Overlay、Memory 和 Debug Split。</p>
             </section>
           )}
+          {activeWorkspace === "presentation" && activeWorkspaceTab === "policy" && (
+            <section className="infoCard" aria-label="Presentation Policy">
+              <div className="cardHeader">
+                <Sparkles size={17} />
+                <h2>Presentation Policy</h2>
+              </div>
+              <p className="settingHint">
+                Presentation / Avatar 只保留未来入口，不抢占当前 Home、Voice、Overlay、Memory 或 Debug surface。
+              </p>
+              <p className="settingHint">
+                本阶段不加载 Live2D runtime、不引入 Avatar 资源，也不新增角色动作、语音对话或外部视觉服务。
+              </p>
+            </section>
+          )}
           {activeWorkspace === "settings" && (
           <section className="infoCard settingsPanel" aria-label="设置" id="settings-panel" style={{ order: 1 }}>
             <div className="cardHeader">
               <Settings size={17} />
-              <h2>设置</h2>
+              <h2>{settingsWorkspaceTitle}</h2>
             </div>
+            {settingsWorkspaceDescription && <p className="settingHint">{settingsWorkspaceDescription}</p>}
             <div className="settingRows">
+              {activeWorkspaceTab === "app" && (
+              <>
               <label className="settingRow">
                 <span>人格模式</span>
                 <select
@@ -4431,6 +4466,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="hide">隐藏</option>
                 </select>
               </label>
+              </>
+              )}
+              {activeWorkspaceTab === "privacy" && (
+              <>
               <label className="settingRow">
                 <span>记忆</span>
                 <select
@@ -4449,6 +4488,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="manual">手动</option>
                 </select>
               </label>
+              </>
+              )}
+              {activeWorkspaceTab === "app" && (
+              <>
               <label className="settingRow">
                 <span>回复长度</span>
                 <select
@@ -4463,6 +4506,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="normal">普通</option>
                 </select>
               </label>
+              </>
+              )}
+              {activeWorkspaceTab === "provider" && (
+              <>
               <label className="settingRow">
                 <span>模型偏好</span>
                 <select
@@ -4478,7 +4525,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="pro">高质量</option>
                 </select>
               </label>
-	              <div className="voiceOutputPanel" role="group" aria-label="Overlay / 游戏悬浮层">
+              </>
+              )}
+              {activeWorkspaceTab === "advanced" && (
+              <>
+		              <div className="voiceOutputPanel" role="group" aria-label="Overlay / 游戏悬浮层">
                 <div className="settingRow overlayToggleRow">
                   <span>Overlay / 游戏悬浮层</span>
 	                  <div
@@ -4915,6 +4966,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   {audioCaptureStatus.phase === "recording" ? "停止录音" : "测试录音"}
                 </button>
               </div>
+              </>
+              )}
+              {activeWorkspaceTab === "provider" && (
+              <>
               <label className="settingRow">
                 <span>自动启动本地后端</span>
                 <select
@@ -4981,6 +5036,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </div>
                 </dl>
               </div>
+              </>
+              )}
+              {activeWorkspaceTab === "app" && (
+              <>
               <div className="onboardingSettingsPanel" role="group" aria-label="新手引导设置">
                 <div>
                   <span>新手引导</span>
@@ -4990,6 +5049,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   重新查看
                 </button>
               </div>
+              </>
+              )}
+              {activeWorkspaceTab === "privacy" && (
+              <>
               <div className="localDataPanel demoResetPanel" role="group" aria-label="本地数据">
                 <div className="demoResetHeader">
                   <div>
@@ -5146,6 +5209,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </p>
                 )}
               </div>
+              </>
+              )}
+              {activeWorkspaceTab === "app" && (
+              <>
               <label className="settingRow">
                 <span>自动游戏检测</span>
                 <select
@@ -5260,10 +5327,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="high">高</option>
                 </select>
               </label>
+              </>
+              )}
             </div>
-            <p className="settingHint">
-              本地保存到 settings.json，不包含密钥。自动游戏检测当前为{debugText(appSettings.auto_game_detection)}。
-            </p>
+            <p className="settingHint">{settingsWorkspaceFooter}</p>
           </section>
           )}
 

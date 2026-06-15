@@ -32,17 +32,19 @@
   },
   {
     "id": "ui-surface-debug-tabs-clickable",
-    "category": "ui_surface_v0_1_layout",
+    "category": "ui_surface_v0_2_tab_switching",
     "precondition": "Developer / Debug workspace is open",
     "action": "Click Event Stream, Prompt Preview, Runtime, and Trace tabs",
-    "expected": "Each tab becomes selected and shows the matching safe debug surface without exposing raw prompt, full persona markdown, API key, .env, full local path, or raw provider response."
+    "expected": "Each tab becomes selected and the workspace body changes to the matching safe debug surface: Event Stream, Prompt Preview, Runtime, or Trace.",
+    "must_not_show": ["raw prompt", "full persona markdown", "API key", ".env", "full local path", "raw provider response"]
   },
   {
     "id": "ui-surface-settings-tabs-clickable",
-    "category": "ui_surface_v0_1_layout",
+    "category": "ui_surface_v0_2_tab_switching",
     "precondition": "Settings workspace is open",
     "action": "Click 应用, 模型, 隐私 / 数据, and 高级 tabs",
-    "expected": "Each tab remains clickable and visibly selectable; Settings content stays below the tab row and does not intercept pointer events."
+    "expected": "Each tab remains clickable and visibly selectable, and the workspace body changes to matching content: app settings, model status, privacy/local data, or advanced legacy controls.",
+    "must_preserve": ["chat_history", "unsent_chat_input", "tab_hit_testing"]
   },
   {
     "id": "ui-surface-body-scroll-isolated",
@@ -60,18 +62,18 @@
   },
   {
     "id": "ui-surface-voice-current-controls",
-    "category": "voice_surface_v0",
+    "category": "ui_surface_v0_2_tab_switching",
     "precondition": "Open the Voice workspace",
     "action": "Switch Conversation, Input / Local ASR, Output, and Voice Profile tabs",
-    "expected": "Current Local ASR setup and Voice Output controls are findable; Conversation and Voice Profile remain placeholders.",
+    "expected": "Each Voice tab renders different matching content; Conversation states direct Voice v2 is not implemented, Input exposes Local ASR, Output exposes Voice Output and Test Voice, and Voice Profile remains a future placeholder.",
     "must_not_implement": ["auto listen/send/respond/speak loop", "wake word", "cloud ASR requirement", "automatic transcript send"]
   },
   {
     "id": "ui-surface-overlay-safe-mode",
-    "category": "overlay_surface_v0",
+    "category": "ui_surface_v0_2_tab_switching",
     "precondition": "Open the Overlay workspace",
     "action": "Switch Safe Mode, Placement, Content, and Future Game Mode tabs",
-    "expected": "Safe Mode copy, force-close, placement, opacity, and message-count controls are findable.",
+    "expected": "Each Overlay tab renders different matching content; Safe Mode states macOS auto-show is fail-closed, Placement exposes position/opacity, Content exposes message count, and Future Game Mode remains a placeholder.",
     "must_not_implement": ["macOS auto-show restore", "full game HUD", "raw prompt display", "full assistant reply display"]
   },
   {
@@ -84,10 +86,18 @@
   },
   {
     "id": "ui-surface-future-avatar-placeholder",
-    "category": "presentation_surface_v0",
+    "category": "ui_surface_v0_2_tab_switching",
     "precondition": "Open Future / Avatar",
-    "action": "Inspect the workspace",
-    "expected": "The workspace is a lightweight placeholder for future presentation work.",
+    "action": "Switch Avatar and Presentation Policy tabs",
+    "expected": "Avatar and Presentation Policy render distinct placeholders for future presentation work.",
     "must_not_implement": ["Live2D runtime", "avatar assets", "presentation layer behavior"]
+  },
+  {
+    "id": "ui-surface-tabs-preserve-chat-draft",
+    "category": "ui_surface_v0_2_tab_switching",
+    "precondition": "Home / Chat is visible and the chat input contains an unsent draft",
+    "action": "Open Settings, Developer / Debug, Voice, Overlay, and Future / Avatar; switch multiple tabs in each workspace; then close the workspace with the close button and Escape",
+    "expected": "The selected tab style and content match, each workspace keeps its own active tab state, and the unsent chat draft remains unchanged.",
+    "must_not_implement": ["Voice v2", "Overlay auto-show", "Hermes-style memory", "Live2D"]
   }
 ]

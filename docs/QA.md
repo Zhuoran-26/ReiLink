@@ -173,6 +173,17 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 17. Workspace 内部长内容只在 body 内滚动；header、tabs 和关闭按钮不随 body 滚动，也不被 body 覆盖。
 18. 小窗口下 workspace 不应出现明显横向溢出；tabs 与关闭按钮仍可见且可点击。
 
+### 1.9 UI Surface v0.2 tab 内容切换回归验收
+
+1. Settings workspace 中 应用、模型、隐私 / 数据、高级 tabs 的 active 样式与实际内容一致；模型 tab 显示模型状态，隐私 / 数据 tab 显示本地数据，高级 tab 显示 Overlay、Voice Output、Voice Input / Local ASR 旧配置入口。
+2. Developer / Debug workspace 中 Event Stream、Prompt Preview、Runtime、Trace tabs 均显示对应安全面板；Prompt Preview 仍不显示完整 prompt、完整 persona markdown、API key、`.env`、完整路径或 raw provider response。
+3. Voice workspace 中 Conversation、Input / Local ASR、Output、Voice Profile tabs 均显示不同内容；Conversation 只说明未来直接语音对话未实现，Input 仍能找到 Local ASR，Output 仍能找到 Test Voice / Voice Output。
+4. Overlay workspace 中 Safe Mode、Placement、Content、Future Game Mode tabs 均显示不同内容；Safe Mode 继续说明 macOS auto-show fail-closed，Future Game Mode 不恢复 auto-show。
+5. Future / Avatar workspace 中 Avatar 与 Presentation Policy tabs 显示不同 placeholder，且不加载 Live2D runtime、Avatar 资源或 presentation layer 行为。
+6. 切换任意 workspace tab 不应清空聊天历史或未发送输入；切换到其他 workspace 后，该 workspace 的上次 active tab 可独立保留，不污染其他 workspace。
+7. Close button 与 Escape 关闭 workspace 仍有效；v0.1 的 tabs 不遮挡、body 内部滚动隔离、小窗口 hit-testing 要继续通过。
+8. 本轮仍不实现 Voice v2、Overlay auto-show、Hermes-style memory 或 Live2D。
+
 ### 2. Voice Output 回归检查
 
 - `语音输出 / Voice Output` 默认关闭。
