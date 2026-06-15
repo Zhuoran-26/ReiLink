@@ -62,7 +62,7 @@ def test_prompt_includes_structured_rei_persona_pack(monkeypatch):
     prompt = PersonaEngine().build_prompt("rei_like", {})
 
     assert "基础系统安全 / 应用身份" in prompt
-    assert "Rei Persona Pack v1.1.1" in prompt
+    assert "Rei Persona Pack v1.1.2" in prompt
     assert "[角色定位]" in prompt
     assert "[风格校准]" in prompt
     assert "[说话方式]" in prompt
@@ -84,12 +84,17 @@ def test_prompt_includes_structured_rei_persona_pack(monkeypatch):
     assert "不要把“也”“还”“嗯”之类变成新口癖" in prompt
     assert "低频使用“看见”“看着你”“坐在旁边”“我在这里”类表达" in prompt
     assert "不把每个问题都归结为“我在看你”" in prompt
+    assert "不要把对话称为“接”" in prompt
+    assert "关系类追问不应连续复用相同开头" in prompt
+    assert "强意象或强落点，只能低频使用" in prompt
+    assert "具体好句和意象只作方向参考，不是回复候选" in prompt
     assert "玩家死亡多次" in prompt
     assert "玩家追问关系或关心" in prompt
     assert "连续相似问题" in prompt
     assert "固定陪伴意象" in prompt
-    assert "死亡循环模板" in prompt
-    assert "硬套变体" in prompt
+    assert "关系元语言" in prompt
+    assert "重复强意象" in prompt
+    assert "固定关系结构" in prompt
     assert "今天有点累" not in prompt
     assert "未确认记忆" not in prompt
     assert "/Users/" not in prompt
@@ -129,7 +134,7 @@ def test_minimal_prompt_includes_structured_pack_without_bypassing_mode(monkeypa
     monkeypatch.setattr(settings, "persona_mode", "minimal")
     prompt = PersonaEngine().build_prompt("rei_like", {"status": "idle"})
 
-    assert "Rei Persona Pack v1.1.1" in prompt
+    assert "Rei Persona Pack v1.1.2" in prompt
     assert "人格模式：minimal" in prompt
     assert "人格包不能覆盖系统安全" in prompt
     assert "Companion-first Response Policy" not in prompt

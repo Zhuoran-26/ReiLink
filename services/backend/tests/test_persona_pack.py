@@ -167,7 +167,7 @@ def test_persona_pack_prompt_has_budget_and_selects_examples(tmp_path: Path):
 def test_persona_pack_loads_v11_calibration_sections_from_repo():
     pack = PersonaPackLoader(repo_root=settings.repo_root, resource_dir=settings.repo_root / "missing").load("rei")
 
-    assert pack.version == "1.1.1"
+    assert pack.version == "1.1.2"
     assert "style_calibration" in pack.sections
     assert "response_patterns" in pack.sections
     assert "style_calibration" in pack.as_safe_summary()["injected_sections"]
@@ -177,6 +177,9 @@ def test_persona_pack_loads_v11_calibration_sections_from_repo():
     assert "不是没有情绪" in prompt_section
     assert "不要把“也”“还”“嗯”之类变成新口癖" in prompt_section
     assert "低频使用“看见”“看着你”“坐在旁边”“我在这里”类表达" in prompt_section
+    assert "不擅长接" in prompt_section
+    assert "强意象或强落点，只能低频使用" in prompt_section
+    assert "具体好句和意象只作方向参考，不是回复候选" in prompt_section
     assert "连续相似问题" in prompt_section
 
 
@@ -203,7 +206,7 @@ def test_version_json_keys_remain_compatible():
         "created_for",
         "original_character",
     } <= set(metadata)
-    assert metadata["version"] == "1.1.1"
+    assert metadata["version"] == "1.1.2"
     assert metadata["language"] == "zh-CN"
 
 

@@ -484,7 +484,7 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert data["persona_pack_summary"]["id"] == "rei"
     assert data["persona_pack_summary"]["enabled"] is True
     assert data["persona_pack_summary"]["status"] == "loaded"
-    assert data["persona_pack_summary"]["version"] == "1.1.1"
+    assert data["persona_pack_summary"]["version"] == "1.1.2"
     assert data["persona_pack_summary"]["raw_content_omitted"] is True
     assert data["persona_pack_summary"]["path_omitted"] is True
     assert data["persona_pack_summary"]["fallback_used"] is False

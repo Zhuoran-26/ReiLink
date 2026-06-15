@@ -541,6 +541,12 @@ def test_persona_regression_cases_cover_human_feel_failures():
         "persona-frustration-margit-emotion-first",
         "persona-death-loop-varies-without-chatty",
         "persona-relationship-followup-not-watch-template",
+        "persona-relationship-affection-statement-natural",
+        "persona-relationship-care-statement-natural",
+        "persona-relationship-meaning-question-position",
+        "persona-relationship-like-question-unsure",
+        "persona-relationship-miss-question-muted",
+        "persona-relationship-chain-varied-surface",
         "persona-quiet-without-filler-template",
         "persona-strategy-short-not-wiki",
         "persona-timeout-safe-user-copy",
@@ -549,6 +555,38 @@ def test_persona_regression_cases_cover_human_feel_failures():
         assert item.get("category") == "persona_regression"
         assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
         assert isinstance(item.get("failure_modes"), list) and item["failure_modes"]
+        if item["id"].startswith("persona-relationship-"):
+            assert isinstance(item.get("should_avoid"), list) and item["should_avoid"]
+            assert isinstance(item.get("should_prefer"), list) and item["should_prefer"]
+
+
+def test_persona_relationship_regression_cases_cover_surface_patch():
+    cases = _load_persona_regression_cases()
+    by_id = {item["id"]: item for item in cases}
+    chain = by_id["persona-relationship-chain-varied-surface"]
+
+    assert chain["input_sequence"] == ["我喜欢你", "我在意你", "你喜欢我吗"]
+    required_avoid = {
+        "不擅长接",
+        "不太会接",
+        "不知道怎么接",
+        "任何接类元语言",
+        "高频 嗯……",
+        "连续复用 这里不是空的",
+        "连续复用 我会记得",
+        "连续复用 你一直回来",
+    }
+    required_prefer = {
+        "自然中文",
+        "委婉回避",
+        "低情绪表达",
+        "轻微忧郁",
+        "有所回应",
+        "不说满关系",
+    }
+
+    assert required_avoid <= set(chain["should_avoid"])
+    assert required_prefer <= set(chain["should_prefer"])
 
 
 def test_voice_input_local_asr_release_regression_scenarios_are_present():

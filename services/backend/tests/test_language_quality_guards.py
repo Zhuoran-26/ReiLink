@@ -8,6 +8,7 @@ from app.modules.dialogue_agent.repetition import (
     has_exact_duplicate,
     has_high_frequency_repetition,
     is_repetitive_reply,
+    repeated_opening_patterns,
 )
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.dialogue_agent.validator import validate_or_repair
@@ -44,6 +45,11 @@ def test_prompt_contains_anti_poetic_and_anti_counselor_boundaries(monkeypatch):
     assert "不要猜具体 boss" in prompt
     assert "你问得太认真" in prompt
     assert "不知道怎么接" in prompt
+    assert "怎么接" in prompt
+    assert "不擅长接" in prompt
+    assert "不太会接" in prompt
+    assert "不要把对话称为“接”" in prompt
+    assert "具体好句和意象只作方向参考" in prompt
     assert "回复不要只有“嗯”“知道了”“不会”“我在”" in prompt
     assert "玩过、懂一点的游戏同伴" in prompt
 
@@ -63,6 +69,15 @@ def test_validator_rejects_ai_counselor_copy():
     repaired = validate_or_repair(reply, "casual_chat")
 
     assert not any(phrase in repaired for phrase in COUNSELOR_PHRASES)
+    assert repaired != reply
+
+
+def test_validator_rejects_relationship_meta_language_copy():
+    reply = "知道了。你突然这么说，我得想一下怎么接。"
+
+    repaired = validate_or_repair(reply, "casual_chat")
+
+    assert "怎么接" not in repaired
     assert repaired != reply
 
 
@@ -94,8 +109,8 @@ def test_repetition_guard_warns_on_recent_core_phrase_reuse():
 
 def test_repetition_guard_detects_exact_duplicate_and_semantic_similarity():
     replies = [
-        "你问得这么认真，我有点不知道该怎么接。但我没有走开过。",
-        "你问得这么认真，我有点不知道该怎么接。但我没有走开过。",
+        "我听见了。先放一下。",
+        "我听见了。先放一下。",
     ]
     guard = build_repetition_guard(replies)
 
@@ -104,7 +119,7 @@ def test_repetition_guard_detects_exact_duplicate_and_semantic_similarity():
     assert "用户是在追问，需要推进关系，而不是复述" in guard
     assert "换观察点、语序或轻微过渡" in guard
     assert "不要把“也”“还”“嗯”之类轻过渡变成新口癖" in guard
-    assert is_repetitive_reply("你问得这么认真，我不知道怎么接。但我没有走开。", replies) is True
+    assert is_repetitive_reply("我听见了，先放一下。", replies) is True
 
 
 def test_repetition_guard_detects_particle_and_punctuation_only_variants():
@@ -114,6 +129,43 @@ def test_repetition_guard_detects_particle_and_punctuation_only_variants():
     assert is_repetitive_reply("也又倒在这里了……", recent) is True
     assert is_repetitive_reply("还又倒在这里了！", recent) is True
     assert is_repetitive_reply("又倒在这里了", recent) is True
+
+
+def test_repetition_guard_detects_relationship_meta_language_variants():
+    recent = ["嗯……这种事我有点不擅长接。"]
+
+    assert is_repetitive_reply("嗯……这种话我还是不太会接。", recent) is True
+    assert is_repetitive_reply("……我不知道怎么接。", recent) is True
+    assert is_repetitive_reply("我得想一下怎么接。", recent) is True
+
+    guard = build_repetition_guard([*recent, "嗯……这种话我还是不太会接。"])
+
+    assert "不擅长接" in guard
+    assert "不太会接" in guard
+
+
+def test_repetition_guard_warns_on_repeated_opening_structure():
+    recent = ["嗯。听到了。", "嗯。这句话有点重。"]
+
+    guard = build_repetition_guard(recent)
+
+    assert repeated_opening_patterns(recent) == ["嗯开头"]
+    assert "最近多次使用这些开头结构：嗯开头" in guard
+    assert "下一轮不要继续用相同开头" in guard
+
+
+def test_repetition_guard_marks_relationship_imagery_as_low_frequency():
+    recent = ["你在的时候，这里不是空的。"]
+
+    assert is_repetitive_reply("这里不是空的。", recent) is True
+    assert is_repetitive_reply("旁边不是空的。", recent) is True
+
+    guard = build_repetition_guard(["这里不是空的。", "我会记得。", "你一直回来。"])
+
+    assert "这里不是空的" in guard
+    assert "我会记得" in guard
+    assert "你一直回来" in guard
+    assert "记忆、停留、习惯、安静、不确定或轻微承认" in guard
 
 
 def test_repetition_retry_guard_allows_light_variation_without_fixed_template():

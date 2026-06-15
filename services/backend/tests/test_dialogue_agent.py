@@ -308,9 +308,9 @@ def test_dialogue_agent_retries_when_reply_repeats_recent_assistant(tmp_path: Pa
 
     agent = DialogueAgent()
     agent.store = ConversationStore(tmp_path / "conversations")
-    repeated = "你问得这么认真，我有点不知道该怎么接。但我没有走开过。"
+    repeated = "我听见了。先放一下。"
     agent.store.append("repeat", None, "rei_like", "那你不喜欢我吗？", repeated, datetime.now())
-    provider = _PromptCapturingProvider([repeated, "你还在追问。那我说清楚一点。"])
+    provider = _PromptCapturingProvider([repeated, "你还在追问。那我换个方式说。"])
     agent.provider = provider
 
     response = agent.chat(ChatRequest(message="那您对我是什么情感？", session_id="repeat"))
