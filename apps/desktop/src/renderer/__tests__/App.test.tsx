@@ -1500,6 +1500,80 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
   });
 
+  it("keeps workspace shell controls outside the scroll body and clickable", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.type(screen.getByLabelText("聊天输入"), "布局回归草稿");
+
+    await openDebugWorkspace("Event Stream");
+    let panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    expect(panel).toHaveClass("workspacePanel");
+    expect(panel).not.toHaveClass("infoRail");
+
+    const header = panel.querySelector(".workspacePanelHeader");
+    const body = panel.querySelector(".workspacePanelBody");
+    const tabList = within(panel).getByRole("tablist", { name: "Developer / Debug tabs" });
+    const closeButton = within(panel).getByRole("button", { name: "关闭工作区" });
+    expect(header).toBeInTheDocument();
+    expect(body).toBeInTheDocument();
+    expect(body).not.toContainElement(tabList);
+    expect(body).not.toContainElement(closeButton);
+
+    const clickPanelTab = async (name: string | RegExp) => {
+      const tab = within(panel).getByRole("tab", { name });
+      await userEvent.click(tab);
+      expect(tab).toHaveAttribute("aria-selected", "true");
+    };
+
+    await clickPanelTab("Prompt Preview");
+    expect(within(panel).getByRole("button", { name: "回复上下文预览" })).toBeInTheDocument();
+    await clickPanelTab("Runtime");
+    expect(within(panel).getByRole("button", { name: "调试面板" })).toBeInTheDocument();
+    await clickPanelTab("Trace");
+    expect(within(panel).getByRole("heading", { name: "Semantic Shadow Trace" })).toBeInTheDocument();
+    await clickPanelTab("Event Stream");
+    expect(within(panel).getByRole("heading", { name: "Event Stream" })).toBeInTheDocument();
+
+    await openSettingsWorkspace();
+    panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    for (const tabName of ["应用", "模型", "隐私 / 数据", "高级"]) {
+      await clickPanelTab(tabName);
+    }
+
+    panel = await openWorkspace("语音");
+    for (const tabName of ["对话", "输入 / ASR", "输出", "Voice Profile"]) {
+      await clickPanelTab(tabName);
+    }
+
+    panel = await openWorkspace("Overlay");
+    for (const tabName of ["Safe Mode", "位置", "内容", "Game Mode"]) {
+      await clickPanelTab(tabName);
+    }
+
+    await openGameWorkspace();
+    panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    for (const tabName of ["当前上下文", "本局时间线", "知识", "手动控制"]) {
+      await clickPanelTab(tabName);
+    }
+
+    await openMemoryWorkspace();
+    panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    for (const tabName of ["待确认", "已保存", "本地数据", "候选记忆"]) {
+      await clickPanelTab(tabName);
+    }
+
+    await userEvent.click(within(panel).getByRole("button", { name: "关闭工作区" }));
+    expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument();
+
+    panel = await openWorkspace("未来");
+    for (const tabName of ["Avatar", "Presentation Policy"]) {
+      await clickPanelTab(tabName);
+    }
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument());
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("布局回归草稿");
+  });
+
   it("shows running game status", async () => {
     render(<App />);
     await openGameWorkspace();

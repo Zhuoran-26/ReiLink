@@ -166,6 +166,12 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 10. 切换 workspace 后聊天输入草稿不丢，聊天历史不丢，后端连接状态不被重置。
 11. Prompt Preview 仍只显示安全摘要，不显示完整 prompt、完整 persona markdown、完整路径、`.env`、API key 或 raw provider response。
 12. Future / Avatar 只是 placeholder，不加载 Live2D runtime、不引入资源文件。
+13. Workspace header、title、关闭按钮和 tabs 应始终在内容卡片上方完整可见。
+14. Developer / Debug 的 Event Stream、Prompt Preview、Runtime、Trace tabs 均可点击切换。
+15. Settings 的 应用、模型、隐私 / 数据、高级 tabs 均可点击切换，设置内容不能覆盖 tab hit area。
+16. Voice、Overlay、Game、Memory 和 Future / Avatar tabs 均可点击，且内容卡片不遮挡 tab row。
+17. Workspace 内部长内容只在 body 内滚动；header、tabs 和关闭按钮不随 body 滚动，也不被 body 覆盖。
+18. 小窗口下 workspace 不应出现明显横向溢出；tabs 与关闭按钮仍可见且可点击。
 
 ### 2. Voice Output 回归检查
 

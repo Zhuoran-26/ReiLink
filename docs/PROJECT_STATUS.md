@@ -65,6 +65,7 @@ dev/codex-reilink
 - Debug Dashboard。
 - UI/UX Information Architecture v0：规划 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug 和 Future Presentation / Avatar 的未来产品表面。
 - UI Surface v0：左侧 workspace launcher、默认 Home / Chat、右侧 workspace panel、Memory / Game / Voice / Overlay / Settings / Developer Debug / Future Avatar 分层入口、panel tabs、关闭按钮和 Escape 关闭。
+- UI Surface v0.1 layout regression：workspace header、tabs 和关闭按钮与可滚动 body 明确分层，避免内容卡片遮挡 tabs 或拦截点击。
 - QA / Regression scenarios。
 - UI polish。
 
@@ -176,6 +177,7 @@ dev/codex-reilink
 - UI/UX Information Architecture v0 已记录在 `docs/ui_ux_information_architecture.md`，配套机器可读场景位于 `docs/qa/ui_ux_information_architecture_scenarios.json`。
 - UI Surface v0 已在 desktop renderer 实现。左侧入口现在是 workspace launcher，默认进入 Home / Chat，右侧不再默认堆叠全部 feature 和 Debug 面板。
 - 已实现的 workspace：Memory、Game、Voice、Overlay、Settings、Developer / Debug、Future Presentation / Avatar。每个 workspace 以应用内 panel 打开，带 tabs、关闭按钮和 Escape 关闭，并保留聊天历史与未发送输入。
+- UI Surface v0.1 已修复 workspace shell 布局回归：panel header、tabs、关闭按钮固定在可滚动 body 之外；Settings、Developer / Debug、Voice、Overlay、Game、Memory 和 Future / Avatar 的 tabs 不应被内容卡片遮挡，且应保持可点击。
 - 推荐的一级模块是 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug、Future Presentation / Avatar。普通用户默认进入 Home / Chat，Developer / Debug 不应默认淹没普通体验。
 - 推荐 surface 模型是 in-app Panel Launcher & Workspace Shell：优先使用应用内 workspace / drawer / modal，暂不把普通模块拆成 Electron child window，以降低 packaged app、焦点和测试风险。
 - Voice 的产品位置升级为一级模块：当前仍是 Local ASR transcript-first + Voice Output；未来直接语音对话需要单独 Voice Interaction v2 Spec，覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted`、`error` 等状态。
@@ -325,6 +327,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Debug Dashboard.
 - UI/UX Information Architecture v0: planning for future product surfaces across Home / Chat, Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future Presentation / Avatar.
 - UI Surface v0: left workspace launcher, default Home / Chat, right workspace panel, separated Memory / Game / Voice / Overlay / Settings / Developer Debug / Future Avatar entries, panel tabs, close button, and Escape close.
+- UI Surface v0.1 layout regression: workspace header, tabs, and close button are separated from the scrollable body so content cards cannot obscure tabs or intercept clicks.
 - QA / Regression scenarios.
 - UI polish.
 
@@ -436,6 +439,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - UI/UX Information Architecture v0 lives in `docs/ui_ux_information_architecture.md`, with machine-readable scenarios in `docs/qa/ui_ux_information_architecture_scenarios.json`.
 - UI Surface v0 is implemented in the desktop renderer. The left navigation is now a workspace launcher, Home / Chat is the default surface, and the right side no longer stacks all feature and Debug panels by default.
 - Implemented workspaces: Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future Presentation / Avatar. Each opens as an in-app panel with tabs, a close button, and Escape close behavior while preserving chat history and unsent chat input.
+- UI Surface v0.1 fixes the workspace shell layout regression: panel header, tabs, and close button stay outside the scrollable body; Settings, Developer / Debug, Voice, Overlay, Game, Memory, and Future / Avatar tabs should not be obscured by content cards and should remain clickable.
 - The recommended top-level modules are Home / Chat, Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future Presentation / Avatar. Normal users should default to Home / Chat, while Developer / Debug should not overwhelm the ordinary experience by default.
 - The recommended surface model is an in-app Panel Launcher & Workspace Shell: prefer in-app workspaces, drawers, and modals before splitting ordinary modules into Electron child windows, which would raise packaged-app, focus, and test risk.
 - Voice becomes a top-level product module. The current state remains Local ASR transcript-first plus Voice Output; direct spoken conversation requires a separate Voice Interaction v2 Spec covering `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`.

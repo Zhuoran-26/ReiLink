@@ -370,10 +370,12 @@ button {
 
 .workspaceGrid {
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(340px, 38vw);
   gap: 22px;
   padding-top: 18px;
+  overflow: hidden;
 }
 
 .workspaceGrid.homeOnly {
@@ -759,19 +761,17 @@ button {
   background: linear-gradient(145deg, rgba(101, 76, 180, 0.64), rgba(51, 62, 111, 0.72));
 }
 
-.infoRail {
-  min-width: 0;
-  height: calc(100vh - 152px);
-  max-height: calc(100vh - 152px);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  overflow: auto;
-  padding-right: 2px;
-}
-
 .workspacePanel {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
   overflow: hidden;
+  position: relative;
+  isolation: isolate;
   border: 1px solid rgba(145, 164, 213, 0.16);
   border-radius: 18px;
   padding: 14px;
@@ -785,6 +785,9 @@ button {
 }
 
 .workspacePanelHeader {
+  position: relative;
+  z-index: 3;
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -806,6 +809,10 @@ button {
 }
 
 .workspaceTabs {
+  position: relative;
+  z-index: 3;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   gap: 6px;
   overflow-x: auto;
@@ -837,12 +844,17 @@ button {
 }
 
 .workspacePanelBody {
-  flex: 1 1 auto;
+  position: relative;
+  z-index: 1;
+  min-width: 0;
   min-height: 0;
   display: grid;
+  align-content: start;
   gap: 12px;
   overflow: auto;
-  padding-right: 2px;
+  overscroll-behavior: contain;
+  padding: 2px 6px 2px 0;
+  scrollbar-gutter: stable;
 }
 
 .workspaceQuickActions {
@@ -1557,11 +1569,8 @@ button {
 @media (max-width: 960px) {
   .workspaceGrid {
     grid-template-columns: 1fr;
-  }
-
-  .infoRail {
     height: auto;
-    max-height: none;
+    overflow: visible;
   }
 
   .appWorkspace {
@@ -1572,6 +1581,11 @@ button {
 
   .chatColumn {
     min-height: 680px;
+  }
+
+  .workspacePanel {
+    height: min(720px, calc(100vh - 36px));
+    max-height: none;
   }
 }
 

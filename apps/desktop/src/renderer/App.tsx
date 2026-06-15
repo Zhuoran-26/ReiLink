@@ -3550,7 +3550,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
         </section>
 
         {activeWorkspace !== "home" && (
-        <aside className="infoRail workspacePanel" aria-label="工作区面板">
+        <aside className="workspacePanel" aria-label="工作区面板">
           <div className="workspacePanelHeader">
             <div>
               <p className="eyebrow">Workspace</p>

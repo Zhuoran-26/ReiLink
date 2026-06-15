@@ -23,6 +23,42 @@
     "expected": "The workspace closes and the app returns to Home / Chat without clearing chat input."
   },
   {
+    "id": "ui-surface-tabs-not-obscured",
+    "category": "ui_surface_v0_1_layout",
+    "precondition": "Any non-home workspace is open",
+    "action": "Inspect Developer / Debug, Settings, Voice, Overlay, Game, Memory, and Future / Avatar workspace headers and tabs",
+    "expected": "Workspace title, close button, and tabs are fully visible above the content body and are not covered by cards or scroll content.",
+    "must_preserve": ["workspace_header_visibility", "tab_hit_testing", "close_button_hit_testing"]
+  },
+  {
+    "id": "ui-surface-debug-tabs-clickable",
+    "category": "ui_surface_v0_1_layout",
+    "precondition": "Developer / Debug workspace is open",
+    "action": "Click Event Stream, Prompt Preview, Runtime, and Trace tabs",
+    "expected": "Each tab becomes selected and shows the matching safe debug surface without exposing raw prompt, full persona markdown, API key, .env, full local path, or raw provider response."
+  },
+  {
+    "id": "ui-surface-settings-tabs-clickable",
+    "category": "ui_surface_v0_1_layout",
+    "precondition": "Settings workspace is open",
+    "action": "Click 应用, 模型, 隐私 / 数据, and 高级 tabs",
+    "expected": "Each tab remains clickable and visibly selectable; Settings content stays below the tab row and does not intercept pointer events."
+  },
+  {
+    "id": "ui-surface-body-scroll-isolated",
+    "category": "ui_surface_v0_1_layout",
+    "precondition": "A workspace with long content is open, such as Settings or Developer / Debug Runtime",
+    "action": "Scroll the workspace content body",
+    "expected": "Only the workspace body scrolls; the workspace header, tab row, and close button remain visible and clickable."
+  },
+  {
+    "id": "ui-surface-small-window-hit-testing",
+    "category": "ui_surface_v0_1_layout",
+    "precondition": "ReiLink is shown in a narrow or short window",
+    "action": "Open Settings, Developer / Debug, Voice, Overlay, Game, and Memory workspaces and click their tabs",
+    "expected": "The workspace remains usable without horizontal overflow; tabs and close button remain visible, selectable, and above content cards."
+  },
+  {
     "id": "ui-surface-voice-current-controls",
     "category": "voice_surface_v0",
     "precondition": "Open the Voice workspace",
