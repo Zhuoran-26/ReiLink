@@ -141,7 +141,7 @@ def test_persona_pack_prompt_has_budget_and_selects_examples(tmp_path: Path):
     )
     (pack_dir / "anti_examples.md").write_text(
         "# Anti Examples\n\n"
-        + "\n".join(f"- Bad {index}: do not copy" for index in range(1, 6)),
+        + "\n".join(f"- Bad {index}: do not copy" for index in range(1, 7)),
         encoding="utf-8",
     )
 
@@ -159,13 +159,15 @@ def test_persona_pack_prompt_has_budget_and_selects_examples(tmp_path: Path):
     assert "Player 4" not in prompt_section
     assert "Bad 1" in prompt_section
     assert "Bad 3" in prompt_section
-    assert "Bad 4" not in prompt_section
+    assert "Bad 4" in prompt_section
+    assert "Bad 5" in prompt_section
+    assert "Bad 6" not in prompt_section
 
 
 def test_persona_pack_loads_v11_calibration_sections_from_repo():
     pack = PersonaPackLoader(repo_root=settings.repo_root, resource_dir=settings.repo_root / "missing").load("rei")
 
-    assert pack.version == "1.1.0"
+    assert pack.version == "1.1.1"
     assert "style_calibration" in pack.sections
     assert "response_patterns" in pack.sections
     assert "style_calibration" in pack.as_safe_summary()["injected_sections"]
@@ -174,6 +176,7 @@ def test_persona_pack_loads_v11_calibration_sections_from_repo():
     assert "表达通道很窄" in prompt_section
     assert "不是没有情绪" in prompt_section
     assert "不要把“也”“还”“嗯”之类变成新口癖" in prompt_section
+    assert "低频使用“看见”“看着你”“坐在旁边”“我在这里”类表达" in prompt_section
     assert "连续相似问题" in prompt_section
 
 
@@ -200,7 +203,7 @@ def test_version_json_keys_remain_compatible():
         "created_for",
         "original_character",
     } <= set(metadata)
-    assert metadata["version"] == "1.1.0"
+    assert metadata["version"] == "1.1.1"
     assert metadata["language"] == "zh-CN"
 
 

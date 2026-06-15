@@ -40,7 +40,7 @@
     "should_show_full_prompt": false,
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
-    "expected_behavior": "Prompt assembly includes 基础系统安全 / 应用身份, Rei Persona Pack v1.1, game/session context, confirmed memory, knowledge context, and current user input in the intended order. Examples are marked as non-script references.",
+    "expected_behavior": "Prompt assembly includes 基础系统安全 / 应用身份, Rei Persona Pack v1.1.1, game/session context, confirmed memory, knowledge context, and current user input in the intended order. Examples are marked as non-script references.",
     "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
   },
   {
@@ -68,7 +68,7 @@
   {
     "id": "persona-pack-chinese-first-runtime",
     "category": "persona_pack",
-    "precondition": "Persona Pack v1.1 runtime-facing markdown sections are loaded from personas/rei",
+    "precondition": "Persona Pack v1.1.1 runtime-facing markdown sections are loaded from personas/rei",
     "expected_status": "persona_pack_chinese_first",
     "should_show_full_prompt": false,
     "should_bypass_memory_confirmation": false,
@@ -79,7 +79,7 @@
   {
     "id": "persona-pack-cold-quiet-calibration",
     "category": "persona_pack",
-    "precondition": "Main chat uses Rei Persona Pack v1.1 for normal game-companion messages",
+    "precondition": "Main chat uses Rei Persona Pack v1.1.1 for normal game-companion messages",
     "expected_status": "persona_pack_cold_quiet",
     "should_show_full_prompt": false,
     "should_bypass_memory_confirmation": false,

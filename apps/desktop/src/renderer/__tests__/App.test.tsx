@@ -425,7 +425,7 @@ const promptPreview = {
   persona_pack_summary: {
     id: "rei",
     name: "Rei",
-    version: "1.1.0",
+    version: "1.1.1",
     language: "zh-CN",
     enabled: true,
     status: "loaded",

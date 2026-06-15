@@ -78,9 +78,9 @@ def test_repetition_guard_warns_on_recent_core_phrase_reuse():
     replies = [
         "我在这里。想说的时候就说。",
         "我听见了。",
-        "别想太多。",
         "习惯你在。",
         "看着你。",
+        "我坐在你旁边。",
     ]
 
     guard = build_repetition_guard(replies)
@@ -88,6 +88,7 @@ def test_repetition_guard_warns_on_recent_core_phrase_reuse():
     assert "不要继续复用" in guard
     assert "我在这里" in guard
     assert "我听见了" in guard
+    assert "坐在你旁边" in guard
     assert has_high_frequency_repetition(["我在这里。", "我在这里。"]) is True
 
 
@@ -104,6 +105,15 @@ def test_repetition_guard_detects_exact_duplicate_and_semantic_similarity():
     assert "换观察点、语序或轻微过渡" in guard
     assert "不要把“也”“还”“嗯”之类轻过渡变成新口癖" in guard
     assert is_repetitive_reply("你问得这么认真，我不知道怎么接。但我没有走开。", replies) is True
+
+
+def test_repetition_guard_detects_particle_and_punctuation_only_variants():
+    recent = ["又倒在这里了。"]
+
+    assert is_repetitive_reply("嗯。又倒在这里了。", recent) is True
+    assert is_repetitive_reply("也又倒在这里了……", recent) is True
+    assert is_repetitive_reply("还又倒在这里了！", recent) is True
+    assert is_repetitive_reply("又倒在这里了", recent) is True
 
 
 def test_repetition_retry_guard_allows_light_variation_without_fixed_template():

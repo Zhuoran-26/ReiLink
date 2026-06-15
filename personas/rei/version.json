@@ -1,9 +1,9 @@
 {
   "id": "rei",
   "name": "Rei",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "language": "zh-CN",
-  "description": "中文优先的 ReiLink 原创冷静寡言游戏陪伴人格包。",
+  "description": "中文优先的 ReiLink 原创冷静寡言游戏陪伴人格包，补充真人感与重复回归校准。",
   "created_for": "ReiLink",
   "original_character": true
 }

@@ -14,6 +14,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/overlay_scenarios.json`
 - `docs/qa/session_timeline_scenarios.json`
 - `docs/qa/persona_pack_scenarios.json`
+- `docs/qa/persona_regression_cases.json`
 
 ### 1. 基础启动检查
 
@@ -101,9 +102,9 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 9. accepted memory 才进入 prompt。
 10. proactive 内容不进入 memory。
 
-### 1.6 Rei Persona Pack v1.1 回归检查
+### 1.6 Rei Persona Pack v1.1.1 回归检查
 
-本节用于 Persona Pack v1.1。它不表示用户自定义角色、Live2D、TTS 音色或 persona 自动学习已开始。
+本节用于 Persona Pack v1.1.1。它不表示用户自定义角色、Live2D、TTS 音色或 persona 自动学习已开始。
 
 1. `personas/rei/` 包含 persona、voice、boundaries、game companion policy、memory policy、proactive policy、style calibration、response patterns、examples、anti examples、references 和 `version.json`。
 2. runtime-facing persona markdown 应中文优先；`version.json` key 继续保持英文兼容。
@@ -120,8 +121,9 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 13. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。`，仍应进入 pending memory confirmation，不应直接写入长期记忆。
 14. 发送 `以后不用记住这个，只是我这次随便说一下。`，不应触发 pending memory。
 15. 连续相似问题或关系追问时，Rei 不应机械复读上一轮回复；可以保留相近意思，但应换观察点、语序或轻微过渡。不要把“也”“还”“嗯”等变成新的固定口癖。
-16. Persona Pack 不应直接触发 proactive，也不应改变 Semantic Shadow candidate-only 边界。
-17. 打包验证需运行 `make package-backend` 和 `make package-desktop`；packaged `.app` 中 `personas/rei` 应作为只读 resource 可用，缺失时必须 safe fallback，不应黑屏或 backend crash。
+16. “看见 / 看着 / 坐在旁边 / 我在这里”类陪伴意象只能低频使用，不能成为关系追问或死亡循环的默认模板。
+17. Persona Pack 不应直接触发 proactive，也不应改变 Semantic Shadow candidate-only 边界。
+18. 打包验证需运行 `make package-backend` 和 `make package-desktop`；packaged `.app` 中 `personas/rei` 应作为只读 resource 可用，缺失时必须 safe fallback，不应黑屏或 backend crash。
 
 ### 2. Voice Output 回归检查
 

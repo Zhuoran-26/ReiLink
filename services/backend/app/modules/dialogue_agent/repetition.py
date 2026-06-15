@@ -9,9 +9,16 @@ OVERUSED_CORE_PHRASES = (
     "我还在这里",
     "我还在",
     "我听见了",
+    "看见你",
     "别想太多",
     "习惯你在",
     "看着你",
+    "坐在你旁边",
+    "我就在这里",
+    "又倒在这里",
+    "又倒在这里了",
+    "只是……而已",
+    "只是...而已",
     "你问得太认真",
     "你问得太直接",
     "不知道怎么接",
@@ -137,6 +144,7 @@ def _is_relationship_followup(message: str) -> bool:
 def _core(text: str) -> str:
     normalized = re.sub(r"\s+", "", text)
     normalized = re.sub(r"[。！？!?，,；;、…\.\"'“”‘’（）()【】\[\]：:—-]", "", normalized)
+    normalized = re.sub(r"^(嗯+|唔+|啊+|还|也|还是|又)+", "", normalized)
     return normalized.strip()
 
 

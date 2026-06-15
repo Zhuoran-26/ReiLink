@@ -50,7 +50,7 @@ PROMPT_SECTION_CHAR_LIMITS: dict[str, int] = {
 }
 PROMPT_EXAMPLE_ITEM_LIMITS: dict[str, int] = {
     "examples": 3,
-    "anti_examples": 3,
+    "anti_examples": 5,
 }
 MAX_PERSONA_PACK_PROMPT_CHARS = 6000
 TRUNCATED_MARKER = "\n...[本段因 prompt 预算截断]"
@@ -100,7 +100,7 @@ class PersonaPack:
     def as_prompt_view(self) -> PersonaPackPromptView:
         if not self.enabled:
             text = (
-                "Rei Persona Pack v1.1：不可用。\n"
+                "Rei Persona Pack v1.1.1：不可用。\n"
                 "使用 ReiLink 内置人格护栏。不要削弱安全、隐私、记忆确认或主动陪伴边界。\n"
             )
             return PersonaPackPromptView(
@@ -108,7 +108,7 @@ class PersonaPack:
                 omitted_sections=[key for key, _filename, _title in MARKDOWN_FILES],
             )
         header = (
-            "Rei Persona Pack v1.1（中文优先，结构化人格，不是固定脚本）：\n"
+            "Rei Persona Pack v1.1.1（中文优先，结构化人格，不是固定脚本）：\n"
             f"- id: {self.pack_id}\n"
             f"- name: {self.name}\n"
             f"- version: {self.version}\n"

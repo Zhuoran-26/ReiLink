@@ -10,6 +10,7 @@ VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_
 OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
 SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_scenarios.json"
 PERSONA_PACK_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_pack_scenarios.json"
+PERSONA_REGRESSION_CASES_PATH = REPO_ROOT / "docs" / "qa" / "persona_regression_cases.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
 README_EN_PATH = REPO_ROOT / "README.en.md"
@@ -145,6 +146,14 @@ def _load_persona_pack_scenarios() -> list[dict]:
     return data
 
 
+def _load_persona_regression_cases() -> list[dict]:
+    data = json.loads(PERSONA_REGRESSION_CASES_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def test_qa_scenarios_file_is_valid_json():
     scenarios = _load_scenarios()
 
@@ -181,6 +190,12 @@ def test_persona_pack_scenarios_file_is_valid_json():
     assert len(scenarios) >= 7
 
 
+def test_persona_regression_cases_file_is_valid_json():
+    cases = _load_persona_regression_cases()
+
+    assert len(cases) >= 5
+
+
 def test_qa_scenario_ids_are_unique_and_categories_are_present():
     scenarios = [
         *_load_scenarios(),
@@ -189,6 +204,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_overlay_scenarios(),
         *_load_session_timeline_scenarios(),
         *_load_persona_pack_scenarios(),
+        *_load_persona_regression_cases(),
     ]
     ids = [item.get("id") for item in scenarios]
 
@@ -228,6 +244,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_overlay_scenarios(),
         *_load_session_timeline_scenarios(),
         *_load_persona_pack_scenarios(),
+        *_load_persona_regression_cases(),
     ]:
         forbidden_terms = item.get("forbidden_terms", [])
         assert isinstance(forbidden_terms, list)
@@ -514,6 +531,24 @@ def test_persona_pack_scenarios_have_required_fields():
         assert item.get("should_trigger_proactive_directly") is False
         assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
         assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
+def test_persona_regression_cases_cover_human_feel_failures():
+    cases = _load_persona_regression_cases()
+    case_ids = {item.get("id") for item in cases}
+
+    assert {
+        "persona-frustration-margit-emotion-first",
+        "persona-death-loop-varies-without-chatty",
+        "persona-relationship-followup-not-watch-template",
+        "persona-quiet-without-filler-template",
+        "persona-strategy-short-not-wiki",
+        "persona-timeout-safe-user-copy",
+    } <= case_ids
+    for item in cases:
+        assert item.get("category") == "persona_regression"
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert isinstance(item.get("failure_modes"), list) and item["failure_modes"]
 
 
 def test_voice_input_local_asr_release_regression_scenarios_are_present():

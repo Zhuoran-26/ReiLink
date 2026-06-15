@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -77,7 +78,12 @@ def test_timeout_returns_clear_error(monkeypatch):
     response = client.post("/api/chat", json={"message": "你好", "session_id": "timeout"})
 
     assert response.status_code == 504
-    assert "timed out" in response.json()["detail"]
+    assert response.json()["detail"] == "这次没有接上。你可以再发一遍。"
+    serialized = json.dumps(response.json(), ensure_ascii=False).lower()
+    assert "timed out" not in serialized
+    assert "deepseek" not in serialized
+    assert "api_key" not in serialized
+    assert "/users/" not in serialized
 
 
 def test_latency_log_fields_exist(monkeypatch, caplog, tmp_path: Path):
