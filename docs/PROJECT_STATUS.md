@@ -2,7 +2,7 @@
 
 ## 中文
 
-Updated: 2026-06-12
+Updated: 2026-06-16
 
 ### 当前阶段
 
@@ -63,6 +63,7 @@ dev/codex-reilink
 - Prompt Preview。
 - Rei Persona Pack v1.1.2：中文优先的结构化原创 persona 文件、冷静寡言风格校准、真人感与关系类表层重复回归修正、safe loader、prompt assembly 接入和 Debug Prompt Preview 安全摘要。
 - Debug Dashboard。
+- UI/UX Information Architecture v0：规划 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug 和 Future Presentation / Avatar 的未来产品表面。
 - QA / Regression scenarios。
 - UI polish。
 
@@ -169,6 +170,19 @@ dev/codex-reilink
 - Debug / Prompt Preview 保留脱敏后的 assembled prompt preview 能力，但普通 Debug / Event Stream 不展示完整 prompt 或 persona markdown。Prompt Preview 只显示 Persona Pack id、version、enabled、status、loaded_sections、injected_sections、missing_sections、fallback / truncation summary、`raw_content_omitted=true` 和 `path_omitted=true`，不展示完整 persona markdown、API key、`.env`、完整本地路径、stdout/stderr、raw JSON 或 ASR transcript 全文。
 - Persona Pack v1.1.2 不做用户自定义角色、Persona 自动学习、Voice Profile、TTS 音色、Live2D 或 LLM-primary 状态写入；memory、proactive 和 Semantic Shadow 的状态写入边界保持不变。
 
+### 当前 UI/UX IA 状态
+
+- UI/UX Information Architecture v0 已记录在 `docs/ui_ux_information_architecture.md`，配套机器可读场景位于 `docs/qa/ui_ux_information_architecture_scenarios.json`。
+- v0 只做 planning / docs，不实现 React workspace shell、Voice v2、Overlay auto-show、Hermes-style memory、Live2D 或 Electron 多窗口。
+- 当前 `App.tsx` 的左侧入口仍主要指向页面内 section / anchor；右侧承载 Settings、Memory、Game、Debug、Prompt Preview、Voice / Local ASR、Overlay 和 Local Data 等大量内容。下一阶段建议把左侧升级为 workspace launcher。
+- 推荐的一级模块是 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug、Future Presentation / Avatar。普通用户默认进入 Home / Chat，Developer / Debug 不应默认淹没普通体验。
+- 推荐 surface 模型是 in-app Panel Launcher & Workspace Shell：优先使用应用内 workspace / drawer / modal，暂不把普通模块拆成 Electron child window，以降低 packaged app、焦点和测试风险。
+- Voice 的产品位置升级为一级模块：当前仍是 Local ASR transcript-first + Voice Output；未来直接语音对话需要单独 Voice Interaction v2 Spec，覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted`、`error` 等状态。
+- Overlay 的产品位置升级为一级模块，但当前仍是 macOS safe mode；auto-show 保持 fail-closed，未来只作为 Game-safe companion surface 显示最近 1～2 句、安全语音状态和低打扰提示。
+- Memory 应成为普通用户可理解的一级模块，承接 pending / confirmed / ignored / search / source summary / session archive；Candidate Memory 或 Hermes-style memory 进入实现前应先完成 UI surface。
+- Developer / Debug 应集中承接 Event Stream、Prompt Preview、Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status，并继续禁止 raw prompt、API key、`.env`、完整路径、stdout/stderr、完整 persona markdown 和完整 assistant reply。
+- Live2D / Avatar 只作为未来 presentation layer 预留，不应先于 Voice、Overlay、Memory 和 Debug split。
+
 ### 当前 Knowledge Retrieval 状态
 
 - Knowledge layer 已从 knowledge pack infrastructure 推进到本地 keyword retrieval 闭环。
@@ -187,6 +201,12 @@ dev/codex-reilink
 
 ### 后续重点
 
+- UI Surface v0 - Panel Launcher & Workspace Shell。
+- Debug Split v1。
+- Core UI Visual Polish v1。
+- Voice Interaction v2 Spec。
+- Hermes-style Memory Architecture v0。
+- Candidate Memory v1。
 - v0.2 stable packaging polish。
 - Installer / DMG spike。
 - Code signing / notarization research。
@@ -199,6 +219,8 @@ dev/codex-reilink
 - Overlay v1.1 packaged release smoke。
 - Overlay v1.2 Drag / Lock Mode。
 - Overlay 自动避让和 HUD-aware placement research。
+- Persona / Memory Eval Runner v0。
+- Live2D Presentation Policy。
 - Live2D v1。
 - Multi-companion system。
 
@@ -240,7 +262,7 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-12
+Updated: 2026-06-16
 
 ### Current Stage
 
@@ -301,6 +323,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Prompt Preview.
 - Rei Persona Pack v1.1.2: Chinese-first structured original persona files, cold quiet companion calibration, human-feel and relationship-surface repetition regression fixes, safe loader, prompt assembly integration, and safe Debug Prompt Preview summary.
 - Debug Dashboard.
+- UI/UX Information Architecture v0: planning for future product surfaces across Home / Chat, Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future Presentation / Avatar.
 - QA / Regression scenarios.
 - UI polish.
 
@@ -407,6 +430,19 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Debug / Prompt Preview keeps the redacted assembled prompt preview capability, while ordinary Debug / Event Stream must not show the full prompt or persona markdown. Prompt Preview shows only Persona Pack id, version, enabled state, status, loaded_sections, injected_sections, missing_sections, fallback / truncation summary, `raw_content_omitted=true`, and `path_omitted=true`; it does not show full persona markdown, API keys, `.env`, full local paths, stdout/stderr, raw JSON, or full ASR transcripts.
 - Persona Pack v1.1.2 does not implement custom characters, persona self-learning, Voice Profile, TTS voice models, Live2D, or LLM-primary state writes. Memory, proactive, and Semantic Shadow write boundaries remain unchanged.
 
+### Current UI/UX IA Status
+
+- UI/UX Information Architecture v0 lives in `docs/ui_ux_information_architecture.md`, with machine-readable scenarios in `docs/qa/ui_ux_information_architecture_scenarios.json`.
+- v0 is planning / docs only. It does not implement a React workspace shell, Voice v2, Overlay auto-show, Hermes-style memory, Live2D, or Electron multi-window changes.
+- The current `App.tsx` left navigation still mostly targets page sections / anchors, while the right side carries Settings, Memory, Game, Debug, Prompt Preview, Voice / Local ASR, Overlay, and Local Data content. The next UI phase should upgrade the left side into a workspace launcher.
+- The recommended top-level modules are Home / Chat, Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future Presentation / Avatar. Normal users should default to Home / Chat, while Developer / Debug should not overwhelm the ordinary experience by default.
+- The recommended surface model is an in-app Panel Launcher & Workspace Shell: prefer in-app workspaces, drawers, and modals before splitting ordinary modules into Electron child windows, which would raise packaged-app, focus, and test risk.
+- Voice becomes a top-level product module. The current state remains Local ASR transcript-first plus Voice Output; direct spoken conversation requires a separate Voice Interaction v2 Spec covering `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`.
+- Overlay becomes a top-level module but remains macOS safe mode. Auto-show stays fail-closed; the future direction is a game-safe companion surface for the latest 1-2 safe lines, voice state, and low-interruption hints.
+- Memory should become an understandable normal-user module for pending / confirmed / ignored / search / source summary / session archive. Candidate Memory or Hermes-style memory should wait for the UI surface.
+- Developer / Debug should contain Event Stream, Prompt Preview, Semantic Shadow trace, Knowledge trace, Persona Pack safe summary, and Runtime status while continuing to block raw prompts, API keys, `.env`, full paths, stdout/stderr, full persona markdown, and full assistant replies.
+- Live2D / Avatar is only a future presentation layer placeholder and should follow Voice, Overlay, Memory, and Debug split work.
+
 ### Current Knowledge Retrieval Status
 
 - The knowledge layer has moved from knowledge pack infrastructure to a local keyword retrieval loop.
@@ -425,6 +461,12 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 
 ### Upcoming Focus
 
+- UI Surface v0 - Panel Launcher & Workspace Shell.
+- Debug Split v1.
+- Core UI Visual Polish v1.
+- Voice Interaction v2 Spec.
+- Hermes-style Memory Architecture v0.
+- Candidate Memory v1.
 - v0.2 stable packaging polish.
 - Installer / DMG spike.
 - Code signing / notarization research.
@@ -437,6 +479,8 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Overlay v1.1 packaged release smoke.
 - Overlay v1.2 Drag / Lock Mode.
 - Overlay automatic avoidance and HUD-aware placement research.
+- Persona / Memory Eval Runner v0.
+- Live2D Presentation Policy.
 - Live2D v1.
 - Multi-companion system.
 

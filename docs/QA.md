@@ -15,6 +15,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/session_timeline_scenarios.json`
 - `docs/qa/persona_pack_scenarios.json`
 - `docs/qa/persona_regression_cases.json`
+- `docs/qa/ui_ux_information_architecture_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -126,6 +127,25 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 18. 示例和强意象只作为方向参考，不作为回复候选；真实回复应优先依据当前输入，在人设框架内自然生成。
 19. Persona Pack 不应直接触发 proactive，也不应改变 Semantic Shadow candidate-only 边界。
 20. 打包验证需运行 `make package-backend` 和 `make package-desktop`；packaged `.app` 中 `personas/rei` 应作为只读 resource 可用，缺失时必须 safe fallback，不应黑屏或 backend crash。
+
+### 1.7 UI/UX Information Architecture v0 人工验收
+
+本节用于 `docs/ui_ux_information_architecture.md`。它只验证 IA / planning 文档，不表示 Panel Shell、Voice v2、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
+
+机器可读场景见 `docs/qa/ui_ux_information_architecture_scenarios.json`。
+
+1. 普通用户默认应进入 Home / Chat，而不是 Debug、Prompt Preview、Event Stream 或 Raw JSON。
+2. 左侧未来定位应是 workspace launcher，不只是页面 anchor。
+3. Memory 应有独立普通用户入口，承接 pending、confirmed、ignored、search、sources 和后续 session archive。
+4. Game 应有独立普通用户入口，承接 current game、boss、session state、knowledge availability 和 manual control。
+5. Voice 应有独立一级入口；当前仍是 Local ASR transcript-first + Voice Output，未来直接语音对话只做规划。
+6. Voice 未来状态至少覆盖 idle、listening、transcribing、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
+7. Overlay 应有独立入口，但 macOS auto-show 仍是 fail-closed safe mode；不要把它描述为完整可用的游戏 HUD。
+8. Developer / Debug 应与普通体验分离，承接 Event Stream、Prompt Preview、Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status。
+9. Prompt Preview / Debug 不得显示 raw prompt、API key、`.env`、完整路径、stdout/stderr、完整 persona markdown、完整 assistant reply、完整 user input 或完整 ASR transcript。
+10. Memory 和 Game Session state 必须区分：长期记忆 / candidate memory 不等于当前 boss、death count、frustration 或 session timeline。
+11. Future Presentation / Avatar / Live2D 只预留，不应成为当前主体验，也不应排在 Voice、Overlay、Memory 和 Debug split 之前。
+12. 后续 Panel Shell 切换 workspace 时不应丢失未发送的聊天输入。
 
 ### 2. Voice Output 回归检查
 
@@ -700,6 +720,7 @@ Machine-readable scenarios live at:
 - `docs/qa/voice_input_scenarios.json`
 - `docs/qa/voice_input_local_asr_scenarios.json`
 - `docs/qa/persona_pack_scenarios.json`
+- `docs/qa/ui_ux_information_architecture_scenarios.json`
 
 Real Local ASR manual setup and optional smoke guidance lives at `docs/local-asr-manual-setup.md`.
 
