@@ -134,7 +134,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.7 UI/UX Information Architecture v0 人工验收
 
-本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认文档仍不表示 Voice v2、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
+本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认当前 Voice 只接入 Voice v2 foundation，不表示 hands-free、auto-send、角色 TTS、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
 
 机器可读场景见 `docs/qa/ui_ux_information_architecture_scenarios.json`。
 
@@ -142,7 +142,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 2. 左侧定位应是 workspace launcher，不只是页面 anchor。
 3. Memory 应有独立普通用户入口，承接 pending、confirmed、ignored、search、sources 和后续 session archive。
 4. Game 应有独立普通用户入口，承接 current game、boss、session state、knowledge availability 和 manual control。
-5. Voice 应有独立一级入口；当前仍是 Local ASR transcript-first + Voice Output，未来直接语音对话只做规划。
+5. Voice 应有独立一级入口；当前是 Local ASR transcript-first + Voice Output + Voice v2 foundation，hands-free / auto-send 直接语音对话仍只做未来规划。
 6. Voice 未来状态至少覆盖 idle、listening、transcribing、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
 7. Overlay 应有独立入口，但 macOS auto-show 仍是 fail-closed safe mode；不要把它描述为完整可用的游戏 HUD。
 8. Developer / Debug 应与普通体验分离，承接 Event Stream、Prompt Preview、Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status。
@@ -159,7 +159,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 2. 左侧 launcher 可见，并包含 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug 和 Future / Avatar 入口。
 3. 点击 Memory 打开 Memory workspace；Pending tab 可见，Confirmed / Local Data / Future placeholder 可切换。
 4. 点击 Game 打开 Game workspace；Current Context、Session Timeline、Knowledge、Manual Control 可切换。
-5. 点击 Voice 打开 Voice workspace；Conversation placeholder、Input / Local ASR、Output、Voice Profile placeholder 可切换。Local ASR 和 Voice Output 现有控件仍可找到。
+5. 点击 Voice 打开 Voice workspace；Conversation 状态面板、Input / Local ASR、Output、Voice Profile placeholder 可切换。Local ASR 和 Voice Output 现有控件仍可找到。
 6. 点击 Overlay 打开 Overlay workspace；Safe Mode、Placement、Content、Future Game Mode 可切换。强制关闭悬浮层按钮仍可找到，auto-show 仍未恢复。
 7. 点击 Settings 打开 Settings workspace；app-level 设置、模型状态、本地数据和旧配置入口仍可找到。
 8. 点击 Developer / Debug 打开 Debug workspace；Event Stream、Prompt Preview、Runtime、Semantic Shadow trace 可找到，且 Debug 不默认打开。
@@ -178,16 +178,16 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 1. Settings workspace 中 应用、模型、隐私 / 数据、高级 tabs 的 active 样式与实际内容一致；模型 tab 显示模型状态，隐私 / 数据 tab 显示本地数据，高级 tab 显示 Overlay、Voice Output、Voice Input / Local ASR 旧配置入口。
 2. Developer / Debug workspace 中 Event Stream、Prompt Preview、Runtime、Trace tabs 均显示对应安全面板；Prompt Preview 仍不显示完整 prompt、完整 persona markdown、API key、`.env`、完整路径或 raw provider response。
-3. Voice workspace 中 Conversation、Input / Local ASR、Output、Voice Profile tabs 均显示不同内容；Conversation 只说明未来直接语音对话未实现，Input 仍能找到 Local ASR，Output 仍能找到 Test Voice / Voice Output。
+3. Voice workspace 中 Conversation、Input / Local ASR、Output、Voice Profile tabs 均显示不同内容；Conversation 显示 Voice v2 状态、确认发送模式、输出状态和安全边界，Input 仍能找到 Local ASR，Output 仍能找到 Test Voice / Voice Output。
 4. Overlay workspace 中 Safe Mode、Placement、Content、Future Game Mode tabs 均显示不同内容；Safe Mode 继续说明 macOS auto-show fail-closed，Future Game Mode 不恢复 auto-show。
 5. Future / Avatar workspace 中 Avatar 与 Presentation Policy tabs 显示不同 placeholder，且不加载 Live2D runtime、Avatar 资源或 presentation layer 行为。
 6. 切换任意 workspace tab 不应清空聊天历史或未发送输入；切换到其他 workspace 后，该 workspace 的上次 active tab 可独立保留，不污染其他 workspace。
 7. Close button 与 Escape 关闭 workspace 仍有效；v0.1 的 tabs 不遮挡、body 内部滚动隔离、小窗口 hit-testing 要继续通过。
-8. 本轮仍不实现 Voice v2、Overlay auto-show、Hermes-style memory 或 Live2D。
+8. 本轮只接入 Voice v2 foundation；仍不实现 hands-free、auto-send、Overlay auto-show、Hermes-style memory 或 Live2D。
 
-### 1.10 Voice Interaction v2 Spec 人工验收
+### 1.10 Voice Interaction v2 Foundation 人工验收
 
-设计文档见 `docs/voice_interaction_v2_spec.md`，机器可读场景见 `docs/qa/voice_interaction_v2_scenarios.json`。本节只验收直接语音对话 loop 的设计边界，不表示 Voice v2 已实现。
+设计文档见 `docs/voice_interaction_v2_spec.md`，机器可读场景见 `docs/qa/voice_interaction_v2_scenarios.json`。本节验收 Voice v2 state machine 与安全对话底座；不表示 hands-free、auto-send、角色 TTS、Voice Profile 或 Overlay voice state 已实现。
 
 1. Voice v2 默认仍是 confirm-send：ASR transcript 进入 ready-to-send 状态，用户确认后才进入 chat flow。
 2. Auto-send 只能作为未来显式 opt-in 模式，不得因开启 Local ASR、Voice Output 或 Voice workspace 自动启用。
@@ -197,8 +197,8 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 6. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
 7. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
 8. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
-9. Voice workspace 的 Conversation tab 应承接未来状态、模式、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置。
-10. Home / Chat 输入区未来应显示紧凑 voice state，但不得清空未发送草稿或隐藏普通文本输入。
+9. Voice workspace 的 Conversation tab 应承接状态、模式、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置。
+10. Home / Chat 输入区应显示紧凑 voice state，但不得清空未发送草稿或隐藏普通文本输入。
 11. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
 12. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
 

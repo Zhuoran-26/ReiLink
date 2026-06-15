@@ -69,6 +69,7 @@ import {
 } from "./sessionTimeline";
 import { voiceInput, type VoiceInputStatus } from "./voiceInput";
 import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
+import { resolveVoiceConversationState } from "./voiceState";
 
 type Message = {
   id: string;
@@ -91,6 +92,10 @@ type DemoResetAction =
 
 type LocalAsrTranscriptionPhase = "idle" | "recording" | "transcribing";
 type MainVoiceInputProvider = "local_asr" | "web_speech" | "unavailable";
+type VoiceTransientState = {
+  kind: "interrupted" | "error";
+  message?: string;
+} | null;
 type LocalAsrSettingsDraft = {
   local_asr_binary_path: string;
   local_asr_model_path: string;
@@ -1867,6 +1872,9 @@ export function App() {
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
   const [voiceStatus, setVoiceStatus] = useState<VoiceOutputStatus>(() => voiceOutput.getStatus());
   const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>(() => voiceInput.getStatus());
+  const [voiceTranscriptReady, setVoiceTranscriptReady] = useState<{ source: MainVoiceInputProvider; characterCount: number } | null>(null);
+  const [voiceAssistantTurnActive, setVoiceAssistantTurnActive] = useState(false);
+  const [voiceTransientState, setVoiceTransientState] = useState<VoiceTransientState>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const forceNextScrollRef = useRef(true);
@@ -1886,31 +1894,80 @@ export function App() {
   const sessionTimelineUserActiveRef = useRef(false);
   const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
   const proactiveSuppressedUntilRef = useRef(0);
+  const voiceInterruptedTimerRef = useRef<number | null>(null);
 
   const suppressProactiveAfterSystemAction = useCallback(() => {
     proactiveSuppressedUntilRef.current = Date.now() + PROACTIVE_SYSTEM_ACTION_SUPPRESSION_MS;
   }, []);
 
-  const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
-    voiceOutput.stop(reason);
+  const clearVoiceInterruptedTimer = useCallback(() => {
+    if (voiceInterruptedTimerRef.current === null) return;
+    window.clearTimeout(voiceInterruptedTimerRef.current);
+    voiceInterruptedTimerRef.current = null;
   }, []);
 
+  const clearVoiceTransientState = useCallback(() => {
+    clearVoiceInterruptedTimer();
+    setVoiceTransientState(null);
+  }, [clearVoiceInterruptedTimer]);
+
+  const setVoiceInterrupted = useCallback(() => {
+    clearVoiceInterruptedTimer();
+    setVoiceTransientState({ kind: "interrupted" });
+    voiceInterruptedTimerRef.current = window.setTimeout(() => {
+      voiceInterruptedTimerRef.current = null;
+      setVoiceTransientState((current) => current?.kind === "interrupted" ? null : current);
+    }, 1400);
+  }, [clearVoiceInterruptedTimer]);
+
+  const setVoiceError = useCallback((message = "语音没有接上。可以再试一次。") => {
+    clearVoiceInterruptedTimer();
+    setVoiceTransientState({ kind: "error", message });
+  }, [clearVoiceInterruptedTimer]);
+
+  const markVoiceTranscriptReady = useCallback((source: MainVoiceInputProvider, transcript: string) => {
+    const characterCount = transcript.trim().length;
+    if (characterCount <= 0) return;
+    clearVoiceTransientState();
+    setVoiceTranscriptReady({ source, characterCount });
+  }, [clearVoiceTransientState]);
+
+  const clearVoiceTranscriptReady = useCallback(() => {
+    setVoiceTranscriptReady(null);
+  }, []);
+
+  const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
+    voiceOutput.stop(reason);
+    if (reason === "user_stop") {
+      setVoiceInterrupted();
+    }
+  }, [setVoiceInterrupted]);
+
   const testVoiceOutput = useCallback(() => {
+    clearVoiceTransientState();
     voiceOutput.speak(TEST_VOICE_TEXT, {
       rate: appSettings.voice_rate,
       volume: appSettings.voice_volume,
       source: "test_voice"
     });
-  }, [appSettings.voice_rate, appSettings.voice_volume]);
+  }, [appSettings.voice_rate, appSettings.voice_volume, clearVoiceTransientState]);
 
   const startVoiceInput = useCallback(() => {
-    voiceOutput.stop("user_stop");
-    voiceInput.start({
+    clearVoiceTransientState();
+    clearVoiceTranscriptReady();
+    if (voiceOutput.getStatus().active) {
+      stopVoiceOutput("user_stop");
+    }
+    const started = voiceInput.start({
       onFinalTranscript: (transcript) => {
         setInput((current) => appendTranscriptToInput(current, transcript));
+        markVoiceTranscriptReady("web_speech", transcript);
       }
     });
-  }, []);
+    if (!started) {
+      setVoiceError("语音没有接上。可以再试一次。");
+    }
+  }, [clearVoiceTransientState, clearVoiceTranscriptReady, markVoiceTranscriptReady, setVoiceError, stopVoiceOutput]);
 
   const stopVoiceInput = useCallback(() => {
     voiceInput.stop("user_stop");
@@ -2420,7 +2477,11 @@ export function App() {
     ) {
       return;
     }
-    voiceOutput.stop("user_stop");
+    clearVoiceTransientState();
+    clearVoiceTranscriptReady();
+    if (voiceOutput.getStatus().active) {
+      stopVoiceOutput("user_stop");
+    }
     setLocalAsrTranscriptionResult(null);
     setLocalAsrTranscriptionPhase("recording");
     const started = await audioCapture.start({
@@ -2441,6 +2502,7 @@ export function App() {
             setLocalAsrTranscriptionResult(result);
             if (result.status === "local_asr_transcription_succeeded" && result.transcript.trim()) {
               setInput((current) => appendTranscriptToInput(current, result.transcript));
+              markVoiceTranscriptReady("local_asr", result.transcript);
               eventBus.emit({
                 type: "local_asr_transcription_completed",
                 timestamp: eventTimestamp(),
@@ -2465,6 +2527,11 @@ export function App() {
               });
               return;
             }
+            setVoiceError(
+              result.conversion_status === "audio_conversion_not_configured"
+                ? "本地语音识别暂不可用。请检查设置。"
+                : mainVoiceInputLocalAsrStatusText("idle", result, audioCaptureStatus)
+            );
             eventBus.emit({
               type: "local_asr_transcription_error",
               timestamp: eventTimestamp(),
@@ -2506,6 +2573,7 @@ export function App() {
               model_name: localAsrStatus.safe_model_name
             };
             setLocalAsrTranscriptionResult(fallback);
+            setVoiceError("本地语音识别暂不可用。请检查设置。");
             eventBus.emit({
               type: "local_asr_transcription_error",
               timestamp: eventTimestamp(),
@@ -2532,7 +2600,10 @@ export function App() {
           .finally(() => setLocalAsrTranscriptionPhase("idle"));
       }
     });
-    if (!started) setLocalAsrTranscriptionPhase("idle");
+    if (!started) {
+      setLocalAsrTranscriptionPhase("idle");
+      setVoiceError(audioCapture.getStatus().lastError ?? "本地语音识别暂不可用。请检查设置。");
+    }
   };
 
   const updateBackendAutoStart = async (enabled: boolean) => {
@@ -2710,6 +2781,20 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    return () => clearVoiceInterruptedTimer();
+  }, [clearVoiceInterruptedTimer]);
+
+  useEffect(() => {
+    if (!voiceStatus.lastError) return;
+    setVoiceError(voiceStatus.lastError === "当前环境不支持语音输出。" ? "语音播放不可用。回复已保留在聊天里。" : voiceStatus.lastError);
+  }, [setVoiceError, voiceStatus.lastError]);
+
+  useEffect(() => {
+    if (!voiceInputStatus.lastError) return;
+    setVoiceError(voiceInputStatus.lastError);
+  }, [setVoiceError, voiceInputStatus.lastError]);
+
+  useEffect(() => {
     if (appSettings.voice_output === "off") {
       voiceOutput.stop("disabled");
     }
@@ -2870,6 +2955,11 @@ export function App() {
     if (!trimmed || sending) return;
     voiceOutput.stop("new_message");
     voiceInput.stop("user_stop");
+    const sendingVoiceTranscript = Boolean(voiceTranscriptReady);
+    if (sendingVoiceTranscript) {
+      clearVoiceTransientState();
+      setVoiceAssistantTurnActive(true);
+    }
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed, createdAt: new Date().toISOString() };
     const placeholderId = crypto.randomUUID();
     const replyMessageId = crypto.randomUUID();
@@ -2882,6 +2972,7 @@ export function App() {
     setMessages((current) => [...current, userMessage]);
     eventBus.emit({ type: "user_message_sent", timestamp: userMessage.createdAt, text: trimmed });
     setInput("");
+    clearVoiceTranscriptReady();
     setSending(true);
     eventBus.emit({ type: "assistant_reply_started", timestamp: eventTimestamp(), message_id: replyMessageId });
     const placeholderTimer = window.setTimeout(() => {
@@ -2922,11 +3013,14 @@ export function App() {
       void pushOverlayContent(segments.join(" "), "assistant_reply");
       if (appSettings.voice_output === "on" && !spokenAssistantReplyIdsRef.current.has(replyMessageId)) {
         spokenAssistantReplyIdsRef.current.add(replyMessageId);
-        voiceOutput.speak(segments.join("\n"), {
+        const speakingStarted = voiceOutput.speak(segments.join("\n"), {
           rate: appSettings.voice_rate,
           volume: appSettings.voice_volume,
           source: "assistant_reply"
         });
+        if (sendingVoiceTranscript && !speakingStarted) {
+          setVoiceError("语音播放不可用。回复已保留在聊天里。");
+        }
       }
       setLastInterimPlaceholderShown(placeholderShown);
       await refreshStatus({ emitPendingMemoryCreated: true });
@@ -2943,8 +3037,12 @@ export function App() {
       ]);
       eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
       setLastInterimPlaceholderShown(placeholderShown);
+      if (sendingVoiceTranscript) {
+        setVoiceError("语音没有接上。可以再试一次。");
+      }
     } finally {
       setSending(false);
+      setVoiceAssistantTurnActive(false);
     }
   };
 
@@ -3150,6 +3248,19 @@ export function App() {
     localAsrTranscriptionResult,
     audioCaptureStatus
   );
+  const voiceErrorMessage = voiceTransientState?.kind === "error" ? voiceTransientState.message ?? "语音没有接上。可以再试一次。" : null;
+  const voiceConversationState = resolveVoiceConversationState({
+    transcribing: localAsrTranscriptionPhase === "transcribing",
+    listening: localAsrTranscriptionPhase === "recording" || voiceInputStatus.phase !== "idle",
+    assistantThinking: voiceAssistantTurnActive && sending,
+    speaking: voiceStatus.active,
+    interrupted: voiceTransientState?.kind === "interrupted",
+    readyToSend: Boolean(voiceTranscriptReady && input.trim()),
+    errorMessage: voiceErrorMessage
+  });
+  const voiceConfirmSendText = voiceTranscriptReady
+    ? `${voiceTranscriptReady.characterCount} 字已在输入框，仍需点击发送。`
+    : "确认后发送，默认不自动发送。";
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
   const detectedKnowledgeGameId = gameContext.detected_game.knowledge_game_id;
@@ -3225,7 +3336,7 @@ export function App() {
     app: `本地保存到 settings.json，不包含密钥。自动游戏检测当前为${debugText(appSettings.auto_game_detection)}。`,
     provider: "模型配置只显示 provider、模型名和 API Key 加载状态，不显示 .env 或密钥原文。",
     privacy: "本地数据操作保持显式按钮；不会改变 memory、proactive 或 Shadow Mode 的写入边界。",
-    advanced: "高级设置只复用现有功能入口；本次不实现 Voice v2，也不恢复 Overlay auto-show。"
+    advanced: "高级设置复用现有功能入口；Voice v2.0 状态机已接入，但不实现 hands-free / auto-send，也不恢复 Overlay auto-show。"
   } as Record<string, string>)[activeWorkspaceTab] || "本地保存到 settings.json，不包含密钥。";
 
   const openWorkspace = useCallback((workspaceId: WorkspaceId, tabId?: string) => {
@@ -3552,16 +3663,39 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               <input
                 aria-label="聊天输入"
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(event) => {
+                  const nextInput = event.target.value;
+                  setInput(nextInput);
+                  if (!nextInput.trim()) clearVoiceTranscriptReady();
+                }}
                 placeholder="问 Margit、路线、装备，或者随便说点什么。"
               />
               <button className="sendButton" type="submit" disabled={sending || !input.trim()}>
                 <Send size={18} />
                 <span>{sending ? "发送中" : "发送"}</span>
               </button>
-              <div className="voiceInputInlineStatus" role="status">
-                语音输入：{mainVoiceInputStatus}
-                {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
+              <div className={`voiceInputInlineStatus voiceState-${voiceConversationState.tone}`} role="status">
+                <span>
+                  Voice v2.0：{voiceConversationState.label}。{voiceConversationState.description}
+                </span>
+                <span>
+                  语音输入：{mainVoiceInputStatus}
+                  {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
+                </span>
+                {voiceConversationState.state === "ready_to_send" && (
+                  <span className="voiceStateNotice">{voiceConfirmSendText}</span>
+                )}
+                {voiceConversationState.state === "speaking" && (
+                  <button
+                    className="smallButton quiet voiceInlineStop"
+                    type="button"
+                    aria-label="停止语音 / Stop Voice"
+                    onClick={() => stopVoiceOutput("user_stop")}
+                  >
+                    <VolumeX size={13} />
+                    停止播放
+                  </button>
+                )}
               </div>
             </form>
           </section>
@@ -3796,44 +3930,83 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </div>
                 </div>
               </div>
-	            </section>
-	          )}
+            </section>
+          )}
 
-	          {activeWorkspace === "voice" && activeWorkspaceTab === "conversation" && (
-	            <section className="infoCard" aria-label="语音对话">
-	              <div className="cardHeader">
-	                <Mic size={17} />
-	                <h2>语音对话</h2>
-	              </div>
-	              <p className="settingHint">
-	                这里先保留未来直接语音对话入口。本阶段仍是 transcript-first：录音转写只会填入聊天输入框，需要你确认后才发送。
-	              </p>
-	              <dl className="debugFacts">
-	                <div>
-	                  <dt>主输入</dt>
-	                  <dd>{mainVoiceInputProviderText(mainVoiceInputProvider)}</dd>
-	                </div>
-	                <div>
-	                  <dt>输入状态</dt>
-	                  <dd>{mainVoiceInputStatus}</dd>
-	                </div>
-	                <div>
-	                  <dt>语音输出</dt>
-	                  <dd>{appSettings.voice_output === "on" ? "开启" : "关闭"} / {voicePhaseText(voiceStatus)}</dd>
-	                </div>
-	              </dl>
-	              <div className="workspaceQuickActions">
-	                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("input")}>
-	                  <Mic size={14} />
-	                  输入 / ASR
-	                </button>
-	                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("output")}>
-	                  <Volume2 size={14} />
-	                  语音输出
-	                </button>
-	              </div>
-	            </section>
-	          )}
+          {activeWorkspace === "voice" && activeWorkspaceTab === "conversation" && (
+            <section className="infoCard" aria-label="语音对话">
+              <div className="cardHeader">
+                <Mic size={17} />
+                <h2>Voice v2.0 对话状态</h2>
+              </div>
+              <p className="settingHint">
+                当前是 Voice v2.0 foundation：统一状态机已经接入，默认仍是确认后发送；hands-free、auto-send 和角色音色还没有实现。
+              </p>
+              <div className={`voiceStatePanel voiceState-${voiceConversationState.tone}`} role="status" aria-label="Voice v2.0 状态">
+                <div>
+                  <span>当前状态</span>
+                  <strong>{voiceConversationState.label}</strong>
+                </div>
+                <p>{voiceConversationState.description}</p>
+              </div>
+              <dl className="debugFacts">
+                <div>
+                  <dt>状态机</dt>
+                  <dd>{voiceConversationState.state}</dd>
+                </div>
+                <div>
+                  <dt>当前模式</dt>
+                  <dd>确认后发送</dd>
+                </div>
+                <div>
+                  <dt>未确认 transcript</dt>
+                  <dd>{voiceTranscriptReady ? voiceConfirmSendText : "无"}</dd>
+                </div>
+                <div>
+                  <dt>主输入</dt>
+                  <dd>{mainVoiceInputProviderText(mainVoiceInputProvider)}</dd>
+                </div>
+                <div>
+                  <dt>输入状态</dt>
+                  <dd>{mainVoiceInputStatus}</dd>
+                </div>
+                <div>
+                  <dt>语音输出</dt>
+                  <dd>{appSettings.voice_output === "on" ? "开启" : "关闭"} / {voicePhaseText(voiceStatus)}</dd>
+                </div>
+                <div>
+                  <dt>Auto-send</dt>
+                  <dd>关闭，后续能力</dd>
+                </div>
+                <div>
+                  <dt>Hands-free</dt>
+                  <dd>关闭，后续能力</dd>
+                </div>
+              </dl>
+              <div className="voiceBoundaryList" aria-label="语音安全边界">
+                <span>音频不上传</span>
+                <span>transcript 未确认不写 memory</span>
+                <span>不播报 Debug / Prompt Preview / Trace</span>
+                <span>TTS 可停止</span>
+              </div>
+              <div className="workspaceQuickActions">
+                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("input")}>
+                  <Mic size={14} />
+                  输入 / ASR
+                </button>
+                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("output")}>
+                  <Volume2 size={14} />
+                  语音输出
+                </button>
+                {voiceStatus.active && (
+                  <button className="smallButton quiet" type="button" aria-label="停止语音 / Stop Voice" onClick={() => stopVoiceOutput("user_stop")}>
+                    <VolumeX size={14} />
+                    停止播放
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
 
 	          {activeWorkspace === "voice" && activeWorkspaceTab === "input" && (
 	            <section className="infoCard" aria-label="语音输入">
@@ -5662,6 +5835,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <h3>语音输入</h3>
                     <dl className="debugFacts">
                       <div>
+                        <dt>Voice v2.0 状态</dt>
+                        <dd>{voiceConversationState.label}</dd>
+                      </div>
+                      <div>
+                        <dt>Voice v2.0 模式</dt>
+                        <dd>confirm_send</dd>
+                      </div>
+                      <div>
+                        <dt>待确认语音文本</dt>
+                        <dd>{voiceTranscriptReady ? `${voiceTranscriptReady.characterCount} 字` : "无"}</dd>
+                      </div>
+                      <div>
                         <dt>主输入提供方</dt>
                         <dd>{mainVoiceInputProviderText(mainVoiceInputProvider)}</dd>
                       </div>
@@ -6212,6 +6397,17 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                               runtimeEnvironment: voiceInputRuntimeText(voiceInputStatus),
                               lastStartStatus: voiceInputStatus.diagnostics.lastStartStatus
                             }
+                          },
+                          voice_v2: {
+                            state: voiceConversationState.state,
+                            label: voiceConversationState.label,
+                            mode: "confirm_send",
+                            auto_send_enabled: false,
+                            hands_free_enabled: false,
+                            transcript_ready: Boolean(voiceTranscriptReady),
+                            transcript_character_count: voiceTranscriptReady?.characterCount ?? 0,
+                            tts_active: voiceStatus.active,
+                            tts_phase: voiceStatus.phase
                           },
                           local_asr: {
                             status: localAsrStatus.status,

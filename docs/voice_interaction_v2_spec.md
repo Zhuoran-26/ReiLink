@@ -2,7 +2,7 @@
 
 Updated: 2026-06-16
 
-Status: design spec only. This document does not implement Voice v2, auto-send, hands-free listening, a new TTS engine, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
+Status: foundation implemented. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, TTS interruption, and speaking / listening mutual exclusion. This does not implement auto-send, hands-free listening, a new TTS engine, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
 
 ## Purpose
 
@@ -23,6 +23,9 @@ The goal is a calmer game companion loop, not a voice assistant that constantly 
 
 Implemented today:
 
+- Voice v2 foundation resolves `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error` from current renderer voice signals.
+- Home / Chat shows compact Chinese-first Voice v2 state near the composer without hiding normal text input.
+- Voice workspace Conversation tab shows state, mode, transcript confirmation, output status, interruption and privacy boundaries.
 - Local ASR v1 can record and transcribe after a user gesture.
 - ASR uses user-configured local binaries, model files, and optional converter paths.
 - Audio is sent only to the local backend.
@@ -30,7 +33,7 @@ Implemented today:
 - Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, game context, Semantic Extraction, or proactive behavior.
 - Voice Output uses renderer-side `speechSynthesis`.
 - Voice Output can be enabled, tested, stopped, and tuned with rate / volume.
-- Voice workspace exists as a first-class UI surface, but direct spoken conversation is not implemented.
+- Starting voice input stops active TTS first, and Stop Voice enters a short interrupted state.
 
 Voice v2 should build on these boundaries instead of bypassing them.
 
@@ -49,7 +52,7 @@ Voice v2 should build on these boundaries instead of bypassing them.
 
 ## Non-Goals
 
-- Do not implement Voice v2 in this spec task.
+- Do not make this foundation a full hands-free direct voice conversation mode.
 - Do not make auto-send the default.
 - Do not enable hands-free or wake-word listening by default.
 - Do not add cloud ASR or commercial ASR.
@@ -238,17 +241,18 @@ Future `tts_short_reply` should prioritize one or two spoken sentences for:
 
 ### Voice Workspace
 
-Conversation tab should eventually show:
+Conversation tab now shows the foundation state surface:
 
 - current Voice state,
 - input trigger mode,
 - send policy,
 - output policy,
-- active transcript preview under confirm-send,
-- clear / retry / send controls,
+- active transcript confirmation summary under confirm-send,
 - TTS playing / stopped / interrupted state,
 - short friendly error messages,
 - safe mode notes for hands-free and auto-send.
+
+Future tasks may add richer clear / retry / send controls here, but the normal chat composer remains the canonical transcript editing and send surface.
 
 Input / Local ASR tab should keep:
 
@@ -327,16 +331,21 @@ Voice v2 keeps these fixed boundaries:
 
 ## Implementation Handoff
 
+Foundation completed in the renderer:
+
+1. Typed Voice v2 state model.
+2. Renderer coordination across Web Speech, Local ASR, send confirmation, Voice Output, and interruption.
+3. Voice workspace Conversation state UI while keeping confirm-send default.
+4. Home / Chat compact state display.
+5. TTS interruption wiring and mutual exclusion between speaking and listening.
+
 Suggested later task order:
 
-1. Add a typed Voice v2 state model without changing behavior.
-2. Add a renderer voice controller that coordinates recording, ASR, TTS, and interruption.
-3. Add Voice workspace Conversation state UI while keeping confirm-send default.
-4. Add Home / Chat compact state display.
-5. Add TTS interruption wiring and mutual exclusion between speaking and listening.
-6. Consider explicit auto-send only after confirm-send is stable.
-7. Consider short spoken reply mode after TTS strategy is clearer.
-8. Consider Overlay voice state display only after Overlay safe mode remains stable.
+1. Extract more controller logic if the state graph grows beyond the current renderer wiring.
+2. Consider explicit auto-send only after confirm-send remains stable.
+3. Consider short spoken reply mode after TTS strategy is clearer.
+4. Consider Overlay voice state display only after Overlay safe mode remains stable.
+5. Define Voice Profile only after a character-grade TTS strategy exists.
 
 Required verification for implementation tasks should include desktop automated checks, backend tests when backend behavior changes, visual smoke for UI changes, and packaged `.app` smoke for packaged or user-visible runtime behavior.
 
@@ -347,7 +356,7 @@ Machine-readable scenarios live in `docs/qa/voice_interaction_v2_scenarios.json`
 Manual acceptance for this spec:
 
 1. Confirm-send is the default.
-2. Auto-send is explicitly opt-in and not implemented by this document.
+2. Auto-send remains future-only and is not implemented by this foundation.
 3. Hands-free / auto-listen is future-only and not default.
 4. The state machine covers `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`.
 5. Listening and speaking are mutually exclusive.

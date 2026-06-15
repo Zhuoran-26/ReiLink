@@ -678,9 +678,43 @@ button {
 .voiceInputInlineStatus {
   grid-column: 2 / 4;
   min-height: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
   color: #aeb8d3;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.voiceInputInlineStatus span {
+  min-width: 0;
+}
+
+.voiceState-ready {
+  color: #c9eadc;
+}
+
+.voiceState-active {
+  color: #cfd9ff;
+}
+
+.voiceState-warning {
+  color: #ead8a8;
+}
+
+.voiceState-error {
+  color: #f0aaa7;
+}
+
+.voiceStateNotice {
+  color: #8fe7be;
+}
+
+.voiceInlineStop {
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
 }
 
 .composer input {
@@ -949,6 +983,53 @@ button {
   border-radius: 13px;
   padding: 11px;
   background: rgba(10, 14, 26, 0.46);
+}
+
+.voiceStatePanel {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(145, 164, 213, 0.18);
+  border-radius: 13px;
+  padding: 12px;
+  background: rgba(15, 20, 35, 0.58);
+}
+
+.voiceStatePanel div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.voiceStatePanel span {
+  color: #93a1bf;
+  font-size: 12px;
+}
+
+.voiceStatePanel strong {
+  color: #f2f6ff;
+  font-size: 15px;
+}
+
+.voiceStatePanel p {
+  margin: 0;
+  color: inherit;
+  font-size: 13px;
+}
+
+.voiceBoundaryList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.voiceBoundaryList span {
+  border: 1px solid rgba(143, 231, 190, 0.2);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #c9eadc;
+  background: rgba(33, 77, 63, 0.28);
+  font-size: 12px;
 }
 
 .providerStatusPanel {
