@@ -101,6 +101,8 @@ describe("package-local standalone resources", () => {
     await expect(stat(path.join(resourcesRoot, "personas", "rei", "style_calibration.md"))).resolves.toBeTruthy();
     await expect(stat(path.join(resourcesRoot, "personas", "rei", "response_patterns.md"))).resolves.toBeTruthy();
     await expect(stat(path.join(resourcesRoot, "persona", "rei_minimal_prompt.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(resourcesRoot, "persona", "rei_golden_style.json"))).resolves.toBeTruthy();
+    await expect(stat(path.join(resourcesRoot, "persona", "rei_style_examples.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(resourcesRoot, "games", "game_registry.json"))).resolves.toBeTruthy();
     await expect(stat(path.join(resourcesRoot, "backend", ".env"))).rejects.toThrow();
     await expect(stat(path.join(resourcesRoot, ".env"))).rejects.toThrow();
