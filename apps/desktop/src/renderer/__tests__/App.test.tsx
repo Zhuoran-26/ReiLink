@@ -1420,6 +1420,50 @@ describe("App", () => {
     eventBus.clear();
   });
 
+  const openWorkspace = async (name: string | RegExp) => {
+    const navigation = await screen.findByRole("navigation", { name: "应用导航" });
+    await userEvent.click(within(navigation).getByRole("button", { name }));
+    return screen.findByRole("complementary", { name: "工作区面板" });
+  };
+
+  const openWorkspaceTab = async (name: string | RegExp) => {
+    const panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    await userEvent.click(within(panel).getByRole("tab", { name }));
+    return panel;
+  };
+
+  const openSettingsWorkspace = async () => openWorkspace("设置");
+
+  const openVoiceInputWorkspace = async () => {
+    await openWorkspace("语音");
+    await openWorkspaceTab("输入 / ASR");
+  };
+
+  const openVoiceOutputWorkspace = async () => {
+    await openWorkspace("语音");
+    await openWorkspaceTab("输出");
+  };
+
+  const openOverlayWorkspace = async (tab: string | RegExp = "Safe Mode") => {
+    await openWorkspace("Overlay");
+    if (tab !== "Safe Mode") await openWorkspaceTab(tab);
+  };
+
+  const openDebugWorkspace = async (tab: string | RegExp = "Runtime") => {
+    await openWorkspace("调试");
+    if (tab !== "Event Stream") await openWorkspaceTab(tab);
+  };
+
+  const openMemoryWorkspace = async (tab: string | RegExp = "待确认") => {
+    await openWorkspace("记忆");
+    if (tab !== "待确认") await openWorkspaceTab(tab);
+  };
+
+  const openGameWorkspace = async (tab: string | RegExp = "当前上下文") => {
+    await openWorkspace("游戏");
+    if (tab !== "当前上下文") await openWorkspaceTab(tab);
+  };
+
   it("renders the app", async () => {
     render(<App />);
     expect(screen.getByText("ReiLink")).toBeInTheDocument();
@@ -1433,20 +1477,32 @@ describe("App", () => {
     const navigation = screen.getByRole("navigation", { name: "应用导航" });
     expect(navigation).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主聊天界面" })).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "信息侧栏" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument();
     expect(within(navigation).getByText("聊天")).toBeInTheDocument();
     expect(within(navigation).getByText("记忆")).toBeInTheDocument();
     expect(within(navigation).getByText("游戏")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "设置" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "游戏状态" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /调试面板/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
-    expect(screen.getByText("语义识别")).toBeInTheDocument();
+    expect(within(navigation).getByText("语音")).toBeInTheDocument();
+    expect(within(navigation).getByText("Overlay")).toBeInTheDocument();
+    expect(within(navigation).getByText("设置")).toBeInTheDocument();
+    expect(within(navigation).getByText("调试")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "切换前的草稿");
+    await openMemoryWorkspace();
+    expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("切换前的草稿");
+    await userEvent.click(screen.getByRole("button", { name: "关闭工作区" }));
+    expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("切换前的草稿");
+
+    await openVoiceInputWorkspace();
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toBeInTheDocument();
+    await openVoiceOutputWorkspace();
+    expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
   });
 
   it("shows running game status", async () => {
     render(<App />);
+    await openGameWorkspace();
     await waitFor(() => expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0));
     expect(screen.getAllByText("恶兆妖鬼 Margit").length).toBeGreaterThan(0);
     expect(screen.getAllByText("挑战中").length).toBeGreaterThan(0);
@@ -1457,6 +1513,7 @@ describe("App", () => {
 
   it("renders settings panel values", async () => {
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByLabelText("人格模式")).toHaveValue("minimal");
     expect(screen.getByRole("combobox", { name: "调试面板" })).toHaveValue("show");
@@ -1511,7 +1568,8 @@ describe("App", () => {
     const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
     expect(within(demoResetPanel).getByText("Local Data")).toBeInTheDocument();
     expect(within(demoResetPanel).getByText("用户数据目录")).toBeInTheDocument();
-    expect(within(demoResetPanel).getAllByText("/Users/aragoto/Library/Application Support/ReiLink/data").length).toBeGreaterThan(0);
+    expect(within(demoResetPanel).getByText("…/ReiLink/data")).toBeInTheDocument();
+    expect(demoResetPanel).not.toHaveTextContent("/Users/aragoto/Library/Application Support/ReiLink/data");
     expect(within(demoResetPanel).getByText("记忆目录")).toBeInTheDocument();
     expect(within(demoResetPanel).getByText("会话目录")).toBeInTheDocument();
     expect(within(demoResetPanel).getByText("设置目录")).toBeInTheDocument();
@@ -1565,6 +1623,7 @@ describe("App", () => {
   it("lets settings disable backend auto-start", async () => {
     const runtime = installRuntimeBridge(backendRuntimeStatus);
     render(<App />);
+    await openSettingsWorkspace();
 
     const select = await screen.findByLabelText("自动启动本地后端");
     expect(select).toBeEnabled();
@@ -1577,6 +1636,7 @@ describe("App", () => {
   it("syncs the Overlay setting through the Electron runtime bridge", async () => {
     const runtime = installRuntimeBridge(backendRuntimeStatus);
     render(<App />);
+    await openOverlayWorkspace();
 
     await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(false));
     vi.mocked(runtime.bridge.setOverlayEnabled).mockClear();
@@ -1606,6 +1666,7 @@ describe("App", () => {
     );
     vi.mocked(runtime.bridge.setOverlayConfig).mockClear();
 
+    await openOverlayWorkspace("位置");
     await userEvent.selectOptions(await screen.findByLabelText("Overlay 位置预设"), "bottom-left");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1636,6 +1697,7 @@ describe("App", () => {
       })
     );
 
+    await openWorkspaceTab("内容");
     await userEvent.selectOptions(screen.getByLabelText("Overlay 显示消息数量"), "1");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1649,10 +1711,11 @@ describe("App", () => {
         opacity: 0.85,
         max_messages: 1
       })
-    );
-    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("bottom-left");
-    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("1");
-    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_settings_changed")).toBe(true);
+	    );
+	    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("1");
+	    await openWorkspaceTab("位置");
+	    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("bottom-left");
+	    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_settings_changed")).toBe(true);
     expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_window_moved")).toBe(true);
   });
 
@@ -1689,6 +1752,7 @@ describe("App", () => {
   it("opens the local data directory through the runtime bridge", async () => {
     const runtime = installRuntimeBridge(backendRuntimeStatus);
     render(<App />);
+    await openSettingsWorkspace();
 
     const localDataPanel = await screen.findByRole("group", { name: "本地数据" });
     const openButton = within(localDataPanel).getByRole("button", { name: "打开本地数据目录" });
@@ -1699,16 +1763,16 @@ describe("App", () => {
     expect(screen.getByText("已打开本地数据目录")).toBeInTheDocument();
   });
 
-  it("keeps the debug panel last in the right rail", async () => {
+  it("opens and closes workspaces from the launcher", async () => {
     render(<App />);
 
-    await screen.findByRole("complementary", { name: "信息侧栏" });
-    const orderOf = (id: string) => Number(window.getComputedStyle(document.getElementById(id) as HTMLElement).order);
-    expect(orderOf("settings-panel")).toBe(1);
-    expect(orderOf("pending-memory-panel")).toBe(2);
-    expect(orderOf("game-session-panel")).toBe(3);
-    expect(orderOf("prompt-preview-panel")).toBe(4);
-    expect(orderOf("debug-panel")).toBe(5);
+    await openGameWorkspace();
+    expect(await screen.findByRole("complementary", { name: "工作区面板" })).toHaveTextContent("游戏");
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument());
+
+    await openDebugWorkspace("Prompt Preview");
+    expect(await screen.findByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
   });
 
   it("shows onboarding card when onboarding is incomplete", async () => {
@@ -1759,6 +1823,7 @@ describe("App", () => {
 
   it("reopens onboarding from settings", async () => {
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "新手引导：重新查看" }));
 
@@ -1769,6 +1834,7 @@ describe("App", () => {
 
   it("resets onboarding from demo reset controls", async () => {
     render(<App />);
+    await openSettingsWorkspace();
 
     const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置新手引导" }));
@@ -1789,6 +1855,7 @@ describe("App", () => {
   it("runs demo reset actions with confirmation where needed", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
+    await openSettingsWorkspace();
 
     const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空会话状态" }));
@@ -1834,6 +1901,7 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     await screen.findByText("Margit 怎么打？");
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await openSettingsWorkspace();
 
     const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空聊天记录" }));
@@ -1852,6 +1920,7 @@ describe("App", () => {
   it("cancels dangerous demo reset actions when confirmation is rejected", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
+    await openSettingsWorkspace();
 
     const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" }));
@@ -1878,6 +1947,7 @@ describe("App", () => {
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     await screen.findByText("Margit 怎么打？");
+    await openSettingsWorkspace();
 
     const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置演示状态" }));
@@ -1927,7 +1997,7 @@ describe("App", () => {
     expect(screen.getByText("ReiLink 需要 DeepSeek API Key 才能生成回复。请在本地 .env 中配置，或进入设置查看配置状态。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开设置/i })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: /打开设置/i }));
-    expect(screen.getByLabelText("人格模式")).toHaveFocus();
+    expect(await screen.findByLabelText("人格模式")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /查看配置说明/i }));
     expect(screen.getByText(/LLM_PROVIDER=deepseek/)).toBeInTheDocument();
     expect(screen.getByText(/DEEPSEEK_API_KEY=/)).toBeInTheDocument();
@@ -1956,6 +2026,7 @@ describe("App", () => {
   it("updates settings through the API", async () => {
     installSpeechSynthesisMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.selectOptions(await screen.findByLabelText("人格模式"), "guarded");
     await waitFor(() =>
@@ -2050,9 +2121,12 @@ describe("App", () => {
 
   it("hides debug panel through settings", async () => {
     render(<App />);
+    await openDebugWorkspace();
 
     await screen.findByRole("button", { name: /调试面板/i });
+    await openSettingsWorkspace();
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "调试面板" }), "hide");
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.queryByRole("button", { name: /调试面板/i })).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /回复上下文预览/i })).not.toBeInTheDocument();
@@ -2061,14 +2135,17 @@ describe("App", () => {
   it("shows and expands debug panel when settings switch from hidden to visible", async () => {
     appSettingsStore = { ...appSettingsStore, debug_panel: "hide" };
     render(<App />);
+    await openSettingsWorkspace();
 
     await screen.findByRole("combobox", { name: "调试面板" });
     expect(screen.queryByRole("button", { name: /调试面板/i })).not.toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "调试面板" }), "show");
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /调试面板/i })).toHaveAttribute("aria-expanded", "true"));
     expect(screen.getByText("语义识别")).toBeInTheDocument();
+    await openDebugWorkspace("Prompt Preview");
     expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
   });
 
@@ -2298,6 +2375,7 @@ describe("App", () => {
         ])
       )
     );
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     await waitFor(() => expect(eventStream).toHaveTextContent("LLM 影子识别超时"));
@@ -2310,6 +2388,7 @@ describe("App", () => {
   it("does not speak assistant replies when Voice Output is disabled", async () => {
     const speech = installSpeechSynthesisMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await screen.findByLabelText("语音输出 / Voice Output");
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
@@ -2323,6 +2402,7 @@ describe("App", () => {
   it("does not crash and shows a readable status when local TTS is unavailable", async () => {
     appSettingsStore = { ...appSettingsStore, voice_output: "on" };
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/本地语音：不可用/)).toBeInTheDocument();
     expect(screen.getByText("当前环境不支持本地语音输出。")).toBeInTheDocument();
@@ -2340,6 +2420,7 @@ describe("App", () => {
   it("updates the Voice Output status when system voices load later", async () => {
     const speech = installSpeechSynthesisMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/等待系统语音列表/)).toBeInTheDocument();
 
@@ -2353,6 +2434,7 @@ describe("App", () => {
   it("plays a test voice from Settings without writing chat", async () => {
     const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
     const chatPanel = screen.getByRole("region", { name: "聊天面板" });
@@ -2383,6 +2465,7 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByRole("button", { name: "开始语音 / Start Voice" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音输入 / Voice Input");
@@ -2394,6 +2477,7 @@ describe("App", () => {
 
   it("shows Local ASR not configured status in Voice Input settings", async () => {
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2410,6 +2494,7 @@ describe("App", () => {
 
   it("shows Local ASR setup controls with safe settings summary", async () => {
     render(<App />);
+    await openSettingsWorkspace();
 
     const setup = await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
 
@@ -2432,6 +2517,7 @@ describe("App", () => {
   it("fills only the selected Local ASR path field from the native file picker", async () => {
     const runtime = installRuntimeBridge(backendRuntimeStatus);
     render(<App />);
+    await openSettingsWorkspace();
 
     const binaryInput = await screen.findByLabelText("本地识别程序 / ASR Binary");
     const modelInput = screen.getByLabelText("模型文件 / Model File");
@@ -2500,6 +2586,7 @@ describe("App", () => {
     const modelPath = "/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin";
     const converterPath = "/Users/aragoto/tools/ffmpeg";
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.type(await screen.findByLabelText("本地识别程序 / ASR Binary"), binaryPath);
     await userEvent.type(screen.getByLabelText("模型文件 / Model File"), modelPath);
@@ -2527,6 +2614,7 @@ describe("App", () => {
       })
     );
 
+    await openDebugWorkspace();
     const rawJson = screen.getByText("原始 JSON").closest("details");
     expect(rawJson).not.toBeNull();
     expect(rawJson).toHaveTextContent("safe_converter_name");
@@ -2551,6 +2639,7 @@ describe("App", () => {
   it("clears Local ASR settings and refreshes local status", async () => {
     setLocalAsrReady();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "清除配置 / Clear" }));
 
@@ -2566,6 +2655,7 @@ describe("App", () => {
 
   it("refreshes Local ASR settings and status on demand", async () => {
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
     const initialSettingsCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
       String(url).includes("/api/voice-input/local-asr/settings")
@@ -2619,6 +2709,7 @@ describe("App", () => {
       safe_model_name: "ggml-base.bin"
     };
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2634,6 +2725,7 @@ describe("App", () => {
     setLocalAsrReady();
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2669,6 +2761,7 @@ describe("App", () => {
       duration_ms: 58
     };
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
 
@@ -2709,6 +2802,7 @@ describe("App", () => {
       })
     );
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("正在检查");
@@ -2739,6 +2833,7 @@ describe("App", () => {
       duration_ms: 3000
     };
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
     await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("启动超时"));
@@ -2770,6 +2865,7 @@ describe("App", () => {
       safe_model_name: "ggml-base.bin"
     };
     render(<App />);
+    await openSettingsWorkspace();
 
     const input = await screen.findByLabelText("聊天输入");
     await userEvent.click(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
@@ -2782,6 +2878,7 @@ describe("App", () => {
   it("shows Audio Capture Test unavailable when MediaRecorder is missing", async () => {
     installMediaDevicesMock("prompt");
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2793,6 +2890,7 @@ describe("App", () => {
   it("shows readable Audio Capture permission denied errors", async () => {
     installAudioCaptureMock({ permissionDenied: true });
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
 
@@ -2807,6 +2905,7 @@ describe("App", () => {
   it("records audio, stops tracks, uploads blob, and shows cleanup success", async () => {
     const audioMock = installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
     expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
@@ -2835,6 +2934,7 @@ describe("App", () => {
   it("Audio Capture probe does not fill chat input or auto send", async () => {
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     const input = await screen.findByLabelText("聊天输入");
     await userEvent.click(screen.getByRole("button", { name: "测试录音 / Test Recording" }));
@@ -2848,10 +2948,12 @@ describe("App", () => {
   it("Audio Capture Event Stream summaries do not expose audio content or paths", async () => {
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
     await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
     await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("录音测试完成"));
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
@@ -2869,6 +2971,7 @@ describe("App", () => {
   it("shows Local Transcribe disabled until Local ASR is ready", async () => {
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2901,6 +3004,7 @@ describe("App", () => {
     };
     const audioMock = installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
     vi.mocked(fetch).mockClear();
 
@@ -2962,6 +3066,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
@@ -3004,6 +3109,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
     vi.mocked(fetch).mockClear();
 
@@ -3043,6 +3149,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
@@ -3077,10 +3184,12 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "录音并转写 / Record & Transcribe" }));
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
     await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
@@ -3126,11 +3235,13 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "录音并转写 / Record & Transcribe" }));
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
     await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
 
+    await openDebugWorkspace();
     const rawJson = screen.getByText("原始 JSON").closest("details");
     expect(rawJson).not.toBeNull();
     expect(rawJson).toHaveTextContent("transcript_char_count");
@@ -3153,6 +3264,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
     await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
@@ -3184,6 +3296,7 @@ describe("App", () => {
     const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试语音 / Test Voice" }));
     await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
@@ -3206,6 +3319,7 @@ describe("App", () => {
     const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
     const audioMock = installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     const mainVoiceButton = await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" });
@@ -3238,6 +3352,7 @@ describe("App", () => {
     expect(fetchCalls.some(([url]) => String(url).includes("/api/game/context"))).toBe(false);
     expect(screen.queryByText(privateTranscript)).not.toBeInTheDocument();
 
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     expect(eventStream).not.toBeNull();
@@ -3249,6 +3364,7 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("raw stdout");
     expect(eventStream).not.toHaveTextContent("raw stderr");
 
+    await openDebugWorkspace();
     expect(screen.getByText("主输入提供方").closest("div")).toHaveTextContent("local_asr");
     expect(screen.getByText("主输入状态").closest("div")).toHaveTextContent("转写完成，请确认后发送");
     const rawJson = screen.getByText("原始 JSON").closest("details");
@@ -3265,6 +3381,7 @@ describe("App", () => {
     installMediaDevicesMock("granted");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" });
     act(() => {
@@ -3328,6 +3445,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
@@ -3350,6 +3468,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
@@ -3397,6 +3516,7 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock("webkit");
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
 
@@ -3407,6 +3527,7 @@ describe("App", () => {
 
   it("shows Voice Input unavailable fallback without crashing", async () => {
     render(<App />);
+    await openSettingsWorkspace();
 
     await waitFor(() =>
       expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前运行环境不支持本地语音识别")
@@ -3431,6 +3552,7 @@ describe("App", () => {
     const recognition = installSpeechRecognitionMock();
     recognition.startError = new Error("start failed");
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
 
@@ -3509,6 +3631,7 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
     act(() => {
@@ -3544,6 +3667,7 @@ describe("App", () => {
     installMediaDevicesMock("granted");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
     act(() => {
@@ -3563,6 +3687,7 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
     act(() => {
@@ -3596,6 +3721,7 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试语音 / Test Voice" }));
     await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
@@ -3670,6 +3796,7 @@ describe("App", () => {
     const speech = installSpeechSynthesisMock([]);
     appSettingsStore = { ...appSettingsStore, voice_output: "on" };
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/等待系统语音列表/)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
@@ -3759,6 +3886,7 @@ describe("App", () => {
     ]);
     appSettingsStore = { ...appSettingsStore, voice_output: "on", voice_rate: 1.2, voice_volume: 0.6 };
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
@@ -3799,6 +3927,7 @@ describe("App", () => {
     const speech = installSpeechSynthesisMock();
     omitVoiceOutputFromSettings = true;
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.selectOptions(await screen.findByLabelText("语音输出 / Voice Output"), "on");
     await waitFor(() => expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("on"));
@@ -3883,6 +4012,7 @@ describe("App", () => {
     const speech = installSpeechSynthesisMock();
     appSettingsStore = { ...appSettingsStore, voice_output: "on" };
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
@@ -3962,6 +4092,7 @@ describe("App", () => {
 
     await userEvent.type(screen.getByLabelText("聊天输入"), "我不喜欢长篇攻略");
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await openMemoryWorkspace();
     await screen.findByText("玩家不喜欢长篇攻略");
 
     expect(eventBus.getRecentEvents(20)).toEqual(
@@ -3981,10 +4112,10 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
 
+    await openDebugWorkspace("Event Stream");
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     expect(eventStream).not.toBeNull();
     expect(eventStream).not.toHaveAttribute("open");
-    expect(screen.getByText("原始 JSON")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
@@ -4097,6 +4228,7 @@ describe("App", () => {
   it("shows, updates, sanitizes, and clears the Session Timeline", async () => {
     render(<App />);
     await screen.findByText("已连接");
+    await openGameWorkspace("本局时间线");
 
     const timeline = screen.getByText("Session Timeline / 本局时间线").closest("details");
     expect(timeline).not.toBeNull();
@@ -4167,18 +4299,26 @@ describe("App", () => {
     expect(timeline).not.toHaveTextContent("没关系吧");
     expect(timeline).not.toHaveTextContent("pending-1");
 
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     await waitFor(() => expect(eventStream).toHaveTextContent("游戏状态变化"));
     expect(eventStream).toHaveTextContent("使用游戏知识");
 
+    await openGameWorkspace("本局时间线");
+    const reopenedTimeline = screen.getByText("Session Timeline / 本局时间线").closest("details");
+    expect(reopenedTimeline).not.toBeNull();
+    if (!reopenedTimeline?.hasAttribute("open")) {
+      fireEvent.click(screen.getByText("Session Timeline / 本局时间线"));
+    }
     fireEvent.click(screen.getByRole("button", { name: "清空时间线" }));
-    expect(timeline).toHaveTextContent("本局还没有记录到关键变化。");
+    expect(reopenedTimeline).toHaveTextContent("本局还没有记录到关键变化。");
   });
 
   it("updates Event Stream when interaction events are emitted", async () => {
     render(<App />);
     await screen.findByText("已连接");
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
     act(() => {
@@ -4236,6 +4376,7 @@ describe("App", () => {
       }
     });
 
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
@@ -4363,6 +4504,7 @@ describe("App", () => {
     const chatPanel = screen.getByRole("region", { name: "聊天面板" });
     await waitFor(() => expect(within(chatPanel).getAllByText("模型 API Key 未配置").length).toBeGreaterThan(0));
     expect(within(chatPanel).queryByText(/DeepSeek API key missing/)).not.toBeInTheDocument();
+    await openDebugWorkspace();
     expect(screen.getByText("原始 JSON").closest("details")).not.toHaveAttribute("open");
   });
 
@@ -4657,109 +4799,29 @@ describe("App", () => {
     expect(screen.getByRole("status", { name: "后端状态提示" })).toHaveTextContent("后端未连接");
   });
 
-  it("toggles debug panel", async () => {
+  it("opens Game, Debug, Prompt Preview, and Memory workspaces", async () => {
     render(<App />);
 
-    await screen.findByText("游戏状态");
+    await openGameWorkspace();
+    expect(await screen.findByRole("heading", { name: "游戏状态" })).toBeInTheDocument();
     expect(screen.getAllByText("当前游戏").length).toBeGreaterThan(0);
     expect(screen.getByText("当前 Boss")).toBeInTheDocument();
-    expect(screen.getByText("状态新鲜度")).toBeInTheDocument();
-    expect(screen.getByText("最近挑战")).toBeInTheDocument();
-    expect(screen.getByText("最近通过")).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText("语义识别")).toBeInTheDocument());
-    expect(screen.getByRole("heading", { name: "游戏上下文" })).toBeInTheDocument();
-    expect(screen.getAllByText("当前来源").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("上一个游戏").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("发生游戏切换").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("手动选择").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("自动检测结果").length).toBeGreaterThan(0);
-    expect(screen.getByText("对话识别结果")).toBeInTheDocument();
-    expect(screen.getAllByText("知识库状态").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("已支持").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("使用知识库").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument();
-    expect(screen.getAllByText("自动游戏检测").length).toBeGreaterThan(0);
-    expect(screen.getByText("检测状态")).toBeInTheDocument();
-    expect(screen.getByText("检测到的游戏")).toBeInTheDocument();
-    expect(screen.getByText("进程名")).toBeInTheDocument();
-    expect(screen.getByText("匹配置信度")).toBeInTheDocument();
-    expect(screen.getByText("知识库游戏 ID")).toBeInTheDocument();
-    expect(screen.getByText("检测时间")).toBeInTheDocument();
-    expect(screen.getAllByText("艾尔登法环").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "主动陪伴" })).toBeInTheDocument();
-    expect(screen.getAllByText("是否开启").length).toBeGreaterThan(0);
-    expect(screen.getByText("开启时间")).toBeInTheDocument();
-    expect(screen.getByText("最近用户活动")).toBeInTheDocument();
-    expect(screen.getByText("已空闲时间")).toBeInTheDocument();
-    expect(screen.getByText("空闲触发阈值")).toBeInTheDocument();
-    expect(screen.getByText("初始等待剩余")).toBeInTheDocument();
-    expect(screen.getByText("等待用户回应")).toBeInTheDocument();
-    expect(screen.getByText("下次可能触发")).toBeInTheDocument();
-    expect(screen.getByText("阻断原因")).toBeInTheDocument();
-    expect(screen.getByText("冷却剩余")).toBeInTheDocument();
-    expect(screen.getByText("上次触发类型")).toBeInTheDocument();
-    expect(screen.getByText("上次触发时间")).toBeInTheDocument();
-    expect(screen.getByText("候选触发器")).toBeInTheDocument();
-    expect(screen.getByText("上次触发原因")).toBeInTheDocument();
-    expect(screen.getByText("模型路由")).toBeInTheDocument();
-    expect(screen.getAllByText("选用模型").length).toBeGreaterThan(0);
-    expect(screen.getByText("路由模式")).toBeInTheDocument();
-    expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
-    expect(screen.getByText("模型耗时")).toBeInTheDocument();
-    expect(screen.getByText("游戏知识")).toBeInTheDocument();
-    expect(screen.getAllByText("当前游戏 ID").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("当前来源").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识库状态").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("检索结果").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("未使用原因").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("已使用本地知识").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("相关主题").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("命中知识条数").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("命中的知识标题").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("已注入回复上下文").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("匹配来源").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识文件").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识包清单").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识包版本").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("语言").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识包状态").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("覆盖范围").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("最后更新").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("0.1.0").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("zh-CN").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("样例").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/恶兆妖鬼 Margit：延迟攻击/).length).toBeGreaterThan(0);
+    await openDebugWorkspace();
+    expect(await screen.findByRole("button", { name: /调试面板/i })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("语义识别")).toBeInTheDocument();
-    expect(screen.getByText("是否调用 LLM")).toBeInTheDocument();
-    expect(screen.getAllByText(/攻略偏好/).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /回复上下文预览/i }));
-    await waitFor(() => expect(screen.getAllByText("人格模式").length).toBeGreaterThan(1));
-    expect(screen.getByText("上下文顺序")).toBeInTheDocument();
-    expect(screen.getAllByText("选用模型").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
-    expect(screen.getByText("当前用户消息")).toBeInTheDocument();
-    expect(screen.getByText("会话焦点")).toBeInTheDocument();
-    expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
-    expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("检索结果").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Boss 攻略").length).toBeGreaterThan(0);
-    expect(screen.getByText("记忆摘要")).toBeInTheDocument();
-    expect(screen.getByText("注入记忆")).toBeInTheDocument();
-    expect(screen.getByText("跳过记忆")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
-    expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "忽略" })).toBeInTheDocument();
-    expect(screen.getByText("警告")).toBeInTheDocument();
+    expect(screen.getByText("模型路由")).toBeInTheDocument();
     expect(screen.getByText("原始 JSON")).toBeInTheDocument();
-    expect(screen.getByText("原始 JSON").closest("details")).not.toHaveAttribute("open");
-    await userEvent.click(screen.getByRole("button", { name: /调试面板/i }));
-    await waitFor(() => expect(screen.queryByText("语义识别")).not.toBeInTheDocument());
+
+    await openDebugWorkspace("Prompt Preview");
+    await userEvent.click(await screen.findByRole("button", { name: /回复上下文预览/i }));
+    expect(await screen.findByText("上下文顺序")).toBeInTheDocument();
+    expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
+    expect(screen.getByText("记忆摘要")).toBeInTheDocument();
+
+    await openMemoryWorkspace();
+    expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
+    expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
   });
 
   it("shows idle game detector state", async () => {
@@ -4800,6 +4862,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument());
     expect(screen.getAllByText("未检测到游戏").length).toBeGreaterThan(0);
@@ -4846,11 +4909,13 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openSettingsWorkspace();
 
     await waitFor(() => expect(screen.getAllByText("只狼").length).toBeGreaterThan(0));
     expect(screen.getAllByText("暂未支持").length).toBeGreaterThan(0);
     expect(screen.getByText("该游戏暂未接入本地知识库，Rei 会先根据通用模型回答。")).toBeInTheDocument();
     expect(screen.getAllByText("仅使用模型回答").length).toBeGreaterThan(0);
+    await openDebugWorkspace();
     expect(screen.getAllByText("未支持知识库").length).toBeGreaterThan(0);
     expect(screen.getAllByText("manifest 缺失").length).toBeGreaterThan(0);
     expect(screen.getAllByText("用户切换").length).toBeGreaterThan(0);
@@ -4897,6 +4962,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.getAllByText("空洞骑士").length).toBeGreaterThan(0));
     expect(screen.getAllByText("已支持").length).toBeGreaterThan(0);
@@ -4955,6 +5021,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace();
 
     await waitFor(() =>
       expect(screen.getAllByText("用户消息疑似切换游戏，但手动选择优先").length).toBeGreaterThan(0)
@@ -5002,6 +5069,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.getAllByText("星之门遗迹").length).toBeGreaterThan(0));
     expect(screen.getAllByText("未接入知识库").length).toBeGreaterThan(0);
@@ -5052,6 +5120,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace("Prompt Preview");
     await userEvent.click(await screen.findByRole("button", { name: /回复上下文预览/i }));
 
     const gameStateSection = screen.getByText("游戏状态摘要").closest("section");
@@ -5066,6 +5135,7 @@ describe("App", () => {
 
   it("emits pending memory accept and ignore events from the memory panel", async () => {
     render(<App />);
+    await openMemoryWorkspace();
     await userEvent.click(await screen.findByRole("button", { name: "保存" }));
 
     await waitFor(() =>
@@ -5126,12 +5196,14 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openMemoryWorkspace();
     expect(await screen.findByText("暂无待确认记忆")).toBeInTheDocument();
   });
 
   it("calls debug reset and clear endpoints", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
+    await openDebugWorkspace();
     await screen.findByRole("button", { name: /调试面板/i });
     const debugActions = screen.getByRole("heading", { name: "调试操作" }).closest("section");
     expect(debugActions).not.toBeNull();

@@ -146,6 +146,7 @@ button {
 
 .navItem {
   min-height: 44px;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -153,6 +154,9 @@ button {
   border-radius: 14px;
   padding: 0 12px;
   color: #9ca7bf;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
   text-decoration: none;
   transition:
     background 160ms ease,
@@ -367,9 +371,13 @@ button {
 .workspaceGrid {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 430px;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 38vw);
   gap: 22px;
   padding-top: 18px;
+}
+
+.workspaceGrid.homeOnly {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .chatColumn {
@@ -760,6 +768,93 @@ button {
   gap: 14px;
   overflow: auto;
   padding-right: 2px;
+}
+
+.workspacePanel {
+  overflow: hidden;
+  border: 1px solid rgba(145, 164, 213, 0.16);
+  border-radius: 18px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(17, 22, 38, 0.84), rgba(10, 14, 25, 0.78)),
+    rgba(10, 13, 24, 0.72);
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.workspacePanelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workspacePanelHeader h2 {
+  margin: 2px 0 4px;
+  color: #f1f5ff;
+  font-size: 18px;
+  font-weight: 720;
+}
+
+.workspacePanelHeader span {
+  display: block;
+  color: #9da8c0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workspaceTabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 6px;
+  scrollbar-width: none;
+}
+
+.workspaceTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.workspaceTab {
+  flex: 0 0 auto;
+  min-height: 32px;
+  border: 1px solid rgba(145, 164, 213, 0.16);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: #aab5cc;
+  background: rgba(13, 17, 31, 0.48);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.workspaceTab:hover,
+.workspaceTab[aria-selected="true"] {
+  color: #eee8ff;
+  border-color: rgba(180, 158, 255, 0.36);
+  background: rgba(97, 76, 164, 0.28);
+}
+
+.workspacePanelBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  gap: 12px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.workspaceQuickActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.workspaceQuickActions .smallButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 #settings-panel {
@@ -1459,7 +1554,7 @@ button {
   white-space: pre-wrap;
 }
 
-@media (max-width: 1240px) {
+@media (max-width: 960px) {
   .workspaceGrid {
     grid-template-columns: 1fr;
   }
@@ -1493,7 +1588,7 @@ button {
   }
 
   .navMenu {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     margin-top: 0;
   }
 

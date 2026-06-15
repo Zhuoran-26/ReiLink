@@ -16,6 +16,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/persona_pack_scenarios.json`
 - `docs/qa/persona_regression_cases.json`
 - `docs/qa/ui_ux_information_architecture_scenarios.json`
+- `docs/qa/ui_surface_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -24,11 +25,12 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - 启动 backend：`make dev-backend`。
 - 启动 desktop：`make dev-desktop`。
 - 主界面不是黑屏。
-- 主聊天区、输入框、设置区、右侧面板正常显示。
+- 默认进入 Home / Chat；主聊天区、输入框、左侧 workspace launcher 正常显示。
+- 右侧 workspace panel 默认关闭，不应默认堆满 Settings、Debug、Prompt Preview 或 Event Stream。
 - `curl http://127.0.0.1:8000/api/health` 返回 `{"status":"ok"}`。
-- Settings Panel 可见。
-- Debug Panel 可见。
-- `事件流 / Event Stream` 标题可见，默认折叠，展开后能看到事件或“暂无事件”。
+- 点击 Settings 后 Settings workspace 可见。
+- 点击 Developer / Debug 后 Debug workspace 可见。
+- 在 Developer / Debug 的 Event Stream tab 中，`事件流 / Event Stream` 标题可见，默认折叠，展开后能看到事件或“暂无事件”。
 - Local Data controls 显示用户数据目录，memory / session 写入用户数据目录，不写入 `.app`。
 - `.env` 不出现在 UI、Event Stream、Raw JSON 或 packaged resources 中。
 
@@ -42,7 +44,8 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - 后端最终显示已连接，或 health endpoint 返回 `{"status":"ok"}`。
 - packaged app 使用内置 backend binary 或健康的外部 backend，启动来源显示为用户可读摘要。
 - bundled knowledge resources 可用。
-- Settings Panel、Debug Panel、Event Stream 可见。
+- 左侧 workspace launcher 可见；Settings、Voice、Overlay、Developer / Debug workspace 可打开。
+- Developer / Debug 中 Event Stream 可见。
 - `.env`、API key、memory、session 和用户数据不复制进 `.app`。
 - app 退出后，由 app 自启动的 backend 没有残留进程。
 
@@ -130,12 +133,12 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.7 UI/UX Information Architecture v0 人工验收
 
-本节用于 `docs/ui_ux_information_architecture.md`。它只验证 IA / planning 文档，不表示 Panel Shell、Voice v2、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
+本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认文档仍不表示 Voice v2、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
 
 机器可读场景见 `docs/qa/ui_ux_information_architecture_scenarios.json`。
 
 1. 普通用户默认应进入 Home / Chat，而不是 Debug、Prompt Preview、Event Stream 或 Raw JSON。
-2. 左侧未来定位应是 workspace launcher，不只是页面 anchor。
+2. 左侧定位应是 workspace launcher，不只是页面 anchor。
 3. Memory 应有独立普通用户入口，承接 pending、confirmed、ignored、search、sources 和后续 session archive。
 4. Game 应有独立普通用户入口，承接 current game、boss、session state、knowledge availability 和 manual control。
 5. Voice 应有独立一级入口；当前仍是 Local ASR transcript-first + Voice Output，未来直接语音对话只做规划。
@@ -145,7 +148,24 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 9. Prompt Preview / Debug 不得显示 raw prompt、API key、`.env`、完整路径、stdout/stderr、完整 persona markdown、完整 assistant reply、完整 user input 或完整 ASR transcript。
 10. Memory 和 Game Session state 必须区分：长期记忆 / candidate memory 不等于当前 boss、death count、frustration 或 session timeline。
 11. Future Presentation / Avatar / Live2D 只预留，不应成为当前主体验，也不应排在 Voice、Overlay、Memory 和 Debug split 之前。
-12. 后续 Panel Shell 切换 workspace 时不应丢失未发送的聊天输入。
+12. Panel Shell 切换 workspace 时不应丢失未发送的聊天输入。
+
+### 1.8 UI Surface v0 人工验收
+
+机器可读场景见 `docs/qa/ui_surface_scenarios.json`。
+
+1. 默认打开 Home / Chat，右侧 workspace panel 关闭。
+2. 左侧 launcher 可见，并包含 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug 和 Future / Avatar 入口。
+3. 点击 Memory 打开 Memory workspace；Pending tab 可见，Confirmed / Local Data / Future placeholder 可切换。
+4. 点击 Game 打开 Game workspace；Current Context、Session Timeline、Knowledge、Manual Control 可切换。
+5. 点击 Voice 打开 Voice workspace；Conversation placeholder、Input / Local ASR、Output、Voice Profile placeholder 可切换。Local ASR 和 Voice Output 现有控件仍可找到。
+6. 点击 Overlay 打开 Overlay workspace；Safe Mode、Placement、Content、Future Game Mode 可切换。强制关闭悬浮层按钮仍可找到，auto-show 仍未恢复。
+7. 点击 Settings 打开 Settings workspace；app-level 设置、模型状态、本地数据和旧配置入口仍可找到。
+8. 点击 Developer / Debug 打开 Debug workspace；Event Stream、Prompt Preview、Runtime、Semantic Shadow trace 可找到，且 Debug 不默认打开。
+9. 每个 workspace 可以点击关闭按钮关闭；按 Escape 也能关闭。
+10. 切换 workspace 后聊天输入草稿不丢，聊天历史不丢，后端连接状态不被重置。
+11. Prompt Preview 仍只显示安全摘要，不显示完整 prompt、完整 persona markdown、完整路径、`.env`、API key 或 raw provider response。
+12. Future / Avatar 只是 placeholder，不加载 Live2D runtime、不引入资源文件。
 
 ### 2. Voice Output 回归检查
 

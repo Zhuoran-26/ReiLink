@@ -1,0 +1,57 @@
+[
+  {
+    "id": "ui-surface-default-home-clean",
+    "category": "ui_surface_v0",
+    "precondition": "Open ReiLink normally",
+    "action": "Launch the desktop app",
+    "expected": "Home / Chat is visible, chat input is usable, and the right workspace panel is closed by default.",
+    "must_not_show_by_default": ["Event Stream", "Prompt Preview", "Raw JSON", "Semantic Shadow trace", "large Settings panel"]
+  },
+  {
+    "id": "ui-surface-launcher-opens-workspaces",
+    "category": "ui_surface_v0",
+    "precondition": "Home / Chat is visible",
+    "action": "Click Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future / Avatar launcher entries",
+    "expected": "Each entry opens a focused workspace panel with title, tabs, and a close button.",
+    "must_preserve": ["chat_history", "unsent_chat_input", "backend_connection_state"]
+  },
+  {
+    "id": "ui-surface-close-behavior",
+    "category": "ui_surface_v0",
+    "precondition": "A non-home workspace is open",
+    "action": "Click the workspace close button, then repeat with Escape",
+    "expected": "The workspace closes and the app returns to Home / Chat without clearing chat input."
+  },
+  {
+    "id": "ui-surface-voice-current-controls",
+    "category": "voice_surface_v0",
+    "precondition": "Open the Voice workspace",
+    "action": "Switch Conversation, Input / Local ASR, Output, and Voice Profile tabs",
+    "expected": "Current Local ASR setup and Voice Output controls are findable; Conversation and Voice Profile remain placeholders.",
+    "must_not_implement": ["auto listen/send/respond/speak loop", "wake word", "cloud ASR requirement", "automatic transcript send"]
+  },
+  {
+    "id": "ui-surface-overlay-safe-mode",
+    "category": "overlay_surface_v0",
+    "precondition": "Open the Overlay workspace",
+    "action": "Switch Safe Mode, Placement, Content, and Future Game Mode tabs",
+    "expected": "Safe Mode copy, force-close, placement, opacity, and message-count controls are findable.",
+    "must_not_implement": ["macOS auto-show restore", "full game HUD", "raw prompt display", "full assistant reply display"]
+  },
+  {
+    "id": "ui-surface-debug-separated-safe",
+    "category": "debug_surface_v0",
+    "precondition": "Open Developer / Debug",
+    "action": "Switch Event Stream, Prompt Preview, Runtime, and Trace tabs",
+    "expected": "Debug surfaces are opt-in and Prompt Preview remains a safe summary.",
+    "forbidden_terms": ["raw prompt", "API key", ".env", "full local path", "full persona markdown", "full assistant reply", "raw provider response"]
+  },
+  {
+    "id": "ui-surface-future-avatar-placeholder",
+    "category": "presentation_surface_v0",
+    "precondition": "Open Future / Avatar",
+    "action": "Inspect the workspace",
+    "expected": "The workspace is a lightweight placeholder for future presentation work.",
+    "must_not_implement": ["Live2D runtime", "avatar assets", "presentation layer behavior"]
+  }
+]

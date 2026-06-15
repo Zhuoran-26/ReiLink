@@ -2,13 +2,29 @@
 
 Updated: 2026-06-16
 
-This document is planning-only. It does not implement a new UI, Voice v2, Overlay auto-show, Hermes-style memory, Live2D, or any Electron multi-window change. It should guide the next product-surface tasks after Rei Persona Pack v1.1.2.
+This document records the UI/UX IA baseline and the implemented UI Surface v0. UI Surface v0 adds an in-app Panel Launcher & Workspace Shell in the existing React renderer. It does not implement Voice v2, Overlay auto-show, Hermes-style memory, Live2D, or any Electron multi-window change.
 
 ## Scope
 
 ReiLink is a Chinese-first desktop AI companion for single-player game players. The current app already has chat, settings, local ASR, voice output, overlay safe mode, memory confirmation, game context, knowledge trace, prompt preview, event stream, semantic shadow diagnostics, and persona pack summaries. These features work, but the product surface now feels like a single stacked diagnostics page instead of a calm companion product.
 
 The v0 IA goal is to define where each capability belongs before changing React structure. The next implementation should preserve existing backend, memory, proactive, Semantic Shadow, persona, packaging, and privacy boundaries.
+
+## Implemented UI Surface v0
+
+UI Surface v0 is now implemented in the desktop renderer:
+
+- The left navigation is a workspace launcher rather than anchor links.
+- Home / Chat is the default surface. The right workspace panel is closed by default, so Settings, Debug, Prompt Preview, Event Stream, and feature detail panels do not crowd the ordinary chat view.
+- Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future / Avatar open as focused in-app workspaces.
+- Workspaces have titles, tabs, a close button, and Escape-to-close behavior.
+- Chat history and unsent chat input remain mounted while workspaces switch.
+- Voice now has Conversation, Input / Local ASR, Output, and Voice Profile placeholder tabs. Current Local ASR and Voice Output controls are findable there, but direct spoken conversation is still not implemented.
+- Overlay now has Safe Mode, Placement, Content, and Future Game Mode tabs. Safe Mode remains fail-closed on macOS; auto-show was not restored.
+- Developer / Debug now owns Event Stream, Prompt Preview, Runtime diagnostics, and Semantic Shadow trace surfaces. Prompt Preview remains a safe summary and does not expose full prompt or persona markdown.
+- Future / Avatar is only a placeholder. No Live2D runtime, assets, or presentation layer were added.
+
+Settings still carries some legacy configuration details for regression stability, but the product surface now gives Voice, Overlay, Memory, Game, and Developer / Debug their own homes. A later Debug Split / Settings cleanup can reduce duplicated feature detail.
 
 ## Current UI Problems
 
@@ -244,41 +260,46 @@ Current recommendation:
 
 ## Recommended Next Task Order
 
-1. UI Surface v0 - Panel Launcher & Workspace Shell.
-   - Needed first because Voice, Memory, Overlay, and Debug all need stable homes.
-   - Should preserve chat input across workspace switches.
-   - Should avoid native multi-window complexity.
-2. Debug Split v1.
+Completed:
+
+- UI Surface v0 - Panel Launcher & Workspace Shell.
+  - Implemented as an in-app workspace shell.
+  - Preserves chat input across workspace switches.
+  - Avoids native Electron child-window complexity for ordinary modules.
+
+Next:
+
+1. Debug Split v1.
    - Move Event Stream, Prompt Preview, Semantic Shadow, Knowledge trace, Persona Pack summary, and runtime diagnostics into Developer / Debug.
    - Reduces ordinary-user clutter and lowers privacy risk.
-3. Core UI Visual Polish v1.
+2. Core UI Visual Polish v1.
    - Polish the new shell after the IA is real, not before.
    - Improve density, contrast, responsive behavior, and language consistency.
-4. Voice Interaction v2 Spec.
+3. Voice Interaction v2 Spec.
    - Define direct conversation states, auto-send vs confirm-send, interruption, TTS/listening conflict, privacy, and Game Mode behavior.
    - Should use the Voice workspace created by step 1.
-5. Hermes-style Memory Architecture v0.
+4. Hermes-style Memory Architecture v0.
    - Design candidate memory, source summaries, confirmed list, ignore/delete/do-not-ask-again, and session archive boundaries.
    - Depends on Memory workspace placement.
-6. Candidate Memory v1.
+5. Candidate Memory v1.
    - Implement after the memory UI contract is clear.
    - Must keep user confirmation before writes.
-7. Voice Interaction v2 Implementation.
+6. Voice Interaction v2 Implementation.
    - Implement only after Voice spec and shell are ready.
    - Keep Local ASR no-upload and transcript safety boundaries.
-8. Voice Profile v1 and TTS Strategy Spike.
+7. Voice Profile v1 and TTS Strategy Spike.
    - Explore character voice quality and output strategy after direct conversation behavior is defined.
    - Do not commit to commercial TTS by default.
-9. Overlay v1.2.
+8. Overlay v1.2.
    - Add drag / lock / content state only after shell and Voice state are stable.
    - Restore macOS auto-show only as a separate, packaged-smoke-gated task.
-10. Session Archive + Search v1.
+9. Session Archive + Search v1.
    - Implement after Memory and Game boundaries are settled.
-11. Persona / Memory Eval Runner v0.
+10. Persona / Memory Eval Runner v0.
    - Useful after Candidate Memory and persona regression surfaces are stable.
-12. Live2D Presentation Policy.
+11. Live2D Presentation Policy.
    - Define role, safety, voice relationship, and game-mode constraints before assets or runtime.
-13. Live2D v1.
+12. Live2D v1.
    - Do not start until Voice, Overlay, Memory, and Debug split are stable.
 
 Parallelizable work:
@@ -299,9 +320,9 @@ Do not do now:
 
 ## QA Coverage
 
-Machine-readable IA scenarios live in `docs/qa/ui_ux_information_architecture_scenarios.json`.
+Machine-readable IA scenarios live in `docs/qa/ui_ux_information_architecture_scenarios.json`. UI Surface implementation smoke scenarios live in `docs/qa/ui_surface_scenarios.json`.
 
-Manual acceptance for this planning task:
+Manual acceptance for IA and UI Surface v0:
 
 1. Ordinary users should default to Home / Chat, not Debug.
 2. Memory, Game, Voice, Overlay, Settings, and Developer should each have a clear top-level IA home.
@@ -310,4 +331,5 @@ Manual acceptance for this planning task:
 5. Voice should be documented as a future direct conversation surface without implementing Voice v2.
 6. Memory should be understandable to ordinary users and separate from Game Session state.
 7. Live2D should remain a future presentation placeholder.
-8. Future Panel Shell switching should not discard chat input.
+8. Panel Shell switching should not discard chat input.
+9. Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future / Avatar should open as workspace panels and close with the close button or Escape.

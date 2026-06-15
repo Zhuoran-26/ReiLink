@@ -97,9 +97,80 @@ type LocalAsrSettingsDraft = {
   audio_converter_binary_path: string;
 };
 type LocalAsrSettingsDraftPathKey = keyof LocalAsrSettingsDraft;
+type WorkspaceId = "home" | "memory" | "game" | "voice" | "overlay" | "settings" | "debug" | "presentation";
+type WorkspaceTab = {
+  id: string;
+  label: string;
+};
 
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
 const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
+const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
+  home: "Home / Chat",
+  memory: "记忆",
+  game: "游戏",
+  voice: "语音",
+  overlay: "Overlay",
+  settings: "设置",
+  debug: "Developer / Debug",
+  presentation: "Future / Avatar"
+};
+const WORKSPACE_SUBTITLES: Record<WorkspaceId, string> = {
+  home: "主聊天",
+  memory: "待确认记忆、长期记忆占位和本地数据边界",
+  game: "当前游戏上下文、本局状态和知识摘要",
+  voice: "现有 Local ASR 与语音输出入口，保留未来直接语音对话位置",
+  overlay: "当前为 macOS Safe Mode，不恢复 auto-show",
+  settings: "应用级设置、模型偏好、人格和隐私控制",
+  debug: "开发诊断、Prompt Preview 安全摘要和 trace",
+  presentation: "未来 Presentation / Avatar 占位"
+};
+const WORKSPACE_TABS: Record<WorkspaceId, WorkspaceTab[]> = {
+  home: [{ id: "chat", label: "聊天" }],
+  memory: [
+    { id: "pending", label: "待确认" },
+    { id: "confirmed", label: "已保存" },
+    { id: "local", label: "本地数据" },
+    { id: "future", label: "候选记忆" }
+  ],
+  game: [
+    { id: "current", label: "当前上下文" },
+    { id: "timeline", label: "本局时间线" },
+    { id: "knowledge", label: "知识" },
+    { id: "manual", label: "手动控制" }
+  ],
+  voice: [
+    { id: "conversation", label: "对话" },
+    { id: "input", label: "输入 / ASR" },
+    { id: "output", label: "输出" },
+    { id: "profile", label: "Voice Profile" }
+  ],
+  overlay: [
+    { id: "safe", label: "Safe Mode" },
+    { id: "placement", label: "位置" },
+    { id: "content", label: "内容" },
+    { id: "future", label: "Game Mode" }
+  ],
+  settings: [
+    { id: "app", label: "应用" },
+    { id: "provider", label: "模型" },
+    { id: "privacy", label: "隐私 / 数据" },
+    { id: "advanced", label: "高级" }
+  ],
+  debug: [
+    { id: "events", label: "Event Stream" },
+    { id: "prompt", label: "Prompt Preview" },
+    { id: "runtime", label: "Runtime" },
+    { id: "trace", label: "Trace" }
+  ],
+  presentation: [
+    { id: "avatar", label: "Avatar" },
+    { id: "policy", label: "Presentation Policy" }
+  ]
+};
+const DEFAULT_WORKSPACE_TABS: Record<WorkspaceId, string> = Object.fromEntries(
+  Object.entries(WORKSPACE_TABS).map(([workspaceId, tabs]) => [workspaceId, tabs[0]?.id ?? ""])
+) as Record<WorkspaceId, string>;
 
 const idleStatus: GameStatus = {
   game_id: null,
@@ -802,6 +873,15 @@ const debugText = (value: unknown, fallback = "无"): string => {
   if (typeof value === "number") return String(value);
   if (Array.isArray(value)) return value.map((item) => debugText(item)).join("、") || fallback;
   return JSON.stringify(value);
+};
+
+const safePathText = (value: unknown, fallback = "未设置"): string => {
+  const text = debugText(value, fallback);
+  if (text === fallback || (!text.includes("/") && !text.includes("\\"))) return text;
+  const normalized = text.replace(/\\/g, "/").replace(/\/+$/, "");
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 1) return text;
+  return `…/${parts.slice(-2).join("/")}`;
 };
 
 const debugTime = (value: string | null | undefined): string => {
@@ -1768,6 +1848,8 @@ export function App() {
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("home");
+  const [workspaceTabs, setWorkspaceTabs] = useState<Record<WorkspaceId, string>>(DEFAULT_WORKSPACE_TABS);
   const [debugOpen, setDebugOpen] = useState(true);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [eventStreamOpen, setEventStreamOpen] = useState(false);
@@ -3125,6 +3207,32 @@ export function App() {
   const onboardingApiKeyText = setupStatus.api_key_loaded
     ? "当前 DeepSeek API Key 已加载。"
     : "当前 API Key 未配置，请先完成模型配置。";
+  const activeWorkspaceTabs = WORKSPACE_TABS[activeWorkspace];
+  const activeWorkspaceTab = workspaceTabs[activeWorkspace] || DEFAULT_WORKSPACE_TABS[activeWorkspace];
+
+  const openWorkspace = useCallback((workspaceId: WorkspaceId, tabId?: string) => {
+    setActiveWorkspace(workspaceId);
+    if (tabId) {
+      setWorkspaceTabs((current) => ({ ...current, [workspaceId]: tabId }));
+    }
+  }, []);
+
+  const closeWorkspace = useCallback(() => {
+    setActiveWorkspace("home");
+  }, []);
+
+  const switchWorkspaceTab = useCallback((tabId: string) => {
+    setWorkspaceTabs((current) => ({ ...current, [activeWorkspace]: tabId }));
+  }, [activeWorkspace]);
+
+  useEffect(() => {
+    if (activeWorkspace === "home") return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWorkspace();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeWorkspace, closeWorkspace]);
 
   useEffect(() => {
     if (forceNextScrollRef.current || shouldAutoScrollRef.current) {
@@ -3134,12 +3242,7 @@ export function App() {
   }, [messages, onboardingVisible, scrollMessagesToBottom]);
 
   const openSettingsPanel = () => {
-    const panel = document.getElementById("settings-panel");
-    if (typeof panel?.scrollIntoView === "function") {
-      panel.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    const focusTarget = panel?.querySelector("select, button") as HTMLElement | null;
-    focusTarget?.focus();
+    openWorkspace("settings", "provider");
   };
 
   return (
@@ -3151,26 +3254,78 @@ export function App() {
         </div>
 
         <nav className="navMenu" aria-label="应用导航">
-          <a className="navItem active" href="#chat-panel">
+          <button
+            aria-current={activeWorkspace === "home" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "home" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("home")}
+          >
             <MessageSquare size={18} />
             <span>聊天</span>
-          </a>
-          <a className="navItem" href="#pending-memory-panel">
+          </button>
+          <button
+            aria-current={activeWorkspace === "memory" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "memory" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("memory")}
+          >
             <Database size={18} />
             <span>记忆</span>
-          </a>
-          <a className="navItem" href="#game-session-panel">
+          </button>
+          <button
+            aria-current={activeWorkspace === "game" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "game" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("game")}
+          >
             <Gamepad2 size={18} />
             <span>游戏</span>
-          </a>
-          <a className="navItem" href="#settings-panel">
+          </button>
+          <button
+            aria-current={activeWorkspace === "voice" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "voice" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("voice")}
+          >
+            <Mic size={18} />
+            <span>语音</span>
+          </button>
+          <button
+            aria-current={activeWorkspace === "overlay" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "overlay" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("overlay")}
+          >
+            <Volume2 size={18} />
+            <span>Overlay</span>
+          </button>
+          <button
+            aria-current={activeWorkspace === "settings" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "settings" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("settings")}
+          >
             <Settings size={18} />
             <span>设置</span>
-          </a>
-          <a className="navItem" href="#debug-panel">
+          </button>
+          <button
+            aria-current={activeWorkspace === "debug" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "debug" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("debug")}
+          >
             <Bug size={18} />
             <span>调试</span>
-          </a>
+          </button>
+          <button
+            aria-current={activeWorkspace === "presentation" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "presentation" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("presentation")}
+          >
+            <Sparkles size={18} />
+            <span>未来</span>
+          </button>
         </nav>
 
         <div className="companionStatusCard">
@@ -3237,7 +3392,7 @@ export function App() {
           </div>
         </header>
 
-        <section className="workspaceGrid">
+        <section className={`workspaceGrid ${activeWorkspace === "home" ? "homeOnly" : ""}`}>
           <section className="chatColumn" aria-label="主聊天界面" id="chat-panel">
             <div className="timelineMarker">今天</div>
 
@@ -3394,7 +3549,854 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
           </section>
         </section>
 
-        <aside className="infoRail" aria-label="信息侧栏">
+        {activeWorkspace !== "home" && (
+        <aside className="infoRail workspacePanel" aria-label="工作区面板">
+          <div className="workspacePanelHeader">
+            <div>
+              <p className="eyebrow">Workspace</p>
+              <h2>{WORKSPACE_LABELS[activeWorkspace]}</h2>
+              <span>{WORKSPACE_SUBTITLES[activeWorkspace]}</span>
+            </div>
+            <button className="iconButton soft" type="button" aria-label="关闭工作区" onClick={closeWorkspace}>
+              <X size={16} />
+            </button>
+          </div>
+          <div className="workspaceTabs" role="tablist" aria-label={`${WORKSPACE_LABELS[activeWorkspace]} tabs`}>
+            {activeWorkspaceTabs.map((tab) => (
+              <button
+                aria-selected={activeWorkspaceTab === tab.id}
+                className="workspaceTab"
+                key={tab.id}
+                role="tab"
+                type="button"
+                onClick={() => switchWorkspaceTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="workspacePanelBody">
+          {activeWorkspace === "memory" && activeWorkspaceTab === "confirmed" && (
+            <section className="infoCard" aria-label="已保存记忆">
+              <div className="cardHeader">
+                <Database size={17} />
+                <h2>已保存记忆</h2>
+              </div>
+              <p className="settingHint">
+                当前长期记忆仍通过待确认流程写入。后续会在这里整理已保存记忆列表、来源摘要、忽略项和本地搜索。
+              </p>
+              <dl className="debugFacts">
+                <div>
+                  <dt>记忆开关</dt>
+                  <dd>{appSettings.memory_enabled ? "开启" : "关闭"}</dd>
+                </div>
+                <div>
+                  <dt>已注入记忆</dt>
+                  <dd>{injectedMemory.length}</dd>
+                </div>
+                <div>
+                  <dt>已跳过记忆</dt>
+                  <dd>{skippedMemory.length}</dd>
+                </div>
+              </dl>
+            </section>
+          )}
+
+          {activeWorkspace === "memory" && activeWorkspaceTab === "local" && (
+            <section className="infoCard" aria-label="本地数据与隐私">
+              <div className="cardHeader">
+                <FolderOpen size={17} />
+                <h2>本地数据与隐私</h2>
+              </div>
+              <p className="settingHint">本地数据写入用户数据目录，不写入 packaged `.app`。界面只显示目录摘要，避免暴露完整本地路径。</p>
+              <dl className="debugFacts localDataFacts">
+                <div>
+                  <dt>用户数据目录</dt>
+                  <dd>{safePathText(displayLocalDataStatus.data_dir)}</dd>
+                </div>
+                <div>
+                  <dt>记忆目录</dt>
+                  <dd>{safePathText(displayLocalDataStatus.memory_dir)}</dd>
+                </div>
+                <div>
+                  <dt>会话目录</dt>
+                  <dd>{safePathText(displayLocalDataStatus.session_dir)}</dd>
+                </div>
+                <div>
+                  <dt>数据目录状态</dt>
+                  <dd>{displayLocalDataStatus.writable ? "可写" : "不可写"}</dd>
+                </div>
+                <div>
+                  <dt>待确认记忆数</dt>
+                  <dd>{displayLocalDataStatus.pending_memory_count}</dd>
+                </div>
+              </dl>
+              <button
+                className="smallButton"
+                type="button"
+                title="Open local data directory"
+                disabled={!backendRuntimeAvailable || localDataBusy !== ""}
+                onClick={() => void openLocalDataDirectory()}
+              >
+                <FolderOpen size={14} />
+                打开本地数据目录
+              </button>
+              {demoResetFeedback && (
+                <p className="demoResetFeedback" role="status">
+                  {demoResetFeedback}
+                </p>
+              )}
+            </section>
+          )}
+
+          {activeWorkspace === "memory" && activeWorkspaceTab === "future" && (
+            <section className="infoCard" aria-label="候选记忆占位">
+              <div className="cardHeader">
+                <Brain size={17} />
+                <h2>候选记忆</h2>
+              </div>
+              <p className="settingHint">
+                Hermes-style candidate memory 尚未实现。这里先保留未来入口：候选记忆、来源摘要、忽略 / 删除 / 不再询问、Session Archive 和本地搜索。
+              </p>
+            </section>
+          )}
+
+          {activeWorkspace === "game" && activeWorkspaceTab === "timeline" && (
+            <section className="infoCard" aria-label="本局时间线">
+              <div className="cardHeader">
+                <Gamepad2 size={17} />
+                <h2>本局时间线</h2>
+              </div>
+              <SessionTimelinePanel
+                items={sessionTimeline}
+                open={sessionTimelineOpen}
+                onOpenChange={setSessionTimelineOpen}
+                onClear={() => setSessionTimeline([])}
+              />
+            </section>
+          )}
+
+          {activeWorkspace === "game" && activeWorkspaceTab === "knowledge" && (
+            <section className="infoCard" aria-label="知识摘要">
+              <div className="cardHeader">
+                <FileText size={17} />
+                <h2>知识摘要</h2>
+              </div>
+              <p className="settingHint">这里显示当前知识可用性和命中摘要；详细 trace 保留在 Developer / Debug。</p>
+              <dl className="debugFacts">
+                <div>
+                  <dt>当前游戏</dt>
+                  <dd>{debugText(gameContext.active_game_display_name, "未选择")}</dd>
+                </div>
+                <div>
+                  <dt>知识库状态</dt>
+                  <dd>{gameContextKnowledgeStatus}</dd>
+                </div>
+                <div>
+                  <dt>兜底方式</dt>
+                  <dd>{gameContextFallbackMode}</dd>
+                </div>
+                <div>
+                  <dt>知识命中</dt>
+                  <dd>{chatDebug.knowledge_matched ? "是" : "否"}</dd>
+                </div>
+                <div>
+                  <dt>检索状态</dt>
+                  <dd>{knowledgeRetrievalStatusText(chatDebug.knowledge_retrieval_status)}</dd>
+                </div>
+              </dl>
+            </section>
+          )}
+
+	          {activeWorkspace === "game" && activeWorkspaceTab === "manual" && (
+	            <section className="infoCard" aria-label="当前游戏控制">
+              <div className="cardHeader">
+                <Gamepad2 size={17} />
+                <h2>手动游戏控制</h2>
+              </div>
+              <div className="gameContextControl" aria-label="当前游戏控制">
+                <dl className="debugFacts">
+                  <div>
+                    <dt>{formatDebugLabel("current_game")}</dt>
+                    <dd>{debugText(gameContext.active_game_display_name, "未选择")}</dd>
+                  </div>
+                  <div>
+                    <dt>{formatDebugLabel("active_source")}</dt>
+                    <dd>{debugText(gameContext.active_source)}</dd>
+                  </div>
+                  <div>
+                    <dt>{formatDebugLabel("automatic_detected_result")}</dt>
+                    <dd>{debugText(detectedGameDisplay, "未检测到游戏")}</dd>
+                  </div>
+                  <div>
+                    <dt>{formatDebugLabel("knowledge_available")}</dt>
+                    <dd>{gameContextKnowledgeStatus}</dd>
+                  </div>
+                </dl>
+                <label className="settingRow">
+                  <span>当前游戏</span>
+                  <select
+                    aria-label="当前游戏"
+                    disabled={gameContextBusy !== ""}
+                    value={manualGameId}
+                    onChange={(event) => void updateManualGameContext(event.target.value || null)}
+                  >
+                    <option value="">跟随自动/对话</option>
+                    {gameContext.available_games.map((game) => (
+                      <option key={game.game_id} value={game.game_id}>
+                        {game.display_name}（{knowledgeStatusText(game.support_status, game.knowledge_available)}）
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="debugActions">
+                  <button
+                    className="smallButton"
+                    type="button"
+                    disabled={gameContextBusy !== "" || !canUseDetectedGame}
+                    onClick={() => void updateManualGameContext(detectedKnowledgeGameId ?? null, "use-detected-game")}
+                  >
+                    使用检测结果
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    disabled={gameContextBusy !== "" || !gameContext.manual_override.enabled}
+                    onClick={() => void updateManualGameContext(null, "clear-manual-game")}
+                  >
+                    清除手动选择
+                  </button>
+                </div>
+                <div className="catalogSummary" aria-label="已支持游戏">
+                  <div>
+                    <strong>已支持</strong>
+                    <span>{supportedCatalogGames.map((game) => game.display_name).join(" / ") || "无"}</span>
+                  </div>
+                  <div>
+                    <strong>暂未接入知识库</strong>
+                    <span>{plannedCatalogGames.map((game) => game.display_name).join(" / ") || "无"}</span>
+                  </div>
+                </div>
+              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "voice" && activeWorkspaceTab === "conversation" && (
+	            <section className="infoCard" aria-label="语音对话">
+	              <div className="cardHeader">
+	                <Mic size={17} />
+	                <h2>语音对话</h2>
+	              </div>
+	              <p className="settingHint">
+	                这里先保留未来直接语音对话入口。本阶段仍是 transcript-first：录音转写只会填入聊天输入框，需要你确认后才发送。
+	              </p>
+	              <dl className="debugFacts">
+	                <div>
+	                  <dt>主输入</dt>
+	                  <dd>{mainVoiceInputProviderText(mainVoiceInputProvider)}</dd>
+	                </div>
+	                <div>
+	                  <dt>输入状态</dt>
+	                  <dd>{mainVoiceInputStatus}</dd>
+	                </div>
+	                <div>
+	                  <dt>语音输出</dt>
+	                  <dd>{appSettings.voice_output === "on" ? "开启" : "关闭"} / {voicePhaseText(voiceStatus)}</dd>
+	                </div>
+	              </dl>
+	              <div className="workspaceQuickActions">
+	                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("input")}>
+	                  <Mic size={14} />
+	                  输入 / ASR
+	                </button>
+	                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("output")}>
+	                  <Volume2 size={14} />
+	                  语音输出
+	                </button>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "voice" && activeWorkspaceTab === "input" && (
+	            <section className="infoCard" aria-label="语音输入">
+	              <div className="cardHeader">
+	                <Mic size={17} />
+	                <h2>输入 / Local ASR</h2>
+	              </div>
+	              <div className="voiceOutputPanel" role="group" aria-label="语音输入设置">
+	                <div className="settingRow static">
+	                  <span>语音输入 / Voice Input</span>
+	                  <strong>{voiceInputAvailabilityText(voiceInputStatus)}</strong>
+	                </div>
+	                <p className="settingHint">当前状态：{voiceInputPhaseText(voiceInputStatus)}。</p>
+	                <p className="settingHint">语言：{voiceInputStatus.language}。识别结果会先填入输入框，不会自动发送。</p>
+	                <p className="settingHint">
+	                  语音识别功能：{voiceInputApiText(voiceInputStatus)}。麦克风权限：{voiceInputStatus.diagnostics.microphonePermission}。运行环境：{voiceInputRuntimeText(voiceInputStatus)}。
+	                </p>
+	                {!voiceInputStatus.supported && (
+	                  <p className="settingHint">当前运行环境不支持本地语音识别。你仍然可以使用系统听写输入到文本框。</p>
+	                )}
+	                {voiceInputServiceUnavailable(voiceInputStatus) && (
+	                  <p className="settingHint">当前运行环境的语音识别服务不可用。你仍然可以使用系统听写输入到文本框。</p>
+	                )}
+	                {voiceInputStatus.lastTranscriptCharacterCount > 0 && (
+	                  <p className="settingHint">最近识别：{voiceInputStatus.lastTranscriptCharacterCount} 字。</p>
+	                )}
+	                {voiceInputStatus.lastError && <p className="settingHint">{voiceInputStatus.lastError}</p>}
+	                <div className="settingRow static">
+	                  <span>本地语音识别 / Local ASR</span>
+	                  <strong>{localAsrStatusText(localAsrStatus)}</strong>
+	                </div>
+	                <p className="settingHint">{localAsrStatus.display_message}</p>
+	                <p className="settingHint">{localAsrStatusDetail(localAsrStatus)}</p>
+	                <div className="localAsrSetupPanel" role="group" aria-label="本地 ASR 配置 / Local ASR Setup">
+	                  <div className="settingRow static">
+	                    <span>本地 ASR 配置 / Local ASR Setup</span>
+	                    <strong>{localAsrSourceText(localAsrSettings.source)}</strong>
+	                  </div>
+	                  <p className="settingHint">{localAsrSettingsSummaryText(localAsrSettings)}</p>
+	                  <div className="localAsrPathField">
+	                    <label htmlFor="voice-local-asr-binary-path">本地识别程序 / ASR Binary</label>
+	                    <div className="localAsrPathInputRow">
+	                      <input
+	                        aria-label="本地识别程序 / ASR Binary"
+	                        autoComplete="off"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        id="voice-local-asr-binary-path"
+	                        placeholder="/opt/homebrew/bin/whisper-cli"
+	                        spellCheck={false}
+	                        type="text"
+	                        value={localAsrSettingsDraft.local_asr_binary_path}
+	                        onChange={(event) =>
+	                          setLocalAsrSettingsDraft((current) => ({
+	                            ...current,
+	                            local_asr_binary_path: event.target.value
+	                          }))
+	                        }
+	                      />
+	                      <button
+	                        aria-label="选择本地识别程序文件"
+	                        className="smallButton quiet localAsrBrowseButton"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        type="button"
+	                        onClick={() => void selectLocalAsrFile("asr_binary", "local_asr_binary_path")}
+	                      >
+	                        <FolderOpen size={14} />
+	                        选择...
+	                      </button>
+	                    </div>
+	                  </div>
+	                  <div className="localAsrPathField">
+	                    <label htmlFor="voice-local-asr-model-path">模型文件 / Model File</label>
+	                    <div className="localAsrPathInputRow">
+	                      <input
+	                        aria-label="模型文件 / Model File"
+	                        autoComplete="off"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        id="voice-local-asr-model-path"
+	                        placeholder="~/Library/Application Support/ReiLink/models/ggml-base.bin"
+	                        spellCheck={false}
+	                        type="text"
+	                        value={localAsrSettingsDraft.local_asr_model_path}
+	                        onChange={(event) =>
+	                          setLocalAsrSettingsDraft((current) => ({
+	                            ...current,
+	                            local_asr_model_path: event.target.value
+	                          }))
+	                        }
+	                      />
+	                      <button
+	                        aria-label="选择模型文件"
+	                        className="smallButton quiet localAsrBrowseButton"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        type="button"
+	                        onClick={() => void selectLocalAsrFile("asr_model", "local_asr_model_path")}
+	                      >
+	                        <FolderOpen size={14} />
+	                        选择...
+	                      </button>
+	                    </div>
+	                  </div>
+	                  <div className="localAsrPathField">
+	                    <label htmlFor="voice-local-asr-converter-path">音频转换工具 / Audio Converter</label>
+	                    <div className="localAsrPathInputRow">
+	                      <input
+	                        aria-label="音频转换工具 / Audio Converter"
+	                        autoComplete="off"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        id="voice-local-asr-converter-path"
+	                        placeholder="/opt/homebrew/bin/ffmpeg"
+	                        spellCheck={false}
+	                        type="text"
+	                        value={localAsrSettingsDraft.audio_converter_binary_path}
+	                        onChange={(event) =>
+	                          setLocalAsrSettingsDraft((current) => ({
+	                            ...current,
+	                            audio_converter_binary_path: event.target.value
+	                          }))
+	                        }
+	                      />
+	                      <button
+	                        aria-label="选择音频转换工具文件"
+	                        className="smallButton quiet localAsrBrowseButton"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        type="button"
+	                        onClick={() => void selectLocalAsrFile("asr_converter", "audio_converter_binary_path")}
+	                      >
+	                        <FolderOpen size={14} />
+	                        选择...
+	                      </button>
+	                    </div>
+	                  </div>
+	                  <div className="localAsrSetupActions">
+	                    <button
+	                      className="smallButton quiet"
+	                      type="button"
+	                      aria-label="保存配置 / Save"
+	                      disabled={localAsrSettingsBusy !== ""}
+	                      onClick={() => void saveLocalAsrSettings()}
+	                    >
+	                      <FileText size={14} />
+	                      保存配置
+	                    </button>
+	                    <button
+	                      className="smallButton quiet"
+	                      type="button"
+	                      aria-label="清除配置 / Clear"
+	                      disabled={localAsrSettingsBusy !== ""}
+	                      onClick={() => void clearLocalAsrSettings()}
+	                    >
+	                      <X size={14} />
+	                      清除配置
+	                    </button>
+	                    <button
+	                      className="smallButton quiet"
+	                      type="button"
+	                      aria-label="重新检测 / Refresh Status"
+	                      disabled={localAsrSettingsBusy !== ""}
+	                      onClick={() => void refreshLocalAsrSetup()}
+	                    >
+	                      <RefreshCw size={14} />
+	                      重新检测
+	                    </button>
+	                  </div>
+	                  {localAsrSettingsMessage && <p className="settingHint">{localAsrSettingsMessage}</p>}
+	                </div>
+	                {(localAsrStatus.safe_binary_name || localAsrStatus.safe_model_name) && (
+	                  <p className="settingHint">
+	                    {localAsrStatus.safe_binary_name ? `识别程序：${debugText(localAsrStatus.safe_binary_name)}` : ""}
+	                    {localAsrStatus.safe_binary_name && localAsrStatus.safe_model_name ? "。" : ""}
+	                    {localAsrStatus.safe_model_name ? `模型：${debugText(localAsrStatus.safe_model_name)}` : ""}
+	                  </p>
+	                )}
+	                {localAsrStatus.safe_model_name && (
+	                  <p className="settingHint">
+	                    模型取舍：{debugText(localAsrStatus.safe_model_name)} 由用户自行配置，ReiLink 不内置模型。base 通常速度和准确率较均衡；tiny 更快但更不准，small / medium / large 可能更准但更慢或超时。
+	                  </p>
+	                )}
+	                <div className="settingRow static">
+	                  <span>本地 ASR 检查</span>
+	                  <strong>{localAsrProbeStatusText(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</strong>
+	                </div>
+	                <p className="settingHint">{localAsrProbeHint(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</p>
+	                {localAsrProbe && (
+	                  <p className="settingHint">
+	                    {localAsrProbe.duration_ms} ms
+	                    {localAsrProbe.binary_name ? `。识别程序：${debugText(localAsrProbe.binary_name)}` : ""}
+	                    {localAsrProbe.model_name ? `。模型：${debugText(localAsrProbe.model_name)}` : ""}
+	                  </p>
+	                )}
+	                <button
+	                  className="smallButton quiet"
+	                  type="button"
+	                  aria-label="检查本地 ASR / Check Local ASR"
+	                  disabled={!localAsrConfigReady || localAsrProbeChecking}
+	                  onClick={() => void checkLocalAsr()}
+	                >
+	                  <RefreshCw size={14} />
+	                  检查本地 ASR
+	                </button>
+	                <div className="settingRow static">
+	                  <span>本地转写测试 / Local Transcribe Test</span>
+	                  <strong>
+	                    {localAsrTranscriptionStatusText(
+	                      localAsrTranscriptionPhase,
+	                      localAsrTranscriptionResult,
+	                      localAsrConfigReady,
+	                      audioCaptureStatus
+	                    )}
+	                  </strong>
+	                </div>
+	                <p className="settingHint">
+	                  {localAsrTranscriptionHint(
+	                    localAsrTranscriptionPhase,
+	                    localAsrTranscriptionResult,
+	                    localAsrConfigReady,
+	                    audioCaptureStatus,
+	                    localAsrStatus
+	                  )}
+	                </p>
+	                {localAsrTranscriptionResult && (
+	                  <p className="settingHint">
+	                    {localAsrTranscriptionResult.transcript_char_count} 字
+	                    {`。语言：${debugText(localAsrTranscriptionResult.language)}`}
+	                    {localAsrTranscriptionResult.transcript_normalized_to_simplified ? "。已规范为简体中文" : ""}
+	                    {localAsrTranscriptionResult.duration_ms ? `。${localAsrTranscriptionResult.duration_ms} ms` : ""}
+	                    {localAsrTranscriptionResult.size_bytes ? `。${audioBytesText(localAsrTranscriptionResult.size_bytes)}` : ""}
+	                    {`。格式：${audioFormatSummaryText(localAsrTranscriptionResult.mime_type)}`}
+	                    {audioFormatConversionHint(localAsrTranscriptionResult.mime_type) ? `。${audioFormatConversionHint(localAsrTranscriptionResult.mime_type)}` : ""}
+	                    {`。转换：${audioConversionStatusText(localAsrTranscriptionResult.conversion_status)}`}
+	                    {localAsrTranscriptionResult.converted_mime_type ? `。目标格式：${audioFormatSummaryText(localAsrTranscriptionResult.converted_mime_type)}` : ""}
+	                    {`。转换工具：${localAsrTranscriptionResult.converter_configured ? "已配置" : "未配置"}`}
+	                    {localAsrTranscriptionResult.safe_converter_name ? `。转换器：${debugText(localAsrTranscriptionResult.safe_converter_name)}` : ""}
+	                    {`。临时音频已清理：${localAsrTranscriptionResult.temporary_file_cleaned ? "是" : "否"}`}
+	                    {`。原始音频已清理：${localAsrTranscriptionResult.temporary_input_cleaned ? "是" : "否"}`}
+	                    {`。转换音频已清理：${localAsrTranscriptionResult.temporary_converted_cleaned ? "是" : "否"}`}
+	                    {localAsrTranscriptionResult.binary_name ? `。识别程序：${debugText(localAsrTranscriptionResult.binary_name)}` : ""}
+	                    {localAsrTranscriptionResult.model_name ? `。模型：${debugText(localAsrTranscriptionResult.model_name)}` : ""}
+	                  </p>
+	                )}
+	                <button
+	                  className="smallButton quiet"
+	                  type="button"
+	                  aria-label={localAsrTranscriptionPhase === "recording" ? "停止本地转写录音 / Stop Local Transcribe Recording" : "录音并转写 / Record & Transcribe"}
+	                  disabled={localAsrTranscriptionButtonDisabled}
+	                  onClick={() => void runLocalAsrTranscription()}
+	                >
+	                  <Mic size={14} />
+	                  {localAsrTranscriptionPhase === "recording" ? "停止录音" : localAsrTranscriptionBusy ? "正在转写" : "录音并转写"}
+	                </button>
+	                <div className="settingRow static">
+	                  <span>录音测试 / Audio Capture Test</span>
+	                  <strong>{audioProbeStatusText(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</strong>
+	                </div>
+	                <p className="settingHint">{audioProbeHint(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</p>
+	                {audioProbeResult && (
+	                  <p className="settingHint">
+	                    {audioBytesText(audioProbeResult.size_bytes)}。临时音频已清理：{audioProbeResult.temporary_file_cleaned ? "是" : "否"}
+	                    {`。格式：${audioFormatSummaryText(audioProbeResult.mime_type)}`}
+	                    {audioFormatConversionHint(audioProbeResult.mime_type) ? `。${audioFormatConversionHint(audioProbeResult.mime_type)}` : ""}
+	                  </p>
+	                )}
+	                <button
+	                  className="smallButton quiet"
+	                  type="button"
+	                  aria-label={audioCaptureStatus.phase === "recording" ? "停止录音 / Stop Recording" : "测试录音 / Test Recording"}
+	                  disabled={audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
+	                  onClick={() => void runAudioCaptureProbe()}
+	                >
+	                  <Mic size={14} />
+	                  {audioCaptureStatus.phase === "recording" ? "停止录音" : "测试录音"}
+	                </button>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "voice" && activeWorkspaceTab === "output" && (
+	            <section className="infoCard" aria-label="语音输出">
+	              <div className="cardHeader">
+	                <Volume2 size={17} />
+	                <h2>语音输出</h2>
+	              </div>
+	              <div className="voiceOutputPanel" role="group" aria-label="语音输出设置">
+	                <label className="settingRow">
+	                  <span>语音输出 / Voice Output</span>
+	                  <select
+	                    aria-label="语音输出 / Voice Output"
+	                    disabled={settingsBusy !== "" || !voiceStatus.available}
+	                    value={appSettings.voice_output}
+	                    onChange={(event) =>
+	                      void updateAppSettings({ voice_output: event.target.value as AppSettings["voice_output"] })
+	                    }
+	                  >
+	                    <option value="off">关闭</option>
+	                    <option value="on">开启</option>
+	                  </select>
+	                </label>
+	                <p className="settingHint">
+	                  当前状态：{appSettings.voice_output === "on" ? "已开启" : "已关闭"}；本地语音：
+	                  {voiceStatus.available ? "可用" : "不可用"}。
+	                </p>
+	                <p className="settingHint">播放状态：{voicePhaseText(voiceStatus)}。</p>
+	                {voiceStatus.available && (
+	                  <p className="settingHint">
+	                    语音选择：{voiceStatus.hasChineseVoice ? "优先使用中文语音" : voiceStatus.hasVoices ? "使用系统默认语音" : "等待系统语音列表"}。
+	                  </p>
+	                )}
+	                {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
+	                <p className="settingHint">如果更换过系统语音包，请先点“测试语音”确认系统声音可用。</p>
+	                {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
+	                <label className="settingRow">
+	                  <span>语速 / Rate</span>
+	                  <span className="rangeControl">
+	                    <input
+	                      aria-label="语速 / Rate"
+	                      disabled={settingsBusy !== ""}
+	                      max="1.3"
+	                      min="0.7"
+	                      step="0.1"
+	                      type="range"
+	                      value={appSettings.voice_rate}
+	                      onChange={(event) => void updateAppSettings({ voice_rate: Number(event.target.value) })}
+	                    />
+	                    <strong>{appSettings.voice_rate.toFixed(1)}</strong>
+	                  </span>
+	                </label>
+	                <label className="settingRow">
+	                  <span>音量 / Volume</span>
+	                  <span className="rangeControl">
+	                    <input
+	                      aria-label="音量 / Volume"
+	                      disabled={settingsBusy !== ""}
+	                      max="1"
+	                      min="0"
+	                      step="0.1"
+	                      type="range"
+	                      value={appSettings.voice_volume}
+	                      onChange={(event) => void updateAppSettings({ voice_volume: Number(event.target.value) })}
+	                    />
+	                    <strong>{appSettings.voice_volume.toFixed(1)}</strong>
+	                  </span>
+	                </label>
+	                {voiceStatus.active && (
+	                  <button
+	                    className="smallButton quiet"
+	                    type="button"
+	                    aria-label="停止语音 / Stop Voice"
+	                    onClick={() => stopVoiceOutput("user_stop")}
+	                  >
+	                    <VolumeX size={14} />
+	                    停止语音
+	                  </button>
+	                )}
+	                <button
+	                  className="smallButton quiet"
+	                  type="button"
+	                  aria-label="测试语音 / Test Voice"
+	                  disabled={!voiceStatus.available}
+	                  onClick={testVoiceOutput}
+	                >
+	                  <Volume2 size={14} />
+	                  测试语音
+	                </button>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "voice" && activeWorkspaceTab === "profile" && (
+	            <section className="infoCard" aria-label="Voice Profile 占位">
+	              <div className="cardHeader">
+	                <Volume2 size={17} />
+	                <h2>Voice Profile</h2>
+	              </div>
+	              <p className="settingHint">
+	                Voice Profile 是未来任务。本阶段不调整 TTS 性格策略、不自动朗读完整调试内容，也不引入角色音色。
+	              </p>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "overlay" && activeWorkspaceTab === "safe" && (
+	            <section className="infoCard" aria-label="Overlay Safe Mode">
+	              <div className="cardHeader">
+	                <Volume2 size={17} />
+	                <h2>Safe Mode</h2>
+	              </div>
+	              <div className="voiceOutputPanel" role="group" aria-label="Overlay / 游戏悬浮层">
+	                <div className="settingRow overlayToggleRow">
+	                  <span>Overlay / 游戏悬浮层</span>
+	                  <div
+	                    aria-label="Overlay 开关"
+	                    className="overlayToggleControl"
+	                    role="group"
+	                  >
+	                    <button
+	                      aria-label="关闭 Overlay"
+	                      aria-pressed={appSettings.overlay_enabled === "off"}
+	                      className="overlayToggleButton"
+	                      disabled={settingsBusy !== "" && settingsBusy !== "overlay_enabled"}
+	                      type="button"
+	                      onClick={() => void updateAppSettings({ overlay_enabled: "off" })}
+	                    >
+	                      关闭
+	                    </button>
+	                    <button
+	                      aria-label="开启 Overlay"
+	                      aria-pressed={appSettings.overlay_enabled === "on"}
+	                      className="overlayToggleButton"
+	                      disabled={settingsBusy !== "" && settingsBusy !== "overlay_enabled"}
+	                      type="button"
+	                      onClick={() => void updateAppSettings({ overlay_enabled: "on" })}
+	                    >
+	                      开启
+	                    </button>
+	                  </div>
+	                </div>
+	                <button
+	                  aria-label="强制关闭悬浮层"
+	                  className="smallButton overlayForceOffButton"
+	                  type="button"
+	                  onClick={() => void forceDisableOverlay()}
+	                >
+	                  强制关闭悬浮层
+	                </button>
+	                <p className="settingHint">默认关闭。开启后只保存设置，ReiLink 前台时不显示，避免遮挡 Settings。</p>
+	                <p className="settingHint">macOS 当前为安全模式：自动显示小气泡暂时关闭，以避免抢焦点或影响窗口切换。</p>
+	                <p className="settingHint">强制关闭用于异常时立即关闭悬浮层；不显示调试信息、路径、密钥或完整回复。</p>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "overlay" && activeWorkspaceTab === "placement" && (
+	            <section className="infoCard" aria-label="Overlay 位置">
+	              <div className="cardHeader">
+	                <Volume2 size={17} />
+	                <h2>位置</h2>
+	              </div>
+	              <div className="voiceOutputPanel">
+	                <label className="settingRow">
+	                  <span>位置预设</span>
+	                  <select
+	                    aria-label="Overlay 位置预设"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.overlay_position}
+	                    onChange={(event) =>
+	                      void updateAppSettings({ overlay_position: event.target.value as AppSettings["overlay_position"] })
+	                    }
+	                  >
+	                    <option value="top-right">右上</option>
+	                    <option value="middle-right">右中</option>
+	                    <option value="bottom-right">右下</option>
+	                    <option value="top-left">左上</option>
+	                    <option value="middle-left">左中</option>
+	                    <option value="bottom-left">左下</option>
+	                  </select>
+	                </label>
+	                <label className="settingRow">
+	                  <span>背景透明度</span>
+	                  <span className="rangeControl">
+	                    <input
+	                      aria-label="Overlay 背景透明度"
+	                      disabled={settingsBusy !== ""}
+	                      max="0.95"
+	                      min="0.35"
+	                      step="0.01"
+	                      type="range"
+	                      value={appSettings.overlay_opacity}
+	                      onChange={(event) => void updateAppSettings({ overlay_opacity: Number(event.target.value) })}
+	                    />
+	                    <strong>{Math.round(overlayRuntimeConfig.opacity * 100)}%</strong>
+	                  </span>
+	                </label>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "overlay" && activeWorkspaceTab === "content" && (
+	            <section className="infoCard" aria-label="Overlay 内容">
+	              <div className="cardHeader">
+	                <MessageSquare size={17} />
+	                <h2>内容</h2>
+	              </div>
+	              <div className="voiceOutputPanel">
+	                <label className="settingRow">
+	                  <span>显示消息数</span>
+	                  <select
+	                    aria-label="Overlay 显示消息数量"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.overlay_message_count}
+	                    onChange={(event) => void updateAppSettings({ overlay_message_count: Number(event.target.value) })}
+	                  >
+	                    <option value={1}>1</option>
+	                    <option value={2}>2</option>
+	                    <option value={3}>3</option>
+	                  </select>
+	                </label>
+	                <p className="settingHint">Overlay 只接收安全短摘要，不显示完整 prompt、完整回复、完整用户输入、路径、密钥或调试输出。</p>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "overlay" && activeWorkspaceTab === "future" && (
+	            <section className="infoCard" aria-label="Overlay Game Mode 占位">
+	              <div className="cardHeader">
+	                <Gamepad2 size={17} />
+	                <h2>Future Game Mode</h2>
+	              </div>
+	              <p className="settingHint">
+	                Game Mode Overlay 后续只做低打扰状态和最近 1 到 2 句安全提示。本阶段不恢复 auto-show，也不把 Overlay 描述为完整游戏 HUD。
+	              </p>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "debug" && !debugPanelVisible && (
+	            <section className="infoCard" aria-label="Developer Debug 已隐藏">
+	              <div className="cardHeader">
+	                <Bug size={17} />
+	                <h2>Developer / Debug 已隐藏</h2>
+	              </div>
+	              <p className="settingHint">调试面板已在设置中关闭。普通聊天、记忆、游戏和语音功能不会受到影响。</p>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "debug" && activeWorkspaceTab === "events" && debugPanelVisible && (
+	            <section className="infoCard" aria-label="事件流">
+	              <div className="cardHeader">
+                <Bug size={17} />
+                <h2>Event Stream</h2>
+              </div>
+              <EventStreamPanel
+                events={recentEvents}
+                open={eventStreamOpen}
+                onOpenChange={setEventStreamOpen}
+              />
+	            </section>
+	          )}
+
+	          {activeWorkspace === "debug" && activeWorkspaceTab === "trace" && debugPanelVisible && (
+	            <section className="infoCard" aria-label="语义识别 Trace">
+              <div className="cardHeader">
+                <Brain size={17} />
+                <h2>Semantic Shadow Trace</h2>
+              </div>
+              <p className="settingHint">Shadow Mode 只显示候选诊断，不写入 game state、memory 或 proactive。</p>
+              <dl className="debugFacts">
+                <div>
+                  <dt>{formatDebugLabel("source")}</dt>
+                  <dd>{debugText(semanticDebug.source)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("confidence")}</dt>
+                  <dd>{debugText(semanticDebug.confidence)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_shadow_status")}</dt>
+                  <dd>{semanticShadowStatusText(semanticDebug.llm_shadow_status)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_shadow_summary")}</dt>
+                  <dd>{debugText(semanticDebug.llm_shadow_summary)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_shadow_diff")}</dt>
+                  <dd>{debugText(semanticDebug.llm_shadow_diff)}</dd>
+                </div>
+              </dl>
+            </section>
+          )}
+
+          {activeWorkspace === "presentation" && (
+            <section className="infoCard" aria-label="Future Presentation / Avatar">
+              <div className="cardHeader">
+                <Sparkles size={17} />
+                <h2>Future Presentation / Avatar</h2>
+              </div>
+              <p className="settingHint">
+                Live2D / Avatar 只是未来 presentation layer 占位。本阶段不引入资源、不加载 runtime，也不把它作为主体验。
+              </p>
+              <p className="settingHint">当前优先级仍是 Voice、Overlay、Memory 和 Debug Split。</p>
+            </section>
+          )}
+          {activeWorkspace === "settings" && (
           <section className="infoCard settingsPanel" aria-label="设置" id="settings-panel" style={{ order: 1 }}>
             <div className="cardHeader">
               <Settings size={17} />
@@ -3476,14 +4478,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="pro">高质量</option>
                 </select>
               </label>
-              <div className="voiceOutputPanel" role="group" aria-label="Overlay 设置">
+	              <div className="voiceOutputPanel" role="group" aria-label="Overlay / 游戏悬浮层">
                 <div className="settingRow overlayToggleRow">
                   <span>Overlay / 游戏悬浮层</span>
-                  <div
-                    aria-label="Overlay / 游戏悬浮层"
-                    className="overlayToggleControl"
-                    role="group"
-                  >
+	                  <div
+	                    aria-label="Overlay 开关"
+	                    className="overlayToggleControl"
+	                    role="group"
+	                  >
                     <button
                       aria-label="关闭 Overlay"
                       aria-pressed={appSettings.overlay_enabled === "off"}
@@ -3949,7 +4951,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </div>
                   <div>
                     <dt>用户数据</dt>
-                    <dd>{debugText(backendRuntimeStatus.user_data_dir, "未设置")}</dd>
+                    <dd>{safePathText(backendRuntimeStatus.user_data_dir)}</dd>
                   </div>
                   {backendRuntimeStatus.backend_start_error ? (
                     <div>
@@ -3998,23 +5000,23 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <dl className="debugFacts localDataFacts">
                   <div>
                     <dt>用户数据目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.data_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.data_dir)}</dd>
                   </div>
                   <div>
                     <dt>记忆目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.memory_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.memory_dir)}</dd>
                   </div>
                   <div>
                     <dt>会话目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.session_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.session_dir)}</dd>
                   </div>
                   <div>
                     <dt>设置目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.settings_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.settings_dir)}</dd>
                   </div>
                   <div>
                     <dt>日志目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.logs_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.logs_dir)}</dd>
                   </div>
                   <div>
                     <dt>知识资源</dt>
@@ -4022,7 +5024,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </div>
                   <div>
                     <dt>知识目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.knowledge_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.knowledge_dir)}</dd>
                   </div>
                   <div>
                     <dt>数据目录状态</dt>
@@ -4263,7 +5265,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               本地保存到 settings.json，不包含密钥。自动游戏检测当前为{debugText(appSettings.auto_game_detection)}。
             </p>
           </section>
+          )}
 
+          {activeWorkspace === "memory" && activeWorkspaceTab === "pending" && (
           <section className="infoCard pendingPanel" aria-label="待确认记忆" id="pending-memory-panel" style={{ order: 2 }}>
             <div className="cardHeader">
               <Database size={17} />
@@ -4303,7 +5307,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               {pendingMemories.length === 0 && <p className="emptyDebugText">暂无待确认记忆</p>}
             </div>
           </section>
+          )}
 
+          {activeWorkspace === "game" && activeWorkspaceTab === "current" && (
           <section className="infoCard gameSessionPanel" aria-label="游戏状态" id="game-session-panel" style={{ order: 3 }}>
             <div className="cardHeader">
               <Gamepad2 size={17} />
@@ -4352,8 +5358,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               {recentBossHistory.length === 0 && <li>无</li>}
             </ul>
           </section>
+          )}
 
-          {debugPanelVisible && (
+          {activeWorkspace === "debug" && activeWorkspaceTab === "runtime" && debugPanelVisible && (
             <section className="infoCard foldPanel" aria-label="调试面板" id="debug-panel" style={{ order: 5 }}>
               <button
                 className="foldHeader"
@@ -4910,7 +5917,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("knowledge_path")}</dt>
-                        <dd>{debugText(chatDebug.knowledge_path)}</dd>
+                        <dd>{safePathText(chatDebug.knowledge_path, "无")}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("manifest_status")}</dt>
@@ -5285,7 +6292,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             </section>
           )}
 
-          {debugPanelVisible && (
+          {activeWorkspace === "debug" && activeWorkspaceTab === "prompt" && debugPanelVisible && (
             <section className="infoCard foldPanel" aria-label="回复上下文预览" id="prompt-preview-panel" style={{ order: 4 }}>
               <button
                 className="foldHeader"
@@ -5475,7 +6482,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("knowledge_path")}</dt>
-                      <dd>{debugText(knowledgeSummary.knowledge_path)}</dd>
+                      <dd>{safePathText(knowledgeSummary.knowledge_path, "无")}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("manifest_status")}</dt>
@@ -5583,7 +6590,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               )}
             </section>
           )}
+          </div>
         </aside>
+        )}
       </section>
       </section>
     </main>

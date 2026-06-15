@@ -64,6 +64,7 @@ dev/codex-reilink
 - Rei Persona Pack v1.1.2：中文优先的结构化原创 persona 文件、冷静寡言风格校准、真人感与关系类表层重复回归修正、safe loader、prompt assembly 接入和 Debug Prompt Preview 安全摘要。
 - Debug Dashboard。
 - UI/UX Information Architecture v0：规划 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug 和 Future Presentation / Avatar 的未来产品表面。
+- UI Surface v0：左侧 workspace launcher、默认 Home / Chat、右侧 workspace panel、Memory / Game / Voice / Overlay / Settings / Developer Debug / Future Avatar 分层入口、panel tabs、关闭按钮和 Escape 关闭。
 - QA / Regression scenarios。
 - UI polish。
 
@@ -170,11 +171,11 @@ dev/codex-reilink
 - Debug / Prompt Preview 保留脱敏后的 assembled prompt preview 能力，但普通 Debug / Event Stream 不展示完整 prompt 或 persona markdown。Prompt Preview 只显示 Persona Pack id、version、enabled、status、loaded_sections、injected_sections、missing_sections、fallback / truncation summary、`raw_content_omitted=true` 和 `path_omitted=true`，不展示完整 persona markdown、API key、`.env`、完整本地路径、stdout/stderr、raw JSON 或 ASR transcript 全文。
 - Persona Pack v1.1.2 不做用户自定义角色、Persona 自动学习、Voice Profile、TTS 音色、Live2D 或 LLM-primary 状态写入；memory、proactive 和 Semantic Shadow 的状态写入边界保持不变。
 
-### 当前 UI/UX IA 状态
+### 当前 UI Surface / IA 状态
 
 - UI/UX Information Architecture v0 已记录在 `docs/ui_ux_information_architecture.md`，配套机器可读场景位于 `docs/qa/ui_ux_information_architecture_scenarios.json`。
-- v0 只做 planning / docs，不实现 React workspace shell、Voice v2、Overlay auto-show、Hermes-style memory、Live2D 或 Electron 多窗口。
-- 当前 `App.tsx` 的左侧入口仍主要指向页面内 section / anchor；右侧承载 Settings、Memory、Game、Debug、Prompt Preview、Voice / Local ASR、Overlay 和 Local Data 等大量内容。下一阶段建议把左侧升级为 workspace launcher。
+- UI Surface v0 已在 desktop renderer 实现。左侧入口现在是 workspace launcher，默认进入 Home / Chat，右侧不再默认堆叠全部 feature 和 Debug 面板。
+- 已实现的 workspace：Memory、Game、Voice、Overlay、Settings、Developer / Debug、Future Presentation / Avatar。每个 workspace 以应用内 panel 打开，带 tabs、关闭按钮和 Escape 关闭，并保留聊天历史与未发送输入。
 - 推荐的一级模块是 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug、Future Presentation / Avatar。普通用户默认进入 Home / Chat，Developer / Debug 不应默认淹没普通体验。
 - 推荐 surface 模型是 in-app Panel Launcher & Workspace Shell：优先使用应用内 workspace / drawer / modal，暂不把普通模块拆成 Electron child window，以降低 packaged app、焦点和测试风险。
 - Voice 的产品位置升级为一级模块：当前仍是 Local ASR transcript-first + Voice Output；未来直接语音对话需要单独 Voice Interaction v2 Spec，覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted`、`error` 等状态。
@@ -201,7 +202,6 @@ dev/codex-reilink
 
 ### 后续重点
 
-- UI Surface v0 - Panel Launcher & Workspace Shell。
 - Debug Split v1。
 - Core UI Visual Polish v1。
 - Voice Interaction v2 Spec。
@@ -324,6 +324,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Rei Persona Pack v1.1.2: Chinese-first structured original persona files, cold quiet companion calibration, human-feel and relationship-surface repetition regression fixes, safe loader, prompt assembly integration, and safe Debug Prompt Preview summary.
 - Debug Dashboard.
 - UI/UX Information Architecture v0: planning for future product surfaces across Home / Chat, Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future Presentation / Avatar.
+- UI Surface v0: left workspace launcher, default Home / Chat, right workspace panel, separated Memory / Game / Voice / Overlay / Settings / Developer Debug / Future Avatar entries, panel tabs, close button, and Escape close.
 - QA / Regression scenarios.
 - UI polish.
 
@@ -430,11 +431,11 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Debug / Prompt Preview keeps the redacted assembled prompt preview capability, while ordinary Debug / Event Stream must not show the full prompt or persona markdown. Prompt Preview shows only Persona Pack id, version, enabled state, status, loaded_sections, injected_sections, missing_sections, fallback / truncation summary, `raw_content_omitted=true`, and `path_omitted=true`; it does not show full persona markdown, API keys, `.env`, full local paths, stdout/stderr, raw JSON, or full ASR transcripts.
 - Persona Pack v1.1.2 does not implement custom characters, persona self-learning, Voice Profile, TTS voice models, Live2D, or LLM-primary state writes. Memory, proactive, and Semantic Shadow write boundaries remain unchanged.
 
-### Current UI/UX IA Status
+### Current UI Surface / IA Status
 
 - UI/UX Information Architecture v0 lives in `docs/ui_ux_information_architecture.md`, with machine-readable scenarios in `docs/qa/ui_ux_information_architecture_scenarios.json`.
-- v0 is planning / docs only. It does not implement a React workspace shell, Voice v2, Overlay auto-show, Hermes-style memory, Live2D, or Electron multi-window changes.
-- The current `App.tsx` left navigation still mostly targets page sections / anchors, while the right side carries Settings, Memory, Game, Debug, Prompt Preview, Voice / Local ASR, Overlay, and Local Data content. The next UI phase should upgrade the left side into a workspace launcher.
+- UI Surface v0 is implemented in the desktop renderer. The left navigation is now a workspace launcher, Home / Chat is the default surface, and the right side no longer stacks all feature and Debug panels by default.
+- Implemented workspaces: Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future Presentation / Avatar. Each opens as an in-app panel with tabs, a close button, and Escape close behavior while preserving chat history and unsent chat input.
 - The recommended top-level modules are Home / Chat, Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future Presentation / Avatar. Normal users should default to Home / Chat, while Developer / Debug should not overwhelm the ordinary experience by default.
 - The recommended surface model is an in-app Panel Launcher & Workspace Shell: prefer in-app workspaces, drawers, and modals before splitting ordinary modules into Electron child windows, which would raise packaged-app, focus, and test risk.
 - Voice becomes a top-level product module. The current state remains Local ASR transcript-first plus Voice Output; direct spoken conversation requires a separate Voice Interaction v2 Spec covering `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`.
@@ -461,7 +462,6 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 
 ### Upcoming Focus
 
-- UI Surface v0 - Panel Launcher & Workspace Shell.
 - Debug Split v1.
 - Core UI Visual Polish v1.
 - Voice Interaction v2 Spec.
