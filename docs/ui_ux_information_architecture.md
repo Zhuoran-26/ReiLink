@@ -266,6 +266,9 @@ Completed:
   - Implemented as an in-app workspace shell.
   - Preserves chat input across workspace switches.
   - Avoids native Electron child-window complexity for ordinary modules.
+- Voice Interaction v2 Spec.
+  - Documents direct conversation states, confirm-send default, interruption, TTS/listening conflict, privacy, and Game Mode behavior.
+  - Does not implement Voice v2.
 
 Next:
 
@@ -275,9 +278,9 @@ Next:
 2. Core UI Visual Polish v1.
    - Polish the new shell after the IA is real, not before.
    - Improve density, contrast, responsive behavior, and language consistency.
-3. Voice Interaction v2 Spec.
-   - Define direct conversation states, auto-send vs confirm-send, interruption, TTS/listening conflict, privacy, and Game Mode behavior.
-   - Should use the Voice workspace created by step 1.
+3. Voice Interaction v2 Implementation.
+   - Implement only after the Voice v2 spec and shell are ready.
+   - Keep Local ASR no-upload, confirm-send default, TTS interruption, and transcript safety boundaries.
 4. Hermes-style Memory Architecture v0.
    - Design candidate memory, source summaries, confirmed list, ignore/delete/do-not-ask-again, and session archive boundaries.
    - Depends on Memory workspace placement.
@@ -305,7 +308,7 @@ Next:
 Parallelizable work:
 
 - Core UI visual exploration can run beside Debug Split after the shell direction is accepted.
-- Voice Interaction v2 Spec can begin while the shell is implemented, but implementation should wait.
+- Voice Interaction v2 Implementation can begin from `docs/voice_interaction_v2_spec.md`, but should keep confirm-send default and avoid hands-free by default.
 - Hermes-style Memory Architecture can be drafted in parallel with Debug Split, but Candidate Memory should wait for the Memory workspace.
 - TTS Strategy Spike can run after Voice Spec has state language, without blocking Panel Shell.
 

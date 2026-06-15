@@ -17,6 +17,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/persona_regression_cases.json`
 - `docs/qa/ui_ux_information_architecture_scenarios.json`
 - `docs/qa/ui_surface_scenarios.json`
+- `docs/qa/voice_interaction_v2_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -183,6 +184,23 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 6. 切换任意 workspace tab 不应清空聊天历史或未发送输入；切换到其他 workspace 后，该 workspace 的上次 active tab 可独立保留，不污染其他 workspace。
 7. Close button 与 Escape 关闭 workspace 仍有效；v0.1 的 tabs 不遮挡、body 内部滚动隔离、小窗口 hit-testing 要继续通过。
 8. 本轮仍不实现 Voice v2、Overlay auto-show、Hermes-style memory 或 Live2D。
+
+### 1.10 Voice Interaction v2 Spec 人工验收
+
+设计文档见 `docs/voice_interaction_v2_spec.md`，机器可读场景见 `docs/qa/voice_interaction_v2_scenarios.json`。本节只验收直接语音对话 loop 的设计边界，不表示 Voice v2 已实现。
+
+1. Voice v2 默认仍是 confirm-send：ASR transcript 进入 ready-to-send 状态，用户确认后才进入 chat flow。
+2. Auto-send 只能作为未来显式 opt-in 模式，不得因开启 Local ASR、Voice Output 或 Voice workspace 自动启用。
+3. Hands-free / auto-listen 只作为未来选项，默认关闭；当前不做 wake word、不做后台常驻监听。
+4. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
+5. `listening` 和 `speaking` 必须互斥；用户开始录音时应先停止正在播放的 TTS。
+6. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
+7. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
+8. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
+9. Voice workspace 的 Conversation tab 应承接未来状态、模式、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置。
+10. Home / Chat 输入区未来应显示紧凑 voice state，但不得清空未发送草稿或隐藏普通文本输入。
+11. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
+12. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
 
 ### 2. Voice Output 回归检查
 
