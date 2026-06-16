@@ -91,7 +91,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 8. Check Local ASR 能正常 probe。
 9. 重启后配置仍存在。
 10. 主聊天语音输入仍可识别并填入输入框。
-11. transcript 不自动发送。
+11. 默认 confirm-send 下 transcript 不自动发送。
 12. Event Stream / Debug 不显示完整路径、stdout/stderr、transcript、API key 或 `.env`。
 
 #### D. Voice / ASR Regression
@@ -102,7 +102,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 4. Web Speech fallback 不作为可靠主路径。
 5. Local ASR ready 状态可显示。
 6. Record & Transcribe 可用。
-7. 识别结果填入输入框但不自动发送。
+7. 默认 confirm-send 下识别结果填入输入框但不自动发送。
 8. 用户确认后才进入 chat flow。
 9. accepted memory 才进入 prompt。
 10. proactive 内容不进入 memory。
@@ -134,7 +134,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.7 UI/UX Information Architecture v0 人工验收
 
-本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认当前 Voice 只接入 Voice v2 foundation，不表示 hands-free、auto-send、角色 TTS、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
+本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认当前 Voice 已接入 Voice v2.1：默认确认发送 + 显式 opt-in 直接对话。不表示 hands-free、角色 TTS、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
 
 机器可读场景见 `docs/qa/ui_ux_information_architecture_scenarios.json`。
 
@@ -142,7 +142,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 2. 左侧定位应是 workspace launcher，不只是页面 anchor。
 3. Memory 应有独立普通用户入口，承接 pending、confirmed、ignored、search、sources 和后续 session archive。
 4. Game 应有独立普通用户入口，承接 current game、boss、session state、knowledge availability 和 manual control。
-5. Voice 应有独立一级入口；当前是 Local ASR transcript-first + Voice Output + Voice v2 foundation，hands-free / auto-send 直接语音对话仍只做未来规划。
+5. Voice 应有独立一级入口；当前是 Local ASR transcript-first 默认 + Voice Output + Voice v2.1 直接对话显式 opt-in，hands-free、角色 TTS、Voice Profile 和 Overlay voice state 仍只做未来规划。
 6. Voice 未来状态至少覆盖 idle、listening、transcribing、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
 7. Overlay 应有独立入口，但 macOS auto-show 仍是 fail-closed safe mode；不要把它描述为完整可用的游戏 HUD。
 8. Developer / Debug 应与普通体验分离，承接 Event Stream、Prompt Preview、Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status。
@@ -178,29 +178,33 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 1. Settings workspace 中 应用、模型、隐私 / 数据、高级 tabs 的 active 样式与实际内容一致；模型 tab 显示模型状态，隐私 / 数据 tab 显示本地数据，高级 tab 显示 Overlay、Voice Output、Voice Input / Local ASR 旧配置入口。
 2. Developer / Debug workspace 中 Event Stream、Prompt Preview、Runtime、Trace tabs 均显示对应安全面板；Prompt Preview 仍不显示完整 prompt、完整 persona markdown、API key、`.env`、完整路径或 raw provider response。
-3. Voice workspace 中 Conversation、Input / Local ASR、Output、Voice Profile tabs 均显示不同内容；Conversation 显示 Voice v2 状态、确认发送模式、输出状态和安全边界，Input 仍能找到 Local ASR，Output 仍能找到 Test Voice / Voice Output。
+3. Voice workspace 中 Conversation、Input / Local ASR、Output、Voice Profile tabs 均显示不同内容；Conversation 显示 Voice v2 状态、确认发送 / 直接对话模式、输出状态和安全边界，Input 仍能找到 Local ASR，Output 仍能找到 Test Voice / Voice Output。
 4. Overlay workspace 中 Safe Mode、Placement、Content、Future Game Mode tabs 均显示不同内容；Safe Mode 继续说明 macOS auto-show fail-closed，Future Game Mode 不恢复 auto-show。
 5. Future / Avatar workspace 中 Avatar 与 Presentation Policy tabs 显示不同 placeholder，且不加载 Live2D runtime、Avatar 资源或 presentation layer 行为。
 6. 切换任意 workspace tab 不应清空聊天历史或未发送输入；切换到其他 workspace 后，该 workspace 的上次 active tab 可独立保留，不污染其他 workspace。
 7. Close button 与 Escape 关闭 workspace 仍有效；v0.1 的 tabs 不遮挡、body 内部滚动隔离、小窗口 hit-testing 要继续通过。
-8. 本轮只接入 Voice v2 foundation；仍不实现 hands-free、auto-send、Overlay auto-show、Hermes-style memory 或 Live2D。
+8. 本轮接入 Voice v2.1 直接对话显式 opt-in；仍不实现 hands-free、角色 TTS、Voice Profile、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D。
 
-### 1.10 Voice Interaction v2 Foundation 人工验收
+### 1.10 Voice Interaction v2.1 Direct Conversation Mode 人工验收
 
-设计文档见 `docs/voice_interaction_v2_spec.md`，机器可读场景见 `docs/qa/voice_interaction_v2_scenarios.json`。本节验收 Voice v2 state machine 与安全对话底座；不表示 hands-free、auto-send、角色 TTS、Voice Profile 或 Overlay voice state 已实现。
+设计文档见 `docs/voice_interaction_v2_spec.md`，机器可读场景见 `docs/qa/voice_interaction_v2_scenarios.json`。本节验收 Voice v2 state machine、默认确认发送和显式 opt-in 直接对话；不表示 hands-free、角色 TTS、Voice Profile 或 Overlay voice state 已实现。
 
 1. Voice v2 默认仍是 confirm-send：ASR transcript 进入 ready-to-send 状态，用户确认后才进入 chat flow。
-2. Auto-send 只能作为未来显式 opt-in 模式，不得因开启 Local ASR、Voice Output 或 Voice workspace 自动启用。
-3. Hands-free / auto-listen 只作为未来选项，默认关闭；当前不做 wake word、不做后台常驻监听。
-4. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
-5. `listening` 和 `speaking` 必须互斥；用户开始录音时应先停止正在播放的 TTS。
-6. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
-7. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
-8. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
-9. Voice workspace 的 Conversation tab 应承接状态、模式、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置。
-10. Home / Chat 输入区应显示紧凑 voice state，但不得清空未发送草稿或隐藏普通文本输入。
-11. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
-12. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
+2. 直接对话模式必须默认关闭，只能由用户在 Voice workspace Conversation 中显式切换到 `直接对话`；不得因开启 Local ASR、Voice Output 或打开 Voice workspace 自动启用。
+3. 直接对话模式开启后，ASR transcript 转写成功会自动进入现有 chat flow；不得绕过 memory confirmation、knowledge gating、game context safety、persona guardrails 或 provider error handling。
+4. 直接对话不是 hands-free：每一轮仍需要用户主动点击或按住语音输入；当前不做 wake word、不做后台常驻监听、不做自动下一轮录音。
+5. Voice Output 开启时，直接对话的 assistant 最终回复可自动播报；Voice Output 关闭时只显示文字回复。
+6. Stop Voice 能打断直接对话后的 TTS；用户开始新一轮录音时应先停止正在播放的 TTS。
+7. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
+8. `listening` 和 `speaking` 必须互斥。
+9. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
+10. 直接对话的 Event Stream / Debug / Raw JSON / Prompt Preview / Overlay 只能显示 mode、provider、字符数和生命周期摘要；不得显示完整 transcript、raw prompt、完整 assistant reply、路径、API key、`.env`、stdout 或 stderr。
+11. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
+12. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
+13. Voice workspace 的 Conversation tab 应承接状态、确认发送 / 直接对话切换、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置，Output tab 应说明直接对话 + Voice Output 的自动播报关系。
+14. Home / Chat 输入区应显示紧凑 voice state 和当前模式，但不得清空未发送草稿或隐藏普通文本输入。
+15. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
+16. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
 
 ### 2. Voice Output 回归检查
 
@@ -238,9 +242,9 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - 如果麦克风或识别权限被拒绝，显示 `麦克风权限被拒绝` 或等价中文摘要，App 不崩溃。
 - 如果没有识别到语音，显示 `没有识别到语音` 或等价中文摘要。
 - 如果用户主动停止或浏览器返回 aborted，显示 `用户停止` 或等价中文摘要。
-- final transcript 只填入聊天输入框，用户可以编辑。
+- 默认 confirm-send 下 final transcript 只填入聊天输入框，用户可以编辑。
 - interim transcript 只影响识别状态，不自动发送。
-- final transcript 不自动发送；只有用户点击 `发送` 后才进入现有 chat flow。
+- 默认 confirm-send 下 final transcript 不自动发送；只有用户点击 `发送` 后才进入现有 chat flow。直接对话模式开启时，final transcript 会在用户主动录音结束后进入现有 chat flow。
 - 未确认 transcript 不进入 memory。
 - 未确认 transcript 不进入 prompt / context。
 - 未确认 transcript 不触发 game context extraction。
@@ -258,7 +262,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - UI 非黑屏，backend 自启动。
 - 主语音按钮和 `语音输入 / Voice Input` 可见。
 - Settings 显示 `语音识别功能`、`麦克风权限` 和 `运行环境：打包应用`。
-- 如果 packaged 环境支持 Web Speech Recognition，点击开始后可进入听写状态，final transcript 填入输入框但不自动发送。
+- 如果 packaged 环境支持 Web Speech Recognition，默认 confirm-send 下点击开始后可进入听写状态，final transcript 填入输入框但不自动发送；直接对话模式开启时则进入现有 chat flow。
 - 如果 packaged 环境不支持 Web Speech Recognition，显示 `当前运行环境不支持本地语音识别`，并提示可使用系统听写，不崩溃。
 - 如果 packaged 环境暴露 Web Speech Recognition 但服务不可达，显示 `语音识别服务不可用` 和 `服务不可用`，并提示可使用系统听写，不崩溃。
 - 如果权限被拒绝，显示 `麦克风权限被拒绝` 或等价中文错误，不崩溃。
@@ -302,7 +306,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
    - `Audio Capture Test` succeeded。
    - `Record & Transcribe` succeeded。
    - 主聊天框语音按钮可用，并使用 Local ASR，而不是 Web Speech unavailable fallback。
-   - 真实 transcript 填入输入框，不自动发送。
+   - 默认 confirm-send 下真实 transcript 填入输入框，不自动发送。
    - 用户可编辑 transcript；只有用户手动点击发送后才进入 chat flow。
 5. Simplified Chinese output:
    - 如果 whisper 输出繁体中文，ReiLink 应规范化为简体中文。
@@ -327,7 +331,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
    - native file picker 只填入 Settings 输入框，不读取模型内容、不复制文件、不上传文件；仍需点击 `保存配置 / Save` 才持久化。
 
 - 当前 Web Speech Recognition 在 Electron packaged app 中可能暴露 API，但识别服务不可用；Local ASR ready 时主聊天语音按钮应走本地转写，Local ASR not ready 时才显示 `语音识别服务不可用` 或明确 unavailable fallback，不崩溃。
-- v1 仍保留输入框入口、安全 fallback、系统听写提示和“不自动发送”的边界。
+- v1 仍保留输入框入口、安全 fallback、系统听写提示和默认 confirm-send “不自动发送”的边界。
 - 当前 Local ASR Config Detection v1 只检测解析后的配置，不执行 whisper / ASR binary，不录音，不转写，不上传音频，不下载模型，不把模型或用户数据写入 `.app`。
 - Local ASR 配置来源优先级：Settings 中的用户配置优先，其次是 `REILINK_LOCAL_ASR_BINARY` / `REILINK_LOCAL_ASR_MODEL` / `REILINK_AUDIO_CONVERTER_BINARY` 环境变量 fallback，最后是未配置。
 - Settings 的 `本地 ASR 配置 / Local ASR Setup` 可保存本地识别程序、模型文件和音频转换工具路径；路径可手动输入，也可通过原生 file picker 填入。保存位置为 backend `settings.data_dir/local_asr_settings.json`，不写入 repo、`.env` 或 packaged `.app`。
@@ -374,9 +378,9 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - fake binary smoke：通过 Settings 或 env fallback 配置 fake binary / fake model，fake binary 输出固定 transcript，确认输入框被回填。
 - Settings 显示安全 model basename。`ggml-base.bin` 通常速度和准确率较均衡；tiny 更快但更不准，small / medium / large 可能更准但更慢或超时。ReiLink 不内置模型。
 - 真实准确率排查建议：尽量说短句、靠近麦克风、降低背景噪声；需要更高准确率时可尝试更大模型，但要接受更慢或超时风险。
-- 正常 transcript 只填入聊天输入框，用户可编辑或删除；不会自动发送，UI 应显示 `转写完成，请确认后发送`。
+- 默认 confirm-send 下正常 transcript 只填入聊天输入框，用户可编辑或删除；不会自动发送，UI 应显示 `转写完成，请确认后发送`。直接对话模式开启时，UI 应显示 `转写完成，已自动发送`。
 - 未确认 transcript 不写 memory，不进入 prompt / retrieval / game context，也不触发 semantic/game extraction。
-- 主聊天语音按钮的 transcript 同样只填入输入框；用户手动点击发送后才进入 chat flow。
+- 默认 confirm-send 下主聊天语音按钮的 transcript 同样只填入输入框；用户手动点击发送后才进入 chat flow。直接对话模式开启时，transcript 会自动进入现有 chat flow。
 - 空 transcript 返回 `local_asr_transcription_no_text`，UI 显示 `没有识别到可用文本`，不改输入框。
 - fake binary nonzero 返回 `local_asr_transcription_failed`，不显示 raw stdout / stderr。
 - subprocess OS error 返回 `local_asr_transcription_error`，不显示 raw exception。
@@ -388,7 +392,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - Packaged `.app` 应包含麦克风用途说明：`ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。`
 - Local ASR QA 后续重点是：主聊天按钮 provider selection、转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
 - 用户临时替代方案：使用系统听写直接输入到聊天框。
-- 默认不上传外部服务，不保存音频，不自动发送 transcript。
+- 默认不上传外部服务，不保存音频；默认 confirm-send 不自动发送 transcript，直接对话模式必须显式 opt-in。
 - 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。
 - 当前配置检测不会产生音频或 transcript。Event Stream / Debug / Raw JSON 不显示完整 transcript、完整音频路径、raw subprocess output、API key、`.env`、Authorization、完整本地路径或 raw prompt。
 
@@ -404,7 +408,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - audio conversion 应显示 `audio_conversion_succeeded`，或在 WAV / PCM 输入时显示 conversion not needed。
 - `Record & Transcribe` 应返回已 trim / 折叠空白 / 简体规范化后的 transcript，并只填入输入框。
 - 主聊天语音按钮应显示本地 ASR 可用；点击后录音、转写，并把 transcript 只填入主聊天输入框。
-- transcript 不自动发送；用户检查后才手动点击发送。
+- 默认 confirm-send 下 transcript 不自动发送；用户检查后才手动点击发送。
 - 未发送前不得写入 memory / prompt / knowledge retrieval / game context。
 - Event Stream / Debug Panel 不显示完整 transcript、完整路径、raw stdout、raw stderr、API key、`.env` 或 Authorization。
 - packaged `.app` optional smoke 需要确认非黑屏、backend health ok、Voice Input / Local ASR Setup 入口可见、Settings 保存后重启仍持久化，退出后没有 backend 残留。
@@ -424,7 +428,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - 使用临时 fake executable 和临时 fake model file，不提交到 repo。
 - fake binary 可分别输出纯文本、timestamp 文本、带日志文本、空文本和超长文本。
 - 期望 config ready，probe succeeded，transcribe 返回已清洗 / 简体规范化的 fake transcript 或 no_text。
-- transcript 只填入输入框，不自动发送。
+- 默认 confirm-send 下 transcript 只填入输入框，不自动发送。
 - Event Stream / Debug / Raw JSON 不显示 full transcript、raw stdout/stderr、完整 binary/model/temp path。
 
 5.3 real whisper binary + model：

@@ -717,6 +717,49 @@ button {
   font-size: 12px;
 }
 
+.voiceModeControl {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(145, 164, 213, 0.16);
+  border-radius: 13px;
+  padding: 11px;
+  background: rgba(10, 14, 26, 0.42);
+}
+
+.voiceModeControl > span {
+  color: #aeb8d3;
+  font-size: 12px;
+}
+
+.voiceModeButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.voiceModeButton {
+  min-height: 34px;
+  border: 1px solid rgba(145, 164, 213, 0.22);
+  border-radius: 10px;
+  padding: 0 12px;
+  color: #dce5ff;
+  background: rgba(22, 28, 46, 0.78);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.voiceModeButton[aria-pressed="true"] {
+  border-color: rgba(143, 231, 190, 0.58);
+  color: #f2fff8;
+  background: rgba(43, 121, 91, 0.34);
+}
+
+.voiceModeButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .composer input {
   width: 100%;
   min-width: 0;

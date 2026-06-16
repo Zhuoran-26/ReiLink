@@ -96,6 +96,12 @@ type VoiceTransientState = {
   kind: "interrupted" | "error";
   message?: string;
 } | null;
+type VoiceTranscriptSendOptions = {
+  source: MainVoiceInputProvider;
+  mode: AppSettings["voice_interaction_mode"];
+  autoSent?: boolean;
+  characterCount: number;
+};
 type LocalAsrSettingsDraft = {
   local_asr_binary_path: string;
   local_asr_model_path: string;
@@ -517,6 +523,7 @@ const defaultAppSettings: AppSettings = {
   overlay_position: OVERLAY_DEFAULT_POSITION,
   overlay_opacity: OVERLAY_DEFAULT_OPACITY,
   overlay_message_count: OVERLAY_DEFAULT_MESSAGE_COUNT,
+  voice_interaction_mode: "confirm_send",
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -543,6 +550,9 @@ const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSetti
   overlay_message_count: hasAppSetting(settings, "overlay_message_count")
     ? settings.overlay_message_count
     : patch.overlay_message_count ?? previous.overlay_message_count,
+  voice_interaction_mode: hasAppSetting(settings, "voice_interaction_mode")
+    ? settings.voice_interaction_mode
+    : patch.voice_interaction_mode ?? previous.voice_interaction_mode,
   voice_output: hasAppSetting(settings, "voice_output") ? settings.voice_output : patch.voice_output ?? previous.voice_output,
   voice_rate: hasAppSetting(settings, "voice_rate") ? settings.voice_rate : patch.voice_rate ?? previous.voice_rate,
   voice_volume: hasAppSetting(settings, "voice_volume") ? settings.voice_volume : patch.voice_volume ?? previous.voice_volume
@@ -638,6 +648,7 @@ const labelMap: Record<string, string> = {
   knowledge_not_used_reason: "未使用原因",
   knowledge_retrieval_min_score: "最低命中分数",
   auto_game_detection: "自动游戏检测",
+  voice_interaction_mode: "语音交互模式",
   voice_output: "语音输出",
   voice_rate: "语速",
   voice_volume: "音量",
@@ -989,7 +1000,10 @@ const debugListText = (item: unknown): string => {
 
 const eventTextLength = (value: string) => `${value.length} 字`;
 
-const userMessageEventSummary = (value: string) => `用户消息 ${eventTextLength(value)}`;
+const userMessageEventSummary = (event: Extract<ReiLinkEvent, { type: "user_message_sent" }>) => {
+  if (event.source === "voice_direct") return `语音自动发送 ${event.character_count ?? event.text.length} 字`;
+  return `用户消息 ${eventTextLength(event.text)}`;
+};
 
 const voiceStopReasonText = (reason?: string) => {
   const labels: Record<string, string> = {
@@ -1071,6 +1085,12 @@ const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
   return "";
 };
 
+const voiceInteractionModeText = (mode: AppSettings["voice_interaction_mode"]) =>
+  mode === "direct_conversation" ? "直接对话" : "确认后发送";
+
+const voiceInteractionModeDescription = (mode: AppSettings["voice_interaction_mode"]) =>
+  mode === "direct_conversation" ? "转写后会自动发送。" : "转写后需要确认发送。";
+
 const overlayPositionText = (position?: string) => {
   const labels: Record<string, string> = {
     "top-right": "右上",
@@ -1110,7 +1130,7 @@ const semanticShadowEventStatusText = (status?: string | null) => {
 const eventSummary = (event: ReiLinkEvent) => {
   switch (event.type) {
     case "user_message_sent":
-      return userMessageEventSummary(event.text);
+      return userMessageEventSummary(event);
     case "assistant_reply_started":
       return "开始生成回复";
     case "assistant_reply_segment_shown":
@@ -1202,6 +1222,14 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [voiceInputReasonText(event.reason, event.status), event.character_count ? `${event.character_count} 字` : "", event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
     case "voice_input_unavailable":
       return [voiceInputReasonText(event.reason, event.status), event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "voice_direct_mode_enabled":
+      return "直接对话模式已开启";
+    case "voice_direct_mode_disabled":
+      return "直接对话模式已关闭";
+    case "voice_transcription_auto_sent":
+      return [`语音文本 ${event.character_count} 字`, event.provider ? debugText(event.provider) : ""].filter(Boolean).join(" / ");
+    case "voice_reply_auto_speak_started":
+      return `自动播报 ${event.character_count} 字`;
     case "audio_capture_started":
       return `最长 ${event.duration_ms ?? 0} ms`;
     case "audio_capture_completed":
@@ -1295,6 +1323,10 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     voice_input_stopped: "语音输入已停止",
     voice_input_error: "语音输入失败",
     voice_input_unavailable: "语音输入不可用",
+    voice_direct_mode_enabled: "直接对话已开启",
+    voice_direct_mode_disabled: "直接对话已关闭",
+    voice_transcription_auto_sent: "语音文本自动发送",
+    voice_reply_auto_speak_started: "语音回复自动播报",
     audio_capture_started: "录音测试开始",
     audio_capture_completed: "录音测试完成",
     audio_capture_stopped: "录音已停止",
@@ -1952,7 +1984,7 @@ export function App() {
     });
   }, [appSettings.voice_rate, appSettings.voice_volume, clearVoiceTransientState]);
 
-  const startVoiceInput = useCallback(() => {
+  const startVoiceInput = () => {
     clearVoiceTransientState();
     clearVoiceTranscriptReady();
     if (voiceOutput.getStatus().active) {
@@ -1960,14 +1992,13 @@ export function App() {
     }
     const started = voiceInput.start({
       onFinalTranscript: (transcript) => {
-        setInput((current) => appendTranscriptToInput(current, transcript));
-        markVoiceTranscriptReady("web_speech", transcript);
+        handleRecognizedVoiceTranscript("web_speech", transcript);
       }
     });
     if (!started) {
       setVoiceError("语音没有接上。可以再试一次。");
     }
-  }, [clearVoiceTransientState, clearVoiceTranscriptReady, markVoiceTranscriptReady, setVoiceError, stopVoiceOutput]);
+  };
 
   const stopVoiceInput = useCallback(() => {
     voiceInput.stop("user_stop");
@@ -2283,6 +2314,12 @@ export function App() {
           voiceSettingFallback(updated, previous, patch)
         )
       );
+      if (patch.voice_interaction_mode) {
+        eventBus.emit({
+          type: patch.voice_interaction_mode === "direct_conversation" ? "voice_direct_mode_enabled" : "voice_direct_mode_disabled",
+          timestamp: eventTimestamp()
+        });
+      }
       if (patch.debug_panel === "hide") {
         setDebugOpen(false);
         setPromptPreviewOpen(false);
@@ -2464,6 +2501,27 @@ export function App() {
     });
   };
 
+  function handleRecognizedVoiceTranscript(source: MainVoiceInputProvider, transcript: string) {
+    const trimmedTranscript = transcript.trim();
+    if (!trimmedTranscript) return;
+    if (appSettings.voice_interaction_mode === "direct_conversation") {
+      clearVoiceTransientState();
+      clearVoiceTranscriptReady();
+      void submitChatMessage(trimmedTranscript, {
+        clearInput: false,
+        voiceTranscript: {
+          source,
+          mode: "direct_conversation",
+          autoSent: true,
+          characterCount: trimmedTranscript.length
+        }
+      });
+      return;
+    }
+    setInput((current) => appendTranscriptToInput(current, transcript));
+    markVoiceTranscriptReady(source, transcript);
+  }
+
   const runLocalAsrTranscription = async () => {
     if (localAsrTranscriptionPhase === "recording") {
       audioCapture.stop("user_stop");
@@ -2501,8 +2559,7 @@ export function App() {
           .then((result) => {
             setLocalAsrTranscriptionResult(result);
             if (result.status === "local_asr_transcription_succeeded" && result.transcript.trim()) {
-              setInput((current) => appendTranscriptToInput(current, result.transcript));
-              markVoiceTranscriptReady("local_asr", result.transcript);
+              handleRecognizedVoiceTranscript("local_asr", result.transcript);
               eventBus.emit({
                 type: "local_asr_transcription_completed",
                 timestamp: eventTimestamp(),
@@ -2949,13 +3006,23 @@ export function App() {
     return () => window.clearInterval(interval);
   }, [appSettings.proactive_companion, backendStatus, checkProactive]);
 
-  const sendMessage = async (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = input.trim();
+  const submitChatMessage = async (
+    messageText: string,
+    options: { voiceTranscript?: VoiceTranscriptSendOptions; clearInput?: boolean } = {}
+  ) => {
+    const trimmed = messageText.trim();
     if (!trimmed || sending) return;
     voiceOutput.stop("new_message");
     voiceInput.stop("user_stop");
-    const sendingVoiceTranscript = Boolean(voiceTranscriptReady);
+    const fallbackVoiceTranscript: VoiceTranscriptSendOptions | null = voiceTranscriptReady
+      ? {
+          source: voiceTranscriptReady.source,
+          mode: appSettings.voice_interaction_mode,
+          characterCount: Math.max(voiceTranscriptReady.characterCount, trimmed.length)
+        }
+      : null;
+    const voiceTranscript = options.voiceTranscript ?? fallbackVoiceTranscript;
+    const sendingVoiceTranscript = Boolean(voiceTranscript);
     if (sendingVoiceTranscript) {
       clearVoiceTransientState();
       setVoiceAssistantTurnActive(true);
@@ -2970,8 +3037,22 @@ export function App() {
     setLastRawError("");
     queueMessageAutoScroll(true);
     setMessages((current) => [...current, userMessage]);
-    eventBus.emit({ type: "user_message_sent", timestamp: userMessage.createdAt, text: trimmed });
-    setInput("");
+    if (voiceTranscript?.autoSent) {
+      eventBus.emit({
+        type: "voice_transcription_auto_sent",
+        timestamp: userMessage.createdAt,
+        character_count: voiceTranscript.characterCount,
+        provider: voiceTranscript.source === "unavailable" ? undefined : voiceTranscript.source
+      });
+    }
+    eventBus.emit({
+      type: "user_message_sent",
+      timestamp: userMessage.createdAt,
+      text: voiceTranscript?.autoSent ? "" : trimmed,
+      source: voiceTranscript?.autoSent ? "voice_direct" : "text",
+      character_count: voiceTranscript?.autoSent ? voiceTranscript.characterCount : undefined
+    });
+    if (options.clearInput ?? true) setInput("");
     clearVoiceTranscriptReady();
     setSending(true);
     eventBus.emit({ type: "assistant_reply_started", timestamp: eventTimestamp(), message_id: replyMessageId });
@@ -3013,11 +3094,19 @@ export function App() {
       void pushOverlayContent(segments.join(" "), "assistant_reply");
       if (appSettings.voice_output === "on" && !spokenAssistantReplyIdsRef.current.has(replyMessageId)) {
         spokenAssistantReplyIdsRef.current.add(replyMessageId);
-        const speakingStarted = voiceOutput.speak(segments.join("\n"), {
+        const spokenText = segments.join("\n");
+        const speakingStarted = voiceOutput.speak(spokenText, {
           rate: appSettings.voice_rate,
           volume: appSettings.voice_volume,
           source: "assistant_reply"
         });
+        if (voiceTranscript?.mode === "direct_conversation" && speakingStarted) {
+          eventBus.emit({
+            type: "voice_reply_auto_speak_started",
+            timestamp: eventTimestamp(),
+            character_count: spokenText.length
+          });
+        }
         if (sendingVoiceTranscript && !speakingStarted) {
           setVoiceError("语音播放不可用。回复已保留在聊天里。");
         }
@@ -3044,6 +3133,11 @@ export function App() {
       setSending(false);
       setVoiceAssistantTurnActive(false);
     }
+  };
+
+  const sendMessage = async (event: FormEvent) => {
+    event.preventDefault();
+    await submitChatMessage(input);
   };
 
   const handlePendingMemory = async (id: string, action: "accept" | "ignore") => {
@@ -3221,7 +3315,10 @@ export function App() {
   const mainVoiceInputProvider = selectMainVoiceInputProvider(localAsrStatus, voiceInputStatus);
   const mainVoiceInputUsesLocalAsr = mainVoiceInputProvider === "local_asr";
   const mainVoiceInputUsesWebSpeech = mainVoiceInputProvider === "web_speech";
-  const mainVoiceInputStatus = mainVoiceInputStatusText(
+  const voiceDirectConversationEnabled = appSettings.voice_interaction_mode === "direct_conversation";
+  const voiceInteractionModeLabel = voiceInteractionModeText(appSettings.voice_interaction_mode);
+  const voiceInteractionModeHint = voiceInteractionModeDescription(appSettings.voice_interaction_mode);
+  const baseMainVoiceInputStatus = mainVoiceInputStatusText(
     mainVoiceInputProvider,
     voiceInputStatus,
     localAsrStatus,
@@ -3229,6 +3326,12 @@ export function App() {
     localAsrTranscriptionResult,
     audioCaptureStatus
   );
+  const mainVoiceInputStatus =
+    voiceDirectConversationEnabled &&
+    localAsrTranscriptionPhase === "idle" &&
+    localAsrTranscriptionResult?.status === "local_asr_transcription_succeeded"
+      ? "转写完成，已自动发送"
+      : baseMainVoiceInputStatus;
   const mainVoiceInputDisabled = mainVoiceInputUsesLocalAsr
     ? localAsrTranscriptionButtonDisabled
     : !mainVoiceInputUsesWebSpeech || !webSpeechVoiceInputAvailable(voiceInputStatus);
@@ -3249,15 +3352,22 @@ export function App() {
     audioCaptureStatus
   );
   const voiceErrorMessage = voiceTransientState?.kind === "error" ? voiceTransientState.message ?? "语音没有接上。可以再试一次。" : null;
-  const voiceConversationState = resolveVoiceConversationState({
+  const resolvedVoiceConversationState = resolveVoiceConversationState({
     transcribing: localAsrTranscriptionPhase === "transcribing",
     listening: localAsrTranscriptionPhase === "recording" || voiceInputStatus.phase !== "idle",
     assistantThinking: voiceAssistantTurnActive && sending,
     speaking: voiceStatus.active,
     interrupted: voiceTransientState?.kind === "interrupted",
-    readyToSend: Boolean(voiceTranscriptReady && input.trim()),
+    readyToSend: !voiceDirectConversationEnabled && Boolean(voiceTranscriptReady && input.trim()),
     errorMessage: voiceErrorMessage
   });
+  const voiceConversationState = {
+    ...resolvedVoiceConversationState,
+    description:
+      voiceDirectConversationEnabled && ["idle", "transcribing"].includes(resolvedVoiceConversationState.state)
+        ? voiceInteractionModeHint
+        : resolvedVoiceConversationState.description
+  };
   const voiceConfirmSendText = voiceTranscriptReady
     ? `${voiceTranscriptReady.characterCount} 字已在输入框，仍需点击发送。`
     : "确认后发送，默认不自动发送。";
@@ -3336,7 +3446,7 @@ export function App() {
     app: `本地保存到 settings.json，不包含密钥。自动游戏检测当前为${debugText(appSettings.auto_game_detection)}。`,
     provider: "模型配置只显示 provider、模型名和 API Key 加载状态，不显示 .env 或密钥原文。",
     privacy: "本地数据操作保持显式按钮；不会改变 memory、proactive 或 Shadow Mode 的写入边界。",
-    advanced: "高级设置复用现有功能入口；Voice v2.0 状态机已接入，但不实现 hands-free / auto-send，也不恢复 Overlay auto-show。"
+    advanced: "高级设置复用现有功能入口；Voice v2.1 只提供主动开启的直接对话，不实现 hands-free、常驻监听或 Overlay auto-show。"
   } as Record<string, string>)[activeWorkspaceTab] || "本地保存到 settings.json，不包含密钥。";
 
   const openWorkspace = useCallback((workspaceId: WorkspaceId, tabId?: string) => {
@@ -3676,12 +3786,16 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               </button>
               <div className={`voiceInputInlineStatus voiceState-${voiceConversationState.tone}`} role="status">
                 <span>
-                  Voice v2.0：{voiceConversationState.label}。{voiceConversationState.description}
+                  Voice v2.1：{voiceConversationState.label}。{voiceConversationState.description}
                 </span>
                 <span>
                   语音输入：{mainVoiceInputStatus}
                   {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
                 </span>
+                <span>模式：{voiceInteractionModeLabel}</span>
+                {voiceDirectConversationEnabled && (
+                  <span className="voiceStateNotice">转写后会自动发送</span>
+                )}
                 {voiceConversationState.state === "ready_to_send" && (
                   <span className="voiceStateNotice">{voiceConfirmSendText}</span>
                 )}
@@ -3937,12 +4051,41 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             <section className="infoCard" aria-label="语音对话">
               <div className="cardHeader">
                 <Mic size={17} />
-                <h2>Voice v2.0 对话状态</h2>
+                <h2>Voice v2.1 对话状态</h2>
               </div>
               <p className="settingHint">
-                当前是 Voice v2.0 foundation：统一状态机已经接入，默认仍是确认后发送；hands-free、auto-send 和角色音色还没有实现。
+                Voice v2.1 已接入可选直接对话模式；默认仍是确认后发送。直接对话不是常驻监听，每轮仍需你主动点击录音。
               </p>
-              <div className={`voiceStatePanel voiceState-${voiceConversationState.tone}`} role="status" aria-label="Voice v2.0 状态">
+              <div className="voiceModeControl" role="group" aria-label="直接对话模式">
+                <span>当前模式</span>
+                <div className="voiceModeButtons">
+                  <button
+                    aria-pressed={appSettings.voice_interaction_mode === "confirm_send"}
+                    className="voiceModeButton"
+                    disabled={settingsBusy !== "" && settingsBusy !== "voice_interaction_mode"}
+                    type="button"
+                    onClick={() => void updateAppSettings({ voice_interaction_mode: "confirm_send" })}
+                  >
+                    确认后发送
+                  </button>
+                  <button
+                    aria-pressed={appSettings.voice_interaction_mode === "direct_conversation"}
+                    className="voiceModeButton"
+                    disabled={settingsBusy !== "" && settingsBusy !== "voice_interaction_mode"}
+                    type="button"
+                    onClick={() => void updateAppSettings({ voice_interaction_mode: "direct_conversation" })}
+                  >
+                    直接对话
+                  </button>
+                </div>
+              </div>
+              <p className="settingHint">
+                {voiceDirectConversationEnabled
+                  ? "开启时：用户主动录音后，转写结果会自动发送给 Rei，并进入正常聊天流程；自动发送也不能绕过记忆确认。"
+                  : "关闭时：转写后会先进入输入框，仍需你确认发送；未确认 transcript 不进入 memory、prompt、retrieval 或 game context。"}
+                音频仍只在本地处理。
+              </p>
+              <div className={`voiceStatePanel voiceState-${voiceConversationState.tone}`} role="status" aria-label="Voice v2.1 状态">
                 <div>
                   <span>当前状态</span>
                   <strong>{voiceConversationState.label}</strong>
@@ -3956,7 +4099,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 </div>
                 <div>
                   <dt>当前模式</dt>
-                  <dd>确认后发送</dd>
+                  <dd>{voiceInteractionModeLabel}</dd>
                 </div>
                 <div>
                   <dt>未确认 transcript</dt>
@@ -3976,7 +4119,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 </div>
                 <div>
                   <dt>Auto-send</dt>
-                  <dd>关闭，后续能力</dd>
+                  <dd>{voiceDirectConversationEnabled ? "开启，仅本轮主动录音后自动发送" : "关闭"}</dd>
                 </div>
                 <div>
                   <dt>Hands-free</dt>
@@ -3985,6 +4128,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               </dl>
               <div className="voiceBoundaryList" aria-label="语音安全边界">
                 <span>音频不上传</span>
+                <span>ASR 本地运行</span>
                 <span>transcript 未确认不写 memory</span>
                 <span>不播报 Debug / Prompt Preview / Trace</span>
                 <span>TTS 可停止</span>
@@ -4316,6 +4460,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                )}
 	                {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
 	                <p className="settingHint">如果更换过系统语音包，请先点“测试语音”确认系统声音可用。</p>
+	                <p className="settingHint">
+	                  直接对话模式下，如果 Voice Output 开启，Rei 回复完成后会自动播报；关闭时只显示文字回复。
+	                </p>
 	                {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
 	                <label className="settingRow">
 	                  <span>语速 / Rate</span>
@@ -4818,6 +4965,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 )}
                 {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
                 <p className="settingHint">如果更换过系统语音包，请先点“测试语音”确认系统声音可用。</p>
+                <p className="settingHint">
+                  直接对话模式下，如果 Voice Output 开启，Rei 回复完成后会自动播报；关闭时只显示文字回复。
+                </p>
                 {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
                 <label className="settingRow">
                   <span>语速 / Rate</span>
@@ -5835,12 +5985,12 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <h3>语音输入</h3>
                     <dl className="debugFacts">
                       <div>
-                        <dt>Voice v2.0 状态</dt>
+                        <dt>Voice v2.1 状态</dt>
                         <dd>{voiceConversationState.label}</dd>
                       </div>
                       <div>
-                        <dt>Voice v2.0 模式</dt>
-                        <dd>confirm_send</dd>
+                        <dt>Voice v2.1 模式</dt>
+                        <dd>{appSettings.voice_interaction_mode}</dd>
                       </div>
                       <div>
                         <dt>待确认语音文本</dt>
@@ -6359,6 +6509,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             overlay_position: appSettings.overlay_position,
                             overlay_opacity: appSettings.overlay_opacity,
                             overlay_message_count: appSettings.overlay_message_count,
+                            voice_interaction_mode: appSettings.voice_interaction_mode,
                             voice_output: appSettings.voice_output,
                             voice_rate: appSettings.voice_rate,
                             voice_volume: appSettings.voice_volume
@@ -6401,8 +6552,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           voice_v2: {
                             state: voiceConversationState.state,
                             label: voiceConversationState.label,
-                            mode: "confirm_send",
-                            auto_send_enabled: false,
+                            mode: appSettings.voice_interaction_mode,
+                            auto_send_enabled: voiceDirectConversationEnabled,
                             hands_free_enabled: false,
                             transcript_ready: Boolean(voiceTranscriptReady),
                             transcript_character_count: voiceTranscriptReady?.characterCount ?? 0,

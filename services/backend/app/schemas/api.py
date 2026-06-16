@@ -179,6 +179,7 @@ class AppSettings(BaseModel):
     overlay_position: Literal["top-right", "middle-right", "bottom-right", "top-left", "middle-left", "bottom-left"] = "middle-right"
     overlay_opacity: float = Field(default=0.72, ge=0.35, le=0.95)
     overlay_message_count: int = Field(default=2, ge=1, le=3)
+    voice_interaction_mode: Literal["confirm_send", "direct_conversation"] = "confirm_send"
     voice_output: Literal["on", "off"] = "off"
     voice_rate: float = Field(default=1.0, ge=0.7, le=1.3)
     voice_volume: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -200,6 +201,7 @@ class AppSettingsUpdate(BaseModel):
     overlay_position: Literal["top-right", "middle-right", "bottom-right", "top-left", "middle-left", "bottom-left"] | None = None
     overlay_opacity: float | None = Field(default=None, ge=0.35, le=0.95)
     overlay_message_count: int | None = Field(default=None, ge=1, le=3)
+    voice_interaction_mode: Literal["confirm_send", "direct_conversation"] | None = None
     voice_output: Literal["on", "off"] | None = None
     voice_rate: float | None = Field(default=None, ge=0.7, le=1.3)
     voice_volume: float | None = Field(default=None, ge=0.0, le=1.0)

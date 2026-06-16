@@ -2,7 +2,7 @@
 
 Updated: 2026-06-16
 
-Status: foundation implemented. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, TTS interruption, and speaking / listening mutual exclusion. This does not implement auto-send, hands-free listening, a new TTS engine, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
+Status: v2.1 implemented. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, TTS interruption, and speaking / listening mutual exclusion. This does not implement hands-free listening, a new TTS engine, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
 
 ## Purpose
 
@@ -23,16 +23,18 @@ The goal is a calmer game companion loop, not a voice assistant that constantly 
 
 Implemented today:
 
-- Voice v2 foundation resolves `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error` from current renderer voice signals.
+- Voice v2.1 resolves `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error` from current renderer voice signals.
 - Home / Chat shows compact Chinese-first Voice v2 state near the composer without hiding normal text input.
 - Voice workspace Conversation tab shows state, mode, transcript confirmation, output status, interruption and privacy boundaries.
+- Voice interaction mode is explicit: `confirm_send` is the default, and `direct_conversation` is opt-in.
 - Local ASR v1 can record and transcribe after a user gesture.
 - ASR uses user-configured local binaries, model files, and optional converter paths.
 - Audio is sent only to the local backend.
-- Transcript fills the chat input and is not auto-sent.
+- Under `confirm_send`, transcript fills the chat input and is not auto-sent.
+- Under `direct_conversation`, the transcript is auto-sent through the existing chat flow after the user actively starts and stops a recording round.
 - Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, game context, Semantic Extraction, or proactive behavior.
 - Voice Output uses renderer-side `speechSynthesis`.
-- Voice Output can be enabled, tested, stopped, and tuned with rate / volume.
+- Voice Output can be enabled, tested, stopped, and tuned with rate / volume; in `direct_conversation`, assistant replies are spoken automatically only when Voice Output is enabled.
 - Starting voice input stops active TTS first, and Stop Voice enters a short interrupted state.
 
 Voice v2 should build on these boundaries instead of bypassing them.
@@ -42,7 +44,7 @@ Voice v2 should build on these boundaries instead of bypassing them.
 - Define a state machine for direct voice conversation.
 - Preserve Local ASR as the stable main input path.
 - Keep confirm-send as the default transcript policy.
-- Allow future explicit auto-send only as an opt-in mode with clear state visibility.
+- Allow Direct Conversation Mode only as an explicit opt-in with clear state visibility.
 - Make TTS playback after assistant replies predictable and interruptible.
 - Prevent recording and speaking from conflicting.
 - Keep game-mode speech short, low-interruption, and safe.
@@ -54,6 +56,7 @@ Voice v2 should build on these boundaries instead of bypassing them.
 
 - Do not make this foundation a full hands-free direct voice conversation mode.
 - Do not make auto-send the default.
+- Do not imply direct conversation from enabling ASR, Voice Output, or opening Voice workspace.
 - Do not enable hands-free or wake-word listening by default.
 - Do not add cloud ASR or commercial ASR.
 - Do not bundle whisper binaries, model files, or ffmpeg.
@@ -70,7 +73,7 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 | Area | Default | Future Options | Notes |
 | --- | --- | --- | --- |
 | Input trigger | Push-to-talk / click-to-record | Hands-free / auto-listen later | Hands-free must remain off until a separate task defines permission, timeout, and game-mode risk. |
-| Send policy | Confirm-send | Auto-send as explicit opt-in | Confirm-send keeps current safety. Auto-send must never be implied by enabling ASR. |
+| Send policy | Confirm-send | Direct Conversation as explicit opt-in | Confirm-send keeps current safety. Direct Conversation must never be implied by enabling ASR or Voice Output. |
 | Output policy | Speak only when Voice Output is enabled | Short spoken summary mode later | TTS should speak assistant content only, never Debug, Prompt Preview, trace, or raw internals. |
 
 ### Input Modes
@@ -102,13 +105,15 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 - The user can edit, delete, or send it.
 - Until the user sends, the transcript remains outside memory, prompt, retrieval, game context, Semantic Extraction, and proactive checks.
 
-`auto_send`
+`direct_conversation`
 
-- Future explicit opt-in.
-- Should require a visible mode indicator and a clear off switch.
-- Should be unavailable while Local ASR is not ready.
-- Should not write memory directly; any memory still goes through the existing confirmation flow after the normal chat turn.
-- Should not bypass normal chat, retrieval, or game-state safety checks after the text is sent.
+- Implemented explicit opt-in.
+- Requires a visible mode indicator and a clear off switch.
+- Still requires a user gesture for each recording round; it is not hands-free, wake-word, or always-on listening.
+- Auto-sends only non-empty ASR transcripts through the normal chat request path.
+- Does not write memory directly; any memory still goes through the existing confirmation flow after the normal chat turn.
+- Does not bypass normal chat, retrieval, or game-state safety checks after the text is sent.
+- Does not leak the full transcript into Event Stream, Debug, Raw JSON, Prompt Preview, or Overlay.
 
 ### Output Policies
 
@@ -137,7 +142,7 @@ Recommended states:
 | `listening` | User-triggered recording is active. | Push-to-talk or click-to-record begins. | User stops, max duration, mic error, or recording failure. |
 | `transcribing` | Local ASR is processing the captured audio. | Recording finished and Local ASR request starts. | Transcript ready, no text, timeout, or ASR error. |
 | `ready_to_send` | Transcript is available for confirmation. | ASR succeeds under confirm-send. | User sends, edits, clears, records again, or switches mode. |
-| `assistant_thinking` | A confirmed or auto-sent transcript is in the normal chat request path. | User sends transcript or explicit auto-send fires. | Assistant final reply, provider error, cancellation, or timeout. |
+| `assistant_thinking` | A confirmed or directly sent transcript is in the normal chat request path. | User sends transcript or Direct Conversation auto-send fires. | Assistant final reply, provider error, cancellation, or timeout. |
 | `speaking` | TTS is playing a safe assistant reply. | Final assistant reply arrives and Voice Output is enabled. | TTS completes, user stops, user starts recording, or TTS error. |
 | `interrupted` | Speaking or listening was intentionally stopped. | User presses stop, starts recording during TTS, or cancels recording. | Return to `idle`, `listening`, or `ready_to_send` depending on remaining transcript. |
 | `error` | A user-visible recoverable voice error occurred. | Mic, ASR, converter, TTS, or provider failure. | User retries, edits transcript, changes settings, or dismisses. |
@@ -147,7 +152,7 @@ Recommended states:
 - `idle -> listening`: only after a user gesture.
 - `listening -> transcribing`: only after audio capture completes.
 - `transcribing -> ready_to_send`: ASR succeeds and send policy is `confirm_send`.
-- `transcribing -> assistant_thinking`: ASR succeeds and send policy is explicit `auto_send`.
+- `transcribing -> assistant_thinking`: ASR succeeds and send policy is explicit `direct_conversation`.
 - `ready_to_send -> assistant_thinking`: user confirms by sending.
 - `assistant_thinking -> speaking`: assistant final reply exists and Voice Output is enabled.
 - `assistant_thinking -> idle`: assistant final reply exists and Voice Output is disabled.
@@ -163,12 +168,12 @@ Recommended states:
 - Entering `speaking` must require no active recording.
 - `transcribing` must not write prompt, memory, retrieval, game context, or proactive state.
 - `ready_to_send` must not write prompt, memory, retrieval, game context, or proactive state.
-- `assistant_thinking` only starts after a confirmed send or explicit auto-send.
+- `assistant_thinking` only starts after a confirmed send or explicit Direct Conversation auto-send.
 - `interrupted` is a user action summary, not an error by itself.
 
 ## Transcript Policy
 
-Before confirmation:
+Before confirmation in `confirm_send`:
 
 - Do not write memory.
 - Do not create pending memory.
@@ -178,11 +183,12 @@ Before confirmation:
 - Do not trigger proactive behavior.
 - Do not show the full transcript in Event Stream, Debug, Prompt Preview, Raw JSON, or Overlay.
 
-After confirmation:
+After confirmation or Direct Conversation auto-send:
 
 - The text enters the existing chat flow as normal user input.
 - Existing memory confirmation, knowledge retrieval, game context, Semantic Extraction, and proactive gates continue to apply.
 - Voice should not introduce a separate memory or game-state path.
+- Direct Conversation events may show mode, provider, and character count, but not the full transcript.
 
 Empty or low-confidence transcript:
 
@@ -248,9 +254,10 @@ Conversation tab now shows the foundation state surface:
 - send policy,
 - output policy,
 - active transcript confirmation summary under confirm-send,
+- Direct Conversation mode switch and opt-in summary,
 - TTS playing / stopped / interrupted state,
 - short friendly error messages,
-- safe mode notes for hands-free and auto-send.
+- safe mode notes for hands-free and Direct Conversation.
 
 Future tasks may add richer clear / retry / send controls here, but the normal chat composer remains the canonical transcript editing and send surface.
 
@@ -269,6 +276,7 @@ Output tab should keep:
 - rate and volume,
 - stop voice,
 - system voice availability.
+- Direct Conversation note: if Voice Output is enabled, Rei speaks the assistant reply after completion; otherwise the reply remains text-only.
 
 Voice Profile remains future-only until TTS strategy is defined.
 
@@ -331,18 +339,19 @@ Voice v2 keeps these fixed boundaries:
 
 ## Implementation Handoff
 
-Foundation completed in the renderer:
+Foundation and v2.1 Direct Conversation completed in the renderer:
 
 1. Typed Voice v2 state model.
 2. Renderer coordination across Web Speech, Local ASR, send confirmation, Voice Output, and interruption.
-3. Voice workspace Conversation state UI while keeping confirm-send default.
+3. Voice workspace Conversation state UI while keeping confirm-send default and exposing Direct Conversation opt-in.
 4. Home / Chat compact state display.
-5. TTS interruption wiring and mutual exclusion between speaking and listening.
+5. Direct Conversation auto-send through the normal chat flow.
+6. TTS interruption wiring and mutual exclusion between speaking and listening.
 
 Suggested later task order:
 
 1. Extract more controller logic if the state graph grows beyond the current renderer wiring.
-2. Consider explicit auto-send only after confirm-send remains stable.
+2. Consider hands-free only after a separate privacy, timeout, and game-mode risk design.
 3. Consider short spoken reply mode after TTS strategy is clearer.
 4. Consider Overlay voice state display only after Overlay safe mode remains stable.
 5. Define Voice Profile only after a character-grade TTS strategy exists.
@@ -356,12 +365,14 @@ Machine-readable scenarios live in `docs/qa/voice_interaction_v2_scenarios.json`
 Manual acceptance for this spec:
 
 1. Confirm-send is the default.
-2. Auto-send remains future-only and is not implemented by this foundation.
-3. Hands-free / auto-listen is future-only and not default.
+2. Direct Conversation is visible opt-in and never implied by enabling ASR or Voice Output.
+3. Direct Conversation still requires a user gesture for each recording round; hands-free / auto-listen remains future-only and not default.
 4. The state machine covers `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`.
 5. Listening and speaking are mutually exclusive.
 6. Starting recording interrupts active TTS.
 7. Unconfirmed transcript has no memory, prompt, retrieval, game context, Semantic Extraction, or proactive side effect.
-8. TTS does not speak Debug, Prompt Preview, trace, memory internals, raw prompt, full transcript, paths, `.env`, or secrets.
-9. Game-mode speech remains short and low-interruption.
-10. Voice workspace, Home / Chat, and future Overlay state placement are defined.
+8. Direct Conversation auto-send events do not show the full transcript in Event Stream, Debug, Raw JSON, Prompt Preview, or Overlay.
+9. Voice Output auto-speaks Direct Conversation replies only when enabled, and Stop Voice interrupts playback.
+10. TTS does not speak Debug, Prompt Preview, trace, memory internals, raw prompt, full transcript, paths, `.env`, or secrets.
+11. Game-mode speech remains short and low-interruption.
+12. Voice workspace, Home / Chat, and future Overlay state placement are defined.

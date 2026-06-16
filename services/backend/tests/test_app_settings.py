@@ -14,6 +14,7 @@ def test_overlay_setting_defaults_off_and_persists():
     assert defaults["overlay_position"] == "middle-right"
     assert defaults["overlay_opacity"] == 0.72
     assert defaults["overlay_message_count"] == 2
+    assert defaults["voice_interaction_mode"] == "confirm_send"
 
     update_response = client.post(
         "/api/settings",
@@ -40,3 +41,19 @@ def test_overlay_settings_reject_unsafe_values():
     assert client.post("/api/settings", json={"overlay_opacity": 1.0}).status_code == 422
     assert client.post("/api/settings", json={"overlay_message_count": 0}).status_code == 422
     assert client.post("/api/settings", json={"overlay_message_count": 4}).status_code == 422
+
+
+def test_voice_interaction_mode_defaults_off_and_persists():
+    default_response = client.get("/api/settings")
+    assert default_response.status_code == 200
+    assert default_response.json()["voice_interaction_mode"] == "confirm_send"
+
+    updated = client.post("/api/settings", json={"voice_interaction_mode": "direct_conversation"})
+
+    assert updated.status_code == 200
+    assert updated.json()["voice_interaction_mode"] == "direct_conversation"
+    assert client.get("/api/settings").json()["voice_interaction_mode"] == "direct_conversation"
+
+
+def test_voice_interaction_mode_rejects_unknown_values():
+    assert client.post("/api/settings", json={"voice_interaction_mode": "hands_free"}).status_code == 422

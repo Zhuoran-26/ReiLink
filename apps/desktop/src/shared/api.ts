@@ -545,6 +545,7 @@ export type AppSettings = {
   overlay_position: "top-right" | "middle-right" | "bottom-right" | "top-left" | "middle-left" | "bottom-left";
   overlay_opacity: number;
   overlay_message_count: number;
+  voice_interaction_mode: "confirm_send" | "direct_conversation";
   voice_output: "on" | "off";
   voice_rate: number;
   voice_volume: number;

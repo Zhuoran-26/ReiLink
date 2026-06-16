@@ -2,7 +2,7 @@ import type { AudioConversionStatusValue } from "./api";
 import type { OverlayMessageSource, OverlayPosition } from "./overlay";
 
 export type ReiLinkEvent =
-  | { type: "user_message_sent"; timestamp: string; text: string }
+  | { type: "user_message_sent"; timestamp: string; text: string; source?: "text" | "voice_direct"; character_count?: number }
   | { type: "assistant_reply_started"; timestamp: string; message_id?: string }
   | { type: "assistant_reply_segment_shown"; timestamp: string; segment_index: number; text: string }
   | { type: "assistant_reply_completed"; timestamp: string; message_id?: string }
@@ -68,6 +68,10 @@ export type ReiLinkEvent =
   | { type: "voice_input_stopped"; timestamp: string; character_count?: number; reason?: string; status?: string; language?: string }
   | { type: "voice_input_error"; timestamp: string; character_count?: number; reason?: string; status?: string; language?: string }
   | { type: "voice_input_unavailable"; timestamp: string; reason?: string; status?: string; language?: string }
+  | { type: "voice_direct_mode_enabled"; timestamp: string }
+  | { type: "voice_direct_mode_disabled"; timestamp: string }
+  | { type: "voice_transcription_auto_sent"; timestamp: string; character_count: number; provider?: "local_asr" | "web_speech" }
+  | { type: "voice_reply_auto_speak_started"; timestamp: string; character_count: number }
   | { type: "audio_capture_started"; timestamp: string; duration_ms?: number }
   | { type: "audio_capture_completed"; timestamp: string; duration_ms: number; size_bytes: number; mime_type?: string }
   | { type: "audio_capture_stopped"; timestamp: string; reason?: string; duration_ms?: number }
