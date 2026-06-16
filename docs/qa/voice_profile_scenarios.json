@@ -1,0 +1,90 @@
+[
+  {
+    "id": "voice-profile-v1-status",
+    "category": "voice_profile_v1",
+    "precondition": "Voice workspace Profile tab is open",
+    "action": "Inspect the current profile",
+    "expected": "The UI shows profile rei_calm, normal chat full mode, Direct Conversation brief mode, max length settings, conservative proactive / memory speaking toggles, never-spoken categories, and a speechSynthesis caveat.",
+    "implemented_in_v1": true,
+    "must_not_claim": ["character voice", "voice clone", "new TTS engine", "Rei Ayanami", "official IP"]
+  },
+  {
+    "id": "voice-profile-v1-direct-brief-default",
+    "category": "voice_profile_v1_output_policy",
+    "precondition": "Direct Conversation Mode and Voice Output are enabled with default settings",
+    "action": "Assistant returns a multi-sentence reply",
+    "expected": "The full reply remains visible in chat, while TTS speaks only the brief excerpt selected by Voice Profile v1.",
+    "implemented_in_v1": true,
+    "expected_mode": "brief",
+    "must_preserve": ["full_chat_reply", "normal_chat_flow", "stop_voice_control"]
+  },
+  {
+    "id": "voice-profile-v1-normal-full-default",
+    "category": "voice_profile_v1_output_policy",
+    "precondition": "Voice Output is enabled in normal chat with default settings",
+    "action": "Assistant final reply completes",
+    "expected": "The sanitized assistant reply is spoken in full mode.",
+    "implemented_in_v1": true,
+    "expected_mode": "full"
+  },
+  {
+    "id": "voice-profile-v1-direct-full-configurable",
+    "category": "voice_profile_v1_output_policy",
+    "precondition": "Direct Conversation spoken mode is set to full",
+    "action": "Assistant returns a three-sentence reply",
+    "expected": "TTS speaks the full sanitized assistant reply and the Event Stream records only mode and counts.",
+    "implemented_in_v1": true,
+    "expected_mode": "full",
+    "forbidden_event_content": ["full assistant reply", "spoken text", "raw prompt", "API key", ".env", "full local path"]
+  },
+  {
+    "id": "voice-profile-v1-direct-silent-configurable",
+    "category": "voice_profile_v1_output_policy",
+    "precondition": "Direct Conversation spoken mode is set to silent",
+    "action": "Assistant final reply completes",
+    "expected": "The full reply remains visible in chat and no TTS starts. A safe skipped event records silent_mode.",
+    "implemented_in_v1": true,
+    "expected_mode": "silent"
+  },
+  {
+    "id": "voice-profile-v1-brief-limits",
+    "category": "voice_profile_v1_output_policy",
+    "precondition": "Brief mode is enabled with configured max sentences and max characters",
+    "action": "Assistant returns a long reply",
+    "expected": "Spoken text is capped to the configured sentence and character limits without changing the chat reply.",
+    "implemented_in_v1": true
+  },
+  {
+    "id": "voice-profile-v1-never-speaks-internals",
+    "category": "voice_profile_v1_safety",
+    "precondition": "A candidate spoken text contains internal or sensitive content",
+    "action": "Run the Voice Profile decision",
+    "expected": "Speech is skipped for Debug, Prompt Preview, Event Stream, traces, memory internals, persona summaries, raw prompt, API keys, .env, stdout, stderr, full paths, JSON, or trace-like structured content.",
+    "implemented_in_v1": true
+  },
+  {
+    "id": "voice-profile-v1-event-privacy",
+    "category": "voice_profile_v1_privacy",
+    "precondition": "Voice Profile applies full, brief, or silent decisions",
+    "action": "Inspect Event Stream and event payloads",
+    "expected": "Events include profile id, source, mode, counts, sentence count, max limits, and skip reason only. They do not include full assistant text or spoken text.",
+    "implemented_in_v1": true,
+    "forbidden_event_content": ["full assistant reply", "spoken text", "ASR transcript", "raw prompt", "API key", ".env", "stdout", "stderr", "full local path"]
+  },
+  {
+    "id": "voice-profile-v1-test-voice",
+    "category": "voice_profile_v1_ui",
+    "precondition": "Voice Output is available",
+    "action": "Click Test Voice",
+    "expected": "The fixed test voice plays through system speechSynthesis without writing chat content or implying a character voice.",
+    "implemented_in_v1": true
+  },
+  {
+    "id": "voice-profile-v1-draft-preservation",
+    "category": "voice_profile_v1_ui",
+    "precondition": "An unsent typed draft exists while Direct Conversation is enabled",
+    "action": "A voice transcript auto-sends and the assistant reply is spoken according to Voice Profile",
+    "expected": "The typed draft remains in the input. Voice Profile changes only speech behavior, not draft preservation or chat routing.",
+    "implemented_in_v1": true
+  }
+]

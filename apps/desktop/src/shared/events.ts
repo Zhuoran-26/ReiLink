@@ -4,7 +4,7 @@ import type { OverlayMessageSource, OverlayPosition } from "./overlay";
 export type ReiLinkEvent =
   | { type: "user_message_sent"; timestamp: string; text: string; source?: "text" | "voice_direct"; character_count?: number }
   | { type: "assistant_reply_started"; timestamp: string; message_id?: string }
-  | { type: "assistant_reply_segment_shown"; timestamp: string; segment_index: number; text: string }
+  | { type: "assistant_reply_segment_shown"; timestamp: string; segment_index: number; character_count: number }
   | { type: "assistant_reply_completed"; timestamp: string; message_id?: string }
   | { type: "proactive_message_shown"; timestamp: string; trigger_type: string; text: string }
   | { type: "pending_memory_created"; timestamp: string; memory_type: string; text: string }
@@ -71,7 +71,10 @@ export type ReiLinkEvent =
   | { type: "voice_direct_mode_enabled"; timestamp: string }
   | { type: "voice_direct_mode_disabled"; timestamp: string }
   | { type: "voice_transcription_auto_sent"; timestamp: string; character_count: number; provider?: "local_asr" | "web_speech" }
-  | { type: "voice_reply_auto_speak_started"; timestamp: string; character_count: number }
+  | { type: "voice_profile_applied"; timestamp: string; profile_id: "rei_calm"; spoken_mode: "full" | "brief" | "silent"; source: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; max_spoken_chars: number; max_spoken_sentences: number }
+  | { type: "voice_reply_spoken_excerpt_created"; timestamp: string; spoken_mode: "full" | "brief" | "silent"; original_character_count: number; spoken_character_count: number; sentence_count: number; reason?: string }
+  | { type: "voice_reply_speak_skipped"; timestamp: string; reason: string; spoken_mode?: "full" | "brief" | "silent"; source?: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; original_character_count?: number }
+  | { type: "voice_reply_auto_speak_started"; timestamp: string; character_count: number; spoken_mode?: "full" | "brief" | "silent"; sentence_count?: number }
   | { type: "audio_capture_started"; timestamp: string; duration_ms?: number }
   | { type: "audio_capture_completed"; timestamp: string; duration_ms: number; size_bytes: number; mime_type?: string }
   | { type: "audio_capture_stopped"; timestamp: string; reason?: string; duration_ms?: number }

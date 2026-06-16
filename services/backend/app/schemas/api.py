@@ -180,6 +180,13 @@ class AppSettings(BaseModel):
     overlay_opacity: float = Field(default=0.72, ge=0.35, le=0.95)
     overlay_message_count: int = Field(default=2, ge=1, le=3)
     voice_interaction_mode: Literal["confirm_send", "direct_conversation"] = "confirm_send"
+    voice_profile_id: Literal["rei_calm"] = "rei_calm"
+    voice_spoken_reply_mode: Literal["full", "brief", "silent"] = "full"
+    voice_direct_spoken_reply_mode: Literal["full", "brief", "silent"] = "brief"
+    voice_speak_proactive: bool = False
+    voice_speak_memory_prompts: bool = False
+    voice_max_spoken_chars: int = Field(default=120, ge=40, le=280)
+    voice_max_spoken_sentences: int = Field(default=2, ge=1, le=4)
     voice_output: Literal["on", "off"] = "off"
     voice_rate: float = Field(default=1.0, ge=0.7, le=1.3)
     voice_volume: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -202,6 +209,13 @@ class AppSettingsUpdate(BaseModel):
     overlay_opacity: float | None = Field(default=None, ge=0.35, le=0.95)
     overlay_message_count: int | None = Field(default=None, ge=1, le=3)
     voice_interaction_mode: Literal["confirm_send", "direct_conversation"] | None = None
+    voice_profile_id: Literal["rei_calm"] | None = None
+    voice_spoken_reply_mode: Literal["full", "brief", "silent"] | None = None
+    voice_direct_spoken_reply_mode: Literal["full", "brief", "silent"] | None = None
+    voice_speak_proactive: bool | None = None
+    voice_speak_memory_prompts: bool | None = None
+    voice_max_spoken_chars: int | None = Field(default=None, ge=40, le=280)
+    voice_max_spoken_sentences: int | None = Field(default=None, ge=1, le=4)
     voice_output: Literal["on", "off"] | None = None
     voice_rate: float | None = Field(default=None, ge=0.7, le=1.3)
     voice_volume: float | None = Field(default=None, ge=0.0, le=1.0)

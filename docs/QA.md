@@ -134,7 +134,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.7 UI/UX Information Architecture v0 人工验收
 
-本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认当前 Voice 已接入 Voice v2.1：默认确认发送 + 显式 opt-in 直接对话。不表示 hands-free、角色 TTS、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
+本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认当前 Voice 已接入 Voice v2.1 + Voice Profile v1：默认确认发送、显式 opt-in 直接对话和规则化 full / brief / silent 播报策略。不表示 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
 
 机器可读场景见 `docs/qa/ui_ux_information_architecture_scenarios.json`。
 
@@ -142,7 +142,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 2. 左侧定位应是 workspace launcher，不只是页面 anchor。
 3. Memory 应有独立普通用户入口，承接 pending、confirmed、ignored、search、sources 和后续 session archive。
 4. Game 应有独立普通用户入口，承接 current game、boss、session state、knowledge availability 和 manual control。
-5. Voice 应有独立一级入口；当前是 Local ASR transcript-first 默认 + Voice Output + Voice v2.1 直接对话显式 opt-in，hands-free、角色 TTS、Voice Profile 和 Overlay voice state 仍只做未来规划。
+5. Voice 应有独立一级入口；当前是 Local ASR transcript-first 默认 + Voice Output + Voice v2.1 直接对话显式 opt-in + Voice Profile v1 行为策略，hands-free、角色 TTS / 角色音色和 Overlay voice state 仍只做未来规划。
 6. Voice 未来状态至少覆盖 idle、listening、transcribing、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
 7. Overlay 应有独立入口，但 macOS auto-show 仍是 fail-closed safe mode；不要把它描述为完整可用的游戏 HUD。
 8. Developer / Debug 应与普通体验分离，承接 Event Stream、Prompt Preview、Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status。
@@ -159,7 +159,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 2. 左侧 launcher 可见，并包含 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug 和 Future / Avatar 入口。
 3. 点击 Memory 打开 Memory workspace；Pending tab 可见，Confirmed / Local Data / Future placeholder 可切换。
 4. 点击 Game 打开 Game workspace；Current Context、Session Timeline、Knowledge、Manual Control 可切换。
-5. 点击 Voice 打开 Voice workspace；Conversation 状态面板、Input / Local ASR、Output、Voice Profile placeholder 可切换。Local ASR 和 Voice Output 现有控件仍可找到。
+5. 点击 Voice 打开 Voice workspace；Conversation 状态面板、Input / Local ASR、Output、Voice Profile 策略面板可切换。Local ASR 和 Voice Output 现有控件仍可找到。
 6. 点击 Overlay 打开 Overlay workspace；Safe Mode、Placement、Content、Future Game Mode 可切换。强制关闭悬浮层按钮仍可找到，auto-show 仍未恢复。
 7. 点击 Settings 打开 Settings workspace；app-level 设置、模型状态、本地数据和旧配置入口仍可找到。
 8. 点击 Developer / Debug 打开 Debug workspace；Event Stream、Prompt Preview、Runtime、Semantic Shadow trace 可找到，且 Debug 不默认打开。
@@ -183,28 +183,46 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 5. Future / Avatar workspace 中 Avatar 与 Presentation Policy tabs 显示不同 placeholder，且不加载 Live2D runtime、Avatar 资源或 presentation layer 行为。
 6. 切换任意 workspace tab 不应清空聊天历史或未发送输入；切换到其他 workspace 后，该 workspace 的上次 active tab 可独立保留，不污染其他 workspace。
 7. Close button 与 Escape 关闭 workspace 仍有效；v0.1 的 tabs 不遮挡、body 内部滚动隔离、小窗口 hit-testing 要继续通过。
-8. 本轮接入 Voice v2.1 直接对话显式 opt-in；仍不实现 hands-free、角色 TTS、Voice Profile、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D。
+8. 本轮接入 Voice v2.1 直接对话显式 opt-in 和 Voice Profile v1 行为策略；仍不实现 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D。
 
 ### 1.10 Voice Interaction v2.1 Direct Conversation Mode 人工验收
 
-设计文档见 `docs/voice_interaction_v2_spec.md`，机器可读场景见 `docs/qa/voice_interaction_v2_scenarios.json`。本节验收 Voice v2 state machine、默认确认发送和显式 opt-in 直接对话；不表示 hands-free、角色 TTS、Voice Profile 或 Overlay voice state 已实现。
+设计文档见 `docs/voice_interaction_v2_spec.md`，机器可读场景见 `docs/qa/voice_interaction_v2_scenarios.json`。本节验收 Voice v2 state machine、默认确认发送、显式 opt-in 直接对话和 Voice Profile v1 brief 默认；不表示 hands-free、角色 TTS / 角色音色或 Overlay voice state 已实现。
 
 1. Voice v2 默认仍是 confirm-send：ASR transcript 进入 ready-to-send 状态，用户确认后才进入 chat flow。
 2. 直接对话模式必须默认关闭，只能由用户在 Voice workspace Conversation 中显式切换到 `直接对话`；不得因开启 Local ASR、Voice Output 或打开 Voice workspace 自动启用。
 3. 直接对话模式开启后，ASR transcript 转写成功会自动进入现有 chat flow；不得绕过 memory confirmation、knowledge gating、game context safety、persona guardrails 或 provider error handling。
 4. 直接对话不是 hands-free：每一轮仍需要用户主动点击或按住语音输入；当前不做 wake word、不做后台常驻监听、不做自动下一轮录音。
-5. Voice Output 开启时，直接对话的 assistant 最终回复可自动播报；Voice Output 关闭时只显示文字回复。
+5. Voice Output 开启时，直接对话的 assistant 最终回复默认短版播报，完整回复仍显示在聊天里；Voice Output 关闭时只显示文字回复。
 6. Stop Voice 能打断直接对话后的 TTS；用户开始新一轮录音时应先停止正在播放的 TTS。
 7. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
 8. `listening` 和 `speaking` 必须互斥。
 9. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
-10. 直接对话的 Event Stream / Debug / Raw JSON / Prompt Preview / Overlay 只能显示 mode、provider、字符数和生命周期摘要；不得显示完整 transcript、raw prompt、完整 assistant reply、路径、API key、`.env`、stdout 或 stderr。
+10. 直接对话的 Event Stream / Debug / Raw JSON / Prompt Preview / Overlay 只能显示 mode、provider、字符数、句数、长度上限、跳过原因和生命周期摘要；不得显示完整 transcript、raw prompt、完整 assistant reply、spoken text、路径、API key、`.env`、stdout 或 stderr。
 11. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
 12. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
-13. Voice workspace 的 Conversation tab 应承接状态、确认发送 / 直接对话切换、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置，Output tab 应说明直接对话 + Voice Output 的自动播报关系。
+13. Voice workspace 的 Conversation tab 应承接状态、确认发送 / 直接对话切换、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置，Output tab 应说明直接对话 + Voice Output 的默认短版自动播报关系。
 14. Home / Chat 输入区应显示紧凑 voice state 和当前模式，但不得清空未发送草稿或隐藏普通文本输入。
 15. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
 16. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
+
+### 1.11 Voice Profile v1 人工验收
+
+设计文档见 `docs/voice_profile_v1.md`，机器可读场景见 `docs/qa/voice_profile_scenarios.json`。
+
+1. Voice workspace 的 Voice Profile tab 应显示当前 profile `rei_calm` / `Rei Calm / Rei 冷静陪伴`。
+2. UI 应明确这是行为策略，不是角色音色或新 TTS 引擎；当前仍使用系统 `speechSynthesis`。
+3. 默认普通聊天播报模式为 `full`，默认直接对话播报模式为 `brief`。
+4. 直接对话 + Voice Output 开启时，完整 assistant reply 仍在聊天中可见，TTS 只读短版。
+5. 将直接对话播报模式改为 `full` 后，应朗读清理后的完整 assistant reply。
+6. 将直接对话播报模式改为 `silent` 后，应只显示文字，不启动 TTS，并记录安全跳过原因。
+7. 最长播报字数和句数可配置；brief 模式应遵守配置上限。
+8. 主动陪伴和记忆确认播报默认关闭，开启也只能播报安全文本。
+9. Voice Profile 决策不得朗读 Debug、Prompt Preview、Event Stream、Trace、Knowledge trace、Persona summary、Memory internal、raw prompt、API key、`.env`、完整路径、stdout 或 stderr。
+10. 代码块、inline code、JSON 和 trace-like structured content 不应被整段读出；清理后为空则跳过。
+11. Voice Profile 相关事件只允许包含 profile id、source、mode、字符数、句数、长度上限和 skip reason；不得包含完整 assistant reply、spoken text、ASR transcript、raw prompt 或敏感信息。
+12. Test Voice 仍可播放固定测试文本，不写入聊天，也不代表角色音色。
+13. 直接对话自动发送时，已有未发送手打草稿不得被 Voice Profile 或播报策略清空。
 
 ### 2. Voice Output 回归检查
 

@@ -13,7 +13,7 @@ describe("sessionTimeline", () => {
   it("keeps non-session raw chat events out of the timeline", () => {
     const events: ReiLinkEvent[] = [
       { type: "user_message_sent", timestamp, text: "完整用户消息 /Users/aragoto/.env" },
-      { type: "assistant_reply_segment_shown", timestamp, segment_index: 0, text: "完整 assistant reply" }
+      { type: "assistant_reply_segment_shown", timestamp, segment_index: 0, character_count: 20 }
     ];
 
     expect(events.flatMap(sessionTimelineItemsFromEvent)).toEqual([]);

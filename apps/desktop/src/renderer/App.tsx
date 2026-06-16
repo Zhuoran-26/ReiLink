@@ -69,6 +69,19 @@ import {
 } from "./sessionTimeline";
 import { voiceInput, type VoiceInputStatus } from "./voiceInput";
 import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
+import {
+  buildSpokenAssistantReply,
+  VOICE_DEBUG_SPEAKING_ALLOWED,
+  VOICE_INTERRUPT_ON_NEW_RECORDING,
+  VOICE_PROFILE_DESCRIPTION,
+  VOICE_PROFILE_ID,
+  VOICE_PROFILE_LABEL,
+  VOICE_TEST_VOICE_ALLOWED,
+  voiceSpeakSkippedReasonText,
+  voiceSpokenModeText,
+  type VoiceReplySpeakSource,
+  type VoiceSpeakSkippedReason
+} from "./voiceProfile";
 import { resolveVoiceConversationState } from "./voiceState";
 
 type Message = {
@@ -524,6 +537,13 @@ const defaultAppSettings: AppSettings = {
   overlay_opacity: OVERLAY_DEFAULT_OPACITY,
   overlay_message_count: OVERLAY_DEFAULT_MESSAGE_COUNT,
   voice_interaction_mode: "confirm_send",
+  voice_profile_id: VOICE_PROFILE_ID,
+  voice_spoken_reply_mode: "full",
+  voice_direct_spoken_reply_mode: "brief",
+  voice_speak_proactive: false,
+  voice_speak_memory_prompts: false,
+  voice_max_spoken_chars: 120,
+  voice_max_spoken_sentences: 2,
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -553,6 +573,27 @@ const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSetti
   voice_interaction_mode: hasAppSetting(settings, "voice_interaction_mode")
     ? settings.voice_interaction_mode
     : patch.voice_interaction_mode ?? previous.voice_interaction_mode,
+  voice_profile_id: hasAppSetting(settings, "voice_profile_id")
+    ? settings.voice_profile_id
+    : patch.voice_profile_id ?? previous.voice_profile_id,
+  voice_spoken_reply_mode: hasAppSetting(settings, "voice_spoken_reply_mode")
+    ? settings.voice_spoken_reply_mode
+    : patch.voice_spoken_reply_mode ?? previous.voice_spoken_reply_mode,
+  voice_direct_spoken_reply_mode: hasAppSetting(settings, "voice_direct_spoken_reply_mode")
+    ? settings.voice_direct_spoken_reply_mode
+    : patch.voice_direct_spoken_reply_mode ?? previous.voice_direct_spoken_reply_mode,
+  voice_speak_proactive: hasAppSetting(settings, "voice_speak_proactive")
+    ? settings.voice_speak_proactive
+    : patch.voice_speak_proactive ?? previous.voice_speak_proactive,
+  voice_speak_memory_prompts: hasAppSetting(settings, "voice_speak_memory_prompts")
+    ? settings.voice_speak_memory_prompts
+    : patch.voice_speak_memory_prompts ?? previous.voice_speak_memory_prompts,
+  voice_max_spoken_chars: hasAppSetting(settings, "voice_max_spoken_chars")
+    ? settings.voice_max_spoken_chars
+    : patch.voice_max_spoken_chars ?? previous.voice_max_spoken_chars,
+  voice_max_spoken_sentences: hasAppSetting(settings, "voice_max_spoken_sentences")
+    ? settings.voice_max_spoken_sentences
+    : patch.voice_max_spoken_sentences ?? previous.voice_max_spoken_sentences,
   voice_output: hasAppSetting(settings, "voice_output") ? settings.voice_output : patch.voice_output ?? previous.voice_output,
   voice_rate: hasAppSetting(settings, "voice_rate") ? settings.voice_rate : patch.voice_rate ?? previous.voice_rate,
   voice_volume: hasAppSetting(settings, "voice_volume") ? settings.voice_volume : patch.voice_volume ?? previous.voice_volume
@@ -649,6 +690,13 @@ const labelMap: Record<string, string> = {
   knowledge_retrieval_min_score: "最低命中分数",
   auto_game_detection: "自动游戏检测",
   voice_interaction_mode: "语音交互模式",
+  voice_profile_id: "语音档案",
+  voice_spoken_reply_mode: "普通播报模式",
+  voice_direct_spoken_reply_mode: "直接对话播报模式",
+  voice_speak_proactive: "播报主动陪伴",
+  voice_speak_memory_prompts: "播报记忆确认",
+  voice_max_spoken_chars: "最长播报字数",
+  voice_max_spoken_sentences: "最长播报句数",
   voice_output: "语音输出",
   voice_rate: "语速",
   voice_volume: "音量",
@@ -1091,6 +1139,19 @@ const voiceInteractionModeText = (mode: AppSettings["voice_interaction_mode"]) =
 const voiceInteractionModeDescription = (mode: AppSettings["voice_interaction_mode"]) =>
   mode === "direct_conversation" ? "转写后会自动发送。" : "转写后需要确认发送。";
 
+const voiceSpeakSourceText = (source?: VoiceReplySpeakSource) => {
+  const labels: Record<VoiceReplySpeakSource, string> = {
+    assistant_reply: "普通回复",
+    direct_conversation: "直接对话",
+    proactive: "主动陪伴",
+    memory_prompt: "记忆确认",
+    debug: "调试内容"
+  };
+  return source ? labels[source] : "";
+};
+
+const voiceProfileToggleText = (enabled: boolean) => (enabled ? "开启" : "关闭");
+
 const overlayPositionText = (position?: string) => {
   const labels: Record<string, string> = {
     "top-right": "右上",
@@ -1134,7 +1195,7 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "assistant_reply_started":
       return "开始生成回复";
     case "assistant_reply_segment_shown":
-      return `第 ${event.segment_index + 1} 段 / ${eventTextLength(event.text)}`;
+      return `第 ${event.segment_index + 1} 段 / ${event.character_count} 字`;
     case "assistant_reply_completed":
       return "回复显示完成";
     case "proactive_message_shown":
@@ -1228,8 +1289,33 @@ const eventSummary = (event: ReiLinkEvent) => {
       return "直接对话模式已关闭";
     case "voice_transcription_auto_sent":
       return [`语音文本 ${event.character_count} 字`, event.provider ? debugText(event.provider) : ""].filter(Boolean).join(" / ");
+    case "voice_profile_applied":
+      return [
+        VOICE_PROFILE_LABEL,
+        voiceSpokenModeText(event.spoken_mode),
+        voiceSpeakSourceText(event.source),
+        `上限 ${event.max_spoken_sentences} 句 / ${event.max_spoken_chars} 字`
+      ].filter(Boolean).join(" / ");
+    case "voice_reply_spoken_excerpt_created":
+      return [
+        voiceSpokenModeText(event.spoken_mode),
+        `${event.spoken_character_count}/${event.original_character_count} 字`,
+        `${event.sentence_count} 句`,
+        event.reason ? debugText(event.reason) : ""
+      ].filter(Boolean).join(" / ");
+    case "voice_reply_speak_skipped":
+      return [
+        voiceSpeakSkippedReasonText(event.reason as VoiceSpeakSkippedReason),
+        event.spoken_mode ? voiceSpokenModeText(event.spoken_mode) : "",
+        voiceSpeakSourceText(event.source),
+        event.original_character_count ? `${event.original_character_count} 字` : ""
+      ].filter(Boolean).join(" / ");
     case "voice_reply_auto_speak_started":
-      return `自动播报 ${event.character_count} 字`;
+      return [
+        `自动播报 ${event.character_count} 字`,
+        event.spoken_mode ? voiceSpokenModeText(event.spoken_mode) : "",
+        event.sentence_count ? `${event.sentence_count} 句` : ""
+      ].filter(Boolean).join(" / ");
     case "audio_capture_started":
       return `最长 ${event.duration_ms ?? 0} ms`;
     case "audio_capture_completed":
@@ -1326,6 +1412,9 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     voice_direct_mode_enabled: "直接对话已开启",
     voice_direct_mode_disabled: "直接对话已关闭",
     voice_transcription_auto_sent: "语音文本自动发送",
+    voice_profile_applied: "Voice Profile 已应用",
+    voice_reply_spoken_excerpt_created: "语音短版已生成",
+    voice_reply_speak_skipped: "语音播报已跳过",
     voice_reply_auto_speak_started: "语音回复自动播报",
     audio_capture_started: "录音测试开始",
     audio_capture_completed: "录音测试完成",
@@ -1976,6 +2065,7 @@ export function App() {
   }, [setVoiceInterrupted]);
 
   const testVoiceOutput = useCallback(() => {
+    if (!VOICE_TEST_VOICE_ALLOWED) return;
     clearVoiceTransientState();
     voiceOutput.speak(TEST_VOICE_TEXT, {
       rate: appSettings.voice_rate,
@@ -1987,7 +2077,7 @@ export function App() {
   const startVoiceInput = () => {
     clearVoiceTransientState();
     clearVoiceTranscriptReady();
-    if (voiceOutput.getStatus().active) {
+    if (VOICE_INTERRUPT_ON_NEW_RECORDING && voiceOutput.getStatus().active) {
       stopVoiceOutput("user_stop");
     }
     const started = voiceInput.start({
@@ -3087,28 +3177,63 @@ export function App() {
           type: "assistant_reply_segment_shown",
           timestamp: segmentCreatedAt,
           segment_index: index,
-          text: segment
+          character_count: segment.length
         });
       }
       eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
       void pushOverlayContent(segments.join(" "), "assistant_reply");
       if (appSettings.voice_output === "on" && !spokenAssistantReplyIdsRef.current.has(replyMessageId)) {
         spokenAssistantReplyIdsRef.current.add(replyMessageId);
-        const spokenText = segments.join("\n");
-        const speakingStarted = voiceOutput.speak(spokenText, {
-          rate: appSettings.voice_rate,
-          volume: appSettings.voice_volume,
-          source: "assistant_reply"
+        const fullReplyText = segments.join("\n");
+        const voiceSpeakSource: VoiceReplySpeakSource = voiceTranscript?.mode === "direct_conversation" ? "direct_conversation" : "assistant_reply";
+        const speakDecision = buildSpokenAssistantReply(fullReplyText, appSettings, voiceSpeakSource);
+        eventBus.emit({
+          type: "voice_profile_applied",
+          timestamp: eventTimestamp(),
+          profile_id: speakDecision.profileId,
+          spoken_mode: speakDecision.spokenMode,
+          source: speakDecision.source,
+          max_spoken_chars: speakDecision.maxSpokenChars,
+          max_spoken_sentences: speakDecision.maxSpokenSentences
         });
-        if (voiceTranscript?.mode === "direct_conversation" && speakingStarted) {
+        if (!speakDecision.shouldSpeak) {
           eventBus.emit({
-            type: "voice_reply_auto_speak_started",
+            type: "voice_reply_speak_skipped",
             timestamp: eventTimestamp(),
-            character_count: spokenText.length
+            reason: speakDecision.skippedReason ?? "empty_spoken_text",
+            spoken_mode: speakDecision.spokenMode,
+            source: speakDecision.source,
+            original_character_count: speakDecision.originalCharacterCount
           });
-        }
-        if (sendingVoiceTranscript && !speakingStarted) {
-          setVoiceError("语音播放不可用。回复已保留在聊天里。");
+        } else {
+          if (speakDecision.excerptCreated) {
+            eventBus.emit({
+              type: "voice_reply_spoken_excerpt_created",
+              timestamp: eventTimestamp(),
+              spoken_mode: speakDecision.spokenMode,
+              original_character_count: speakDecision.originalCharacterCount,
+              spoken_character_count: speakDecision.spokenCharacterCount,
+              sentence_count: speakDecision.sentenceCount,
+              reason: "voice_profile"
+            });
+          }
+          const speakingStarted = voiceOutput.speak(speakDecision.spokenText, {
+            rate: appSettings.voice_rate,
+            volume: appSettings.voice_volume,
+            source: "assistant_reply"
+          });
+          if (voiceTranscript?.mode === "direct_conversation" && speakingStarted) {
+            eventBus.emit({
+              type: "voice_reply_auto_speak_started",
+              timestamp: eventTimestamp(),
+              character_count: speakDecision.spokenCharacterCount,
+              spoken_mode: speakDecision.spokenMode,
+              sentence_count: speakDecision.sentenceCount
+            });
+          }
+          if (sendingVoiceTranscript && !speakingStarted) {
+            setVoiceError("语音播放不可用。回复已保留在聊天里。");
+          }
         }
       }
       setLastInterimPlaceholderShown(placeholderShown);
@@ -3318,6 +3443,14 @@ export function App() {
   const voiceDirectConversationEnabled = appSettings.voice_interaction_mode === "direct_conversation";
   const voiceInteractionModeLabel = voiceInteractionModeText(appSettings.voice_interaction_mode);
   const voiceInteractionModeHint = voiceInteractionModeDescription(appSettings.voice_interaction_mode);
+  const voiceProfileNormalModeLabel = voiceSpokenModeText(appSettings.voice_spoken_reply_mode);
+  const voiceProfileDirectModeLabel = voiceSpokenModeText(appSettings.voice_direct_spoken_reply_mode);
+  const voiceProfileNeverSpokenItems = [
+    "Debug / Prompt Preview / Event Stream / Trace",
+    "Knowledge Trace / Persona Summary / Memory internal",
+    "API key / .env / raw prompt",
+    "stdout / stderr / full local paths"
+  ];
   const baseMainVoiceInputStatus = mainVoiceInputStatusText(
     mainVoiceInputProvider,
     voiceInputStatus,
@@ -4461,7 +4594,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
 	                <p className="settingHint">如果更换过系统语音包，请先点“测试语音”确认系统声音可用。</p>
 	                <p className="settingHint">
-	                  直接对话模式下，如果 Voice Output 开启，Rei 回复完成后会自动播报；关闭时只显示文字回复。
+	                  直接对话模式下，如果 Voice Output 开启，Rei 回复完成后默认短版播报；关闭时只显示文字回复。
 	                </p>
 	                {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
 	                <label className="settingRow">
@@ -4511,7 +4644,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                  className="smallButton quiet"
 	                  type="button"
 	                  aria-label="测试语音 / Test Voice"
-	                  disabled={!voiceStatus.available}
+	                  disabled={!voiceStatus.available || !VOICE_TEST_VOICE_ALLOWED}
 	                  onClick={testVoiceOutput}
 	                >
 	                  <Volume2 size={14} />
@@ -4522,14 +4655,140 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	          )}
 
 	          {activeWorkspace === "voice" && activeWorkspaceTab === "profile" && (
-	            <section className="infoCard" aria-label="Voice Profile 占位">
+	            <section className="infoCard" aria-label="Voice Profile">
 	              <div className="cardHeader">
 	                <Volume2 size={17} />
 	                <h2>Voice Profile</h2>
 	              </div>
-	              <p className="settingHint">
-	                Voice Profile 是未来任务。本阶段不调整 TTS 性格策略、不自动朗读完整调试内容，也不引入角色音色。
-	              </p>
+	              <div className="voiceOutputPanel" role="group" aria-label="Voice Profile 策略">
+	                <div className="settingRow static">
+	                  <span>当前 Profile</span>
+	                  <strong>{VOICE_PROFILE_LABEL}</strong>
+	                </div>
+	                <p className="settingHint">{VOICE_PROFILE_DESCRIPTION} 这不是角色音色，也不声明真人或角色声音。</p>
+	                <div className="settingRow static">
+	                  <span>普通聊天</span>
+	                  <strong>{voiceProfileNormalModeLabel}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>直接对话</span>
+	                  <strong>{voiceProfileDirectModeLabel}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>最长播报</span>
+	                  <strong>
+	                    {appSettings.voice_max_spoken_sentences} 句 / {appSettings.voice_max_spoken_chars} 字
+	                  </strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>主动陪伴播报</span>
+	                  <strong>{voiceProfileToggleText(appSettings.voice_speak_proactive)}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>记忆确认播报</span>
+	                  <strong>{voiceProfileToggleText(appSettings.voice_speak_memory_prompts)}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>调试内容播报</span>
+	                  <strong>{VOICE_DEBUG_SPEAKING_ALLOWED ? "允许" : "永不播报"}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>新录音打断播放</span>
+	                  <strong>{VOICE_INTERRUPT_ON_NEW_RECORDING ? "开启" : "关闭"}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>Test Voice</span>
+	                  <strong>{VOICE_TEST_VOICE_ALLOWED ? "可用" : "关闭"}</strong>
+	                </div>
+	                <label className="settingRow">
+	                  <span>普通聊天播报模式</span>
+	                  <select
+	                    aria-label="普通聊天播报模式"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.voice_spoken_reply_mode}
+	                    onChange={(event) =>
+	                      void updateAppSettings({
+	                        voice_spoken_reply_mode: event.target.value as AppSettings["voice_spoken_reply_mode"]
+	                      })
+	                    }
+	                  >
+	                    <option value="full">全文播报</option>
+	                    <option value="brief">短版播报</option>
+	                    <option value="silent">静默</option>
+	                  </select>
+	                </label>
+	                <label className="settingRow">
+	                  <span>直接对话播报模式</span>
+	                  <select
+	                    aria-label="直接对话播报模式"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.voice_direct_spoken_reply_mode}
+	                    onChange={(event) =>
+	                      void updateAppSettings({
+	                        voice_direct_spoken_reply_mode: event.target.value as AppSettings["voice_direct_spoken_reply_mode"]
+	                      })
+	                    }
+	                  >
+	                    <option value="full">全文播报</option>
+	                    <option value="brief">短版播报</option>
+	                    <option value="silent">静默</option>
+	                  </select>
+	                </label>
+	                <label className="settingRow">
+	                  <span>最长播报字数</span>
+	                  <span className="rangeControl">
+	                    <input
+	                      aria-label="最长播报字数"
+	                      disabled={settingsBusy !== ""}
+	                      max="280"
+	                      min="40"
+	                      step="10"
+	                      type="range"
+	                      value={appSettings.voice_max_spoken_chars}
+	                      onChange={(event) => void updateAppSettings({ voice_max_spoken_chars: Number(event.target.value) })}
+	                    />
+	                    <strong>{appSettings.voice_max_spoken_chars}</strong>
+	                  </span>
+	                </label>
+	                <label className="settingRow">
+	                  <span>最长播报句数</span>
+	                  <select
+	                    aria-label="最长播报句数"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.voice_max_spoken_sentences}
+	                    onChange={(event) => void updateAppSettings({ voice_max_spoken_sentences: Number(event.target.value) })}
+	                  >
+	                    <option value={1}>1</option>
+	                    <option value={2}>2</option>
+	                    <option value={3}>3</option>
+	                    <option value={4}>4</option>
+	                  </select>
+	                </label>
+	                <label className="settingRow">
+	                  <span>播报主动陪伴</span>
+	                  <input
+	                    aria-label="播报主动陪伴"
+	                    checked={appSettings.voice_speak_proactive}
+	                    disabled={settingsBusy !== ""}
+	                    type="checkbox"
+	                    onChange={(event) => void updateAppSettings({ voice_speak_proactive: event.target.checked })}
+	                  />
+	                </label>
+	                <label className="settingRow">
+	                  <span>播报记忆确认</span>
+	                  <input
+	                    aria-label="播报记忆确认"
+	                    checked={appSettings.voice_speak_memory_prompts}
+	                    disabled={settingsBusy !== ""}
+	                    type="checkbox"
+	                    onChange={(event) => void updateAppSettings({ voice_speak_memory_prompts: event.target.checked })}
+	                  />
+	                </label>
+	                <p className="settingHint">永不播报：{voiceProfileNeverSpokenItems.join("；")}。</p>
+	                <p className="settingHint">
+	                  完整回复仍显示在聊天里；Voice Profile 只决定可不可以说、说全文还是短版，以及短版长度。
+	                </p>
+	              </div>
 	            </section>
 	          )}
 
@@ -4966,7 +5225,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
                 <p className="settingHint">如果更换过系统语音包，请先点“测试语音”确认系统声音可用。</p>
                 <p className="settingHint">
-                  直接对话模式下，如果 Voice Output 开启，Rei 回复完成后会自动播报；关闭时只显示文字回复。
+                  直接对话模式下，如果 Voice Output 开启，Rei 回复完成后默认短版播报；关闭时只显示文字回复。
                 </p>
                 {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
                 <label className="settingRow">
@@ -5016,7 +5275,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   className="smallButton quiet"
                   type="button"
                   aria-label="测试语音 / Test Voice"
-                  disabled={!voiceStatus.available}
+                  disabled={!voiceStatus.available || !VOICE_TEST_VOICE_ALLOWED}
                   onClick={testVoiceOutput}
                 >
                   <Volume2 size={14} />

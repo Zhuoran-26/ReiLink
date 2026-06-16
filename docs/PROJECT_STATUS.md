@@ -8,7 +8,7 @@ Updated: 2026-06-16
 
 当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，并接入 Voice Interaction v2.1：状态机、确认发送默认、显式 opt-in 直接对话、TTS 打断、Home / Chat 紧凑状态与 Voice workspace Conversation 状态面板。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，并接入 Voice Interaction v2.1 与 Voice Profile v1：状态机、确认发送默认、显式 opt-in 直接对话、TTS 打断、Home / Chat 紧凑状态、Voice workspace Conversation 状态面板，以及 direct conversation 默认短版播报策略。
 
 截至本次阶段冻结，Voice Output v1 / v1.1、Local ASR v1、Local ASR Native File Picker v1 和 Overlay v1.1 macOS safe mode 已作为当前稳定回归基线记录。macOS Overlay auto-show 仍故意 fail-closed，后续恢复必须单独立项并通过 packaged `.app` QA checklist。
 
@@ -57,7 +57,7 @@ dev/codex-reilink
 - Voice Input v1 fallback：push-to-talk Web Speech UI、安全 fallback、不自动发送。
 - Main chat Local ASR voice input：Local ASR ready 时主聊天语音按钮优先走本地录音/转写，Web Speech 作为 fallback。
 - Voice Interaction MVP：系统 TTS + 用户配置 Local ASR + transcript-first UX + 隐私安全事件摘要。
-- Voice Interaction v2.1：直接语音对话 loop 的状态机、confirm-send 默认、直接对话显式 opt-in、TTS 打断、录音 / 播放互斥、Home / Chat 紧凑状态和 Voice workspace Conversation 状态面板；hands-free、角色 TTS、Voice Profile 和 Overlay voice state 仍未实现。
+- Voice Interaction v2.1 + Voice Profile v1：直接语音对话 loop 的状态机、confirm-send 默认、直接对话显式 opt-in、TTS 打断、录音 / 播放互斥、Home / Chat 紧凑状态、Voice workspace Conversation 状态面板，以及规则化 full / brief / silent 播报策略；hands-free、角色 TTS / 角色音色和 Overlay voice state 仍未实现。
 - Overlay v1.1：默认关闭的独立透明悬浮层、Settings 开关、位置预设、背景透明度、1～3 条安全短消息气泡和 overlay lifecycle Event Stream。
 - Game Session Timeline / Session Notes v1：Debug Panel 中的当前本局安全摘要时间线。
 - Event Bus / Event Stream。
@@ -101,7 +101,7 @@ dev/codex-reilink
 - Local ASR transcript-first 默认边界保持稳定：`confirm_send` 下识别结果只填入输入框，不自动发送；用户确认点击发送后才进入 chat flow；未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context。`direct_conversation` 是显式 opt-in，转写成功后只通过现有 chat flow 自动发送，不绕过记忆确认或游戏上下文安全门。
 - Local ASR Settings 支持路径持久化；Settings 输入框显示完整本地路径是正常编辑行为，但 Event Stream / Debug / Raw JSON 不显示完整路径。
 - Local ASR Native File Picker v1 已加入：用户可为 binary、model、converter 点击 `选择...` 打开系统原生文件选择器；file picker 只填入路径，不读取、不复制、不上传文件，仍需用户点击保存配置。
-- Voice Interaction v2.1 已接入 renderer：`docs/voice_interaction_v2_spec.md` 定义直接语音对话 loop、`idle` / `listening` / `transcribing` / `ready_to_send` / `assistant_thinking` / `speaking` / `interrupted` / `error` 状态、confirm-send 默认、`direct_conversation` 显式 opt-in、TTS 与录音互斥、Voice Output 开启时的直接对话自动播报、安全错误处理和 UI 放置；配套场景位于 `docs/qa/voice_interaction_v2_scenarios.json`。当前实现范围不包含 hands-free、角色 TTS、Voice Profile 或 Overlay voice state。
+- Voice Interaction v2.1 + Voice Profile v1 已接入 renderer：`docs/voice_interaction_v2_spec.md` 定义直接语音对话 loop、`idle` / `listening` / `transcribing` / `ready_to_send` / `assistant_thinking` / `speaking` / `interrupted` / `error` 状态、confirm-send 默认、`direct_conversation` 显式 opt-in、TTS 与录音互斥、Voice Output 开启时的直接对话默认短版播报、安全错误处理和 UI 放置；`docs/voice_profile_v1.md` 定义 full / brief / silent 播报策略和 never-spoken 类别；配套场景位于 `docs/qa/voice_interaction_v2_scenarios.json` 与 `docs/qa/voice_profile_scenarios.json`。当前实现范围不包含 hands-free、角色 TTS / 角色音色或 Overlay voice state。
 
 - Voice Output 已完成并可用：支持 Test Voice、rate / volume、中文语音优先，`tts_started` 只在真实 `utterance.onstart` 后触发，`tts_completed` / `tts_error` 映射到安全中文摘要。
 - Voice Output 当前使用系统 `speechSynthesis`，不是角色级配音；“Rei”等名字和语气可能不自然，后续可研究本地角色 TTS 或更自然的 voice provider，但当前不接商业 TTS。
@@ -172,7 +172,7 @@ dev/codex-reilink
 - 主聊天 prompt 现在在基础系统安全 / 应用身份后注入 structured Rei Persona Pack，再继续使用游戏上下文、已确认长期记忆、知识检索和当前用户输入；pack 不能覆盖安全、隐私、待确认记忆流程、知识依据或主动陪伴门控。
 - Persona Pack prompt 注入有固定长度预算：persona、style calibration、voice、response patterns、boundaries 和 policy sections 为主，examples / anti_examples 只注入少量精选；内容过长时安全截断并在 Debug summary 显示 `persona_section_truncated` 和 truncated_sections。
 - Debug / Prompt Preview 保留脱敏后的 assembled prompt preview 能力，但普通 Debug / Event Stream 不展示完整 prompt 或 persona markdown。Prompt Preview 只显示 Persona Pack id、version、enabled、status、loaded_sections、injected_sections、missing_sections、fallback / truncation summary、`raw_content_omitted=true` 和 `path_omitted=true`，不展示完整 persona markdown、API key、`.env`、完整本地路径、stdout/stderr、raw JSON 或 ASR transcript 全文。
-- Persona Pack v1.1.2 不做用户自定义角色、Persona 自动学习、Voice Profile、TTS 音色、Live2D 或 LLM-primary 状态写入；memory、proactive 和 Semantic Shadow 的状态写入边界保持不变。
+- Persona Pack v1.1.2 不做用户自定义角色、Persona 自动学习、TTS 音色、Live2D 或 LLM-primary 状态写入；memory、proactive 和 Semantic Shadow 的状态写入边界保持不变。
 
 ### 当前 UI Surface / IA 状态
 
@@ -183,7 +183,7 @@ dev/codex-reilink
 - UI Surface v0.2 已修复 workspace tab 内容切换回归：tab active state 按 workspace 独立保存，Settings / Developer Debug / Voice / Overlay / Future Avatar 的 tab 选择与实际内容一致，切换 tab 不清空聊天历史或未发送输入。
 - 推荐的一级模块是 Home / Chat、Memory、Game、Voice、Overlay、Settings、Developer / Debug、Future Presentation / Avatar。普通用户默认进入 Home / Chat，Developer / Debug 不应默认淹没普通体验。
 - 推荐 surface 模型是 in-app Panel Launcher & Workspace Shell：优先使用应用内 workspace / drawer / modal，暂不把普通模块拆成 Electron child window，以降低 packaged app、焦点和测试风险。
-- Voice 的产品位置升级为一级模块：当前是 Local ASR transcript-first 默认、Voice Output 和 Voice Interaction v2.1 direct conversation opt-in；`docs/voice_interaction_v2_spec.md` 覆盖并接入 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted`、`error` 等状态。hands-free、角色 TTS、Voice Profile 和 Overlay voice state 仍未实现。
+- Voice 的产品位置升级为一级模块：当前是 Local ASR transcript-first 默认、Voice Output、Voice Interaction v2.1 direct conversation opt-in 和 Voice Profile v1 行为策略；`docs/voice_interaction_v2_spec.md` 覆盖并接入 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted`、`error` 等状态。hands-free、角色 TTS / 角色音色和 Overlay voice state 仍未实现。
 - Overlay 的产品位置升级为一级模块，但当前仍是 macOS safe mode；auto-show 保持 fail-closed，未来只作为 Game-safe companion surface 显示最近 1～2 句、安全语音状态和低打扰提示。
 - Memory 应成为普通用户可理解的一级模块，承接 pending / confirmed / ignored / search / source summary / session archive；Candidate Memory 或 Hermes-style memory 进入实现前应先完成 UI surface。
 - Developer / Debug 应集中承接 Event Stream、Prompt Preview、Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status，并继续禁止 raw prompt、API key、`.env`、完整路径、stdout/stderr、完整 persona markdown 和完整 assistant reply。
@@ -273,7 +273,7 @@ Updated: 2026-06-16
 
 Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, and Voice Interaction v2.1 is now wired in: state machine, confirm-send default, explicit opt-in Direct Conversation Mode, TTS interruption, compact Home / Chat state, and Voice workspace Conversation state panel.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, and Voice Interaction v2.1 plus Voice Profile v1 are now wired in: state machine, confirm-send default, explicit opt-in Direct Conversation Mode, TTS interruption, compact Home / Chat state, Voice workspace Conversation state panel, and Direct Conversation brief spoken reply policy.
 
 As of this freeze, Voice Output v1 / v1.1, Local ASR v1, Local ASR Native File Picker v1, and Overlay v1.1 macOS safe mode are the current stable regression baseline. macOS Overlay auto-show intentionally remains fail-closed and must be restored only in a separate task with packaged-app QA.
 
@@ -322,7 +322,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Voice Input v1 fallback: push-to-talk Web Speech UI, safe fallback, and no auto-send.
 - Main chat Local ASR voice input: when Local ASR is ready, the main chat voice button prefers local record/transcribe, with Web Speech kept as fallback.
 - Voice Interaction MVP: system TTS + user-configured Local ASR + transcript-first UX + privacy-safe event summaries.
-- Voice Interaction v2.1: direct spoken conversation loop state machine, confirm-send default, explicit opt-in Direct Conversation Mode, TTS interruption, recording / speaking mutual exclusion, compact Home / Chat state, and Voice workspace Conversation state panel; hands-free, character TTS, Voice Profile, and Overlay voice state remain unimplemented.
+- Voice Interaction v2.1 + Voice Profile v1: direct spoken conversation loop state machine, confirm-send default, explicit opt-in Direct Conversation Mode, TTS interruption, recording / speaking mutual exclusion, compact Home / Chat state, Voice workspace Conversation state panel, and rule-based full / brief / silent spoken reply policy; hands-free, character TTS / character voice, and Overlay voice state remain unimplemented.
 - Overlay v1.1: default-off independent transparent overlay, Settings toggle, position presets, background opacity, 1-3 safe short Rei message bubbles, and overlay lifecycle Event Stream events.
 - Game Session Timeline / Session Notes v1: current-session safe summary timeline in the Debug Panel.
 - Event Bus / Event Stream.
@@ -367,7 +367,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Local ASR keeps the transcript-first default boundary: under `confirm_send`, recognized text only fills the input, is not auto-sent, and enters chat flow only after the user confirms by sending. Under `direct_conversation`, transcripts are auto-sent only through the existing chat flow and still do not bypass memory confirmation or game-context safety.
 - Local ASR Settings persist user paths. Full local paths may appear in Settings edit inputs as normal editable values, but not in Event Stream / Debug / Raw JSON.
 - Local ASR Native File Picker v1 is available for binary, model, and converter paths. The picker only fills the path field; it does not read, copy, upload, or save files until the user saves settings.
-- Voice Interaction v2.1 is wired into the renderer. `docs/voice_interaction_v2_spec.md` defines the direct conversation loop, `idle` / `listening` / `transcribing` / `ready_to_send` / `assistant_thinking` / `speaking` / `interrupted` / `error` states, confirm-send default, explicit `direct_conversation` opt-in, TTS / recording mutual exclusion, Direct Conversation auto-speak when Voice Output is enabled, safe error handling, and UI placement. Machine-readable scenarios live in `docs/qa/voice_interaction_v2_scenarios.json`. The current implementation scope is not hands-free, character TTS, Voice Profile, or Overlay voice state.
+- Voice Interaction v2.1 + Voice Profile v1 are wired into the renderer. `docs/voice_interaction_v2_spec.md` defines the direct conversation loop, `idle` / `listening` / `transcribing` / `ready_to_send` / `assistant_thinking` / `speaking` / `interrupted` / `error` states, confirm-send default, explicit `direct_conversation` opt-in, TTS / recording mutual exclusion, Direct Conversation brief auto-speak when Voice Output is enabled, safe error handling, and UI placement. `docs/voice_profile_v1.md` defines full / brief / silent policy and never-spoken categories. Machine-readable scenarios live in `docs/qa/voice_interaction_v2_scenarios.json` and `docs/qa/voice_profile_scenarios.json`. The current implementation scope is not hands-free, character TTS / character voice, or Overlay voice state.
 
 - Voice Output is implemented and usable: Test Voice, rate / volume, Chinese voice preference, `tts_started` only after the real `utterance.onstart`, and safe Chinese Event Stream summaries.
 - Voice Output currently uses system `speechSynthesis`, not character-grade voice acting; names like "Rei" and the tone may sound unnatural. A local character TTS or more natural voice provider can be researched later, but commercial TTS is not part of the current scope.
@@ -438,7 +438,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Main chat prompt assembly now injects the structured Rei Persona Pack after the 基础系统安全 / 应用身份 block, then continues with game context, confirmed long-term memory, knowledge retrieval, and the current user input. The pack cannot override safety, privacy, pending memory confirmation, knowledge grounding, proactive gating, or the LLM Shadow candidate-only boundary.
 - Persona Pack prompt injection has a fixed length budget: persona, style calibration, voice, response patterns, boundaries, and policy sections are primary, while examples / anti_examples inject only a small stable selection. Overlong content is safely truncated and Debug summary reports `persona_section_truncated` and truncated_sections.
 - Debug / Prompt Preview keeps the redacted assembled prompt preview capability, while ordinary Debug / Event Stream must not show the full prompt or persona markdown. Prompt Preview shows only Persona Pack id, version, enabled state, status, loaded_sections, injected_sections, missing_sections, fallback / truncation summary, `raw_content_omitted=true`, and `path_omitted=true`; it does not show full persona markdown, API keys, `.env`, full local paths, stdout/stderr, raw JSON, or full ASR transcripts.
-- Persona Pack v1.1.2 does not implement custom characters, persona self-learning, Voice Profile, TTS voice models, Live2D, or LLM-primary state writes. Memory, proactive, and Semantic Shadow write boundaries remain unchanged.
+- Persona Pack v1.1.2 does not implement custom characters, persona self-learning, TTS voice models, Live2D, or LLM-primary state writes. Memory, proactive, and Semantic Shadow write boundaries remain unchanged.
 
 ### Current UI Surface / IA Status
 
@@ -449,7 +449,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - UI Surface v0.2 fixes the workspace tab content switching regression: tab active state is scoped per workspace, Settings / Developer Debug / Voice / Overlay / Future Avatar tabs show distinct matching content, and tab switching does not clear chat history or the unsent chat draft.
 - The recommended top-level modules are Home / Chat, Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future Presentation / Avatar. Normal users should default to Home / Chat, while Developer / Debug should not overwhelm the ordinary experience by default.
 - The recommended surface model is an in-app Panel Launcher & Workspace Shell: prefer in-app workspaces, drawers, and modals before splitting ordinary modules into Electron child windows, which would raise packaged-app, focus, and test risk.
-- Voice becomes a top-level product module. The current state is Local ASR transcript-first by default plus Voice Output plus Voice Interaction v2.1 Direct Conversation opt-in; `docs/voice_interaction_v2_spec.md` covers and now wires `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`. Hands-free, character TTS, Voice Profile, and Overlay voice state remain unimplemented.
+- Voice becomes a top-level product module. The current state is Local ASR transcript-first by default plus Voice Output plus Voice Interaction v2.1 Direct Conversation opt-in plus Voice Profile v1 behavior policy; `docs/voice_interaction_v2_spec.md` covers and now wires `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`. Hands-free, character TTS / character voice, and Overlay voice state remain unimplemented.
 - Overlay becomes a top-level module but remains macOS safe mode. Auto-show stays fail-closed; the future direction is a game-safe companion surface for the latest 1-2 safe lines, voice state, and low-interruption hints.
 - Memory should become an understandable normal-user module for pending / confirmed / ignored / search / source summary / session archive. Candidate Memory or Hermes-style memory should wait for the UI surface.
 - Developer / Debug should contain Event Stream, Prompt Preview, Semantic Shadow trace, Knowledge trace, Persona Pack safe summary, and Runtime status while continuing to block raw prompts, API keys, `.env`, full paths, stdout/stderr, full persona markdown, and full assistant replies.

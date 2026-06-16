@@ -728,6 +728,13 @@ const appSettings: AppSettings = {
   overlay_opacity: 0.72,
   overlay_message_count: 2,
   voice_interaction_mode: "confirm_send",
+  voice_profile_id: "rei_calm",
+  voice_spoken_reply_mode: "full",
+  voice_direct_spoken_reply_mode: "brief",
+  voice_speak_proactive: false,
+  voice_speak_memory_prompts: false,
+  voice_max_spoken_chars: 120,
+  voice_max_spoken_sentences: 2,
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -1219,6 +1226,13 @@ const settingsResponse = (url: string, init?: RequestInit) => {
     const legacySettings = { ...appSettingsStore } as Partial<AppSettings>;
     delete legacySettings.voice_output;
     delete legacySettings.voice_interaction_mode;
+    delete legacySettings.voice_profile_id;
+    delete legacySettings.voice_spoken_reply_mode;
+    delete legacySettings.voice_direct_spoken_reply_mode;
+    delete legacySettings.voice_speak_proactive;
+    delete legacySettings.voice_speak_memory_prompts;
+    delete legacySettings.voice_max_spoken_chars;
+    delete legacySettings.voice_max_spoken_sentences;
     delete legacySettings.voice_rate;
     delete legacySettings.voice_volume;
     return legacySettings;
@@ -1636,10 +1650,17 @@ describe("App", () => {
     await openWorkspaceTab("输出");
     expect(await screen.findByRole("heading", { name: "语音输出" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
-    expect(panel).toHaveTextContent("直接对话模式下，如果 Voice Output 开启");
+    expect(panel).toHaveTextContent("默认短版播报");
     await openWorkspaceTab("Voice Profile");
     expect(await screen.findByRole("heading", { name: "Voice Profile" })).toBeInTheDocument();
-    expect(screen.getByText(/不引入角色音色/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("Rei Calm / Rei 冷静陪伴");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("不是角色音色");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("普通聊天");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("全文播报");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("直接对话");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("短版播报");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("永不播报");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("speechSynthesis");
 
     panel = await openWorkspace("Overlay");
     expect(await screen.findByRole("heading", { name: "Safe Mode" })).toBeInTheDocument();
@@ -1688,6 +1709,63 @@ describe("App", () => {
     );
     expect(directButton).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText(/模式：直接对话/)).toBeInTheDocument();
+  });
+
+  it("shows and persists Voice Profile policy controls", async () => {
+    render(<App />);
+    let panel = await openWorkspace("语音");
+    await openWorkspaceTab("Voice Profile");
+    panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    const profilePanel = within(panel).getByRole("group", { name: "Voice Profile 策略" });
+
+    expect(profilePanel).toHaveTextContent("Rei Calm / Rei 冷静陪伴");
+    expect(profilePanel).toHaveTextContent("普通聊天");
+    expect(profilePanel).toHaveTextContent("全文播报");
+    expect(profilePanel).toHaveTextContent("直接对话");
+    expect(profilePanel).toHaveTextContent("短版播报");
+    expect(profilePanel).toHaveTextContent("主动陪伴播报");
+    expect(profilePanel).toHaveTextContent("记忆确认播报");
+    expect(profilePanel).toHaveTextContent("API key / .env / raw prompt");
+    expect(profilePanel).toHaveTextContent("speechSynthesis");
+
+    await userEvent.selectOptions(screen.getByLabelText("普通聊天播报模式"), "brief");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_spoken_reply_mode: "brief" }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("直接对话播报模式"), "silent");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_direct_spoken_reply_mode: "silent" }) })
+      )
+    );
+
+    fireEvent.change(screen.getByLabelText("最长播报字数"), { target: { value: "180" } });
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_max_spoken_chars: 180 }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("最长播报句数"), "3");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_max_spoken_sentences: 3 }) })
+      )
+    );
+
+    await userEvent.click(screen.getByLabelText("播报主动陪伴"));
+    await userEvent.click(screen.getByLabelText("播报记忆确认"));
+
+    await waitFor(() => expect(appSettingsStore.voice_speak_proactive).toBe(true));
+    await waitFor(() => expect(appSettingsStore.voice_speak_memory_prompts).toBe(true));
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
   });
 
   it("shows running game status", async () => {
@@ -2382,11 +2460,12 @@ describe("App", () => {
         expect.objectContaining({
           type: "assistant_reply_segment_shown",
           segment_index: 0,
-          text: "别急着翻滚。先看动作。再试一次。"
+          character_count: "别急着翻滚。先看动作。再试一次。".length
         }),
         expect.objectContaining({ type: "assistant_reply_completed" })
       ])
     );
+    expect(events.find((event) => event.type === "assistant_reply_segment_shown")).not.toHaveProperty("text");
   });
 
   it("emits observable semantic trace events for low-confidence no-op game hints", async () => {
@@ -3721,13 +3800,16 @@ describe("App", () => {
 
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
     await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0].text).toBe("别急着翻滚。先看动作。");
     act(() => {
       speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
     });
     expect(screen.getByText(/Voice v2.1：Rei 正在说话/)).toBeInTheDocument();
     expect(eventBus.getRecentEvents(30)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: "voice_reply_auto_speak_started", character_count: 16 }),
+        expect.objectContaining({ type: "voice_profile_applied", spoken_mode: "brief", source: "direct_conversation" }),
+        expect.objectContaining({ type: "voice_reply_spoken_excerpt_created", spoken_character_count: 11, original_character_count: 16 }),
+        expect.objectContaining({ type: "voice_reply_auto_speak_started", character_count: 11, spoken_mode: "brief", sentence_count: 2 }),
         expect.objectContaining({ type: "tts_started", source: "assistant_reply" })
       ])
     );
@@ -3738,6 +3820,96 @@ describe("App", () => {
     expect(screen.getByText(/Voice v2.1：已停止播放/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/Voice v2.1：语音待机/)).toBeInTheDocument(), { timeout: 2500 });
     expect(screen.getByText("别急着翻滚。先看动作。再试一次。")).toBeInTheDocument();
+  });
+
+  it("keeps full direct conversation text visible while speaking only the brief excerpt", async () => {
+    const longReply = "第一句只给重点。第二句继续收束。第三句留在聊天里，不进入播报。";
+    chatResponseStore = { ...chatResponse, reply: longReply, reply_segments: [longReply] };
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation", voice_output: "on" };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("直接短一点说", true);
+    });
+
+    await screen.findByText(longReply);
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0].text).toBe("第一句只给重点。第二句继续收束。");
+
+    await openDebugWorkspace("Event Stream");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("语音短版已生成"));
+    expect(eventStream).not.toHaveTextContent(longReply);
+    expect(eventStream).not.toHaveTextContent("第一句只给重点。第二句继续收束。");
+    expect(JSON.stringify(eventBus.getRecentEvents(40))).not.toContain(longReply);
+    expect(JSON.stringify(eventBus.getRecentEvents(40))).not.toContain("第一句只给重点。第二句继续收束。");
+  });
+
+  it("honors full spoken mode for direct conversation", async () => {
+    const directReply = "第一句。第二句。第三句也要读。";
+    chatResponseStore = { ...chatResponse, reply: directReply, reply_segments: [directReply] };
+    appSettingsStore = {
+      ...appSettingsStore,
+      voice_interaction_mode: "direct_conversation",
+      voice_output: "on",
+      voice_direct_spoken_reply_mode: "full"
+    };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("全文读给我", true);
+    });
+
+    await screen.findByText(directReply);
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0].text).toBe(directReply);
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_profile_applied", spoken_mode: "full", source: "direct_conversation" })
+      ])
+    );
+  });
+
+  it("honors silent spoken mode for direct conversation", async () => {
+    const directReply = "这段仍然要显示，但不要播报。";
+    chatResponseStore = { ...chatResponse, reply: directReply, reply_segments: [directReply] };
+    appSettingsStore = {
+      ...appSettingsStore,
+      voice_interaction_mode: "direct_conversation",
+      voice_output: "on",
+      voice_direct_spoken_reply_mode: "silent"
+    };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("只显示文字", true);
+    });
+
+    await screen.findByText(directReply);
+    expect(speech.speak).not.toHaveBeenCalled();
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_profile_applied", spoken_mode: "silent", source: "direct_conversation" }),
+        expect.objectContaining({ type: "voice_reply_speak_skipped", reason: "silent_mode", spoken_mode: "silent" })
+      ])
+    );
   });
 
   it("keeps the main chat voice button on Local ASR when Web Speech reports service unavailable", async () => {
@@ -4471,6 +4643,39 @@ describe("App", () => {
             character_count: 16,
             reason: "unavailable",
             status: "当前环境不支持"
+          },
+          {
+            type: "voice_profile_applied",
+            timestamp: new Date().toISOString(),
+            profile_id: "rei_calm",
+            spoken_mode: "brief",
+            source: "direct_conversation",
+            max_spoken_chars: 120,
+            max_spoken_sentences: 2
+          },
+          {
+            type: "voice_reply_spoken_excerpt_created",
+            timestamp: new Date().toISOString(),
+            spoken_mode: "brief",
+            original_character_count: 64,
+            spoken_character_count: 24,
+            sentence_count: 2,
+            reason: "voice_profile"
+          },
+          {
+            type: "voice_reply_speak_skipped",
+            timestamp: new Date().toISOString(),
+            reason: "silent_mode",
+            spoken_mode: "silent",
+            source: "direct_conversation",
+            original_character_count: 64
+          },
+          {
+            type: "voice_reply_auto_speak_started",
+            timestamp: new Date().toISOString(),
+            character_count: 24,
+            spoken_mode: "brief",
+            sentence_count: 2
           }
         ]}
         open
@@ -4486,7 +4691,16 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("新消息打断");
     expect(eventStream).toHaveTextContent("已关闭");
     expect(eventStream).toHaveTextContent("语音播放失败");
+    expect(eventStream).toHaveTextContent("Voice Profile 已应用");
+    expect(eventStream).toHaveTextContent("Rei Calm / Rei 冷静陪伴");
+    expect(eventStream).toHaveTextContent("语音短版已生成");
+    expect(eventStream).toHaveTextContent("语音播报已跳过");
+    expect(eventStream).toHaveTextContent("语音回复自动播报");
+    expect(eventStream).toHaveTextContent("短版播报");
+    expect(eventStream).toHaveTextContent("静默模式");
     expect(eventStream).toHaveTextContent("16 字");
+    expect(eventStream).toHaveTextContent("24/64 字");
+    expect(eventStream).toHaveTextContent("上限 2 句 / 120 字");
     expect(eventStream).not.toHaveTextContent("user_stop");
     expect(eventStream).not.toHaveTextContent("new_message");
     expect(eventStream).not.toHaveTextContent("disabled");
@@ -4494,6 +4708,8 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("test_voice");
     expect(eventStream).not.toHaveTextContent("你好，我是 Rei。语音输出测试。");
     expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
+    expect(eventStream).not.toHaveTextContent("完整助手回复");
+    expect(eventStream).not.toHaveTextContent("完整播报文本");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
     expect(eventStream).not.toHaveTextContent("services/backend/.env");
@@ -4760,7 +4976,7 @@ describe("App", () => {
         type: "assistant_reply_segment_shown",
         timestamp: new Date().toISOString(),
         segment_index: 0,
-        text: "先别贪刀。"
+        character_count: "先别贪刀。".length
       });
       eventBus.emit({
         type: "runtime_status_changed",

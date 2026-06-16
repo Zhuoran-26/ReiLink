@@ -1,8 +1,8 @@
 # Voice Interaction v2 Spec
 
-Updated: 2026-06-16
+Updated: 2026-06-17
 
-Status: v2.1 implemented. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, TTS interruption, and speaking / listening mutual exclusion. This does not implement hands-free listening, a new TTS engine, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
+Status: v2.1 implemented with Voice Profile v1 behavior policy. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, TTS interruption, speaking / listening mutual exclusion, and rule-based spoken reply selection. This does not implement hands-free listening, a new TTS engine, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
 
 ## Purpose
 
@@ -35,6 +35,8 @@ Implemented today:
 - Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, game context, Semantic Extraction, or proactive behavior.
 - Voice Output uses renderer-side `speechSynthesis`.
 - Voice Output can be enabled, tested, stopped, and tuned with rate / volume; in `direct_conversation`, assistant replies are spoken automatically only when Voice Output is enabled.
+- Voice Profile v1 is a behavior policy, not a character voice: profile `rei_calm` decides full / brief / silent spoken reply mode, max spoken length, conservative proactive / memory speaking defaults, and never-spoken internal content.
+- Direct Conversation defaults to brief spoken replies while the full assistant reply remains visible in chat. Normal chat defaults to full spoken reply when Voice Output is enabled.
 - Starting voice input stops active TTS first, and Stop Voice enters a short interrupted state.
 
 Voice v2 should build on these boundaries instead of bypassing them.
@@ -74,7 +76,7 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 | --- | --- | --- | --- |
 | Input trigger | Push-to-talk / click-to-record | Hands-free / auto-listen later | Hands-free must remain off until a separate task defines permission, timeout, and game-mode risk. |
 | Send policy | Confirm-send | Direct Conversation as explicit opt-in | Confirm-send keeps current safety. Direct Conversation must never be implied by enabling ASR or Voice Output. |
-| Output policy | Speak only when Voice Output is enabled | Short spoken summary mode later | TTS should speak assistant content only, never Debug, Prompt Preview, trace, or raw internals. |
+| Output policy | Voice Output off; when enabled normal chat defaults to full and Direct Conversation defaults to brief | User-configured full / brief / silent | TTS should speak assistant content only, never Debug, Prompt Preview, trace, raw internals, secrets, paths, or full structured output. |
 
 ### Input Modes
 
@@ -124,13 +126,20 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 `tts_full_reply`
 
 - If Voice Output is enabled, speak the final assistant reply after it completes.
+- Normal chat uses this mode by default.
 - Do not speak partial streaming chunks unless a later task designs it.
 
 `tts_short_reply`
 
-- Future game-mode option.
-- Speak a short safe sentence derived from the assistant reply while keeping the full text in chat.
-- This should be implemented with LLM-first generation or a safe summarization policy, not hardcoded Rei lines.
+- Implemented by Voice Profile v1 as rule-based excerpting, not a second LLM call.
+- Direct Conversation uses this mode by default.
+- Speak the first one or two natural Chinese sentences, capped by configured character length, while keeping the full assistant text in chat.
+- Strip code blocks, inline code, lists, tables, and markdown structure before speaking.
+
+`tts_silent`
+
+- Implemented by Voice Profile v1.
+- Keep the assistant reply visible in chat but skip speech.
 
 ## State Machine
 
@@ -202,7 +211,7 @@ TTS may speak only safe assistant-facing output:
 
 - Assistant final replies.
 - Test Voice text.
-- Future short spoken summaries derived from assistant replies.
+- Voice Profile v1 full / brief excerpts derived from assistant replies.
 
 TTS must not speak:
 
@@ -216,6 +225,7 @@ TTS must not speak:
 - Raw provider response.
 - Full ASR transcript before confirmation.
 - API keys, `.env`, Authorization headers, full local paths, stdout, or stderr.
+- Persona markdown, persona summaries, prompt preview, knowledge trace, setup/backend/provider long errors, JSON payloads, or trace-like structured content.
 
 TTS interruption:
 
@@ -236,7 +246,7 @@ Voice v2 should feel useful while the player is focused on the game screen.
 - Do not hardcode Rei replies; use the normal LLM-first reply path.
 - If the user interrupts, treat it as normal game flow, not failure.
 
-Future `tts_short_reply` should prioritize one or two spoken sentences for:
+Voice Profile v1 `tts_short_reply` prioritizes one or two spoken sentences for:
 
 - reassurance after repeated failure,
 - a concise tactical hint,
@@ -276,9 +286,17 @@ Output tab should keep:
 - rate and volume,
 - stop voice,
 - system voice availability.
-- Direct Conversation note: if Voice Output is enabled, Rei speaks the assistant reply after completion; otherwise the reply remains text-only.
+- Direct Conversation note: if Voice Output is enabled, Rei speaks a brief reply by default after completion; otherwise the reply remains text-only.
 
-Voice Profile remains future-only until TTS strategy is defined.
+Voice Profile tab now shows:
+
+- current profile `rei_calm`,
+- normal chat and Direct Conversation spoken reply modes,
+- max spoken characters and sentences,
+- conservative proactive and memory speaking toggles,
+- never-spoken categories,
+- `speechSynthesis` caveat,
+- no character voice claim.
 
 ### Home / Chat
 
@@ -347,14 +365,15 @@ Foundation and v2.1 Direct Conversation completed in the renderer:
 4. Home / Chat compact state display.
 5. Direct Conversation auto-send through the normal chat flow.
 6. TTS interruption wiring and mutual exclusion between speaking and listening.
+7. Voice Profile v1 behavior policy for full / brief / silent spoken replies, safe excerpting, and safe event summaries.
 
 Suggested later task order:
 
 1. Extract more controller logic if the state graph grows beyond the current renderer wiring.
 2. Consider hands-free only after a separate privacy, timeout, and game-mode risk design.
-3. Consider short spoken reply mode after TTS strategy is clearer.
+3. Consider richer spoken-summary generation only after TTS strategy and privacy rules are clearer.
 4. Consider Overlay voice state display only after Overlay safe mode remains stable.
-5. Define Voice Profile only after a character-grade TTS strategy exists.
+5. Define character-grade voice profile only after a character-grade TTS strategy exists.
 
 Required verification for implementation tasks should include desktop automated checks, backend tests when backend behavior changes, visual smoke for UI changes, and packaged `.app` smoke for packaged or user-visible runtime behavior.
 
@@ -372,7 +391,8 @@ Manual acceptance for this spec:
 6. Starting recording interrupts active TTS.
 7. Unconfirmed transcript has no memory, prompt, retrieval, game context, Semantic Extraction, or proactive side effect.
 8. Direct Conversation auto-send events do not show the full transcript in Event Stream, Debug, Raw JSON, Prompt Preview, or Overlay.
-9. Voice Output auto-speaks Direct Conversation replies only when enabled, and Stop Voice interrupts playback.
-10. TTS does not speak Debug, Prompt Preview, trace, memory internals, raw prompt, full transcript, paths, `.env`, or secrets.
-11. Game-mode speech remains short and low-interruption.
-12. Voice workspace, Home / Chat, and future Overlay state placement are defined.
+9. Voice Output auto-speaks Direct Conversation replies only when enabled; Direct Conversation defaults to brief spoken reply and Stop Voice interrupts playback.
+10. Voice Profile v1 can switch normal / direct spoken reply modes among full, brief, and silent while preserving the full chat text.
+11. TTS does not speak Debug, Prompt Preview, trace, memory internals, raw prompt, full transcript, paths, `.env`, or secrets.
+12. Game-mode speech remains short and low-interruption.
+13. Voice workspace, Home / Chat, and future Overlay state placement are defined.

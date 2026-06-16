@@ -546,6 +546,13 @@ export type AppSettings = {
   overlay_opacity: number;
   overlay_message_count: number;
   voice_interaction_mode: "confirm_send" | "direct_conversation";
+  voice_profile_id: "rei_calm";
+  voice_spoken_reply_mode: "full" | "brief" | "silent";
+  voice_direct_spoken_reply_mode: "full" | "brief" | "silent";
+  voice_speak_proactive: boolean;
+  voice_speak_memory_prompts: boolean;
+  voice_max_spoken_chars: number;
+  voice_max_spoken_sentences: number;
   voice_output: "on" | "off";
   voice_rate: number;
   voice_volume: number;

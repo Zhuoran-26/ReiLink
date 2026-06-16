@@ -75,9 +75,31 @@
     "precondition": "Direct Conversation Mode and Voice Output are enabled",
     "action": "Assistant final reply completes after an auto-sent voice transcript",
     "expected_state": "speaking",
-    "expected": "The assistant reply is spoken after completion using renderer-side speechSynthesis.",
+    "expected": "The assistant reply is spoken after completion using renderer-side speechSynthesis. Voice Profile v1 defaults Direct Conversation to brief mode while the full reply remains visible in chat.",
     "implemented_in_v21": true,
-    "must_not_speak": ["Debug", "Prompt Preview", "Event Stream", "Semantic Shadow trace", "raw prompt", "full unconfirmed transcript"]
+    "expected_spoken_mode": "brief",
+    "must_not_speak": ["Debug", "Prompt Preview", "Event Stream", "Semantic Shadow trace", "raw prompt", "full unconfirmed transcript", "spoken text in events"]
+  },
+  {
+    "id": "voice-v21-direct-conversation-output-full-configurable",
+    "category": "voice_interaction_v2_output_policy",
+    "precondition": "Direct Conversation Mode and Voice Output are enabled, and direct spoken mode is set to full",
+    "action": "Assistant final reply completes after an auto-sent voice transcript",
+    "expected_state": "speaking",
+    "expected": "The sanitized full assistant reply is spoken, the full chat reply remains visible, and events contain only safe mode and count summaries.",
+    "implemented_in_v21": true,
+    "expected_spoken_mode": "full",
+    "forbidden_terms": ["full assistant reply in Event Stream", "spoken text in Event Stream", "raw prompt", "API key", ".env", "full local path"]
+  },
+  {
+    "id": "voice-v21-direct-conversation-output-silent-configurable",
+    "category": "voice_interaction_v2_output_policy",
+    "precondition": "Direct Conversation Mode and Voice Output are enabled, and direct spoken mode is set to silent",
+    "action": "Assistant final reply completes after an auto-sent voice transcript",
+    "expected_state": "idle",
+    "expected": "The assistant reply remains visible in chat and no speech starts. A safe skipped event records silent_mode.",
+    "implemented_in_v21": true,
+    "expected_spoken_mode": "silent"
   },
   {
     "id": "voice-v21-direct-conversation-output-off",
@@ -93,9 +115,9 @@
     "category": "voice_interaction_v2_privacy",
     "precondition": "A Direct Conversation transcript is auto-sent",
     "action": "Inspect Event Stream, Debug, Prompt Preview, Raw JSON, and Overlay",
-    "expected": "Safe events show lifecycle, provider, mode, and character count only. They do not show the full transcript, raw prompt, paths, secrets, or full assistant reply.",
+    "expected": "Safe events show lifecycle, provider, mode, character count, sentence count, max limits, and skip reason only. They do not show the full transcript, raw prompt, paths, secrets, full assistant reply, or spoken text.",
     "implemented_in_v21": true,
-    "forbidden_terms": ["full transcript", "raw transcript", "raw prompt", "API key", ".env", "full local path", "audio content", "base64 audio", "full assistant reply"]
+    "forbidden_terms": ["full transcript", "raw transcript", "raw prompt", "API key", ".env", "full local path", "audio content", "base64 audio", "full assistant reply", "spoken text"]
   },
   {
     "id": "voice-v2-push-to-talk-user-gesture",
@@ -168,10 +190,10 @@
   {
     "id": "voice-v2-game-mode-short-spoken-output",
     "category": "voice_interaction_v2_game_mode",
-    "precondition": "Future short spoken reply mode is enabled",
+    "precondition": "Voice Profile v1 brief spoken reply mode is enabled",
     "action": "Assistant produces a long strategy answer",
     "expected": "Voice speaks only a short safe companion sentence while the fuller answer remains in chat.",
-    "implemented_in_v21": false,
+    "implemented_in_v21": true,
     "must_not_do": ["read_long_debug_output", "read_raw_knowledge_snippets", "hardcode_Rei_replies"]
   },
   {
