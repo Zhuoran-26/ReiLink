@@ -2,13 +2,13 @@
 
 ## 中文
 
-Updated: 2026-06-16
+Updated: 2026-06-17
 
 ### 当前阶段
 
 当前阶段：`v0.2-pre productization / 产品化补齐预发布阶段`。
 
-`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，并接入 Voice Interaction v2.1 与 Voice Profile v1：状态机、确认发送默认、显式 opt-in 直接对话、TTS 打断、Home / Chat 紧凑状态、Voice workspace Conversation 状态面板，以及 direct conversation 默认短版播报策略。
+`reilink-mvp-v0.1.1` 已经作为公开展示版本发布，用于 GitHub / portfolio / interview 展示。`reilink-v0.2-pre` 已作为预发布版本公开，当前 `dev/codex-reilink` 已进一步补齐 standalone runtime / productization foundation，并阶段性完成 Voice Interaction MVP：可选系统 TTS、本地 ASR 主聊天输入、transcript-first 用户确认发送、Local ASR Settings 持久化和 release regression freeze。当前已完成 Overlay v1 Foundation，接入 Voice Interaction v2.1 与 Voice Profile v1，并完成 LLM-primary Guarded Extraction Architecture v0 文档设计。LLM-primary extraction 仍未实现，当前 game context 写入逻辑未改变。
 
 截至本次阶段冻结，Voice Output v1 / v1.1、Local ASR v1、Local ASR Native File Picker v1 和 Overlay v1.1 macOS safe mode 已作为当前稳定回归基线记录。macOS Overlay auto-show 仍故意 fail-closed，后续恢复必须单独立项并通过 packaged `.app` QA checklist。
 
@@ -43,6 +43,7 @@ dev/codex-reilink
 - Settings Panel。
 - Game Session State。
 - Semantic Extraction，包含 rule-first、LLM Shadow Mode 与安全 trace 可观察性。
+- LLM-primary Guarded Extraction Architecture v0：已完成下一代 game context semantic extraction 架构文档和 QA 场景；LLM-primary 前台提取、guarded apply 和 eval runner 仍未实现。
 - Pending Memory confirmation。
 - Proactive Companion，包含 cooldown、系统操作抑制、最近回复冷却、场景优先级与同类触发去重。
 - Local Game Detector。
@@ -102,6 +103,7 @@ dev/codex-reilink
 - Local ASR Settings 支持路径持久化；Settings 输入框显示完整本地路径是正常编辑行为，但 Event Stream / Debug / Raw JSON 不显示完整路径。
 - Local ASR Native File Picker v1 已加入：用户可为 binary、model、converter 点击 `选择...` 打开系统原生文件选择器；file picker 只填入路径，不读取、不复制、不上传文件，仍需用户点击保存配置。
 - Voice Interaction v2.1 + Voice Profile v1 已接入 renderer：`docs/voice_interaction_v2_spec.md` 定义直接语音对话 loop、`idle` / `listening` / `transcribing` / `ready_to_send` / `assistant_thinking` / `speaking` / `interrupted` / `error` 状态、confirm-send 默认、`direct_conversation` 显式 opt-in、TTS 与录音互斥、Voice Output 开启时的直接对话默认短版播报、安全错误处理和 UI 放置；`docs/voice_profile_v1.md` 定义 full / brief / silent 播报策略和 never-spoken 类别；配套场景位于 `docs/qa/voice_interaction_v2_scenarios.json` 与 `docs/qa/voice_profile_scenarios.json`。当前实现范围不包含 hands-free、角色 TTS / 角色音色或 Overlay voice state。
+- LLM-primary Guarded Extraction Architecture v0 已完成：`docs/llm_primary_guarded_extraction_architecture.md` 定义 LLM 作为 primary semantic reader、schema validation、composite confidence、guard decision、rule extractor 后置、Shadow Mode 演进、memory / proactive / persona 边界和 safe trace；配套场景位于 `docs/qa/llm_primary_guarded_extraction_scenarios.json`。这是 architecture / spec / planning，不改变当前 rule-first state apply。
 
 - Voice Output 已完成并可用：支持 Test Voice、rate / volume、中文语音优先，`tts_started` 只在真实 `utterance.onstart` 后触发，`tts_completed` / `tts_error` 映射到安全中文摘要。
 - Voice Output 当前使用系统 `speechSynthesis`，不是角色级配音；“Rei”等名字和语气可能不自然，后续可研究本地角色 TTS 或更自然的 voice provider，但当前不接商业 TTS。
@@ -144,6 +146,7 @@ dev/codex-reilink
 - Session Timeline v1 manual acceptance bugfix 已补齐：死亡次数会区分绝对值表达（如 `已经死了3次`、`我现在死了4次`）和增量表达（如 `又死了两次`）；`我有点冷静下来了` 可记录挫败状态缓和；`我换到空洞骑士了`、`我回法环了`、`我现在在艾尔登法环` 等显式游戏切换会更新 Game Context；`假骑士 / False Knight` 可在 Hollow Knight 上下文中识别为 Boss。
 - 被动死亡表达已纳入 Game Session / Semantic Extraction 回归：`我被大树守卫杀了4次`、`被玛尔基特杀了3次`、`被假骑士打死两次` 等应记录为 failed attempt 与 death count，不应误判为 boss_cleared。
 - Semantic Extraction v2 进入 LLM Shadow Mode：规则仍是唯一状态落地路径；LLM 只生成结构化影子候选用于 Debug / Event Stream / QA 观察，不直接写入 current game、Boss、death count、frustration、boss_cleared、memory 或 proactive。
+- 下一代 Semantic Extraction 方向已定义为 LLM-primary + deterministic guard：LLM 负责候选语义理解，规则后置为 grounding / cross-check / fallback，只有 guard 的 deterministic apply path 可以写 game context。当前尚未实现该 runtime 迁移。
 - Semantic Extraction Debug 现在显示安全 trace：`source`（rule / none）、`confidence`（high / medium / low）、`fallback_reason`、`skip_reason`、`applied_updates`，以及 `llm_shadow_status` / `llm_shadow_summary` / `llm_shadow_diff`。Debug / Event Stream 只显示安全摘要，不显示完整 user message、raw prompt、raw JSON、路径或 transcript。
 - Semantic Shadow 真实 provider 路径复用主 backend provider config，优先使用 fast / lightweight model；在 API chat 中规则提取同步完成，真实 LLM Shadow 作为后台 Debug 诊断补齐，避免拖慢主回复路径。
 - Semantic Shadow 真实 provider 请求已收敛为三段式后台诊断：normal compact JSON + `response_format`、无 `response_format` 的 compat retry、以及最后的 ultra-compact flat JSON fallback。三段都只对 `invalid_json` 继续尝试；timeout / auth_failed / provider_unavailable / provider_error 不 retry。解析器只做安全轻量恢复，可接受严格 JSON、Markdown code fence、前后夹杂简短说明的首个 JSON object，以及数组中的首个 object。
@@ -267,13 +270,13 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-16
+Updated: 2026-06-17
 
 ### Current Stage
 
 Current stage: `v0.2-pre productization / 产品化补齐预发布阶段`.
 
-`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, and Voice Interaction v2.1 plus Voice Profile v1 are now wired in: state machine, confirm-send default, explicit opt-in Direct Conversation Mode, TTS interruption, compact Home / Chat state, Voice workspace Conversation state panel, and Direct Conversation brief spoken reply policy.
+`reilink-mvp-v0.1.1` has been published as the public showcase version for GitHub, portfolio, and interview presentation. `reilink-v0.2-pre` has been published as a pre-release, and the current `dev/codex-reilink` branch has further filled in standalone runtime / productization foundation while completing a staged Voice Interaction MVP: optional system TTS, main-chat Local ASR input, transcript-first user-confirmed sending, Local ASR Settings persistence, and release regression freeze. Overlay v1 Foundation is complete, Voice Interaction v2.1 plus Voice Profile v1 are wired in, and LLM-primary Guarded Extraction Architecture v0 is now documented. LLM-primary extraction is not implemented yet, and current game-context write logic is unchanged.
 
 As of this freeze, Voice Output v1 / v1.1, Local ASR v1, Local ASR Native File Picker v1, and Overlay v1.1 macOS safe mode are the current stable regression baseline. macOS Overlay auto-show intentionally remains fail-closed and must be restored only in a separate task with packaged-app QA.
 
@@ -308,6 +311,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Settings Panel.
 - Game Session State.
 - Semantic Extraction with rule-first handling, LLM Shadow Mode, and privacy-safe trace observability.
+- LLM-primary Guarded Extraction Architecture v0: next-generation game context semantic extraction architecture and QA scenarios are documented; foreground LLM-primary extraction, guarded apply, and eval runner remain unimplemented.
 - Pending Memory confirmation.
 - Proactive Companion with cooldowns, system-action suppression, recent-reply grace, scene priority, and same-trigger de-duplication.
 - Local Game Detector.
@@ -368,6 +372,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Local ASR Settings persist user paths. Full local paths may appear in Settings edit inputs as normal editable values, but not in Event Stream / Debug / Raw JSON.
 - Local ASR Native File Picker v1 is available for binary, model, and converter paths. The picker only fills the path field; it does not read, copy, upload, or save files until the user saves settings.
 - Voice Interaction v2.1 + Voice Profile v1 are wired into the renderer. `docs/voice_interaction_v2_spec.md` defines the direct conversation loop, `idle` / `listening` / `transcribing` / `ready_to_send` / `assistant_thinking` / `speaking` / `interrupted` / `error` states, confirm-send default, explicit `direct_conversation` opt-in, TTS / recording mutual exclusion, Direct Conversation brief auto-speak when Voice Output is enabled, safe error handling, and UI placement. `docs/voice_profile_v1.md` defines full / brief / silent policy and never-spoken categories. Machine-readable scenarios live in `docs/qa/voice_interaction_v2_scenarios.json` and `docs/qa/voice_profile_scenarios.json`. The current implementation scope is not hands-free, character TTS / character voice, or Overlay voice state.
+- LLM-primary Guarded Extraction Architecture v0 is documented in `docs/llm_primary_guarded_extraction_architecture.md`, with machine-readable scenarios in `docs/qa/llm_primary_guarded_extraction_scenarios.json`. It defines LLM-primary semantic reading, schema validation, composite confidence, guard decisions, rules as supporting grounding / fallback, Shadow Mode evolution, memory / proactive / persona boundaries, and safe trace. This is architecture / spec / planning only and does not change current rule-first state apply.
 
 - Voice Output is implemented and usable: Test Voice, rate / volume, Chinese voice preference, `tts_started` only after the real `utterance.onstart`, and safe Chinese Event Stream summaries.
 - Voice Output currently uses system `speechSynthesis`, not character-grade voice acting; names like "Rei" and the tone may sound unnatural. A local character TTS or more natural voice provider can be researched later, but commercial TTS is not part of the current scope.
@@ -410,6 +415,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - The Session Timeline v1 manual-acceptance bugfix now distinguishes absolute death counts (`已经死了3次`, `我现在死了4次`) from incremental counts (`又死了两次`), records calm/frustration easing, recognizes explicit Elden Ring / Hollow Knight switches, and resolves `假骑士 / False Knight` in Hollow Knight context.
 - Passive death statements are covered by Game Session / Semantic Extraction regression: `我被大树守卫杀了4次`, `被玛尔基特杀了3次`, and `被假骑士打死两次` should become failed attempts with death counts, not boss_cleared.
 - Semantic Extraction v2 now uses LLM Shadow Mode: rules remain the only state-application path; the LLM produces structured shadow candidates only for Debug / Event Stream / QA observability and does not directly write current game, Boss, death count, frustration, boss_cleared, memory, or proactive state.
+- The next Semantic Extraction direction is now defined as LLM-primary plus deterministic guard: the LLM reads and proposes candidates, rules move behind it as grounding / cross-check / fallback, and only the guarded deterministic apply path can write game context. This runtime migration is not implemented yet.
 - Semantic Extraction Debug now exposes a safe trace: `source` (rule / none), `confidence` (high / medium / low), `fallback_reason`, `skip_reason`, `applied_updates`, plus `llm_shadow_status`, `llm_shadow_summary`, and `llm_shadow_diff`. Debug / Event Stream summaries do not expose full user messages, raw prompts, raw JSON, paths, or transcripts.
 - The real-provider Semantic Shadow path reuses the main backend provider config and prefers the fast / lightweight model; during API chat, rule extraction stays synchronous while the real LLM Shadow diagnostic runs as a background Debug update so the main reply path is not delayed.
 - Real-provider Semantic Shadow requests now use a three-step background diagnostic path: normal compact JSON with `response_format`, compatibility retry without `response_format`, and a final ultra-compact flat JSON fallback. Only `invalid_json` advances to the next attempt; timeout, auth_failed, provider_unavailable, and provider_error do not retry. The parser only performs safe lightweight recovery for strict JSON, Markdown code fences, brief prose around the first JSON object, and arrays containing a first object.

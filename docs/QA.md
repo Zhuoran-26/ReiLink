@@ -224,6 +224,29 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 12. Test Voice 仍可播放固定测试文本，不写入聊天，也不代表角色音色。
 13. 直接对话自动发送时，已有未发送手打草稿不得被 Voice Profile 或播报策略清空。
 
+### 1.12 LLM-primary Guarded Extraction Architecture v0 人工验收
+
+设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`。本节是 architecture / spec / planning 验收，不表示 LLM-primary extraction runtime 已实现。
+
+1. 文档应明确 rule-first 的早期优势：可预测、易测、少量游戏稳定、不依赖 provider。
+2. 文档应明确 rule-first 的扩展瓶颈：多游戏 alias 爆炸、ASR 近音错字、规则 no-op 不等于语义不可理解、规则 confidence 不等于语义正确概率。
+3. 新架构必须是 LLM-primary semantic reader + schema validation + deterministic guard apply；LLM 不得直接写 game context。
+4. typed text、voice_confirmed 和 voice_direct 都应进入同一 LLM-primary extraction pipeline；source 只影响 reliability / confidence / trace。
+5. 规则层应降级为 grounding、sanity check、cross-check、fallback、regression comparison 或 emergency no-provider mode。
+6. 文档应给出 multi-game candidate schema，覆盖 intent、entities、events、proposed_updates、conflicts、memory safety 和 safe_trace_summary。
+7. schema 应区分 guide request 与 current boss report，也应区分 temporary game state 与 long-term memory candidate。
+8. 新 confidence 机制应至少拆分 semantic_confidence、grounding_confidence、context_confidence 和 apply_confidence。
+9. LLM self-confidence 不能单独决定 apply；rule exact match / catalog match 只能作为 grounding 支持。
+10. voice_direct 应因 ASR uncertainty 降低 source reliability；用户确认后的 voice_confirmed reliability 应更高。
+11. conflict with current boss 不应自动 no-op；显式 switch phrase 可以提高 context confidence。
+12. Guard decisions 应覆盖 `apply`、`ask_clarification`、`candidate_only`、`no_op` 和 `fallback_to_rule`。
+13. low confidence、invalid JSON、provider timeout、unsafe 或 memory-sensitive 输入不得写 state。
+14. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
+15. LLM extraction 不得写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须走 pending memory confirmation。
+16. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
+17. Rollout plan 应覆盖 Phase 1 architecture/spec、Phase 2 pilot、Phase 3 eval runner、Phase 4 multi-game catalog、Phase 5 memory candidate extraction。
+18. QA JSON 至少覆盖 typed boss report、voice_direct ASR near-miss、explicit boss switch、guide-only mention、death increment / absolute、boss cleared、invalid JSON、timeout fallback、rule/LLM agree and conflict、memory/proactive boundaries and trace privacy。
+
 ### 2. Voice Output 回归检查
 
 - `语音输出 / Voice Output` 默认关闭。

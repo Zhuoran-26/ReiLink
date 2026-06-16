@@ -199,6 +199,13 @@ After confirmation or Direct Conversation auto-send:
 - Voice should not introduce a separate memory or game-state path.
 - Direct Conversation events may show mode, provider, and character count, but not the full transcript.
 
+Future semantic extraction direction:
+
+- `text`, `voice_confirmed`, and `voice_direct` should use the same LLM-primary guarded extraction architecture once that pilot is implemented.
+- Voice source should affect source reliability, ASR uncertainty, confidence, and safe trace, but should not create a separate game-context writer.
+- Direct Conversation auto-send must still route through deterministic guard decisions before any game context update.
+- Architecture details live in `docs/llm_primary_guarded_extraction_architecture.md`; this is not implemented by Voice v2.1 itself.
+
 Empty or low-confidence transcript:
 
 - Return to `idle` or `ready_to_send` with a safe message such as `没有识别到可用文本`.
