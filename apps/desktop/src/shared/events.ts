@@ -75,6 +75,14 @@ export type ReiLinkEvent =
   | { type: "voice_direct_mode_enabled"; timestamp: string }
   | { type: "voice_direct_mode_disabled"; timestamp: string }
   | { type: "voice_transcription_auto_sent"; timestamp: string; character_count: number; provider?: "local_asr" | "web_speech" }
+  | {
+      type: "voice_transcription_auto_send_blocked";
+      timestamp: string;
+      character_count: number;
+      provider?: "local_asr" | "web_speech";
+      reason: "short_recording" | "short_transcript" | "partial_transcript";
+      duration_ms?: number;
+    }
   | { type: "voice_profile_applied"; timestamp: string; profile_id: "rei_calm"; spoken_mode: "full" | "brief" | "silent"; source: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; max_spoken_chars: number; max_spoken_sentences: number }
   | { type: "voice_reply_spoken_excerpt_created"; timestamp: string; spoken_mode: "full" | "brief" | "silent"; original_character_count: number; spoken_character_count: number; sentence_count: number; reason?: string }
   | { type: "voice_reply_speak_skipped"; timestamp: string; reason: string; spoken_mode?: "full" | "brief" | "silent"; source?: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; original_character_count?: number }

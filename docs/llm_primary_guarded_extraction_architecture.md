@@ -1,8 +1,8 @@
-# LLM-primary Guarded Extraction Architecture v1 Pilot
+# LLM-primary Guarded Extraction Architecture v1.0.1 Pilot
 
 Updated: 2026-06-17
 
-Status: implemented pilot. ReiLink now has a foreground LLM-primary semantic reader for chat input when an LLM provider is configured, followed by strict JSON/schema validation and deterministic guard. It preserves rule fallback when provider is unavailable or the guarded candidate is unsafe. This pilot does not add embeddings or vector databases and does not change memory, proactive, persona, voice core behavior, or Overlay runtime boundaries.
+Status: implemented pilot, updated in v1.0.1. ReiLink now has a foreground LLM-primary semantic reader for chat input when an LLM provider is configured, followed by strict JSON/schema validation and deterministic guard. v1.0.1 makes the LLM candidate the real primary path for typed and voice inputs, adds switch / negation target roles, prevents high-confidence rule hits on old entities from overriding a guarded LLM switch candidate, and adds Direct Conversation partial-transcript protection. This pilot does not add embeddings or vector databases and does not change memory, proactive, persona, voice core behavior, or Overlay runtime boundaries.
 
 ## Purpose
 
@@ -133,6 +133,43 @@ The LLM never writes state directly. It returns a candidate. Pydantic schema val
 
 Only `apply` creates a `semantic_game_event` with `guard_source=llm_primary`; `GameSessionStore` applies that event deterministically. Legacy Shadow Mode remains observability-only.
 
+## v1.0.1 Runtime Fixes
+
+v1.0.1 fixes the main pilot gap: an exact rule hit is grounding, not the primary semantic interpretation.
+
+The foreground order is:
+
+```text
+input
+-> LLM primary extraction attempt
+-> strict schema validation
+-> deterministic guard with rule grounding
+-> apply / ask_clarification / candidate_only / no_op / fallback_to_rule
+```
+
+Rules may fallback only when the LLM path is unavailable, times out, returns invalid JSON / invalid schema, or when a valid LLM candidate is a true no-op and the rule result is an exact safe match. A high-confidence rule result must not skip or silently overwrite a valid LLM candidate.
+
+Switch and negation examples are explicitly represented:
+
+- `不打 A 了，换去打 B`
+- `先不打 A，去 B`
+- `从 A 换到 B`
+- `我又去打 B 了`
+
+The schema distinguishes:
+
+- `mentioned_entity`
+- `negated_entity`
+- `previous_target`
+- `new_current_target`
+- `guide_only_entity`
+- `current_target_candidate`
+- `boss_switched`
+
+For `不打女武神了，换去打玛尔基特`, rules may ground that `女武神` and `玛尔基特` are known entities, but guard should apply the LLM's `new_current_target=margit` when confidence and grounding are sufficient. Guide-only mentions such as `玛尔基特那边怎么打来着` should remain `candidate_only` / `ask_clarification` and must not switch current boss unless the user explicitly says they are now fighting or switching to that boss.
+
+For voice sources, the LLM may recover likely ASR near-misses into canonical candidates, such as `马尔吉特 -> margit` or `女巫神 -> malenia`, but uncertain candidates should become `ask_clarification` / `candidate_only` rather than silent no-op or unsafe writes.
+
 ## LLM Candidate Schema v1 Pilot
 
 The foreground LLM returns one strict JSON object. It uses constrained IDs for the current pilot and must keep memory / proactive candidates disabled.
@@ -148,6 +185,13 @@ The foreground LLM returns one strict JSON object. It uses constrained IDs for t
   "boss_cleared": {"operation": "none", "confidence": "low"},
   "guide_request": {"value": false, "confidence": "low"},
   "strategy_request": {"value": false, "confidence": "low"},
+  "boss_switched": {"value": false, "confidence": "low"},
+  "mentioned_entity": {"value": null, "surface_label": null, "confidence": "low"},
+  "negated_entity": {"value": null, "surface_label": null, "confidence": "low"},
+  "previous_target": {"value": null, "surface_label": null, "confidence": "low"},
+  "new_current_target": {"value": null, "surface_label": null, "confidence": "low"},
+  "guide_only_entity": {"value": null, "surface_label": null, "confidence": "low"},
+  "current_target_candidate": {"value": null, "surface_label": null, "confidence": "low"},
   "memory_candidate": {"should_create": false, "kind": "none", "safe_summary": null, "confidence": "low"},
   "proactive_signal": {"type": "none", "confidence": "low", "reason": ""},
   "reasoning_summary": "safe short summary, no raw user text"
@@ -166,8 +210,10 @@ Entity fields:
 - `game.operation`: `set`, `keep`, `none`, `unknown`.
 - `game.value`: `elden_ring`, `hollow_knight`, `unknown`, or `null`.
 - `boss.operation`: `set`, `keep`, `clear`, `none`, `unknown`.
-- `boss.value`: `margit`, `tree_sentinel`, `false_knight`, `unknown`, or `null`.
+- `boss.value`: `margit`, `malenia`, `tree_sentinel`, `false_knight`, `unknown`, or `null`.
 - `boss.surface_label`: nullable safe short label.
+- target-role entity `value`: the same constrained boss IDs as `boss.value`.
+- `boss_switched.value`: boolean switch intent candidate.
 
 Event fields:
 
@@ -256,7 +302,7 @@ Suggested thresholds for the pilot:
 | `ask_clarification` | game-related, medium confidence, ambiguous entity or unresolved conflict |
 | `candidate_only` | useful candidate, but confidence / grounding is not enough for state write |
 | `no_op` | non-game, invalid, unsafe, very low confidence, provider failure without safe fallback |
-| `fallback_to_rule` | LLM unavailable / timeout / auth failed and exact deterministic rule evidence exists |
+| `fallback_to_rule` | LLM unavailable / timeout / invalid JSON / invalid schema, or LLM no-op plus exact safe deterministic rule evidence; switch / negation text with multiple boss mentions must not fallback to the old negated target |
 
 ## Guard Decisions
 
@@ -423,11 +469,11 @@ Debug / Game workspace should show enough safe information to answer:
 
 This document and the QA scenario file define the architecture, risks, and acceptance surface.
 
-No runtime behavior changes.
+Completed before the v1 runtime pilot.
 
-### Phase 2: LLM-primary Extraction v1 Pilot
+### Phase 2: LLM-primary Extraction v1 / v1.0.1 Pilot
 
-Implement the foreground LLM extraction path for game context only.
+Implemented foreground LLM extraction path for game context only.
 
 Pilot scope:
 
@@ -437,7 +483,8 @@ Pilot scope:
 - High-confidence game context fields only.
 - Deterministic guard controls all writes.
 - Rules provide guard support and fallback.
-- Existing Shadow Mode can remain for audit.
+- Existing Shadow Mode remains for audit.
+- v1.0.1 adds target-role fields, switch / negation guard behavior, ASR typo candidate trace, and Direct Conversation partial-transcript protection.
 
 Do not include memory writes, proactive triggers, persona edits, embeddings, or vector DB.
 

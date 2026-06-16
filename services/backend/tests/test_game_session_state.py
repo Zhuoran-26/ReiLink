@@ -70,6 +70,33 @@ def test_llm_primary_semantic_event_updates_boss_and_death_count(tmp_path):
     assert state.frustration_count == 1
 
 
+def test_llm_primary_semantic_switch_overrides_old_current_boss(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在女武神", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message(
+        "我现在不打女武神了，换去打玛尔基特。",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(minutes=1),
+        semantic_game_event={
+            "type": "boss_switch",
+            "boss_name": "恶兆妖鬼 Margit",
+            "confidence": 0.92,
+            "should_update_current_boss": True,
+            "guard_source": "llm_primary",
+            "input_source": "text",
+        },
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "恶兆妖鬼 Margit"
+    assert state.current_boss.source == "semantic_extraction"
+    assert state.last_attempted_boss == "恶兆妖鬼 Margit"
+    assert any(entry.name == "女武神" and entry.status == "attempted" for entry in state.boss_history)
+
+
 def test_llm_primary_game_context_event_updates_game_only(tmp_path):
     store = GameSessionStore(tmp_path / "game_session_state.json")
     now = datetime.now(timezone.utc)

@@ -116,6 +116,7 @@ type VoiceTranscriptSendOptions = {
   autoSent?: boolean;
   characterCount: number;
 };
+type VoiceDirectAutoSendBlockReason = "short_recording" | "short_transcript" | "partial_transcript";
 type LocalAsrSettingsDraft = {
   local_asr_binary_path: string;
   local_asr_model_path: string;
@@ -129,6 +130,8 @@ type WorkspaceTab = {
 };
 
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
+const VOICE_DIRECT_MIN_AUTO_SEND_DURATION_MS = 800;
+const VOICE_DIRECT_MIN_AUTO_SEND_CHARS = 4;
 const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
 const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
   home: "Home / Chat",
@@ -360,6 +363,10 @@ const emptySemanticExtractionDebug: SemanticExtractionDebugResponse = {
   semantic_extraction_model: null,
   semantic_extraction_latency_ms: 0,
   provider_latency_ms: 0,
+  llm_primary_status: "not_run",
+  llm_provider_status: "not_run",
+  llm_schema_valid: null,
+  rule_grounding: {},
   llm_result: null,
   llm_shadow: null,
   llm_primary: null,
@@ -717,6 +724,10 @@ const labelMap: Record<string, string> = {
   llm_guard_reason: "Guard 原因",
   llm_guard_summary: "Guard 摘要",
   llm_primary: "LLM 主候选",
+  llm_primary_status: "主识别状态",
+  llm_provider_status: "Provider 状态",
+  llm_schema_valid: "Schema 有效",
+  rule_grounding: "规则 grounding",
   llm_shadow: "LLM 影子候选",
   llm_shadow_confidence: "影子置信度",
   llm_shadow_diff: "规则 / 影子差异",
@@ -1315,6 +1326,13 @@ const eventSummary = (event: ReiLinkEvent) => {
       return "直接对话模式已关闭";
     case "voice_transcription_auto_sent":
       return [`语音文本 ${event.character_count} 字`, event.provider ? debugText(event.provider) : ""].filter(Boolean).join(" / ");
+    case "voice_transcription_auto_send_blocked":
+      return [
+        directVoiceAutoSendBlockSummary(event.reason),
+        `识别文本 ${event.character_count} 字`,
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.provider ? debugText(event.provider) : ""
+      ].filter(Boolean).join(" / ");
     case "voice_profile_applied":
       return [
         VOICE_PROFILE_LABEL,
@@ -1438,6 +1456,7 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     voice_direct_mode_enabled: "直接对话已开启",
     voice_direct_mode_disabled: "直接对话已关闭",
     voice_transcription_auto_sent: "语音文本自动发送",
+    voice_transcription_auto_send_blocked: "语音文本等待确认",
     voice_profile_applied: "Voice Profile 已应用",
     voice_reply_spoken_excerpt_created: "语音短版已生成",
     voice_reply_speak_skipped: "语音播报已跳过",
@@ -1743,6 +1762,41 @@ const appendTranscriptToInput = (current: string, transcript: string) => {
   return `${current.trimEnd()} ${text}`;
 };
 
+const directVoiceAutoSendBlockReasonText = (reason: VoiceDirectAutoSendBlockReason) => {
+  const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
+    short_recording: "这句太短了。可以再说一次，或确认后发送。",
+    short_transcript: "识别结果太短了。可以再说一次，或确认后发送。",
+    partial_transcript: "这句像是还没说完。可以再说一次，或确认后发送。"
+  };
+  return labels[reason];
+};
+
+const directVoiceAutoSendBlockSummary = (reason: VoiceDirectAutoSendBlockReason) => {
+  const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
+    short_recording: "录音过短，已改为确认发送",
+    short_transcript: "识别文本过短，已改为确认发送",
+    partial_transcript: "疑似半句，已改为确认发送"
+  };
+  return labels[reason];
+};
+
+const directVoiceAutoSendBlockReason = (transcript: string, durationMs?: number): VoiceDirectAutoSendBlockReason | null => {
+  const text = transcript.trim();
+  if (!text) return "short_transcript";
+  if (typeof durationMs === "number" && durationMs > 0 && durationMs < VOICE_DIRECT_MIN_AUTO_SEND_DURATION_MS) {
+    return "short_recording";
+  }
+  const compact = text.replace(/\s+/g, "");
+  if (compact.length <= VOICE_DIRECT_MIN_AUTO_SEND_CHARS - 1) return "short_transcript";
+  const partialEndMarkers = (
+    "我想,我现在,我現在,我换,我換,我换去,我換去,不打,先不打,去打,换到,換到,那个,那個,这个,這個,帮我,幫我"
+  ).split(",");
+  if (compact.length <= 8 && partialEndMarkers.some((marker) => compact.endsWith(marker))) {
+    return "partial_transcript";
+  }
+  return null;
+};
+
 const safeProviderDebug = (debug: ProviderDebugResponse) => {
   const safeDebug: Partial<ProviderDebugResponse> = { ...debug };
   delete safeDebug.env_file_path;
@@ -2020,6 +2074,7 @@ export function App() {
   const [voiceStatus, setVoiceStatus] = useState<VoiceOutputStatus>(() => voiceOutput.getStatus());
   const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>(() => voiceInput.getStatus());
   const [voiceTranscriptReady, setVoiceTranscriptReady] = useState<{ source: MainVoiceInputProvider; characterCount: number } | null>(null);
+  const [voiceAutoSendBlockedHint, setVoiceAutoSendBlockedHint] = useState("");
   const [voiceAssistantTurnActive, setVoiceAssistantTurnActive] = useState(false);
   const [voiceTransientState, setVoiceTransientState] = useState<VoiceTransientState>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
@@ -2056,6 +2111,7 @@ export function App() {
   const clearVoiceTransientState = useCallback(() => {
     clearVoiceInterruptedTimer();
     setVoiceTransientState(null);
+    setVoiceAutoSendBlockedHint("");
   }, [clearVoiceInterruptedTimer]);
 
   const setVoiceInterrupted = useCallback(() => {
@@ -2081,6 +2137,7 @@ export function App() {
 
   const clearVoiceTranscriptReady = useCallback(() => {
     setVoiceTranscriptReady(null);
+    setVoiceAutoSendBlockedHint("");
   }, []);
 
   const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
@@ -2629,10 +2686,25 @@ export function App() {
     });
   };
 
-  function handleRecognizedVoiceTranscript(source: MainVoiceInputProvider, transcript: string) {
+  function handleRecognizedVoiceTranscript(source: MainVoiceInputProvider, transcript: string, options: { durationMs?: number } = {}) {
     const trimmedTranscript = transcript.trim();
     if (!trimmedTranscript) return;
     if (appSettings.voice_interaction_mode === "direct_conversation") {
+      const blockReason = directVoiceAutoSendBlockReason(trimmedTranscript, options.durationMs);
+      if (blockReason) {
+        setInput((current) => appendTranscriptToInput(current, transcript));
+        markVoiceTranscriptReady(source, transcript);
+        setVoiceAutoSendBlockedHint(directVoiceAutoSendBlockReasonText(blockReason));
+        eventBus.emit({
+          type: "voice_transcription_auto_send_blocked",
+          timestamp: eventTimestamp(),
+          character_count: trimmedTranscript.length,
+          provider: source === "unavailable" ? undefined : source,
+          reason: blockReason,
+          duration_ms: options.durationMs
+        });
+        return;
+      }
       clearVoiceTransientState();
       clearVoiceTranscriptReady();
       void submitChatMessage(trimmedTranscript, {
@@ -2687,7 +2759,7 @@ export function App() {
           .then((result) => {
             setLocalAsrTranscriptionResult(result);
             if (result.status === "local_asr_transcription_succeeded" && result.transcript.trim()) {
-              handleRecognizedVoiceTranscript("local_asr", result.transcript);
+              handleRecognizedVoiceTranscript("local_asr", result.transcript, { durationMs: result.duration_ms });
               eventBus.emit({
                 type: "local_asr_transcription_completed",
                 timestamp: eventTimestamp(),
@@ -3534,7 +3606,7 @@ export function App() {
     assistantThinking: voiceAssistantTurnActive && sending,
     speaking: voiceStatus.active,
     interrupted: voiceTransientState?.kind === "interrupted",
-    readyToSend: !voiceDirectConversationEnabled && Boolean(voiceTranscriptReady && input.trim()),
+    readyToSend: Boolean(voiceTranscriptReady && input.trim() && (!voiceDirectConversationEnabled || voiceAutoSendBlockedHint)),
     errorMessage: voiceErrorMessage
   });
   const voiceConversationState = {
@@ -3545,7 +3617,7 @@ export function App() {
         : resolvedVoiceConversationState.description
   };
   const voiceConfirmSendText = voiceTranscriptReady
-    ? `${voiceTranscriptReady.characterCount} 字已在输入框，仍需点击发送。`
+    ? voiceAutoSendBlockedHint || `${voiceTranscriptReady.characterCount} 字已在输入框，仍需点击发送。`
     : "确认后发送，默认不自动发送。";
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
@@ -3969,7 +4041,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
                 </span>
                 <span>模式：{voiceInteractionModeLabel}</span>
-                {voiceDirectConversationEnabled && (
+                {voiceDirectConversationEnabled && !voiceAutoSendBlockedHint && (
                   <span className="voiceStateNotice">转写后会自动发送</span>
                 )}
                 {voiceConversationState.state === "ready_to_send" && (
@@ -4996,13 +5068,29 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	            <section className="infoCard" aria-label="语义识别 Trace">
               <div className="cardHeader">
                 <Brain size={17} />
-                <h2>Semantic Shadow Trace</h2>
+                <h2>LLM Primary Extraction</h2>
               </div>
-              <p className="settingHint">Shadow Mode 只显示候选诊断，不写入 game state、memory 或 proactive。</p>
+              <p className="settingHint">Primary Extraction 先生成候选，Guard 决定是否写入 game state；Shadow 只保留候选诊断。</p>
               <dl className="debugFacts">
                 <div>
                   <dt>{formatDebugLabel("source")}</dt>
                   <dd>{debugText(semanticDebug.source)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("input_source")}</dt>
+                  <dd>{debugText(semanticDebug.input_source)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_primary_status")}</dt>
+                  <dd>{debugText(semanticDebug.llm_primary_status)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_provider_status")}</dt>
+                  <dd>{debugText(semanticDebug.llm_provider_status)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_schema_valid")}</dt>
+                  <dd>{semanticDebug.llm_schema_valid == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.llm_schema_valid)} />}</dd>
                 </div>
                 <div>
                   <dt>{formatDebugLabel("confidence")}</dt>
@@ -5015,6 +5103,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <div>
                   <dt>{formatDebugLabel("llm_guard_summary")}</dt>
                   <dd>{debugText(semanticDebug.llm_guard_summary)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("rule_grounding")}</dt>
+                  <dd>{semanticSummary(semanticDebug.rule_grounding)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("applied_updates")}</dt>
+                  <dd>{debugText(semanticDebug.applied_updates)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("parse_error")}</dt>
+                  <dd>{debugText(semanticDebug.parse_error)}</dd>
                 </div>
                 <div>
                   <dt>{formatDebugLabel("llm_shadow_status")}</dt>
@@ -6705,11 +6805,27 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </section>
 
 	                  <section className="debugSection">
-	                    <h3>语义识别</h3>
+	                    <h3>LLM Primary Extraction</h3>
 	                    <dl className="debugFacts">
                       <div>
                         <dt>{formatDebugLabel("source")}</dt>
                         <dd>{debugText(semanticDebug.source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("input_source")}</dt>
+                        <dd>{debugText(semanticDebug.input_source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_primary_status")}</dt>
+                        <dd>{debugText(semanticDebug.llm_primary_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_provider_status")}</dt>
+                        <dd>{debugText(semanticDebug.llm_provider_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_schema_valid")}</dt>
+                        <dd>{semanticDebug.llm_schema_valid == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.llm_schema_valid)} />}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("confidence")}</dt>
@@ -6731,6 +6847,12 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dt>{formatDebugLabel("rule_result")}</dt>
                         <dd>
                           {semanticSummary(semanticDebug.rule_result)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("rule_grounding")}</dt>
+                        <dd>
+                          {semanticSummary(semanticDebug.rule_grounding)}
                         </dd>
                       </div>
                       <div>

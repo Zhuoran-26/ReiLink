@@ -2,7 +2,7 @@
 
 Updated: 2026-06-17
 
-Status: v2.1 implemented with Voice Profile v1 behavior policy. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, TTS interruption, speaking / listening mutual exclusion, and rule-based spoken reply selection. This does not implement hands-free listening, a new TTS engine, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
+Status: v2.1 implemented with Voice Profile v1 behavior policy and v2.1.1-style Direct Conversation partial-transcript protection. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, TTS interruption, speaking / listening mutual exclusion, short / partial transcript auto-send guard, and rule-based spoken reply selection. This does not implement hands-free listening, a new TTS engine, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
 
 ## Purpose
 
@@ -32,6 +32,7 @@ Implemented today:
 - Audio is sent only to the local backend.
 - Under `confirm_send`, transcript fills the chat input and is not auto-sent.
 - Under `direct_conversation`, the transcript is auto-sent through the existing chat flow after the user actively starts and stops a recording round.
+- Under `direct_conversation`, very short recordings, very short transcripts, or obvious partial phrases are not auto-sent; they enter `ready_to_send` with a safe prompt to retry or confirm.
 - Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, game context, Semantic Extraction, or proactive behavior.
 - Voice Output uses renderer-side `speechSynthesis`.
 - Voice Output can be enabled, tested, stopped, and tuned with rate / volume; in `direct_conversation`, assistant replies are spoken automatically only when Voice Output is enabled.
@@ -113,6 +114,7 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 - Requires a visible mode indicator and a clear off switch.
 - Still requires a user gesture for each recording round; it is not hands-free, wake-word, or always-on listening.
 - Auto-sends only non-empty ASR transcripts through the normal chat request path.
+- Does not auto-send transcripts that look too short or partial. Those transcripts are placed in the input and require confirmation.
 - Does not write memory directly; any memory still goes through the existing confirmation flow after the normal chat turn.
 - Does not bypass normal chat, retrieval, or game-state safety checks after the text is sent.
 - Does not leak the full transcript into Event Stream, Debug, Raw JSON, Prompt Preview, or Overlay.
@@ -161,7 +163,8 @@ Recommended states:
 - `idle -> listening`: only after a user gesture.
 - `listening -> transcribing`: only after audio capture completes.
 - `transcribing -> ready_to_send`: ASR succeeds and send policy is `confirm_send`.
-- `transcribing -> assistant_thinking`: ASR succeeds and send policy is explicit `direct_conversation`.
+- `transcribing -> assistant_thinking`: ASR succeeds, send policy is explicit `direct_conversation`, and partial-transcript guard passes.
+- `transcribing -> ready_to_send`: ASR succeeds but Direct Conversation guard blocks auto-send because the recording or transcript is too short or likely partial.
 - `ready_to_send -> assistant_thinking`: user confirms by sending.
 - `assistant_thinking -> speaking`: assistant final reply exists and Voice Output is enabled.
 - `assistant_thinking -> idle`: assistant final reply exists and Voice Output is disabled.
@@ -199,12 +202,12 @@ After confirmation or Direct Conversation auto-send:
 - Voice should not introduce a separate memory or game-state path.
 - Direct Conversation events may show mode, provider, and character count, but not the full transcript.
 
-Future semantic extraction direction:
+Current semantic extraction direction:
 
-- `text`, `voice_confirmed`, and `voice_direct` should use the same LLM-primary guarded extraction architecture once that pilot is implemented.
+- `text`, `voice_confirmed`, and `voice_direct` use the same LLM-primary guarded extraction architecture when the provider is configured.
 - Voice source should affect source reliability, ASR uncertainty, confidence, and safe trace, but should not create a separate game-context writer.
 - Direct Conversation auto-send must still route through deterministic guard decisions before any game context update.
-- Architecture details live in `docs/llm_primary_guarded_extraction_architecture.md`; this is not implemented by Voice v2.1 itself.
+- Architecture details live in `docs/llm_primary_guarded_extraction_architecture.md`; Voice itself still does not write game context, memory, or proactive state.
 
 Empty or low-confidence transcript:
 
@@ -225,7 +228,7 @@ TTS must not speak:
 - Debug output.
 - Prompt Preview.
 - Event Stream.
-- Semantic Shadow trace.
+- LLM Primary / Semantic Shadow trace.
 - Knowledge raw snippets.
 - Memory internals or pending memory evidence.
 - Raw prompt.
@@ -371,8 +374,9 @@ Foundation and v2.1 Direct Conversation completed in the renderer:
 3. Voice workspace Conversation state UI while keeping confirm-send default and exposing Direct Conversation opt-in.
 4. Home / Chat compact state display.
 5. Direct Conversation auto-send through the normal chat flow.
-6. TTS interruption wiring and mutual exclusion between speaking and listening.
-7. Voice Profile v1 behavior policy for full / brief / silent spoken replies, safe excerpting, and safe event summaries.
+6. Direct Conversation partial-transcript guard for short recordings, short transcripts, and likely unfinished phrases.
+7. TTS interruption wiring and mutual exclusion between speaking and listening.
+8. Voice Profile v1 behavior policy for full / brief / silent spoken replies, safe excerpting, and safe event summaries.
 
 Suggested later task order:
 

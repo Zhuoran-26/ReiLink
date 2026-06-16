@@ -145,7 +145,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 5. Voice 应有独立一级入口；当前是 Local ASR transcript-first 默认 + Voice Output + Voice v2.1 直接对话显式 opt-in + Voice Profile v1 行为策略，hands-free、角色 TTS / 角色音色和 Overlay voice state 仍只做未来规划。
 6. Voice 未来状态至少覆盖 idle、listening、transcribing、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
 7. Overlay 应有独立入口，但 macOS auto-show 仍是 fail-closed safe mode；不要把它描述为完整可用的游戏 HUD。
-8. Developer / Debug 应与普通体验分离，承接 Event Stream、Prompt Preview、Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status。
+8. Developer / Debug 应与普通体验分离，承接 Event Stream、Prompt Preview、LLM Primary / Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status。
 9. Prompt Preview / Debug 不得显示 raw prompt、API key、`.env`、完整路径、stdout/stderr、完整 persona markdown、完整 assistant reply、完整 user input 或完整 ASR transcript。
 10. Memory 和 Game Session state 必须区分：长期记忆 / candidate memory 不等于当前 boss、death count、frustration 或 session timeline。
 11. Future Presentation / Avatar / Live2D 只预留，不应成为当前主体验，也不应排在 Voice、Overlay、Memory 和 Debug split 之前。
@@ -162,7 +162,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 5. 点击 Voice 打开 Voice workspace；Conversation 状态面板、Input / Local ASR、Output、Voice Profile 策略面板可切换。Local ASR 和 Voice Output 现有控件仍可找到。
 6. 点击 Overlay 打开 Overlay workspace；Safe Mode、Placement、Content、Future Game Mode 可切换。强制关闭悬浮层按钮仍可找到，auto-show 仍未恢复。
 7. 点击 Settings 打开 Settings workspace；app-level 设置、模型状态、本地数据和旧配置入口仍可找到。
-8. 点击 Developer / Debug 打开 Debug workspace；Event Stream、Prompt Preview、Runtime、Semantic Shadow trace 可找到，且 Debug 不默认打开。
+8. 点击 Developer / Debug 打开 Debug workspace；Event Stream、Prompt Preview、Runtime、LLM Primary / Semantic Shadow trace 可找到，且 Debug 不默认打开。
 9. 每个 workspace 可以点击关闭按钮关闭；按 Escape 也能关闭。
 10. 切换 workspace 后聊天输入草稿不丢，聊天历史不丢，后端连接状态不被重置。
 11. Prompt Preview 仍只显示安全摘要，不显示完整 prompt、完整 persona markdown、完整路径、`.env`、API key 或 raw provider response。
@@ -192,19 +192,21 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 1. Voice v2 默认仍是 confirm-send：ASR transcript 进入 ready-to-send 状态，用户确认后才进入 chat flow。
 2. 直接对话模式必须默认关闭，只能由用户在 Voice workspace Conversation 中显式切换到 `直接对话`；不得因开启 Local ASR、Voice Output 或打开 Voice workspace 自动启用。
 3. 直接对话模式开启后，ASR transcript 转写成功会自动进入现有 chat flow；不得绕过 memory confirmation、knowledge gating、game context safety、persona guardrails 或 provider error handling。
-4. 直接对话不是 hands-free：每一轮仍需要用户主动点击或按住语音输入；当前不做 wake word、不做后台常驻监听、不做自动下一轮录音。
-5. Voice Output 开启时，直接对话的 assistant 最终回复默认短版播报，完整回复仍显示在聊天里；Voice Output 关闭时只显示文字回复。
-6. Stop Voice 能打断直接对话后的 TTS；用户开始新一轮录音时应先停止正在播放的 TTS。
-7. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
-8. `listening` 和 `speaking` 必须互斥。
-9. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
-10. 直接对话的 Event Stream / Debug / Raw JSON / Prompt Preview / Overlay 只能显示 mode、provider、字符数、句数、长度上限、跳过原因和生命周期摘要；不得显示完整 transcript、raw prompt、完整 assistant reply、spoken text、路径、API key、`.env`、stdout 或 stderr。
-11. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
-12. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
-13. Voice workspace 的 Conversation tab 应承接状态、确认发送 / 直接对话切换、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置，Output tab 应说明直接对话 + Voice Output 的默认短版自动播报关系。
-14. Home / Chat 输入区应显示紧凑 voice state 和当前模式，但不得清空未发送草稿或隐藏普通文本输入。
-15. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
-16. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
+4. 直接对话模式下，录音过短、transcript 太短或疑似半句时不得自动发送；应进入 `ready_to_send`，提示“这句太短了。可以再说一次。”或等价安全文案。
+5. 被 partial guard 拦下的 transcript 不写 memory、不触发 proactive、不进入 game context / Semantic Extraction，Event Stream 只能显示 provider、字符数、时长和阻断原因。
+6. 直接对话不是 hands-free：每一轮仍需要用户主动点击或按住语音输入；当前不做 wake word、不做后台常驻监听、不做自动下一轮录音。
+7. Voice Output 开启时，直接对话的 assistant 最终回复默认短版播报，完整回复仍显示在聊天里；Voice Output 关闭时只显示文字回复。
+8. Stop Voice 能打断直接对话后的 TTS；用户开始新一轮录音时应先停止正在播放的 TTS。
+9. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
+10. `listening` 和 `speaking` 必须互斥。
+11. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
+12. 直接对话的 Event Stream / Debug / Raw JSON / Prompt Preview / Overlay 只能显示 mode、provider、字符数、句数、长度上限、跳过原因和生命周期摘要；不得显示完整 transcript、raw prompt、完整 assistant reply、spoken text、路径、API key、`.env`、stdout 或 stderr。
+13. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、LLM Primary / Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
+14. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
+15. Voice workspace 的 Conversation tab 应承接状态、确认发送 / 直接对话切换、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置，Output tab 应说明直接对话 + Voice Output 的默认短版自动播报关系。
+16. Home / Chat 输入区应显示紧凑 voice state 和当前模式，但不得清空未发送草稿或隐藏普通文本输入。
+17. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
+18. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
 
 ### 1.11 Voice Profile v1 人工验收
 
@@ -224,9 +226,9 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 12. Test Voice 仍可播放固定测试文本，不写入聊天，也不代表角色音色。
 13. 直接对话自动发送时，已有未发送手打草稿不得被 Voice Profile 或播报策略清空。
 
-### 1.12 LLM-primary Guarded Extraction v1 Pilot 人工验收
+### 1.12 LLM-primary Guarded Extraction v1.0.1 Pilot 人工验收
 
-设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`。本节验收当前 v1 pilot runtime：foreground LLM semantic reader、strict candidate schema、deterministic guard、rule fallback、source metadata 和 safe trace。
+设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`。本节验收当前 v1.0.1 pilot runtime：foreground LLM semantic reader、strict candidate schema、switch / negation role fields、deterministic guard、rule grounding / fallback、source metadata 和 safe trace。
 
 1. 文档应明确 rule-first 的早期优势：可预测、易测、少量游戏稳定、不依赖 provider。
 2. 文档应明确 rule-first 的扩展瓶颈：多游戏 alias 爆炸、ASR 近音错字、规则 no-op 不等于语义不可理解、规则 confidence 不等于语义正确概率。
@@ -239,16 +241,19 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 9. LLM self-confidence 不能单独决定 apply；rule exact match / catalog match 只能作为 grounding 支持。
 10. voice_direct 应因 ASR uncertainty 降低 source reliability；用户确认后的 voice_confirmed reliability 应更高。
 11. conflict with current boss 不应自动 no-op；显式 switch phrase 可以提高 context confidence。
-12. Guard decisions 应覆盖 `apply`、`ask_clarification`、`candidate_only`、`no_op` 和 `fallback_to_rule`。
-13. low confidence、invalid JSON、provider timeout、unsafe 或 memory-sensitive 输入不得写 state。
-14. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
-15. LLM extraction 不得写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须走 pending memory confirmation。
-16. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
-17. 手测 `我现在在打玛尔基特` 应能在 Game workspace 更新 current boss，并在 Debug / Event Stream 看到 `llm_primary` / `apply` 或 provider unavailable 时的 `fallback_to_rule` 安全 trace。
-18. 手测当前 Boss 为 Malenia 时输入 `玛尔基特那边怎么打来着`，不得切换 current boss；Debug / Event Stream 应显示 candidate-only / guide-only 或等价安全判定。
-19. 手测 Direct Conversation Mode 下 `我换去打玛尔基特了`，chat flow、source `voice_direct`、guard trace、current boss 更新和语音播报策略都应保持正常。
-20. 手测 `又死了两次` 应做 death increment，不应被当成 absolute count；`下一把怎么打` 不应改变 boss。
-21. QA JSON 至少覆盖 typed boss report、voice_confirmed、voice_direct、ASR near-miss、explicit boss switch、guide-only mention、death increment / absolute、boss cleared、invalid JSON、timeout fallback、rule/LLM agree and conflict、low/medium confidence、Shadow 不写状态、memory/proactive boundaries、Event Stream privacy、Game workspace visible 和旧流程不崩。
+12. 当前 Boss 为女武神时，输入 `我现在不打女武神了，换去打玛尔基特。`、`先不打女武神了，我换去玛尔基特。` 或 `从女武神换到玛尔基特。` 应切换到玛尔基特；规则不得因先命中女武神而保留旧 boss。
+13. `我换去打马尔吉特了`、`我现在去打女巫神了` 等 voice_direct ASR 错字应产生 LLM candidate / apply / clarification trace；不得静默显示 no semantic signal。
+14. Guard decisions 应覆盖 `apply`、`ask_clarification`、`candidate_only`、`no_op` 和 `fallback_to_rule`。
+15. low confidence、invalid JSON、provider timeout、unsafe 或 memory-sensitive 输入不得写 state；timeout fallback 只允许 exact safe rule evidence，不得把 switch / negation 中的旧目标写回当前 Boss。
+16. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
+17. LLM extraction 不得写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须走 pending memory confirmation。
+18. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
+19. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding 和 applied updates。
+20. 手测 `我现在在打玛尔基特` 应能在 Game workspace 更新 current boss，并在 Debug / Event Stream 看到 `llm_primary` / `apply` 或 provider unavailable 时的 `fallback_to_rule` 安全 trace。
+21. 手测当前 Boss 为 Malenia 时输入 `玛尔基特那边怎么打来着`，不得切换 current boss；Debug / Event Stream 应显示 candidate-only / guide-only 或等价安全判定。
+22. 手测 Direct Conversation Mode 下 `我换去打玛尔基特了`，chat flow、source `voice_direct`、guard trace、current boss 更新和语音播报策略都应保持正常。
+23. 手测 `又死了两次` 应做 death increment，不应被当成 absolute count；`下一把怎么打` 不应改变 boss。
+24. QA JSON 至少覆盖 typed boss report、voice_confirmed、voice_direct、ASR near-miss、explicit boss switch、switch / negation、guide-only mention、death increment / absolute、boss cleared、invalid JSON、timeout fallback、rule/LLM agree and conflict、low/medium confidence、Shadow 不写状态、memory/proactive boundaries、Event Stream privacy、Game workspace visible、direct partial guard 和旧流程不崩。
 
 ### 2. Voice Output 回归检查
 

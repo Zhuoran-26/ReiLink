@@ -91,6 +91,13 @@ def _primary_payload(
     *,
     game="elden_ring",
     boss="unknown",
+    boss_switched=False,
+    mentioned=None,
+    negated=None,
+    previous=None,
+    new_current=None,
+    guide_only=None,
+    current_target=None,
     death_operation="none",
     death_value=None,
     frustration="none",
@@ -116,7 +123,18 @@ def _primary_payload(
     )
     payload["guide_request"] = {"value": guide, "confidence": confidence if guide else "low"}
     payload["strategy_request"] = {"value": strategy, "confidence": confidence if strategy else "low"}
+    payload["boss_switched"] = {"value": boss_switched, "confidence": confidence if boss_switched else "low"}
+    payload["mentioned_entity"] = _primary_entity(mentioned, confidence)
+    payload["negated_entity"] = _primary_entity(negated, confidence)
+    payload["previous_target"] = _primary_entity(previous, confidence)
+    payload["new_current_target"] = _primary_entity(new_current, confidence)
+    payload["guide_only_entity"] = _primary_entity(guide_only, confidence)
+    payload["current_target_candidate"] = _primary_entity(current_target, confidence)
     return payload
+
+
+def _primary_entity(value: str | None, confidence: str) -> dict:
+    return {"value": value, "surface_label": None, "confidence": confidence if value else "low"}
 
 
 def _mock_primary(monkeypatch, payload_or_exc):
@@ -450,6 +468,14 @@ def test_shadow_provider_uses_current_deepseek_config_and_fast_timeout(monkeypat
     assert "chat_history" not in user_prompt
     assert "messages" not in user_prompt
     assert 8 <= captured["timeout"] <= 15
+
+
+def test_llm_primary_timeout_allows_slow_foreground_provider(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_timeout_seconds", 20)
+    assert sem._semantic_primary_timeout_seconds() == 8.0
+
+    monkeypatch.setattr(sem.settings, "llm_timeout_seconds", 2)
+    assert sem._semantic_primary_timeout_seconds() == 2.0
 
 
 def test_shadow_can_use_openai_compatible_provider_config(monkeypatch):
@@ -1352,6 +1378,125 @@ def test_llm_primary_explicit_voice_direct_switch_applies(monkeypatch):
     assert event["input_source"] == "voice_direct"
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "我现在不打女武神了，换去打玛尔基特。",
+        "先不打女武神了，我换去玛尔基特。",
+        "从女武神换到玛尔基特。",
+    ],
+)
+def test_llm_primary_switch_negation_overrides_old_rule_grounding(monkeypatch, message):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(
+            boss="margit",
+            boss_switched=True,
+            mentioned="malenia",
+            negated="malenia",
+            previous="malenia",
+            new_current="margit",
+        ),
+    )
+
+    result = sem.extract_semantics(
+        message,
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["rule_result"]["game_event"]["boss_name"] == "女武神"
+    assert result["source"] == "llm_primary"
+    assert result["llm_guard_decision"] == "apply"
+    assert result["llm_guard_reason"] == "switch_negation_candidate_overrules_rule_grounding"
+    event = result["final_decision"]["game_event"]
+    assert event["type"] == "boss_switch"
+    assert event["boss_name"] == "恶兆妖鬼 Margit"
+    assert event["guard_source"] == "llm_primary"
+    assert "boss_switched" in result["applied_updates"]
+
+
+def test_llm_primary_simple_rule_friendly_statement_still_uses_primary(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="margit", current_target="margit"))
+
+    result = sem.extract_semantics(
+        "我换去打玛尔基特了。",
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_called"] is True
+    assert result["source"] == "llm_primary"
+    assert result["llm_guard_decision"] == "apply"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_llm_primary_guide_only_entity_does_not_switch_current_boss(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(boss="margit", guide=True, strategy=True, guide_only="margit"),
+    )
+
+    result = sem.extract_semantics(
+        "玛尔基特那边怎么打来着？",
+        "elden_ring_boss_strategy",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] in {"candidate_only", "no_op"}
+    assert result["llm_shadow"]["guide_only_entity"]["value"] == "margit"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["applied_updates"] == []
+
+
+@pytest.mark.parametrize(
+    ("message", "candidate_boss", "expected_label"),
+    [
+        ("我换去打马尔吉特了", "margit", "恶兆妖鬼 Margit"),
+        ("我现在去打女巫神了", "malenia", "女武神"),
+        ("我在去打女巫神了", "malenia", "女武神"),
+    ],
+)
+def test_llm_primary_voice_typo_candidates_apply_when_high_confidence(monkeypatch, message, candidate_boss, expected_label):
+    _mock_primary(monkeypatch, _primary_payload(boss=candidate_boss, current_target=candidate_boss))
+
+    result = sem.extract_semantics(
+        message,
+        "casual_chat",
+        _game_state(),
+        input_source="voice_direct",
+        run_llm_primary=True,
+    )
+
+    assert result["llm_called"] is True
+    assert result["input_source"] == "voice_direct"
+    assert result["source"] == "llm_primary"
+    assert result["llm_guard_decision"] == "apply"
+    assert result["final_decision"]["game_event"]["boss_name"] == expected_label
+    assert result["llm_shadow"]["current_target_candidate"]["value"] == candidate_boss
+
+
+def test_llm_primary_voice_uncertain_typo_asks_clarification(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="margit", current_target="margit", confidence="medium"))
+
+    result = sem.extract_semantics(
+        "我去打猫耳机特了",
+        "casual_chat",
+        _game_state(),
+        input_source="voice_direct",
+        run_llm_primary=True,
+    )
+
+    assert result["llm_called"] is True
+    assert result["llm_guard_decision"] == "ask_clarification"
+    assert result["llm_guard_reason"] == "voice_candidate_below_apply_threshold"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["llm_shadow"]["current_target_candidate"]["value"] == "margit"
+
+
 def test_llm_primary_death_increment_applies_with_current_context(monkeypatch):
     _mock_primary(monkeypatch, _primary_payload(boss="unknown", death_operation="increment", death_value=2))
 
@@ -1441,7 +1586,26 @@ def test_llm_primary_timeout_falls_back_to_high_confidence_rule(monkeypatch):
 
     assert result["parse_error"] == "semantic_extraction_timeout"
     assert result["llm_guard_decision"] == "fallback_to_rule"
+    assert "LLM extraction timeout" in result["llm_guard_summary"]
+    assert result["llm_provider_status"] == "timeout"
     assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_llm_primary_timeout_does_not_fallback_to_negated_old_target(monkeypatch):
+    _mock_primary(monkeypatch, TimeoutError("slow provider"))
+
+    result = sem.extract_semantics(
+        "我现在不打女武神了，换去打玛尔基特。",
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] == "semantic_extraction_timeout"
+    assert result["llm_guard_decision"] == "no_op"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["applied_updates"] == []
+    assert "LLM extraction timeout" in result["llm_guard_summary"]
 
 
 def test_llm_primary_timeout_noops_without_rule_grounding(monkeypatch):
@@ -1473,7 +1637,7 @@ def test_llm_primary_rule_agreement_applies_medium_candidate(monkeypatch):
     assert result["llm_guard_reason"] == "llm_rule_agree"
 
 
-def test_llm_primary_rule_conflict_falls_back_to_rule(monkeypatch):
+def test_llm_primary_rule_conflict_asks_clarification_instead_of_rule_override(monkeypatch):
     _mock_primary(monkeypatch, _primary_payload(boss="tree_sentinel"))
 
     result = sem.extract_semantics(
@@ -1483,9 +1647,9 @@ def test_llm_primary_rule_conflict_falls_back_to_rule(monkeypatch):
         run_llm_primary=True,
     )
 
-    assert result["llm_guard_decision"] == "fallback_to_rule"
+    assert result["llm_guard_decision"] == "ask_clarification"
     assert result["llm_guard"]["conflict_summary"] == "boss_conflict"
-    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+    assert result["final_decision"]["game_event"]["type"] == "none"
 
 
 def test_llm_primary_low_confidence_candidate_is_not_applied(monkeypatch):

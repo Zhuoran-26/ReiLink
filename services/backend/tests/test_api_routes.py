@@ -717,7 +717,9 @@ def test_chat_accepts_voice_direct_input_source_in_semantic_debug():
     response = client.get("/api/debug/semantic-extraction/latest")
 
     assert response.status_code == 200
-    assert response.json()["input_source"] == "voice_direct"
+    data = response.json()
+    assert data["input_source"] == "voice_direct"
+    assert {"llm_primary_status", "llm_provider_status", "llm_schema_valid", "rule_grounding"} <= data.keys()
 
 
 def test_semantic_shadow_events_endpoint_returns_final_events_without_secrets(monkeypatch):

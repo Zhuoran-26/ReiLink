@@ -604,6 +604,15 @@ const semanticExtractionDebug = {
   semantic_extraction_model: null,
   semantic_extraction_latency_ms: 0,
   provider_latency_ms: 0,
+  llm_primary_status: "not_run",
+  llm_provider_status: "not_run",
+  llm_schema_valid: null,
+  rule_grounding: {
+    event_type: "none",
+    boss_name: "",
+    confidence: 0.65,
+    applied_updates: ["memory_candidate_created"]
+  },
   llm_result: null,
   llm_shadow: {
     status: "skipped",
@@ -1564,7 +1573,7 @@ describe("App", () => {
     await clickPanelTab("Runtime");
     expect(within(panel).getByRole("button", { name: "调试面板" })).toBeInTheDocument();
     await clickPanelTab("Trace");
-    expect(within(panel).getByRole("heading", { name: "Semantic Shadow Trace" })).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "LLM Primary Extraction" })).toBeInTheDocument();
     await clickPanelTab("Event Stream");
     expect(within(panel).getByRole("heading", { name: "Event Stream" })).toBeInTheDocument();
 
@@ -1645,7 +1654,7 @@ describe("App", () => {
     await openWorkspaceTab("Runtime");
     expect(await screen.findByRole("button", { name: "调试面板" })).toBeInTheDocument();
     await openWorkspaceTab("Trace");
-    expect(await screen.findByRole("heading", { name: "Semantic Shadow Trace" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "LLM Primary Extraction" })).toBeInTheDocument();
 
     panel = await openWorkspace("语音");
     expect(await screen.findByRole("heading", { name: "Voice v2.1 对话状态" })).toBeInTheDocument();
@@ -2442,7 +2451,7 @@ describe("App", () => {
     await openDebugWorkspace();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /调试面板/i })).toHaveAttribute("aria-expanded", "true"));
-    expect(screen.getByText("语义识别")).toBeInTheDocument();
+    expect(screen.getByText("LLM Primary Extraction")).toBeInTheDocument();
     await openDebugWorkspace("Prompt Preview");
     expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
   });
@@ -3808,6 +3817,45 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText(/Voice v2.1：语音待机/)).toBeInTheDocument());
   });
 
+  it("blocks short Web Speech transcripts from auto sending in Direct Conversation Mode", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    const chatCalls: RequestInit[] = [];
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/chat") && init?.method === "POST") {
+        chatCalls.push(init);
+        return Promise.resolve(Response.json(chatResponse));
+      }
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("我想", true);
+    });
+
+    expect(await screen.findByText(/Voice v2.1：已识别，等待发送/)).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("我想");
+    expect(screen.getByText("识别结果太短了。可以再说一次，或确认后发送。")).toBeInTheDocument();
+    expect(chatCalls).toHaveLength(0);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_transcription_auto_send_blocked", provider: "web_speech", reason: "short_transcript" })
+      ])
+    );
+    expect(eventBus.getRecentEvents(20)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "user_message_sent" }),
+        expect.objectContaining({ type: "pending_memory_created" }),
+        expect.objectContaining({ type: "proactive_message_shown" })
+      ])
+    );
+  });
+
   it("auto sends a Local ASR transcript in Direct Conversation Mode without leaking the transcript to Event Stream", async () => {
     appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
     setLocalAsrReady();
@@ -3847,6 +3895,58 @@ describe("App", () => {
     expect(eventBus.getRecentEvents(30)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "voice_transcription_auto_sent", provider: "local_asr" })
+      ])
+    );
+  });
+
+  it("blocks short Local ASR recordings from auto sending in Direct Conversation Mode", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+    setLocalAsrReady();
+    const privateTranscript = "直接对话短录音但文字较长";
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: privateTranscript,
+      transcript_char_count: privateTranscript.length,
+      duration_ms: 42
+    };
+    const chatCalls: RequestInit[] = [];
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/chat") && init?.method === "POST") {
+        chatCalls.push(init);
+        return Promise.resolve(Response.json(chatResponse));
+      }
+      return defaultFetchResponse(url, init);
+    });
+    installAudioCaptureMock();
+
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    expect(await screen.findByText(/Voice v2.1：已识别，等待发送/)).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript);
+    expect(screen.getByText("这句太短了。可以再说一次，或确认后发送。")).toBeInTheDocument();
+    expect(chatCalls).toHaveLength(0);
+
+    await openDebugWorkspace("Event Stream");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("语音文本等待确认"));
+    expect(eventStream).toHaveTextContent("录音过短，已改为确认发送");
+    expect(eventStream).not.toHaveTextContent(privateTranscript);
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_transcription_auto_send_blocked", provider: "local_asr", reason: "short_recording" })
+      ])
+    );
+    expect(eventBus.getRecentEvents(30)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "user_message_sent" }),
+        expect.objectContaining({ type: "pending_memory_created" }),
+        expect.objectContaining({ type: "proactive_message_shown" })
       ])
     );
   });
@@ -5528,7 +5628,7 @@ describe("App", () => {
 
     await openDebugWorkspace();
     expect(await screen.findByRole("button", { name: /调试面板/i })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("语义识别")).toBeInTheDocument();
+    expect(screen.getByText("LLM Primary Extraction")).toBeInTheDocument();
     expect(screen.getByText("模型路由")).toBeInTheDocument();
     expect(screen.getByText("原始 JSON")).toBeInTheDocument();
 

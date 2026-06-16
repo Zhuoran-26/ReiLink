@@ -456,6 +456,10 @@ export type SemanticExtractionDebugResponse = {
   semantic_extraction_model: string | null;
   semantic_extraction_latency_ms: number;
   provider_latency_ms: number;
+  llm_primary_status?: "not_run" | "skipped" | "succeeded" | "failed" | string;
+  llm_provider_status?: string | null;
+  llm_schema_valid?: boolean | null;
+  rule_grounding?: Record<string, unknown>;
   llm_result: Record<string, unknown> | null;
   llm_shadow?: Record<string, unknown> | null;
   llm_primary?: Record<string, unknown> | null;
