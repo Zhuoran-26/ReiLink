@@ -224,16 +224,16 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 12. Test Voice 仍可播放固定测试文本，不写入聊天，也不代表角色音色。
 13. 直接对话自动发送时，已有未发送手打草稿不得被 Voice Profile 或播报策略清空。
 
-### 1.12 LLM-primary Guarded Extraction Architecture v0 人工验收
+### 1.12 LLM-primary Guarded Extraction v1 Pilot 人工验收
 
-设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`。本节是 architecture / spec / planning 验收，不表示 LLM-primary extraction runtime 已实现。
+设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`。本节验收当前 v1 pilot runtime：foreground LLM semantic reader、strict candidate schema、deterministic guard、rule fallback、source metadata 和 safe trace。
 
 1. 文档应明确 rule-first 的早期优势：可预测、易测、少量游戏稳定、不依赖 provider。
 2. 文档应明确 rule-first 的扩展瓶颈：多游戏 alias 爆炸、ASR 近音错字、规则 no-op 不等于语义不可理解、规则 confidence 不等于语义正确概率。
 3. 新架构必须是 LLM-primary semantic reader + schema validation + deterministic guard apply；LLM 不得直接写 game context。
 4. typed text、voice_confirmed 和 voice_direct 都应进入同一 LLM-primary extraction pipeline；source 只影响 reliability / confidence / trace。
 5. 规则层应降级为 grounding、sanity check、cross-check、fallback、regression comparison 或 emergency no-provider mode。
-6. 文档应给出 multi-game candidate schema，覆盖 intent、entities、events、proposed_updates、conflicts、memory safety 和 safe_trace_summary。
+6. 文档应给出 pilot candidate schema，覆盖 game、boss、death_count、frustration、boss_cleared、guide_request、strategy_request、memory/proactive blocked fields 和 safe reasoning summary。
 7. schema 应区分 guide request 与 current boss report，也应区分 temporary game state 与 long-term memory candidate。
 8. 新 confidence 机制应至少拆分 semantic_confidence、grounding_confidence、context_confidence 和 apply_confidence。
 9. LLM self-confidence 不能单独决定 apply；rule exact match / catalog match 只能作为 grounding 支持。
@@ -244,8 +244,11 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 14. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
 15. LLM extraction 不得写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须走 pending memory confirmation。
 16. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
-17. Rollout plan 应覆盖 Phase 1 architecture/spec、Phase 2 pilot、Phase 3 eval runner、Phase 4 multi-game catalog、Phase 5 memory candidate extraction。
-18. QA JSON 至少覆盖 typed boss report、voice_direct ASR near-miss、explicit boss switch、guide-only mention、death increment / absolute、boss cleared、invalid JSON、timeout fallback、rule/LLM agree and conflict、memory/proactive boundaries and trace privacy。
+17. 手测 `我现在在打玛尔基特` 应能在 Game workspace 更新 current boss，并在 Debug / Event Stream 看到 `llm_primary` / `apply` 或 provider unavailable 时的 `fallback_to_rule` 安全 trace。
+18. 手测当前 Boss 为 Malenia 时输入 `玛尔基特那边怎么打来着`，不得切换 current boss；Debug / Event Stream 应显示 candidate-only / guide-only 或等价安全判定。
+19. 手测 Direct Conversation Mode 下 `我换去打玛尔基特了`，chat flow、source `voice_direct`、guard trace、current boss 更新和语音播报策略都应保持正常。
+20. 手测 `又死了两次` 应做 death increment，不应被当成 absolute count；`下一把怎么打` 不应改变 boss。
+21. QA JSON 至少覆盖 typed boss report、voice_confirmed、voice_direct、ASR near-miss、explicit boss switch、guide-only mention、death increment / absolute、boss cleared、invalid JSON、timeout fallback、rule/LLM agree and conflict、low/medium confidence、Shadow 不写状态、memory/proactive boundaries、Event Stream privacy、Game workspace visible 和旧流程不崩。
 
 ### 2. Voice Output 回归检查
 
@@ -588,10 +591,10 @@ packaged `.app` 手动 smoke 最低步骤：
 - 显式游戏切换必须覆盖 `我换到空洞骑士了`、`我现在玩空洞骑士`、`今天打空洞骑士`、`我回法环了`、`我现在在艾尔登法环`；后续 Boss / Knowledge Retrieval 应跟随新的 current game。
 - Boss alias 回归必须覆盖 `恶兆妖鬼玛尔基特 / 玛尔基特 / Margit` 和 Hollow Knight 的 `假骑士 / False Knight`。
 - 被动死亡表达必须记录为失败尝试而不是击败：`我在大树守卫，被杀了4次，有点烦`、`我被大树守卫杀了4次`、`被玛尔基特杀了3次`、`被假骑士打死两次` 应更新 Boss、death count 与 failed activity，不应出现 boss_cleared。
-- Semantic Extraction Debug 应显示安全 trace：`source`、`confidence`、`fallback_reason`、`skip_reason`、`applied_updates`，以及 `llm_shadow_status`、`llm_shadow_summary`、`llm_shadow_diff`。被动死亡 / near-clear / 指代不明 / 中文游戏失败 slang 等容易误判表达应能看到安全原因；provider 不可用、Shadow Mode 失败、invalid JSON 或 no meaningful update 时也应显示安全 skip / parse reason，不应 silent no-op。
-- 语义识别置信度验收：高置信规则可以直接应用；被动死亡、near-clear、未知 Boss 指代、低置信失败表达等歧义风险表达应降低调度置信度以允许 LLM Shadow Mode 产出候选；最终显示的 confidence 只用 high / medium / low，不展示 raw prompt、raw JSON 或完整用户输入。
-- LLM Shadow Mode 只用于可观测性：LLM 影子候选可以显示候选 game / boss / death_count / frustration / boss_cleared / memory / proactive signal 与规则差异，但不能直接修改当前游戏状态、memory 或 proactive 调度。
-- 低置信语义触发词只能作为 trace / Shadow Mode 线索，不应为了测试把 slang 或模糊别名硬编码成最终 Boss、death count 或 boss_cleared；v2 状态更新只来自规则路径，影子候选即使成功也只显示候选和差异。
+- Semantic Extraction Debug 应显示安全 trace：`input_source`、`source`、`confidence`、`fallback_reason`、`skip_reason`、`applied_updates`、`llm_guard_decision` / `llm_guard_summary`，以及 legacy `llm_shadow_status`、`llm_shadow_summary`、`llm_shadow_diff`。被动死亡 / near-clear / 指代不明 / 中文游戏失败 slang 等容易误判表达应能看到安全原因；provider 不可用、LLM-primary 失败、invalid JSON 或 no meaningful update 时也应显示安全 skip / parse reason，不应 silent no-op。
+- 语义识别置信度验收：LLM-primary candidate confidence、grounding confidence、context confidence 和 apply confidence 应分开理解；高置信规则只作为 fallback / grounding 支持。最终显示的 confidence 只用 high / medium / low，不展示 raw prompt、raw JSON 或完整用户输入。
+- Legacy LLM Shadow Mode 只用于可观测性：LLM 影子候选可以显示候选 game / boss / death_count / frustration / boss_cleared / memory / proactive signal 与规则差异，但不能直接修改当前游戏状态、memory 或 proactive 调度；只有 LLM-primary guard `apply` 事件可以写 game context。
+- 低置信语义触发词不应为了测试被硬编码成最终 Boss、death count 或 boss_cleared；LLM-primary guard 低置信时应 `candidate_only` 或 `no_op`，legacy shadow 即使成功也只显示候选和差异。
 - Shadow Mode 真实 provider 回归必须确认复用主 backend provider config，优先使用 fast / lightweight model，并在 API chat 中后台补 Debug 诊断，不拖慢主回复路径；如果主聊天 provider 可用，Shadow 不应误报 `provider_unavailable`。
 - Shadow Mode 真实 provider JSON 稳定性回归必须确认：请求使用紧凑 JSON-only contract，不要求模型输出解释；解析器可安全恢复严格 JSON、Markdown code fence、前后夹杂简短说明的首个 JSON object，以及数组中的首个 object；无法恢复时显示 `shadow_invalid_json` 安全终态。
 - Shadow Mode provider 兼容性回归必须覆盖：首次 `response_format: json_object` 返回 invalid JSON 时，后台 Shadow 可做一次无 `response_format` 的兼容 retry；compat retry 仍 invalid JSON 时，可再做一次 ultra-compact flat JSON fallback。ultra 成功显示 `shadow_succeeded / 模式 ultra_compact`，ultra 仍失败显示 `shadow_invalid_json` 与 attempts 诊断。timeout、auth_failed、provider_unavailable、provider_error 不应 retry。

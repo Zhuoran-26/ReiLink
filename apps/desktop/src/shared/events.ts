@@ -2,7 +2,7 @@ import type { AudioConversionStatusValue } from "./api";
 import type { OverlayMessageSource, OverlayPosition } from "./overlay";
 
 export type ReiLinkEvent =
-  | { type: "user_message_sent"; timestamp: string; text: string; source?: "text" | "voice_direct"; character_count?: number }
+  | { type: "user_message_sent"; timestamp: string; text: string; source?: "text" | "voice_confirmed" | "voice_direct"; character_count?: number }
   | { type: "assistant_reply_started"; timestamp: string; message_id?: string }
   | { type: "assistant_reply_segment_shown"; timestamp: string; segment_index: number; character_count: number }
   | { type: "assistant_reply_completed"; timestamp: string; message_id?: string }
@@ -24,6 +24,10 @@ export type ReiLinkEvent =
       llm_shadow_confidence?: "high" | "medium" | "low";
       llm_shadow_summary?: string | null;
       llm_shadow_diff?: string | null;
+      input_source?: "text" | "voice_confirmed" | "voice_direct";
+      llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
+      llm_guard_reason?: string | null;
+      llm_guard_summary?: string | null;
       shadow_trace_id?: string;
       shadow_event_phase?: "scheduled" | "final";
       shadow_event_status?:

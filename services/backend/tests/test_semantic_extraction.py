@@ -3,6 +3,8 @@ import inspect
 import socket
 import urllib.error
 
+import pytest
+
 from app.modules.dialogue_agent import semantic_extraction as sem
 
 
@@ -83,6 +85,52 @@ def _game_state(current_boss: str | None = None) -> dict:
 
 def _shadow_events_since(since_id: int) -> list[dict]:
     return sem.get_semantic_shadow_events(since_id=since_id)["events"]
+
+
+def _primary_payload(
+    *,
+    game="elden_ring",
+    boss="unknown",
+    death_operation="none",
+    death_value=None,
+    frustration="none",
+    cleared="none",
+    confidence="high",
+    guide=False,
+    strategy=False,
+    memory=False,
+    proactive="none",
+    reasoning="安全候选摘要",
+) -> dict:
+    payload = _shadow_payload(
+        game=game,
+        boss=boss,
+        death_operation=death_operation,
+        death_value=death_value,
+        frustration=frustration,
+        cleared=cleared,
+        confidence=confidence,
+        memory=memory,
+        proactive=proactive,
+        reasoning=reasoning,
+    )
+    payload["guide_request"] = {"value": guide, "confidence": confidence if guide else "low"}
+    payload["strategy_request"] = {"value": strategy, "confidence": confidence if strategy else "low"}
+    return payload
+
+
+def _mock_primary(monkeypatch, payload_or_exc):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+
+    def fake_primary(*args, **kwargs):
+        if isinstance(payload_or_exc, BaseException):
+            raise payload_or_exc
+        if isinstance(payload_or_exc, str):
+            return payload_or_exc
+        return json.dumps(payload_or_exc, ensure_ascii=False)
+
+    monkeypatch.setattr(sem, "_call_llm_primary", fake_primary)
 
 
 def test_explicit_current_boss_uses_rule_without_llm(monkeypatch):
@@ -1249,3 +1297,297 @@ def test_llm_json_parse_failure_does_not_raise(monkeypatch):
     assert result["llm_called"] is True
     assert result["parse_error"]
     assert result["final_decision"]["game_event"]["type"] in {"near_clear", "failed_attempt"}
+
+
+@pytest.mark.parametrize("input_source", ["text", "voice_confirmed", "voice_direct"])
+def test_llm_primary_records_input_source_and_applies_grounded_boss(monkeypatch, input_source):
+    _mock_primary(monkeypatch, _primary_payload(boss="margit"))
+
+    result = sem.extract_semantics(
+        "我现在在打玛尔基特",
+        "casual_chat",
+        _game_state(),
+        input_source=input_source,
+        run_llm_primary=True,
+    )
+
+    assert result["input_source"] == input_source
+    assert result["source"] == "llm_primary"
+    assert result["llm_guard_decision"] == "apply"
+    assert result["final_decision"]["game_event"]["guard_source"] == "llm_primary"
+    assert result["final_decision"]["game_event"]["input_source"] == input_source
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_llm_primary_guide_only_boss_question_does_not_switch_current_boss(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="margit", guide=True, strategy=True))
+
+    result = sem.extract_semantics(
+        "玛尔基特那边怎么打来着",
+        "elden_ring_boss_strategy",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] in {"candidate_only", "no_op"}
+    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["applied_updates"] == []
+
+
+def test_llm_primary_explicit_voice_direct_switch_applies(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="margit"))
+
+    result = sem.extract_semantics(
+        "我换去打玛尔基特了",
+        "casual_chat",
+        _game_state("女武神"),
+        input_source="voice_direct",
+        run_llm_primary=True,
+    )
+
+    event = result["final_decision"]["game_event"]
+    assert result["llm_guard_decision"] == "apply"
+    assert event["type"] == "boss_switch"
+    assert event["boss_name"] == "恶兆妖鬼 Margit"
+    assert event["input_source"] == "voice_direct"
+
+
+def test_llm_primary_death_increment_applies_with_current_context(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="unknown", death_operation="increment", death_value=2))
+
+    result = sem.extract_semantics(
+        "又死了两次",
+        "casual_chat",
+        _game_state("恶兆妖鬼 Margit"),
+        run_llm_primary=True,
+    )
+
+    event = result["final_decision"]["game_event"]
+    assert result["llm_guard_decision"] == "apply"
+    assert event["type"] == "failed_attempt"
+    assert event["death_count_operation"] == "increment"
+    assert event["death_count_value"] == 2
+
+
+def test_llm_primary_death_absolute_applies_with_current_context(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="unknown", death_operation="set", death_value=7))
+
+    result = sem.extract_semantics(
+        "死亡次数到 7 了",
+        "casual_chat",
+        _game_state("恶兆妖鬼 Margit"),
+        run_llm_primary=True,
+    )
+
+    event = result["final_decision"]["game_event"]
+    assert event["type"] == "failed_attempt"
+    assert event["death_count_operation"] == "absolute"
+    assert event["death_count_value"] == 7
+
+
+def test_llm_primary_boss_cleared_applies(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="margit", cleared="set_true"))
+
+    result = sem.extract_semantics(
+        "终于把玛尔基特过了",
+        "casual_chat",
+        _game_state("恶兆妖鬼 Margit"),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] == "apply"
+    assert result["final_decision"]["game_event"]["type"] == "boss_cleared"
+
+
+def test_llm_primary_frustration_applies_only_as_guarded_emotion(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="margit", frustration="raise"))
+
+    result = sem.extract_semantics(
+        "玛尔基特打得我有点烦",
+        "casual_chat",
+        _game_state("恶兆妖鬼 Margit"),
+        run_llm_primary=True,
+    )
+
+    assert result["final_decision"]["emotion"]["type"] == "frustrated"
+    assert result["final_decision"]["game_event"]["frustration_delta"] == 1
+
+
+def test_llm_primary_invalid_json_does_not_apply_unknown_alias(monkeypatch):
+    _mock_primary(monkeypatch, "not json")
+
+    result = sem.extract_semantics(
+        "我在那个骑马金甲大哥那里又寄了几次。",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] == "semantic_extraction_parse_error"
+    assert result["llm_guard_decision"] == "no_op"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["applied_updates"] == []
+
+
+def test_llm_primary_timeout_falls_back_to_high_confidence_rule(monkeypatch):
+    _mock_primary(monkeypatch, TimeoutError("slow provider"))
+
+    result = sem.extract_semantics(
+        "我现在卡在玛尔基特",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] == "semantic_extraction_timeout"
+    assert result["llm_guard_decision"] == "fallback_to_rule"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_llm_primary_timeout_noops_without_rule_grounding(monkeypatch):
+    _mock_primary(monkeypatch, TimeoutError("slow provider"))
+
+    result = sem.extract_semantics(
+        "那个骑马金甲大哥又寄了",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] == "semantic_extraction_timeout"
+    assert result["llm_guard_decision"] == "no_op"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_llm_primary_rule_agreement_applies_medium_candidate(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="margit", confidence="medium"))
+
+    result = sem.extract_semantics(
+        "我现在卡在玛尔基特",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] == "apply"
+    assert result["llm_guard_reason"] == "llm_rule_agree"
+
+
+def test_llm_primary_rule_conflict_falls_back_to_rule(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="tree_sentinel"))
+
+    result = sem.extract_semantics(
+        "我现在卡在玛尔基特",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] == "fallback_to_rule"
+    assert result["llm_guard"]["conflict_summary"] == "boss_conflict"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_llm_primary_low_confidence_candidate_is_not_applied(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="tree_sentinel", confidence="low"))
+
+    result = sem.extract_semantics(
+        "那个骑马金甲大哥又寄了",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] == "candidate_only"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_llm_primary_medium_unknown_alias_is_candidate_only(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="tree_sentinel", confidence="medium"))
+
+    result = sem.extract_semantics(
+        "那个骑马金甲大哥又寄了",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] == "candidate_only"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_llm_primary_high_unknown_alias_can_apply_when_grounded_by_failure(monkeypatch):
+    _mock_primary(monkeypatch, _primary_payload(boss="tree_sentinel", death_operation="increment", death_value=1))
+
+    result = sem.extract_semantics(
+        "那个骑马金甲大哥又寄了",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] == "apply"
+    assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
+
+
+def test_llm_primary_memory_and_proactive_candidates_are_blocked(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(game="unknown", memory=True, proactive="frustration_check", confidence="high"),
+    )
+
+    result = sem.extract_semantics(
+        "记住我打 Boss 喜欢长攻略",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] == "no_op"
+    assert result["final_decision"]["memory_candidate"]["should_create_pending"] is False
+    assert "memory_candidate_created" not in result["applied_updates"]
+
+
+def test_llm_primary_safe_trace_does_not_expose_raw_prompt_transcript_or_paths(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(
+            boss="tree_sentinel",
+            confidence="medium",
+            reasoning="raw prompt /Users/aragoto/.env transcript sk-test stdout",
+        ),
+    )
+
+    result = sem.extract_semantics(
+        "那个骑马金甲大哥又寄了 /Users/aragoto/.env sk-test raw prompt",
+        "casual_chat",
+        _game_state(),
+        input_source="voice_confirmed",
+        run_llm_primary=True,
+    )
+
+    serialized = json.dumps(
+        {
+            "latest_user_message": result["latest_user_message"],
+            "extraction_trace": result["extraction_trace"],
+            "llm_shadow_summary": result["llm_shadow_summary"],
+            "llm_guard": result["llm_guard"],
+        },
+        ensure_ascii=False,
+    ).lower()
+    assert "私密转写" not in serialized
+    assert "/users/aragoto" not in serialized
+    assert ".env" not in serialized
+    assert "sk-test" not in serialized
+    assert "raw prompt" not in serialized
+    assert "transcript" not in serialized
+
+
+def test_semantic_extraction_old_flow_without_primary_still_works(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "mock")
+
+    result = sem.extract_semantics("我现在卡在玛尔基特", "casual_chat", _game_state(), run_llm_primary=False)
+
+    assert result["llm_called"] is False
+    assert result["source"] == "rule"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"

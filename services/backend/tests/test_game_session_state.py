@@ -41,6 +41,59 @@ def test_explicit_game_boss_absolute_deaths_and_frustration(tmp_path):
     assert state.current_activity == "boss_failed"
 
 
+def test_llm_primary_semantic_event_updates_boss_and_death_count(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+
+    state = store.update_from_user_message(
+        "那个骑马金甲大哥又寄了",
+        "casual_chat",
+        _idle_status(),
+        now,
+        semantic_game_event={
+            "type": "failed_attempt",
+            "boss_name": "大树守卫",
+            "confidence": 0.92,
+            "should_update_current_boss": True,
+            "guard_source": "llm_primary",
+            "input_source": "voice_direct",
+            "death_count_operation": "increment",
+            "death_count_value": 2,
+            "frustration_delta": 1,
+        },
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "大树守卫"
+    assert state.current_boss.source == "semantic_extraction"
+    assert state.death_count == 2
+    assert state.frustration_count == 1
+
+
+def test_llm_primary_game_context_event_updates_game_only(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+
+    state = store.update_from_user_message(
+        "我在玩法环",
+        "casual_chat",
+        _idle_status(),
+        now,
+        semantic_game_event={
+            "type": "game_context",
+            "boss_name": None,
+            "game_name": "Elden Ring",
+            "confidence": 0.9,
+            "should_update_current_boss": True,
+            "guard_source": "llm_primary",
+        },
+    )
+
+    assert state.current_game == "Elden Ring"
+    assert state.current_boss is None
+    assert state.current_activity == "game_discussion"
+
+
 @pytest.mark.parametrize(
     ("message", "expected_boss", "expected_deaths"),
     [

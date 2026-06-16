@@ -162,6 +162,7 @@ class GameSessionStore:
         abandons_boss = _abandons_current_boss(user_message)
         state_neutral_question = _is_state_neutral_game_question(user_message, intent)
         semantic_event_type = _semantic_event_type(semantic_game_event)
+        semantic_priority = _semantic_event_source(semantic_game_event) == "llm_primary"
         semantic_applied = False
         game_name = _detect_current_game(game_status, user_message, intent, explicit_boss or focused_boss, state.current_game)
 
@@ -170,20 +171,29 @@ class GameSessionStore:
         if game_name:
             state.current_game = game_name
 
-        death_update = _death_count_update(user_message, state, explicit_boss or focused_boss)
+        death_update = (
+            _semantic_death_count_update(semantic_game_event)
+            if semantic_priority
+            else _death_count_update(user_message, state, explicit_boss or focused_boss)
+        )
         if death_update:
             mode, value = death_update
             if mode == "absolute":
                 state.death_count = value
             else:
                 state.death_count += value
+        semantic_frustration_delta = _semantic_frustration_delta(semantic_game_event) if semantic_priority else 0
         calm_signal = _has_calm_signal(user_message)
-        if calm_signal:
+        if semantic_frustration_delta > 0:
+            state.frustration_count += semantic_frustration_delta
+        elif calm_signal:
             state.frustration_count = 0
         elif _has_frustration_signal(user_message):
             state.frustration_count += 1
 
-        if explicit_boss and fails_boss:
+        if semantic_priority and _apply_semantic_game_event(state, semantic_game_event, focused_boss, now):
+            semantic_applied = True
+        elif explicit_boss and fails_boss:
             _mark_boss_failed(state, explicit_boss, now, "current_message")
         elif explicit_boss and clears_boss:
             _clear_boss(state, explicit_boss, now, "current_message")
@@ -200,7 +210,7 @@ class GameSessionStore:
                 state.current_activity = "boss_failed"
         elif clears_boss and state.current_boss:
             _clear_boss(state, state.current_boss.name, now, "current_context")
-        elif _apply_semantic_game_event(state, semantic_game_event, focused_boss, now):
+        elif not semantic_priority and _apply_semantic_game_event(state, semantic_game_event, focused_boss, now):
             semantic_applied = True
         elif abandons_boss and state.current_boss:
             _abandon_current_boss(state, now)
@@ -587,7 +597,51 @@ def _semantic_event_type(event: dict[str, Any] | None) -> str | None:
     if not isinstance(event, dict):
         return None
     event_type = str(event.get("type") or "")
-    return event_type if event_type in {"failed_attempt", "near_clear", "boss_cleared", "boss_switch", "boss_attempt"} else None
+    return event_type if event_type in {"failed_attempt", "near_clear", "boss_cleared", "boss_switch", "boss_attempt", "game_context"} else None
+
+
+def _semantic_event_source(event: dict[str, Any] | None) -> str | None:
+    if not isinstance(event, dict):
+        return None
+    source = str(event.get("guard_source") or event.get("source") or "")
+    return source if source in {"llm_primary", "semantic_extraction"} else None
+
+
+def _semantic_death_count_update(event: dict[str, Any] | None) -> tuple[str, int] | None:
+    if not isinstance(event, dict):
+        return None
+    if float(event.get("confidence") or 0) < 0.7:
+        return None
+    operation = str(event.get("death_count_operation") or "")
+    if operation not in {"absolute", "increment"}:
+        return None
+    try:
+        value = int(event.get("death_count_value") or 0)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return operation, min(value, 99)
+
+
+def _semantic_frustration_delta(event: dict[str, Any] | None) -> int:
+    if not isinstance(event, dict):
+        return 0
+    if float(event.get("confidence") or 0) < 0.7:
+        return 0
+    try:
+        return max(0, min(3, int(event.get("frustration_delta") or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _semantic_game_name(event: dict[str, Any] | None) -> str | None:
+    if not isinstance(event, dict):
+        return None
+    game_name = normalize_terminology(str(event.get("game_name") or "")).strip()
+    if game_name in {"Elden Ring", "空洞骑士"}:
+        return game_name
+    return None
 
 
 def _apply_semantic_game_event(
@@ -603,11 +657,22 @@ def _apply_semantic_game_event(
     if confidence < 0.7 or event.get("should_update_current_boss") is False:
         return False
 
+    game_name = _semantic_game_name(event)
+    if game_name:
+        state.current_game = game_name
+
     boss_name = normalize_terminology(str(event.get("boss_name") or focused_boss or "")).strip()
     if not boss_name and state.current_boss and event_type in {"failed_attempt", "near_clear", "boss_cleared", "boss_attempt"}:
         boss_name = state.current_boss.name
     if not state.current_game and boss_name:
         state.current_game = "Elden Ring"
+
+    if event_type == "game_context":
+        if not game_name:
+            return False
+        state.current_activity = "game_discussion"
+        _append_topic(state, game_name)
+        return True
 
     if event_type in {"failed_attempt", "near_clear"}:
         if boss_name:

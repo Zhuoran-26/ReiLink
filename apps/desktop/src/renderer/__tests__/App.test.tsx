@@ -576,6 +576,7 @@ const unknownPromptPreview = {
 
 const semanticExtractionDebug = {
   latest_user_message: "记忆偏好表达 / 10 字",
+  input_source: "text",
   rule_result: { game_event: { type: "none" }, memory_candidate: { type: "guide_preference" } },
   rule_confidence: 0.65,
   raw_rule_confidence: 0.65,
@@ -594,7 +595,10 @@ const semanticExtractionDebug = {
     llm_shadow_status: "skipped",
     llm_shadow_confidence: "low",
     llm_shadow_summary: "跳过：no_semantic_signal",
-    llm_shadow_diff: "LLM 影子识别未运行"
+    llm_shadow_diff: "LLM 影子识别未运行",
+    llm_guard_decision: "fallback_to_rule",
+    llm_guard_reason: "rule_grounding",
+    llm_guard_summary: "规则 fallback 已应用"
   },
   llm_called: false,
   semantic_extraction_model: null,
@@ -607,6 +611,16 @@ const semanticExtractionDebug = {
     candidate_summary: "跳过：no_semantic_signal",
     diff_summary: "LLM 影子识别未运行"
   },
+  llm_primary: null,
+  llm_guard: {
+    input_source: "text",
+    decision: "fallback_to_rule",
+    reason: "rule_grounding",
+    summary: "规则 fallback 已应用"
+  },
+  llm_guard_decision: "fallback_to_rule",
+  llm_guard_reason: "rule_grounding",
+  llm_guard_summary: "规则 fallback 已应用",
   llm_shadow_status: "skipped",
   llm_shadow_confidence: "low",
   llm_shadow_summary: "跳过：no_semantic_signal",
@@ -2614,6 +2628,58 @@ describe("App", () => {
     expect(JSON.stringify(semanticEvent)).not.toContain("骑马金甲大哥");
   });
 
+  it("renders LLM primary guard traces in Event Stream without raw transcript text", async () => {
+    const privateTranscript = "我换去打玛尔基特了，这是私密转写";
+    const guardTrace = {
+      ...semanticExtractionDebug,
+      latest_user_message: "游戏状态表达 / 18 字",
+      input_source: "voice_direct",
+      source: "llm_primary",
+      confidence: "high",
+      applied_updates: ["boss_switched", "boss_detected"],
+      extraction_trace: {
+        ...semanticExtractionDebug.extraction_trace,
+        source: "llm_primary",
+        confidence: "high",
+        applied_updates: ["boss_switched", "boss_detected"],
+        llm_guard_decision: "apply",
+        llm_guard_reason: "high_confidence_grounded_candidate",
+        llm_guard_summary: "LLM 主识别候选通过 guard"
+      },
+      llm_called: true,
+      semantic_extraction_model: "deepseek-v4-flash",
+      llm_guard_decision: "apply",
+      llm_guard_reason: "high_confidence_grounded_candidate",
+      llm_guard_summary: "LLM 主识别候选通过 guard",
+      llm_shadow_summary: "Boss 候选：恶兆妖鬼 Margit",
+      final_decision: {
+        game_event: {
+          type: "boss_switch",
+          boss_name: "恶兆妖鬼 Margit",
+          guard_source: "llm_primary",
+          input_source: "voice_direct"
+        }
+      }
+    };
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(guardTrace));
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), privateTranscript);
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await openDebugWorkspace("Event Stream");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    await waitFor(() => expect(eventStream).toHaveTextContent("Guard：已应用"));
+    expect(eventStream).toHaveTextContent("LLM 主识别候选通过 guard");
+    expect(eventStream).not.toHaveTextContent(privateTranscript);
+  });
+
   it("polls background LLM shadow final events into Event Stream without raw text", async () => {
     const finalShadowEvent = {
       id: 1,
@@ -3725,7 +3791,7 @@ describe("App", () => {
       expect.stringContaining("/api/chat"),
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ message: "帮我看一下路线", session_id: "default", mode: "chat" })
+        body: JSON.stringify({ message: "帮我看一下路线", session_id: "default", mode: "chat", input_source: "voice_direct" })
       })
     );
     expect(eventBus.getRecentEvents(20)).toEqual(
@@ -3765,7 +3831,7 @@ describe("App", () => {
       expect.stringContaining("/api/chat"),
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ message: privateTranscript, session_id: "default", mode: "chat" })
+        body: JSON.stringify({ message: privateTranscript, session_id: "default", mode: "chat", input_source: "voice_direct" })
       })
     );
 
@@ -4139,7 +4205,15 @@ describe("App", () => {
     expect(await screen.findByText("Hollow Knight 里的 Hornet 怎么打？")).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/chat"),
-      expect.objectContaining({ method: "POST" })
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          message: "Hollow Knight 里的 Hornet 怎么打？",
+          session_id: "default",
+          mode: "chat",
+          input_source: "voice_confirmed"
+        })
+      })
     );
   });
 

@@ -708,6 +708,18 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
     assert "sk-" not in serialized
 
 
+def test_chat_accepts_voice_direct_input_source_in_semantic_debug():
+    client.post(
+        "/api/chat",
+        json={"message": "我换去打玛尔基特了", "session_id": "api-voice-direct-source", "input_source": "voice_direct"},
+    )
+
+    response = client.get("/api/debug/semantic-extraction/latest")
+
+    assert response.status_code == 200
+    assert response.json()["input_source"] == "voice_direct"
+
+
 def test_semantic_shadow_events_endpoint_returns_final_events_without_secrets(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")

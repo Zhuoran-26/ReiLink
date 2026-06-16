@@ -76,6 +76,8 @@ export type ChatResponse = {
   route_reason?: string | null;
 };
 
+export type ChatInputSource = "text" | "voice_confirmed" | "voice_direct";
+
 export type SetupStatus = {
   backend_ready: boolean;
   provider_configured: boolean;
@@ -426,16 +428,17 @@ export type PromptPreviewResponse = {
 
 export type SemanticExtractionDebugResponse = {
   latest_user_message: string | null;
+  input_source?: ChatInputSource;
   rule_result: Record<string, unknown> | null;
   rule_confidence: number;
   raw_rule_confidence?: number;
   ambiguity_detected?: boolean;
   fallback_reason?: string | null;
-  source?: "rule" | "llm_fallback" | "mixed" | "none";
+  source?: "rule" | "llm_primary" | "llm_fallback" | "mixed" | "none";
   confidence?: "high" | "medium" | "low";
   applied_updates?: string[];
   extraction_trace?: {
-    source: "rule" | "llm_fallback" | "mixed" | "none";
+    source: "rule" | "llm_primary" | "llm_fallback" | "mixed" | "none";
     confidence: "high" | "medium" | "low";
     fallback_reason: string | null;
     skip_reason?: string | null;
@@ -445,6 +448,9 @@ export type SemanticExtractionDebugResponse = {
     llm_shadow_confidence?: "high" | "medium" | "low";
     llm_shadow_summary?: string | null;
     llm_shadow_diff?: string | null;
+    llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
+    llm_guard_reason?: string | null;
+    llm_guard_summary?: string | null;
   };
   llm_called: boolean;
   semantic_extraction_model: string | null;
@@ -452,6 +458,11 @@ export type SemanticExtractionDebugResponse = {
   provider_latency_ms: number;
   llm_result: Record<string, unknown> | null;
   llm_shadow?: Record<string, unknown> | null;
+  llm_primary?: Record<string, unknown> | null;
+  llm_guard?: Record<string, unknown> | null;
+  llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
+  llm_guard_reason?: string | null;
+  llm_guard_summary?: string | null;
   llm_shadow_status?: "skipped" | "succeeded" | "failed";
   llm_shadow_confidence?: "high" | "medium" | "low";
   llm_shadow_summary?: string | null;
@@ -477,7 +488,7 @@ export type SemanticShadowEvent = {
     | "shadow_provider_error"
     | "shadow_cancelled"
     | "shadow_expired";
-  source?: "rule" | "llm_fallback" | "mixed" | "none";
+  source?: "rule" | "llm_primary" | "llm_fallback" | "mixed" | "none";
   confidence?: "high" | "medium" | "low";
   fallback_reason?: string | null;
   skip_reason?: string | null;
@@ -487,6 +498,10 @@ export type SemanticShadowEvent = {
   llm_shadow_confidence?: "high" | "medium" | "low";
   llm_shadow_summary?: string | null;
   llm_shadow_diff?: string | null;
+  input_source?: ChatInputSource;
+  llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
+  llm_guard_reason?: string | null;
+  llm_guard_summary?: string | null;
   semantic_extraction_model?: string | null;
   semantic_extraction_latency_ms?: number;
 };
@@ -712,9 +727,13 @@ export const api = {
   clearPendingMemories: () => request<{ status: "cleared" }>("/api/memory/pending/clear", { method: "POST" }),
   resetGameSession: () => request<{ status: string }>("/api/debug/game-session/reset", { method: "POST" }),
   resetMemory: () => request<{ status: "reset" }>("/api/memory/reset", { method: "POST" }),
-  chat: (message: string, sessionId = "default") =>
-    request<ChatResponse>("/api/chat", {
+  chat: (message: string, sessionId = "default", inputSource: ChatInputSource = "text") => {
+    const payload = inputSource === "text"
+      ? { message, session_id: sessionId, mode: "chat" }
+      : { message, session_id: sessionId, mode: "chat", input_source: inputSource };
+    return request<ChatResponse>("/api/chat", {
       method: "POST",
-      body: JSON.stringify({ message, session_id: sessionId, mode: "chat" })
-    })
+      body: JSON.stringify(payload)
+    });
+  }
 };

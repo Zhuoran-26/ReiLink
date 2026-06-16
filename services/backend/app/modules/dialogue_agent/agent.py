@@ -93,6 +93,8 @@ class DialogueAgent:
             intent_result.intent,
             semantic_game_state,
             session_focus_boss=session_focus.boss,
+            input_source=request.input_source,
+            run_llm_primary=True,
             run_llm_shadow=not defer_semantic_shadow,
         )
         self.game_session.update_from_user_message(
@@ -190,6 +192,7 @@ class DialogueAgent:
                     intent_result.intent,
                     semantic_game_state,
                     session_focus_boss=session_focus.boss,
+                    input_source=request.input_source,
                     trace_id=shadow_trace_id,
                 )
         else:

@@ -1,8 +1,8 @@
-# LLM-primary Guarded Extraction Architecture v0
+# LLM-primary Guarded Extraction Architecture v1 Pilot
 
 Updated: 2026-06-17
 
-Status: architecture / spec only. This document defines the next semantic extraction direction for ReiLink. It does not implement LLM-primary extraction, does not change game-state write logic, does not add embeddings or vector databases, and does not change memory, proactive, persona, voice, or Overlay runtime boundaries.
+Status: implemented pilot. ReiLink now has a foreground LLM-primary semantic reader for chat input when an LLM provider is configured, followed by strict JSON/schema validation and deterministic guard. It preserves rule fallback when provider is unavailable or the guarded candidate is unsafe. This pilot does not add embeddings or vector databases and does not change memory, proactive, persona, voice core behavior, or Overlay runtime boundaries.
 
 ## Purpose
 
@@ -104,64 +104,53 @@ Important invariants:
 - Low confidence writes nothing.
 - Conflicts are not silently overwritten.
 
-## LLM Candidate Schema v0
+## Runtime Pilot Scope
 
-The LLM returns one strict JSON object. Unknown game entities are allowed as freeform candidate labels, but guard may lower grounding confidence or ask clarification.
+The v1 pilot applies only low-risk game-session fields:
+
+- `game`
+- `boss`
+- `death_count_absolute`
+- `death_count_increment`
+- `frustration`
+- `boss_cleared`
+- `guide_request`
+- `strategy_request`
+
+All sources enter the same path:
+
+- typed chat text: `input_source=text`
+- confirmed voice transcript: `input_source=voice_confirmed`
+- Direct Conversation auto-send transcript: `input_source=voice_direct`
+
+The LLM never writes state directly. It returns a candidate. Pydantic schema validation rejects invalid JSON, unknown enum values, and out-of-range counts. The deterministic guard then emits exactly one of:
+
+- `apply`
+- `ask_clarification`
+- `candidate_only`
+- `no_op`
+- `fallback_to_rule`
+
+Only `apply` creates a `semantic_game_event` with `guard_source=llm_primary`; `GameSessionStore` applies that event deterministically. Legacy Shadow Mode remains observability-only.
+
+## LLM Candidate Schema v1 Pilot
+
+The foreground LLM returns one strict JSON object. It uses constrained IDs for the current pilot and must keep memory / proactive candidates disabled.
 
 ```json
 {
-  "source": "text",
-  "language": "zh-CN",
-  "input_summary": "玩家说自己正在打某个 Boss",
   "is_game_related": true,
-  "intent": "report_current_boss",
-  "confidence": 0.82,
-  "uncertainty": ["possible_asr_entity_misspelling"],
-  "requires_clarification": false,
-  "evidence_summary": "用户明确说正在打玛尔基特",
-  "game": {
-    "label": "Elden Ring",
-    "catalog_id": "elden_ring",
-    "confidence": 0.7,
-    "evidence": "当前上下文和实体属于艾尔登法环"
-  },
-  "boss": {
-    "label": "玛尔基特",
-    "catalog_id": "margit",
-    "confidence": 0.86,
-    "evidence": "用户说正在打玛尔基特",
-    "freeform": false
-  },
-  "enemy": null,
-  "area": null,
-  "npc": null,
-  "item": null,
-  "mechanic": null,
-  "events": {
-    "death_count_absolute": null,
-    "death_count_increment": null,
-    "frustration_level": null,
-    "boss_cleared": false,
-    "game_switched": false,
-    "boss_switched": true,
-    "guide_request": false,
-    "strategy_request": false,
-    "memory_candidate_hint": false
-  },
-  "proposed_updates": [
-    {
-      "field": "current_boss",
-      "value": "margit",
-      "reason": "explicit current boss report"
-    }
-  ],
-  "do_not_update": [],
-  "conflicts_with_current_context": true,
-  "conflict_reason": "current boss is Malenia; user appears to be switching boss",
-  "needs_user_confirmation": false,
-  "sensitive_or_memory_related": false,
-  "should_not_create_memory": true,
-  "safe_trace_summary": "可能切换当前 Boss：玛尔基特"
+  "confidence": "high",
+  "game": {"operation": "set", "value": "elden_ring", "confidence": "high"},
+  "boss": {"operation": "set", "value": "margit", "surface_label": null, "confidence": "high"},
+  "death_count": {"operation": "none", "value": null, "confidence": "low"},
+  "frustration": {"operation": "none", "confidence": "low"},
+  "boss_cleared": {"operation": "none", "confidence": "low"},
+  "guide_request": {"value": false, "confidence": "low"},
+  "strategy_request": {"value": false, "confidence": "low"},
+  "memory_candidate": {"should_create": false, "kind": "none", "safe_summary": null, "confidence": "low"},
+  "proactive_signal": {"type": "none", "confidence": "low", "reason": ""},
+  "reasoning_summary": "safe short summary, no raw user text"
 }
 ```
 
@@ -169,63 +158,34 @@ The LLM returns one strict JSON object. Unknown game entities are allowed as fre
 
 Base fields:
 
-- `source`: `text`, `voice_confirmed`, or `voice_direct`.
-- `language`: detected language, usually `zh-CN`.
-- `input_summary`: short safe summary, not full user text.
 - `is_game_related`: boolean.
-- `intent`: enum such as `report_current_boss`, `ask_strategy`, `report_death`, `report_clear`, `switch_game`, `casual`, `memory_statement`, `unknown`.
-- `confidence`: LLM self-reported confidence from `0.0` to `1.0`.
-- `uncertainty`: short list of uncertainty reasons.
-- `requires_clarification`: boolean.
-- `evidence_summary`: safe evidence summary, not full transcript.
+- `confidence`: `high`, `medium`, or `low`.
 
 Entity fields:
 
-- `game`
-- `boss`
-- `enemy`
-- `area`
-- `npc`
-- `item`
-- `mechanic`
-
-Each entity should support:
-
-- `label`: user-facing label.
-- `catalog_id`: nullable.
-- `confidence`: `0.0` to `1.0`.
-- `evidence`: short safe evidence.
-- `freeform`: true when no catalog match exists.
+- `game.operation`: `set`, `keep`, `none`, `unknown`.
+- `game.value`: `elden_ring`, `hollow_knight`, `unknown`, or `null`.
+- `boss.operation`: `set`, `keep`, `clear`, `none`, `unknown`.
+- `boss.value`: `margit`, `tree_sentinel`, `false_knight`, `unknown`, or `null`.
+- `boss.surface_label`: nullable safe short label.
 
 Event fields:
 
-- `death_count_absolute`
-- `death_count_increment`
-- `frustration_level`
-- `boss_cleared`
-- `game_switched`
-- `boss_switched`
-- `guide_request`
-- `strategy_request`
-- `memory_candidate_hint`
-
-Update fields:
-
-- `proposed_updates`
-- `do_not_update`
-- `conflicts_with_current_context`
-- `conflict_reason`
-- `needs_user_confirmation`
+- `death_count.operation`: `set`, `increment`, `none`, `unknown`; value range `0..99`.
+- `frustration.operation`: `raise`, `lower`, `clear`, `keep`, `none`, `unknown`.
+- `boss_cleared.operation`: `set_true`, `set_false`, `none`, `unknown`.
+- `guide_request.value`: boolean.
+- `strategy_request.value`: boolean.
 
 Safety fields:
 
-- `sensitive_or_memory_related`
-- `should_not_create_memory`
-- `safe_trace_summary`
+- `memory_candidate.should_create`: must remain `false` in this pilot.
+- `proactive_signal.type`: must remain `none` in this pilot.
+- `reasoning_summary`: safe short summary only; no raw user text, transcript, prompt, JSON, path, or secret.
 
 Schema requirements:
 
-- It must be multi-game and must not hardcode Elden Ring concepts.
+- The pilot currently uses a small constrained candidate ID set; broader multi-game catalog grounding remains future work.
 - It must distinguish asking for a guide from reporting current boss.
 - It must distinguish temporary game-session state from long-term memory candidate.
 - It must distinguish explicit "remember this" from casual statements.

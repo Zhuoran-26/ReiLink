@@ -241,5 +241,87 @@
     ],
     "expected_behavior": "Debug / Game workspace / Event Stream show safe trace summaries only.",
     "forbidden_trace_content": ["full transcript", "full user input", "raw prompt", "raw LLM JSON", "API key", ".env", "full local path", "stdout", "stderr", "full assistant reply"]
+  },
+  {
+    "id": "llm-primary-voice-confirmed-source",
+    "category": "llm_primary_guarded_extraction_source",
+    "input_source": "voice_confirmed",
+    "input": "我现在在打玛尔基特",
+    "precondition": "Voice transcript is placed in the input and the user explicitly clicks send",
+    "expected_decision": "apply",
+    "expected_behavior": "Confirmed voice transcript enters the same LLM-primary path with input_source=voice_confirmed and can update current boss through deterministic guard.",
+    "must_not_do": ["treat_confirmed_voice_as_direct_auto_send", "hide_source_metadata"]
+  },
+  {
+    "id": "llm-primary-voice-direct-source",
+    "category": "llm_primary_guarded_extraction_source",
+    "input_source": "voice_direct",
+    "input": "我换去打玛尔基特了",
+    "precondition": "Direct Conversation Mode is explicitly enabled and transcript auto-send succeeds",
+    "expected_decision": "apply",
+    "expected_behavior": "Direct voice transcript enters normal chat flow with input_source=voice_direct; guard trace is visible and direct conversation still speaks according to Voice Profile.",
+    "must_not_do": ["bypass_chat_flow", "write_state_before_guard", "leak_full_transcript_to_event_stream"]
+  },
+  {
+    "id": "llm-primary-low-confidence-no-op",
+    "category": "llm_primary_guarded_extraction_confidence",
+    "input_source": "text",
+    "input": "那个东西又寄了",
+    "precondition": "LLM returns low confidence candidate with weak grounding",
+    "expected_decision": "candidate_only",
+    "acceptable_decisions": ["candidate_only", "no_op"],
+    "expected_behavior": "Low confidence candidate is observable but does not change game state.",
+    "must_not_do": ["apply_low_confidence_boss", "invent_catalog_alias"]
+  },
+  {
+    "id": "llm-primary-medium-confidence-candidate-only",
+    "category": "llm_primary_guarded_extraction_confidence",
+    "input_source": "text",
+    "input": "那个骑马金甲大哥又寄了",
+    "precondition": "LLM proposes Tree Sentinel with medium confidence and no rule agreement",
+    "expected_decision": "candidate_only",
+    "expected_behavior": "Medium confidence unknown-alias candidate remains candidate-only unless grounding or rule agreement raises apply confidence.",
+    "must_not_do": ["silently_apply_medium_unknown_alias"]
+  },
+  {
+    "id": "llm-primary-shadow-boundary-not-writing",
+    "category": "llm_primary_guarded_extraction_shadow_boundary",
+    "input_source": "text",
+    "input": "我在那个骑马金甲大哥那里又寄了几次",
+    "precondition": "Legacy Shadow Mode also observes a candidate",
+    "expected_decision": "candidate_only",
+    "expected_behavior": "Shadow candidate remains observability-only. Only LLM-primary guard apply path can write state.",
+    "must_not_do": ["shadow_event_writes_game_state", "shadow_event_writes_memory", "shadow_event_triggers_proactive"]
+  },
+  {
+    "id": "llm-primary-event-stream-safe-summary",
+    "category": "llm_primary_guarded_extraction_trace",
+    "input_source": "voice_direct",
+    "input": "我换去打玛尔基特了",
+    "precondition": "Debug Event Stream is open after a guarded apply",
+    "expected_trace_fields": ["input_source", "llm_guard_decision", "llm_guard_summary", "applied_updates"],
+    "expected_behavior": "Event Stream shows safe LLM-primary / guard summary, applied update labels, and no raw prompt or transcript.",
+    "forbidden_trace_content": ["full transcript", "raw prompt", "raw LLM JSON", "API key", ".env", "full local path"]
+  },
+  {
+    "id": "llm-primary-game-workspace-update-visible",
+    "category": "llm_primary_guarded_extraction_game_workspace",
+    "input_source": "text",
+    "input": "我现在在打玛尔基特",
+    "precondition": "Game workspace Current Context is visible or opened after chat",
+    "expected_decision": "apply",
+    "expected_behavior": "After deterministic state apply, Game workspace displays current boss and session state consistently with Debug trace.",
+    "must_not_do": ["debug_trace_updates_but_game_workspace_stale"]
+  },
+  {
+    "id": "llm-primary-old-flow-no-crash",
+    "category": "llm_primary_guarded_extraction_regression",
+    "input_source": "text",
+    "input": "我现在卡在玛尔基特",
+    "precondition": "Provider is unavailable or LLM-primary is disabled for compatibility",
+    "expected_decision": "fallback_to_rule",
+    "acceptable_decisions": ["fallback_to_rule", "apply"],
+    "expected_behavior": "Existing rule-supported flow does not crash and still provides safe state updates when LLM-primary cannot run.",
+    "must_not_do": ["break_rule_fallback", "block_chat_reply"]
   }
 ]

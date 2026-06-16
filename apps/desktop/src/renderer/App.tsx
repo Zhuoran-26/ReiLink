@@ -26,6 +26,7 @@ import {
   ApiRequestError,
   AppSettings,
   AudioProbeResponse,
+  ChatInputSource,
   ChatDebugResponse,
   GameContextResponse,
   GameDetectionResponse,
@@ -352,6 +353,7 @@ const emptyPromptPreview: PromptPreviewResponse = {
 
 const emptySemanticExtractionDebug: SemanticExtractionDebugResponse = {
   latest_user_message: null,
+  input_source: "text",
   rule_result: null,
   rule_confidence: 0,
   llm_called: false,
@@ -360,6 +362,11 @@ const emptySemanticExtractionDebug: SemanticExtractionDebugResponse = {
   provider_latency_ms: 0,
   llm_result: null,
   llm_shadow: null,
+  llm_primary: null,
+  llm_guard: null,
+  llm_guard_decision: "no_op",
+  llm_guard_reason: "not_run",
+  llm_guard_summary: "LLM 主识别未运行",
   llm_shadow_status: "skipped",
   llm_shadow_confidence: "low",
   llm_shadow_summary: "未运行",
@@ -705,6 +712,11 @@ const labelMap: Record<string, string> = {
   llm_event: "LLM 游戏事件",
   llm_memory: "LLM 记忆",
   llm_result: "LLM 判断",
+  llm_guard: "LLM Guard",
+  llm_guard_decision: "Guard 判定",
+  llm_guard_reason: "Guard 原因",
+  llm_guard_summary: "Guard 摘要",
+  llm_primary: "LLM 主候选",
   llm_shadow: "LLM 影子候选",
   llm_shadow_confidence: "影子置信度",
   llm_shadow_diff: "规则 / 影子差异",
@@ -1050,6 +1062,7 @@ const eventTextLength = (value: string) => `${value.length} 字`;
 
 const userMessageEventSummary = (event: Extract<ReiLinkEvent, { type: "user_message_sent" }>) => {
   if (event.source === "voice_direct") return `语音自动发送 ${event.character_count ?? event.text.length} 字`;
+  if (event.source === "voice_confirmed") return `语音确认发送 ${event.character_count ?? event.text.length} 字`;
   return `用户消息 ${eventTextLength(event.text)}`;
 };
 
@@ -1173,6 +1186,17 @@ const semanticShadowStatusText = (status?: string | null) => {
   return labels[status ?? ""] ?? debugText(status);
 };
 
+const semanticGuardDecisionText = (decision?: string | null) => {
+  const labels: Record<string, string> = {
+    apply: "已应用",
+    ask_clarification: "需澄清",
+    candidate_only: "仅候选",
+    no_op: "无更新",
+    fallback_to_rule: "规则 fallback"
+  };
+  return labels[decision ?? ""] ?? debugText(decision);
+};
+
 const semanticShadowEventStatusText = (status?: string | null) => {
   const labels: Record<string, string> = {
     shadow_deferred: "LLM 影子识别已调度",
@@ -1217,6 +1241,8 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.skip_reason && event.skip_reason !== "no_semantic_signal" ? `跳过：${debugText(event.skip_reason)}` : "",
         event.parse_error ? `错误：${debugText(event.parse_error)}` : "",
         event.applied_updates?.length ? debugText(event.applied_updates) : "",
+        event.llm_guard_decision ? `Guard：${semanticGuardDecisionText(event.llm_guard_decision)}` : "",
+        event.llm_guard_summary ? sanitizeSessionTimelineText(event.llm_guard_summary, 96) : "",
         event.llm_shadow_status ? `影子：${semanticShadowStatusText(event.llm_shadow_status)}` : "",
         event.llm_shadow_summary ? sanitizeSessionTimelineText(event.llm_shadow_summary, 96) : "",
         event.llm_shadow_diff ? sanitizeSessionTimelineText(event.llm_shadow_diff, 96) : ""
@@ -2256,6 +2282,9 @@ export function App() {
     const shadowConfidence = trace?.llm_shadow_confidence ?? debug.llm_shadow_confidence ?? null;
     const shadowSummary = trace?.llm_shadow_summary ?? debug.llm_shadow_summary ?? null;
     const shadowDiff = trace?.llm_shadow_diff ?? debug.llm_shadow_diff ?? null;
+    const guardDecision = trace?.llm_guard_decision ?? debug.llm_guard_decision ?? null;
+    const guardReason = trace?.llm_guard_reason ?? debug.llm_guard_reason ?? null;
+    const guardSummary = trace?.llm_guard_summary ?? debug.llm_guard_summary ?? null;
     if (skipReason === "shadow_deferred" && shadowStatus === "skipped") return;
     const shouldEmit = Boolean(
       source !== "none"
@@ -2263,11 +2292,12 @@ export function App() {
       || parseError
       || (skipReason && skipReason !== "no_semantic_signal")
       || appliedUpdates.length
+      || (guardDecision && guardDecision !== "no_op")
       || (shadowStatus && shadowStatus !== "skipped")
       || (shadowSummary && !String(shadowSummary).startsWith("跳过：no_semantic_signal"))
     );
     if (!shouldEmit) return;
-    const key = JSON.stringify({ source, confidence, fallbackReason, skipReason, parseError, appliedUpdates, shadowStatus, shadowConfidence, shadowSummary, shadowDiff });
+    const key = JSON.stringify({ source, confidence, fallbackReason, skipReason, parseError, appliedUpdates, shadowStatus, shadowConfidence, shadowSummary, shadowDiff, guardDecision, guardReason, guardSummary, inputSource: debug.input_source });
     if (lastSemanticTraceEventRef.current === key) return;
     lastSemanticTraceEventRef.current = key;
     eventBus.emit({
@@ -2282,7 +2312,11 @@ export function App() {
       llm_shadow_status: shadowStatus ?? undefined,
       llm_shadow_confidence: shadowConfidence ?? undefined,
       llm_shadow_summary: shadowSummary,
-      llm_shadow_diff: shadowDiff
+      llm_shadow_diff: shadowDiff,
+      input_source: debug.input_source,
+      llm_guard_decision: guardDecision ?? undefined,
+      llm_guard_reason: guardReason,
+      llm_guard_summary: guardSummary
     });
   }, []);
 
@@ -2303,6 +2337,10 @@ export function App() {
         llm_shadow_confidence: event.llm_shadow_confidence,
         llm_shadow_summary: event.llm_shadow_summary ?? null,
         llm_shadow_diff: event.llm_shadow_diff ?? null,
+        input_source: event.input_source,
+        llm_guard_decision: event.llm_guard_decision,
+        llm_guard_reason: event.llm_guard_reason ?? null,
+        llm_guard_summary: event.llm_guard_summary ?? null,
         shadow_trace_id: event.trace_id,
         shadow_event_phase: event.phase,
         shadow_event_status: event.status
@@ -3113,6 +3151,11 @@ export function App() {
       : null;
     const voiceTranscript = options.voiceTranscript ?? fallbackVoiceTranscript;
     const sendingVoiceTranscript = Boolean(voiceTranscript);
+    const chatInputSource: ChatInputSource = voiceTranscript?.autoSent
+      ? "voice_direct"
+      : sendingVoiceTranscript
+        ? "voice_confirmed"
+        : "text";
     if (sendingVoiceTranscript) {
       clearVoiceTransientState();
       setVoiceAssistantTurnActive(true);
@@ -3139,8 +3182,8 @@ export function App() {
       type: "user_message_sent",
       timestamp: userMessage.createdAt,
       text: voiceTranscript?.autoSent ? "" : trimmed,
-      source: voiceTranscript?.autoSent ? "voice_direct" : "text",
-      character_count: voiceTranscript?.autoSent ? voiceTranscript.characterCount : undefined
+      source: chatInputSource,
+      character_count: sendingVoiceTranscript ? voiceTranscript?.characterCount ?? trimmed.length : undefined
     });
     if (options.clearInput ?? true) setInput("");
     clearVoiceTranscriptReady();
@@ -3156,7 +3199,7 @@ export function App() {
       ]);
     }, PLACEHOLDER_DELAY_MS);
     try {
-      const response = await api.chat(trimmed);
+      const response = await api.chat(trimmed, "default", chatInputSource);
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
       emitModelRouted(response.model_used, response.route_reason, response.request_started_at ?? String(requestStartedAt));
@@ -4966,6 +5009,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <dd>{debugText(semanticDebug.confidence)}</dd>
                 </div>
                 <div>
+                  <dt>{formatDebugLabel("llm_guard_decision")}</dt>
+                  <dd>{semanticGuardDecisionText(semanticDebug.llm_guard_decision)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_guard_summary")}</dt>
+                  <dd>{debugText(semanticDebug.llm_guard_summary)}</dd>
+                </div>
+                <div>
                   <dt>{formatDebugLabel("llm_shadow_status")}</dt>
                   <dd>{semanticShadowStatusText(semanticDebug.llm_shadow_status)}</dd>
                 </div>
@@ -6691,6 +6742,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>
                           <BooleanBadge value={semanticDebug.llm_called} />
                         </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_guard_decision")}</dt>
+                        <dd>{semanticGuardDecisionText(semanticDebug.llm_guard_decision)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_guard_summary")}</dt>
+                        <dd>{debugText(semanticDebug.llm_guard_summary)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("llm_shadow_status")}</dt>
