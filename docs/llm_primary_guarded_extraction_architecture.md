@@ -1,8 +1,8 @@
-# LLM-primary Guarded Extraction Architecture v1.0.2 Pilot
+# LLM-primary Guarded Extraction Architecture v1.0.3 Pilot
 
-Updated: 2026-06-17
+Updated: 2026-06-18
 
-Status: implemented pilot, updated in v1.0.2. ReiLink now has a foreground LLM-primary semantic reader for chat input when an LLM provider is configured, followed by tolerant-but-safe JSON/schema validation and deterministic guard. v1.0.2 stabilizes the primary JSON path by using a compact JSON-only prompt, Shadow-style JSON recovery, a no-response-format compat retry for invalid JSON/schema output, and clearer fallback trace fields. This pilot does not add embeddings or vector databases and does not change memory, proactive, persona, voice core behavior, or Overlay runtime boundaries.
+Status: implemented pilot, updated in v1.0.3. ReiLink now has a foreground LLM-primary semantic reader for chat input when an LLM provider is configured, followed by tolerant-but-safe JSON/schema validation and deterministic guard. v1.0.3 keeps the LLM primary for semantic understanding, hardens live-provider JSON/schema reliability, and separates formal game state writes from candidate understanding for guide-only, descriptive, nickname, low-certainty, and uncertain-confirmation cases. This pilot does not add embeddings, vector databases, UI confirmation popups, Candidate Memory, or a full pending-candidate runtime, and it does not change memory, proactive, persona, voice core behavior, or Overlay runtime boundaries.
 
 ## Purpose
 
@@ -117,6 +117,17 @@ The v1 pilot applies only low-risk game-session fields:
 - `guide_request`
 - `strategy_request`
 
+v1.0.3 also exposes candidate-understanding fields for reply context, trace, and eval:
+
+- `candidate_boss`
+- `candidate_event`
+- `candidate_game`
+- `candidate_confidence`
+- `candidate_reason`
+- `needs_confirmation`
+- `guide_entity`
+- `confirmation_intent`
+
 All sources enter the same path:
 
 - typed chat text: `input_source=text`
@@ -132,6 +143,30 @@ The LLM never writes state directly. It returns a candidate. Pydantic schema val
 - `fallback_to_rule`
 
 Only `apply` creates a `semantic_game_event` with `guard_source=llm_primary`; `GameSessionStore` applies that event deterministically. Legacy Shadow Mode remains observability-only.
+
+Formal game state remains separate from candidate understanding:
+
+```text
+Formal Game State:
+- current_game
+- current_boss
+- death_count
+- frustration_count
+- last_cleared_boss
+- current_activity
+
+Candidate Game Understanding:
+- candidate_boss
+- candidate_event
+- candidate_game
+- candidate_confidence
+- candidate_reason
+- needs_confirmation
+- guide_request / guide_entity
+- confirmation_intent
+```
+
+Candidate fields may inform Rei's immediate reply or future confirmation flow, but they do not write formal state unless the deterministic guard emits `apply`.
 
 ## v1.0.1 Runtime Fixes
 
@@ -219,9 +254,42 @@ When primary fails and rule fallback is considered, trace must show the path exp
 - `guard_final_decision=fallback_to_rule` / `no_op` / `apply`
 - `applied_by=rule_fallback` when a rule fallback actually writes state
 
+## v1.0.3 Live Reliability And Candidate Handling
+
+v1.0.3 addresses the live-provider gap where the LLM could be semantically right but the runtime either failed JSON/schema parsing or let a guessed entity become formal state too quickly.
+
+Reliability changes:
+
+- primary requests use low temperature, `response_format: {"type": "json_object"}` when available, and a larger bounded completion budget so valid JSON is not truncated.
+- live eval spaces scenarios slightly to reduce provider degradation from rapid consecutive requests.
+- JSON recovery accepts strict JSON, fenced JSON, prose around the first object, array-first object, simple wrapper keys such as `result` / `output` / `data`, smart quotes, fullwidth Chinese punctuation, and trailing commas.
+- pending-candidate confirmation uses a shorter prompt focused on `confirmation_intent` and candidate fields.
+- safe diagnostics distinguish `response_empty`, `response_too_long`, `no_json_object_found`, `json_decode_error`, `schema_validation_error`, `provider_timeout`, and `recovery_failed`.
+
+Diagnostics must never include raw prompts, raw provider responses, raw JSON, API keys, `.env`, full local paths, stdout/stderr, full transcripts, or full user input.
+
+Candidate handling rules:
+
+- Exact / canonical entity with an explicit state-change action can `apply`.
+- Guide-only / strategy request becomes `candidate_only`; it may set `guide_request` and `guide_entity`, but must not switch `current_boss`.
+- Descriptive / nickname / low-certainty entity, such as "那个骑马金甲大哥" or "那个金甲的", becomes `candidate_only` or `ask_clarification` unless current context already confirms the same boss.
+- `voice_direct` does not bypass the guard; ambiguous voice candidates remain confirmation-needed.
+- Harmless `current_game` updates are separated from risky updates such as `current_boss`, `death_count`, `last_cleared_boss`, and `current_activity=boss_attempt|boss_failed|boss_cleared`.
+
+Confirmation intent values:
+
+- `confirm`: clear confirmation. v1.0.3 traces this, but full pending-candidate runtime is not implemented, so a bare confirmation does not write formal state.
+- `deny`: reject / discard candidate; no formal state write.
+- `correct`: user gives a new target. If the new target is exact / canonical and guard confidence is sufficient, deterministic guard can apply the new target.
+- `uncertain`: weak or partial confirmation; keep candidate and `needs_confirmation=true`, but do not apply.
+- `unrelated`: ignore for the candidate.
+- `unknown`: no useful confirmation signal.
+
+The product boundary is deliberate: "useful for Rei's reply" is not the same as "safe to persist as formal game state."
+
 ## LLM Candidate Schema v1 Pilot
 
-The foreground LLM returns one JSON object. It uses constrained IDs for the current pilot and must keep memory / proactive candidates disabled. v1.0.2 prefers the minimal `updates` shape above, while the parser still accepts the expanded object below for compatibility.
+The foreground LLM returns one JSON object. It uses constrained IDs for the current pilot and must keep memory / proactive candidates disabled. v1.0.3 keeps the minimal `updates` shape compatible, while the parser still accepts the expanded object below and now also preserves candidate-understanding fields.
 
 ```json
 {
@@ -241,6 +309,14 @@ The foreground LLM returns one JSON object. It uses constrained IDs for the curr
   "new_current_target": {"value": null, "surface_label": null, "confidence": "low"},
   "guide_only_entity": {"value": null, "surface_label": null, "confidence": "low"},
   "current_target_candidate": {"value": null, "surface_label": null, "confidence": "low"},
+  "candidate_boss": {"value": null, "surface_label": null, "confidence": "low"},
+  "candidate_game": {"value": null, "confidence": "low"},
+  "candidate_event": "none",
+  "candidate_confidence": "low",
+  "candidate_reason": "",
+  "needs_confirmation": false,
+  "guide_entity": {"value": null, "surface_label": null, "confidence": "low"},
+  "confirmation_intent": "unknown",
   "memory_candidate": {"should_create": false, "kind": "none", "safe_summary": null, "confidence": "low"},
   "proactive_signal": {"type": "none", "confidence": "low", "reason": ""},
   "reasoning_summary": "safe short summary, no raw user text"
@@ -263,6 +339,14 @@ Entity fields:
 - `boss.surface_label`: nullable safe short label.
 - target-role entity `value`: the same constrained boss IDs as `boss.value`.
 - `boss_switched.value`: boolean switch intent candidate.
+- `candidate_boss.value`: constrained boss ID, `unknown`, or `null`; this may be a useful guess and is not formal state.
+- `candidate_game.value`: constrained game ID, `unknown`, or `null`.
+- `candidate_event`: `boss_attempt`, `boss_failed`, `boss_cleared`, `boss_switch`, `guide_request`, `game_context`, `none`, or `unknown`.
+- `candidate_confidence`: `high`, `medium`, or `low`.
+- `candidate_reason`: safe short reason such as `exact_canonical`, `guide_only`, `descriptive_nickname`, `phonetic_variant`, `uncertain_confirmation`, or `none`.
+- `needs_confirmation`: boolean.
+- `guide_entity.value`: constrained boss ID, `unknown`, or `null`.
+- `confirmation_intent`: `confirm`, `deny`, `correct`, `uncertain`, `unrelated`, or `unknown`.
 
 Event fields:
 
@@ -538,9 +622,9 @@ Pilot scope:
 
 Do not include memory writes, proactive triggers, persona edits, embeddings, or vector DB.
 
-### Phase 3: Extraction Eval Runner v0
+### Phase 3: Extraction Eval Runner v0 / v1.0.3
 
-Implemented as a backend module plus CLI:
+Implemented as a backend module plus CLI, expanded in v1.0.3 for live reliability and uncertain candidate handling:
 
 - runner module: `services/backend/app/modules/dialogue_agent/extraction_eval.py`
 - CLI entrypoint: `services/backend/scripts/run_extraction_eval.py`
@@ -559,21 +643,26 @@ The optional live-provider drift check is manual:
 ```bash
 cd services/backend
 . .venv/bin/activate
-python scripts/run_extraction_eval.py --provider live --allow-failures
+python scripts/run_extraction_eval.py --provider live
 ```
 
-The runner reuses the runtime `extract_semantics` path and `GameSessionStore`; it does not copy extraction business logic into a second ruleset. For each scenario it compares the guarded decision and state delta against expected results, applies only `final_decision.game_event`, and keeps raw user text / raw provider JSON / raw prompts / secrets out of the report.
+Use `--allow-failures` only when observing provider drift without wanting a non-zero exit code. Live eval depends on the configured provider and can drift because of auth, quota, timeout, or provider output variance; it is not a CI requirement.
 
-Fixed scenarios cover typed text, `voice_confirmed`, `voice_direct`, ASR-like variants, slang, guide-only references, boss set / switch, switch negation, death count absolute / increment, boss clear, rule conflict, invalid JSON, schema invalid, compat retry, ultra-compact retry, low-confidence candidate-only, and memory-sensitive boundaries.
+The runner reuses the runtime `extract_semantics` path and `GameSessionStore`; it does not copy extraction business logic into a second ruleset. For each scenario it compares the guarded decision and state delta against expected results, applies only `final_decision.game_event`, and keeps raw provider JSON / raw prompts / secrets out of the report.
 
-Metrics include total / passed / failed / pass_rate, LLM-primary success count, schema valid count, invalid_json count, schema_invalid count, fallback-to-rule count, compat retry count, ultra-compact retry count, wrong apply count, missed apply count, and correct candidate-only count.
+Fixed scenarios cover typed text, `voice_confirmed`, `voice_direct`, ASR-like variants, slang, guide-only references, descriptive / nickname candidates, current-context alias apply, uncertain / weak / clear confirmation, correction, boss set / switch, switch negation, death count absolute / increment, boss clear, harmless game-context update, rule conflict, invalid JSON, schema invalid, compat retry, ultra-compact retry, low-confidence candidate-only, and memory-sensitive boundaries.
+
+Metrics include total / passed / failed / pass_rate, LLM-primary success count, schema valid count, invalid_json count, schema_invalid count, fallback-to-rule count, compat retry count, ultra-compact retry count, wrong apply count, missed apply count, wrong risky apply count, missed risky apply count, harmless extra update count, and correct candidate-only count.
+
+Per-scenario results include risky and harmless state deltas, parse diagnostics, candidate boss/event/confidence/reason, `needs_confirmation`, `guide_entity`, and `confirmation_intent`.
 
 Known v0 limits:
 
 - Mock mode validates fixed guarded behavior and state deltas, not real-provider determinism.
 - Live mode is a drift / observation tool and can fail because of auth, timeout, quota, or provider output variance.
 - The runner applies only the guarded semantic event to isolate LLM-primary extraction from later raw-message rule re-interpretation.
-- Some ASR near-miss guide requests may still be blocked by upstream gating before the LLM path; v0 treats "no wrong state write" as acceptable until alias / gating expansion is separately scoped.
+- v1.0.3 does not implement persistent pending-candidate runtime, UI confirmation popups, or Candidate Memory. Pending candidate semantics are represented in extraction result, trace, and eval only.
+- Some ASR near-miss guide requests may still be blocked by upstream gating before the LLM path; v1.0.3 treats "no wrong state write" as acceptable until alias / gating expansion is separately scoped.
 
 ### Phase 4: Multi-game Catalog Expansion
 

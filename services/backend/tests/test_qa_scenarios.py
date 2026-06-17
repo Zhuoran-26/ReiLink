@@ -299,6 +299,12 @@ def test_extraction_eval_scenarios_have_required_fields():
         "extraction-eval-schema-invalid-no-op",
         "extraction-eval-compat-retry-success",
         "extraction-eval-ultra-compact-retry-success",
+        "extraction-eval-descriptive-failure-current-context-applies",
+        "extraction-eval-uncertain-confirmation-keeps-candidate",
+        "extraction-eval-weak-confirmation-keeps-candidate",
+        "extraction-eval-clear-confirm-trace-only",
+        "extraction-eval-correction-replaces-old-candidate",
+        "extraction-eval-harmless-game-context-not-risky",
     } <= ids
     assert {"text", "voice_confirmed", "voice_direct"} <= {item.get("input_source") for item in scenarios}
     for item in scenarios:

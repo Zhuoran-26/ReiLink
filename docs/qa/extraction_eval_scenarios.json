@@ -98,6 +98,7 @@
       "applied_by": null,
       "guide_request": true,
       "guide_only_entity": "margit",
+      "guide_entity": "margit",
       "current_boss": "女武神",
       "absent_applied_updates": ["boss_switched", "boss_detected"]
     }
@@ -336,6 +337,17 @@
       "compat_retry_used": true,
       "ultra_compact_used": true,
       "current_boss": "恶兆妖鬼 Margit"
+    },
+    "expected_live": {
+      "decision": "apply",
+      "applied_by": "llm_primary",
+      "fallback_extractor": null,
+      "provider_status": "succeeded",
+      "schema_valid": true,
+      "invalid_json": false,
+      "compat_retry_used": "__any__",
+      "ultra_compact_used": false,
+      "current_boss": "恶兆妖鬼 Margit"
     }
   },
   {
@@ -358,6 +370,18 @@
       "compat_retry_used": true,
       "ultra_compact_used": true,
       "applied_by": null,
+      "current_boss": null
+    },
+    "expected_live": {
+      "decision": "candidate_only",
+      "acceptable_decisions": ["candidate_only", "ask_clarification", "no_op"],
+      "provider_status": "succeeded",
+      "schema_valid": true,
+      "schema_invalid": false,
+      "compat_retry_used": false,
+      "ultra_compact_used": false,
+      "applied_by": null,
+      "no_risky_state_delta": true,
       "current_boss": null
     }
   },
@@ -385,6 +409,11 @@
       "current_boss": "恶兆妖鬼 Margit",
       "compat_retry_used": true,
       "compat_retry_succeeded": true,
+      "ultra_compact_used": false
+    },
+    "expected_live": {
+      "compat_retry_used": "__any__",
+      "compat_retry_succeeded": null,
       "ultra_compact_used": false
     }
   },
@@ -417,6 +446,11 @@
       "compat_retry_succeeded": true,
       "ultra_compact_used": true,
       "forbidden_current_boss": ["女武神"]
+    },
+    "expected_live": {
+      "compat_retry_used": "__any__",
+      "compat_retry_succeeded": null,
+      "ultra_compact_used": false
     }
   },
   {
@@ -439,6 +473,13 @@
       "applied_by": null,
       "current_boss": null,
       "forbidden_current_boss": ["恶兆妖鬼 Margit", "大树守卫"]
+    },
+    "expected_live": {
+      "decision": "apply",
+      "acceptable_decisions": ["apply", "ask_clarification", "candidate_only"],
+      "applied_by": "llm_primary",
+      "current_boss": "恶兆妖鬼 Margit",
+      "forbidden_current_boss": []
     }
   },
   {
@@ -453,12 +494,21 @@
       "confidence": "low",
       "boss": {"operation": "set", "value": "tree_sentinel", "confidence": "low"},
       "current_target_candidate": {"value": "tree_sentinel", "confidence": "low"},
+      "candidate_boss": {"value": "tree_sentinel", "confidence": "low"},
+      "candidate_event": "boss_failed",
+      "candidate_reason": "descriptive_nickname",
+      "needs_confirmation": true,
       "safe_trace_summary": "low confidence alias"
     },
     "expected": {
       "decision": "candidate_only",
-      "acceptable_decisions": ["candidate_only", "no_op"],
+      "acceptable_decisions": ["candidate_only", "ask_clarification", "no_op"],
       "applied_by": null,
+      "candidate_required": true,
+      "candidate_boss": "tree_sentinel",
+      "candidate_event": "boss_failed",
+      "needs_confirmation": true,
+      "no_risky_state_delta": true,
       "current_boss": null,
       "forbidden_current_boss": ["大树守卫"]
     }
@@ -475,14 +525,216 @@
       "confidence": "medium",
       "boss": {"operation": "set", "value": "tree_sentinel", "confidence": "medium"},
       "current_target_candidate": {"value": "tree_sentinel", "confidence": "medium"},
+      "candidate_boss": {"value": "tree_sentinel", "confidence": "medium"},
+      "candidate_event": "boss_attempt",
+      "candidate_reason": "descriptive_nickname",
+      "needs_confirmation": true,
       "safe_trace_summary": "voice direct below threshold"
     },
     "expected": {
       "decision": "candidate_only",
       "acceptable_decisions": ["candidate_only", "ask_clarification", "no_op"],
       "applied_by": null,
+      "candidate_required": true,
+      "candidate_boss": "tree_sentinel",
+      "candidate_event": "boss_attempt",
+      "acceptable_candidate_events": ["boss_attempt", "boss_switch"],
+      "needs_confirmation": true,
+      "no_risky_state_delta": true,
       "current_boss": null,
       "forbidden_current_boss": ["大树守卫"]
+    }
+  },
+  {
+    "id": "extraction-eval-descriptive-failure-current-context-applies",
+    "category": "extraction_eval",
+    "input_source": "text",
+    "input": "那个骑马金甲大哥又寄了",
+    "intent": "casual_chat",
+    "pre_state": {"current_game": "Elden Ring", "current_boss": "大树守卫", "death_count": 2},
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "death_update",
+      "confidence": "high",
+      "boss": {"operation": "set", "value": "tree_sentinel", "confidence": "high"},
+      "candidate_boss": {"value": "tree_sentinel", "confidence": "high"},
+      "candidate_event": "boss_failed",
+      "candidate_reason": "descriptive_nickname",
+      "updates": [{"field": "death_count_increment", "value": 1, "confidence": 0.91}],
+      "safe_trace_summary": "descriptive current context"
+    },
+    "expected": {
+      "decision": "apply",
+      "applied_by": "llm_primary",
+      "event_type": "failed_attempt",
+      "candidate_boss": "tree_sentinel",
+      "candidate_event": "boss_failed",
+      "current_boss": "大树守卫",
+      "death_count": 3,
+      "current_activity": "boss_failed"
+    }
+  },
+  {
+    "id": "extraction-eval-uncertain-confirmation-keeps-candidate",
+    "category": "extraction_eval",
+    "input_source": "text",
+    "input": "有可能是大树守卫吧？我没看清名字，死太快了",
+    "intent": "casual_chat",
+    "pre_state": {"current_game": "Elden Ring", "current_boss": null, "death_count": 0},
+    "pending_candidate": {"candidate_boss": "tree_sentinel", "candidate_event": "boss_failed", "confidence": "medium"},
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "candidate_confirmation",
+      "confidence": "high",
+      "candidate_boss": {"value": "tree_sentinel", "confidence": "high"},
+      "candidate_event": "boss_failed",
+      "candidate_reason": "uncertain_confirmation",
+      "needs_confirmation": true,
+      "confirmation_intent": "uncertain",
+      "safe_trace_summary": "uncertain confirmation"
+    },
+    "expected": {
+      "decision": "candidate_only",
+      "applied_by": null,
+      "candidate_required": true,
+      "candidate_boss": "tree_sentinel",
+      "candidate_event": "boss_failed",
+      "acceptable_candidate_events": ["boss_failed", "boss_attempt"],
+      "needs_confirmation": true,
+      "confirmation_intent": "uncertain",
+      "no_risky_state_delta": true,
+      "current_boss": null,
+      "death_count": 0
+    }
+  },
+  {
+    "id": "extraction-eval-weak-confirmation-keeps-candidate",
+    "category": "extraction_eval",
+    "input_source": "text",
+    "input": "名字太长我没记住，但是也许是吧？",
+    "intent": "casual_chat",
+    "pre_state": {"current_game": "Elden Ring", "current_boss": null, "death_count": 0},
+    "pending_candidate": {"candidate_boss": "tree_sentinel", "candidate_event": "boss_failed", "confidence": "medium"},
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "candidate_confirmation",
+      "confidence": "medium",
+      "candidate_boss": {"value": "tree_sentinel", "confidence": "medium"},
+      "candidate_event": "boss_failed",
+      "candidate_reason": "uncertain_confirmation",
+      "needs_confirmation": true,
+      "confirmation_intent": "uncertain",
+      "safe_trace_summary": "weak uncertain confirmation"
+    },
+    "expected": {
+      "decision": "candidate_only",
+      "applied_by": null,
+      "candidate_required": true,
+      "candidate_boss": "tree_sentinel",
+      "candidate_event": "boss_failed",
+      "needs_confirmation": true,
+      "confirmation_intent": "uncertain",
+      "no_risky_state_delta": true,
+      "current_boss": null,
+      "death_count": 0
+    }
+  },
+  {
+    "id": "extraction-eval-clear-confirm-trace-only",
+    "category": "extraction_eval",
+    "input_source": "text",
+    "input": "对，就是它",
+    "intent": "casual_chat",
+    "pre_state": {"current_game": "Elden Ring", "current_boss": null},
+    "pending_candidate": {"candidate_boss": "tree_sentinel", "candidate_event": "boss_failed", "confidence": "medium"},
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "candidate_confirmation",
+      "confidence": "high",
+      "candidate_boss": {"value": "tree_sentinel", "confidence": "high"},
+      "candidate_event": "boss_failed",
+      "confirmation_intent": "confirm",
+      "safe_trace_summary": "clear confirm trace"
+    },
+    "expected": {
+      "decision": "candidate_only",
+      "applied_by": null,
+      "candidate_required": true,
+      "candidate_boss": "tree_sentinel",
+      "candidate_event": "boss_failed",
+      "confirmation_intent": "confirm",
+      "no_risky_state_delta": true,
+      "current_boss": null
+    }
+  },
+  {
+    "id": "extraction-eval-correction-replaces-old-candidate",
+    "category": "extraction_eval",
+    "input_source": "text",
+    "input": "不是，是玛尔基特",
+    "intent": "casual_chat",
+    "pre_state": {"current_game": "Elden Ring", "current_boss": null},
+    "pending_candidate": {"candidate_boss": "tree_sentinel", "candidate_event": "boss_failed", "confidence": "medium"},
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "candidate_correction",
+      "confidence": "high",
+      "boss": {"operation": "set", "value": "margit", "confidence": "high"},
+      "current_target_candidate": {"value": "margit", "confidence": "high"},
+      "candidate_boss": {"value": "margit", "confidence": "high"},
+      "candidate_event": "boss_attempt",
+      "confirmation_intent": "correct",
+      "safe_trace_summary": "corrected to margit"
+    },
+    "expected": {
+      "decision": "apply",
+      "applied_by": "llm_primary",
+      "candidate_boss": "margit",
+      "candidate_event": "boss_attempt",
+      "acceptable_candidate_events": ["boss_attempt", "boss_failed", "boss_switch"],
+      "confirmation_intent": "correct",
+      "current_boss": "恶兆妖鬼 Margit",
+      "forbidden_current_boss": ["大树守卫"]
+    }
+  },
+  {
+    "id": "extraction-eval-harmless-game-context-not-risky",
+    "category": "extraction_eval",
+    "input_source": "text",
+    "input": "法环里那个东西又寄了",
+    "intent": "casual_chat",
+    "pre_state": {"current_game": null, "current_boss": null, "death_count": 0},
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "game_context",
+      "confidence": "high",
+      "updates": [{"field": "game", "value": "艾尔登法环", "canonical": "elden_ring", "confidence": 0.91}],
+      "candidate_event": "game_context",
+      "safe_trace_summary": "game only context"
+    },
+    "expected": {
+      "decision": "apply",
+      "applied_by": "llm_primary",
+      "event_type": "game_context",
+      "current_game": "Elden Ring",
+      "current_boss": null,
+      "death_count": 0,
+      "no_risky_state_delta": true,
+      "allow_harmless_state_delta": true
+    },
+    "expected_live": {
+      "decision": "candidate_only",
+      "acceptable_decisions": ["candidate_only", "ask_clarification", "no_op", "apply"],
+      "applied_by": "__any__",
+      "provider_status": "__any__",
+      "schema_valid": "__any__",
+      "invalid_json": "__any__",
+      "schema_invalid": "__any__",
+      "event_type": "__any__",
+      "current_game": "__any__",
+      "current_boss": null,
+      "death_count": 0,
+      "no_risky_state_delta": true
     }
   }
 ]

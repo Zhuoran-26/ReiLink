@@ -34,6 +34,17 @@ ConfidenceLabel = Literal["high", "medium", "low"]
 ALLOWED_INPUT_SOURCES = {"text", "voice_confirmed", "voice_direct"}
 ALLOWED_GAME_EVENTS = {"failed_attempt", "near_clear", "boss_cleared", "boss_switch", "boss_attempt", "game_context", "none"}
 LLM_GUARD_DECISIONS = {"apply", "ask_clarification", "candidate_only", "no_op", "fallback_to_rule"}
+CONFIRMATION_INTENTS = {"confirm", "deny", "correct", "uncertain", "unrelated", "unknown"}
+CANDIDATE_EVENTS = {
+    "boss_attempt",
+    "boss_failed",
+    "boss_cleared",
+    "boss_switch",
+    "guide_request",
+    "game_context",
+    "none",
+    "unknown",
+}
 ALLOWED_MEMORY_TYPES = {
     "guide_preference",
     "playstyle_preference",
@@ -69,6 +80,7 @@ PRIMARY_UPDATE_FIELDS = {
 SEMANTIC_LLM_TIMEOUT_SECONDS = 12.0
 SEMANTIC_LLM_MIN_TIMEOUT_SECONDS = 8.0
 SEMANTIC_LLM_MAX_TIMEOUT_SECONDS = 15.0
+SEMANTIC_PRIMARY_MAX_TIMEOUT_SECONDS = 25.0
 SEMANTIC_SHADOW_EVENT_LIMIT = 100
 SEMANTIC_SHADOW_EVENT_EXPIRE_SECONDS = 25.0
 
@@ -124,6 +136,13 @@ class _LLMPrimaryEntitySignal(BaseModel):
 
     value: str | None = None
     surface_label: str | None = None
+    confidence: ConfidenceLabel = "low"
+
+
+class _LLMPrimaryGameCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: str | None = None
     confidence: ConfidenceLabel = "low"
 
 
@@ -187,6 +206,23 @@ class _LLMPrimaryCandidate(BaseModel):
     new_current_target: _LLMPrimaryEntitySignal = Field(default_factory=_LLMPrimaryEntitySignal)
     guide_only_entity: _LLMPrimaryEntitySignal = Field(default_factory=_LLMPrimaryEntitySignal)
     current_target_candidate: _LLMPrimaryEntitySignal = Field(default_factory=_LLMPrimaryEntitySignal)
+    candidate_boss: _LLMPrimaryEntitySignal = Field(default_factory=_LLMPrimaryEntitySignal)
+    candidate_game: _LLMPrimaryGameCandidate = Field(default_factory=_LLMPrimaryGameCandidate)
+    candidate_event: Literal[
+        "boss_attempt",
+        "boss_failed",
+        "boss_cleared",
+        "boss_switch",
+        "guide_request",
+        "game_context",
+        "none",
+        "unknown",
+    ] = "none"
+    candidate_confidence: ConfidenceLabel = "low"
+    candidate_reason: str = Field(default="", max_length=120)
+    needs_confirmation: bool = False
+    guide_entity: _LLMPrimaryEntitySignal = Field(default_factory=_LLMPrimaryEntitySignal)
+    confirmation_intent: Literal["confirm", "deny", "correct", "uncertain", "unrelated", "unknown"] = "unknown"
     memory_candidate: _LLMPrimaryMemoryCandidate = Field(default_factory=_LLMPrimaryMemoryCandidate)
     proactive_signal: _LLMPrimaryProactiveSignal = Field(default_factory=_LLMPrimaryProactiveSignal)
     safe_trace_summary: str = Field(default="", max_length=160)
@@ -237,7 +273,7 @@ def extract_semantics(
     raw_rule_confidence = _decision_confidence(rule_result)
     ambiguity_reason = _ambiguity_reason(normalized_message)
     rule_confidence = min(raw_rule_confidence, 0.55) if ambiguity_reason else raw_rule_confidence
-    should_call_llm, skip_reason = _should_call_llm_shadow(normalized_message, rule_result, rule_confidence, ambiguity_reason)
+    should_call_llm, skip_reason = _should_call_llm_shadow(normalized_message, rule_result, rule_confidence, ambiguity_reason, state)
     llm_called = False
     llm_shadow = _empty_llm_shadow(status="skipped", skip_reason=skip_reason)
     parse_error: str | None = None
@@ -352,6 +388,7 @@ def extract_semantics(
                 llm_shadow["compat_retry_succeeded"] = False
                 llm_shadow["attempts"] = _shadow_attempts(llm_response_format, True, primary_ultra_compact_used)
             logger.warning("semantic extraction primary skipped parse_error=%s", parse_error)
+        _augment_pending_candidate_from_state(llm_shadow, state, rule_result)
         final_decision, llm_guard = _guard_llm_primary_candidate(
             normalized_message,
             intent,
@@ -462,6 +499,14 @@ def extract_semantics(
         "llm_guard_decision": llm_guard["decision"],
         "llm_guard_reason": llm_guard["reason"],
         "llm_guard_summary": llm_guard["summary"],
+        "candidate_boss": trace["candidate_boss"],
+        "candidate_event": trace["candidate_event"],
+        "candidate_confidence": trace["candidate_confidence"],
+        "candidate_reason": trace["candidate_reason"],
+        "needs_confirmation": trace["needs_confirmation"],
+        "guide_request": trace["guide_request"],
+        "guide_entity": trace["guide_entity"],
+        "confirmation_intent": trace["confirmation_intent"],
         "llm_shadow_status": llm_shadow["status"],
         "llm_shadow_confidence": llm_shadow["confidence"],
         "llm_shadow_summary": llm_shadow["candidate_summary"],
@@ -536,6 +581,14 @@ def _empty_llm_shadow(
         "new_current_target": {"value": None, "surface_label": None, "confidence": "low"},
         "guide_only_entity": {"value": None, "surface_label": None, "confidence": "low"},
         "current_target_candidate": {"value": None, "surface_label": None, "confidence": "low"},
+        "candidate_boss": {"value": None, "surface_label": None, "confidence": "low"},
+        "candidate_game": {"value": None, "confidence": "low"},
+        "candidate_event": "none",
+        "candidate_confidence": "low",
+        "candidate_reason": "",
+        "needs_confirmation": False,
+        "guide_entity": {"value": None, "surface_label": None, "confidence": "low"},
+        "confirmation_intent": "unknown",
         "memory_candidate": {
             "should_create": False,
             "kind": "none",
@@ -558,6 +611,13 @@ def _empty_llm_shadow(
         "finish_reason": None,
         "content_length_bucket": "empty",
         "first_char_type": "empty",
+        "response_empty": False,
+        "response_too_long": False,
+        "no_json_object_found": False,
+        "json_decode_error": False,
+        "schema_validation_error": False,
+        "provider_timeout": False,
+        "recovery_failed": False,
     }
 
 
@@ -1062,7 +1122,7 @@ def _safe_bool(value: Any) -> bool | None:
 
 def _safe_json_recovery_stage(value: Any) -> str:
     text = str(value or "").strip()
-    return text if text in {"strict", "fenced", "object_extract", "array_first", "failed", "not_run"} else "failed"
+    return text if text in {"strict", "fenced", "object_extract", "array_first", "jsonish_repair", "failed", "not_run"} else "failed"
 
 
 def _safe_content_length_bucket(value: Any) -> str:
@@ -1209,7 +1269,12 @@ def _should_call_llm_shadow(
     rule_result: dict[str, Any],
     rule_confidence: float,
     ambiguity_reason: str | None = None,
+    game_state: dict[str, Any] | None = None,
 ) -> tuple[bool, str]:
+    if _has_pending_game_candidate(game_state):
+        if not _shadow_provider_config():
+            return False, "provider_unavailable"
+        return True, "pending_candidate_confirmation"
     if not _has_shadow_semantic_signal(message, rule_result, ambiguity_reason):
         return False, "no_semantic_signal"
     if not _shadow_provider_config():
@@ -1219,6 +1284,15 @@ def _should_call_llm_shadow(
     if rule_confidence < 0.7:
         return True, "low_confidence_rule"
     return True, "shadow_mode_game_semantics"
+
+
+def _has_pending_game_candidate(game_state: dict[str, Any] | None) -> bool:
+    if not isinstance(game_state, dict):
+        return False
+    pending = game_state.get("pending_candidate")
+    if isinstance(pending, dict):
+        return bool(pending.get("candidate_boss") or pending.get("boss") or pending.get("candidate_event"))
+    return bool(game_state.get("pending_candidate_boss") or game_state.get("pending_candidate_event"))
 
 
 def _has_shadow_semantic_signal(
@@ -1425,7 +1499,7 @@ def _call_llm_primary(
             {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ],
         "temperature": 0,
-        "max_tokens": 260 if ultra_compact else (360 if compat_retry else 520),
+        "max_tokens": 1600,
         "stream": False,
     }
     if use_response_format:
@@ -1471,12 +1545,12 @@ def _call_llm_primary(
 
 def _llm_primary_system_prompt(*, compat_retry: bool, ultra_compact: bool) -> str:
     if ultra_compact:
-        return "Return only one tiny JSON object. No prose. No markdown. Max 12 keys. Keep strings very short."
+        return "Return only one tiny valid JSON object. No prose. No markdown. No code fence. Use double quotes."
     if compat_retry:
-        return "Return one compact valid JSON object only. No markdown, no prose, no code fence."
+        return "Return exactly one compact valid JSON object. No markdown, no prose, no code fence. Use double quotes."
     return (
-        "You are ReiLink's LLM-primary semantic reader. Return one compact JSON object only. "
-        "Use the minimal schema requested; deterministic guard writes state."
+        "You are ReiLink's LLM-primary semantic reader. Return exactly one compact valid JSON object only. "
+        "No markdown, no prose, no code fence. Use double quotes. Deterministic guard writes state."
     )
 
 
@@ -1490,9 +1564,19 @@ def _llm_primary_prompt(
     compat_retry: bool,
     ultra_compact: bool,
 ) -> dict[str, Any]:
+    if _has_pending_game_candidate(game_state):
+        return _llm_primary_pending_confirmation_prompt(
+            user_message,
+            intent,
+            game_state,
+            session_focus_boss,
+            input_source=input_source,
+            compat_retry=compat_retry,
+            ultra_compact=ultra_compact,
+        )
     if ultra_compact:
         return {
-            "task": "llm_primary_extraction_v1_0_2_ultra",
+            "task": "llm_primary_extraction_v1_0_3_ultra",
             "msg": user_message,
             "intent": intent,
             "focus": normalize_terminology(session_focus_boss or "") or None,
@@ -1508,16 +1592,25 @@ def _llm_primary_prompt(
                 "guide_only_entity": None,
                 "guide_request": False,
                 "strategy_request": False,
+                "candidate_boss": None,
+                "candidate_event": "none",
+                "candidate_confidence": "low",
+                "candidate_reason": "short",
+                "needs_confirmation": False,
+                "guide_entity": None,
+                "confirmation_intent": "unknown",
                 "safe_trace_summary": "short",
             },
             "rules": (
-                "Only JSON. Keys from schema only. updates max 3. "
+                "Only valid JSON. Keys from schema only. updates max 3. "
                 "Boss ids: margit, malenia, tree_sentinel, false_knight, unknown. "
+                "candidate_event: boss_attempt,boss_failed,boss_cleared,boss_switch,guide_request,game_context,none,unknown. "
+                "confirmation_intent: confirm,deny,correct,uncertain,unrelated,unknown. "
                 "Use null when absent. No explanations."
             ),
         }
     base = {
-        "task": "llm_primary_extraction_v1_0_2_retry" if compat_retry else "llm_primary_extraction_v1_0_2",
+        "task": "llm_primary_extraction_v1_0_3_retry" if compat_retry else "llm_primary_extraction_v1_0_3",
         "input_source": input_source,
         "intent": intent,
         "message": user_message,
@@ -1543,6 +1636,13 @@ def _llm_primary_prompt(
             "guide_only_entity": None,
             "guide_request": False,
             "strategy_request": False,
+            "candidate_boss": None,
+            "candidate_event": "boss_attempt|boss_failed|boss_cleared|boss_switch|guide_request|game_context|none|unknown",
+            "candidate_confidence": "high|medium|low",
+            "candidate_reason": "exact_canonical|guide_only|descriptive_nickname|phonetic_variant|uncertain_confirmation|none",
+            "needs_confirmation": False,
+            "guide_entity": None,
+            "confirmation_intent": "confirm|deny|correct|uncertain|unrelated|unknown",
             "safe_trace_summary": "safe short summary",
         },
         "rules": [
@@ -1553,6 +1653,9 @@ def _llm_primary_prompt(
             "If unsure, lower confidence or set requires_clarification=true.",
             "For '不打 A 了，换去打 B', A is previous/negated target and B is new_current_target plus boss update.",
             "For guide questions like 'X 那边怎么打', set guide_request and guide_only_entity; do not set new_current_target unless user says now fighting/switching/dying/clearing.",
+            "For descriptive or nickname entities like '那个骑马金甲大哥' or '那个金甲的', set candidate_boss/candidate_event and needs_confirmation=true; do not pretend it is confirmed state.",
+            "For uncertain confirmation like '也许是吧' or '没看清名字', set confirmation_intent='uncertain' and needs_confirmation=true.",
+            "If game_state.pending_candidate exists and the message responds to it, set confirmation_intent to confirm, deny, correct, uncertain, unrelated, or unknown.",
             "Do not echo the full user input, raw prompt, paths, secrets, stdout/stderr, API keys, or transcript.",
         ],
     }
@@ -1569,16 +1672,68 @@ def _llm_primary_prompt(
             "guide_only_entity": None,
             "guide_request": False,
             "strategy_request": False,
+            "candidate_boss": None,
+            "candidate_event": "none",
+            "candidate_confidence": "low",
+            "candidate_reason": "short",
+            "needs_confirmation": False,
+            "guide_entity": None,
+            "confirmation_intent": "unknown",
             "safe_trace_summary": "short safe summary",
         }
         base["rules"] = [
-            "Only JSON. No markdown. No explanation.",
+            "Only valid JSON. No markdown. No explanation.",
             "Use keys from format only. Keep output under 1200 characters.",
             "Allowed update fields: boss, game, death_count_absolute, death_count_increment, boss_cleared, guide_request, strategy_request.",
             "Use canonical boss ids: margit, malenia, tree_sentinel, false_knight, unknown.",
+            "Descriptive nickname or uncertain confirmation must be candidate/needs_confirmation, not confirmed state.",
+            "If pending_candidate exists, classify confirmation_intent.",
             "No memory or proactive writes.",
         ]
     return base
+
+
+def _llm_primary_pending_confirmation_prompt(
+    user_message: str,
+    intent: str,
+    game_state: dict[str, Any],
+    session_focus_boss: str | None,
+    *,
+    input_source: InputSource,
+    compat_retry: bool,
+    ultra_compact: bool,
+) -> dict[str, Any]:
+    pending = _brief_game_state(game_state).get("pending_candidate") or {}
+    return {
+        "task": "llm_primary_extraction_v1_0_3_pending_confirmation",
+        "input_source": input_source,
+        "intent": intent,
+        "msg": user_message,
+        "focus": normalize_terminology(session_focus_boss or "") or None,
+        "pending_candidate": pending,
+        "format": {
+            "is_game_related": True,
+            "intent": "candidate_confirmation|candidate_correction|none",
+            "confidence": "high|medium|low",
+            "updates": [],
+            "candidate_boss": pending.get("candidate_boss"),
+            "candidate_event": pending.get("candidate_event") or "none",
+            "candidate_confidence": pending.get("candidate_confidence") or "medium",
+            "candidate_reason": "confirm|deny|correct|uncertain|unrelated|unknown",
+            "needs_confirmation": False,
+            "confirmation_intent": "confirm|deny|correct|uncertain|unrelated|unknown",
+            "safe_trace_summary": "short safe summary",
+        },
+        "rules": (
+            "Return one compact valid JSON object only. No markdown, prose, or code fence. "
+            "Classify the user's relation to pending_candidate. "
+            "confirm means clear yes; deny means clear no; correct means user gives another exact boss; "
+            "uncertain means maybe/not sure/unclear; unrelated means not about pending_candidate; unknown when unsure. "
+            "If correct with an exact boss, set candidate_boss to the new canonical id and candidate_event to boss_attempt. "
+            "Do not write formal state or invent memory/proactive fields. Keep output under "
+            f"{600 if ultra_compact or compat_retry else 900} characters."
+        ),
+    }
 
 
 def _call_deepseek_flash(
@@ -1761,7 +1916,7 @@ def _semantic_shadow_timeout_seconds() -> float:
 
 def _semantic_primary_timeout_seconds() -> float:
     configured = float(settings.llm_timeout_seconds or SEMANTIC_LLM_TIMEOUT_SECONDS)
-    return max(1.0, min(configured, 8.0))
+    return max(SEMANTIC_LLM_MIN_TIMEOUT_SECONDS, min(configured, SEMANTIC_PRIMARY_MAX_TIMEOUT_SECONDS))
 
 
 def _shadow_response_parts(
@@ -1804,6 +1959,13 @@ def _shadow_json_diagnostics(raw: str, provider_diagnostics: dict[str, Any] | No
     )
     diagnostics["first_char_type"] = _safe_first_char_type(diagnostics.get("first_char_type") or _first_char_type(text))
     diagnostics.setdefault("json_recovery_stage", "failed")
+    diagnostics.setdefault("response_empty", not bool(text))
+    diagnostics.setdefault("response_too_long", len(text) > 4000)
+    diagnostics.setdefault("no_json_object_found", False)
+    diagnostics.setdefault("json_decode_error", False)
+    diagnostics.setdefault("schema_validation_error", False)
+    diagnostics.setdefault("provider_timeout", False)
+    diagnostics.setdefault("recovery_failed", False)
     return diagnostics
 
 
@@ -1853,6 +2015,7 @@ def _parse_llm_shadow_json(
         parsed, recovered, stage = _load_llm_shadow_json(raw)
     except ValueError as exc:
         diagnostics["json_recovery_stage"] = "failed"
+        diagnostics.update(_json_failure_diagnostics(raw))
         raise SemanticShadowParseError("LLM semantic extraction did not return valid JSON", diagnostics) from exc
     shadow = _normalize_llm_shadow(parsed, user_message)
     shadow["json_recovered"] = recovered
@@ -1872,6 +2035,7 @@ def _parse_llm_primary_candidate(
         parsed, recovered, stage = _load_llm_shadow_json(raw)
     except ValueError as exc:
         diagnostics["json_recovery_stage"] = "failed"
+        diagnostics.update(_json_failure_diagnostics(raw))
         raise SemanticShadowParseError("LLM primary extraction did not return valid JSON", diagnostics) from exc
     candidate_data = _primary_candidate_data(parsed)
     try:
@@ -1879,6 +2043,7 @@ def _parse_llm_primary_candidate(
     except ValidationError as exc:
         diagnostics["json_recovery_stage"] = stage
         diagnostics["schema_valid"] = False
+        diagnostics["schema_validation_error"] = True
         raise SemanticShadowParseError("LLM primary extraction failed schema validation", diagnostics) from exc
     shadow = _normalize_llm_shadow(candidate.model_dump(mode="python"), user_message)
     shadow["json_recovered"] = recovered
@@ -1940,11 +2105,110 @@ def _primary_candidate_data(data: dict[str, Any]) -> dict[str, Any]:
             or expanded.get("current_target")
             or update_hints.get("current_target_candidate")
         ),
+        "candidate_boss": _primary_candidate_boss_data(expanded, update_hints),
+        "candidate_game": _primary_candidate_game_data(expanded, update_hints),
+        "candidate_event": _primary_candidate_event(expanded, update_hints),
+        "candidate_confidence": _shadow_confidence(expanded.get("candidate_confidence", expanded.get("confidence"))),
+        "candidate_reason": _safe_short_text(expanded.get("candidate_reason") or expanded.get("candidate_reasoning") or "")[:120],
+        "needs_confirmation": bool(
+            expanded.get("needs_confirmation")
+            or expanded.get("requires_confirmation")
+            or expanded.get("requires_clarification")
+        ),
+        "guide_entity": _primary_entity_data(expanded.get("guide_entity") or expanded.get("guide_only_entity")),
+        "confirmation_intent": _primary_confirmation_intent(expanded.get("confirmation_intent")),
         "memory_candidate": _primary_memory_data(expanded.get("memory_candidate")),
         "proactive_signal": _primary_proactive_data(expanded.get("proactive_signal")),
         "safe_trace_summary": safe_trace_summary,
         "reasoning_summary": safe_trace_summary,
     }
+
+
+def _primary_candidate_boss_data(expanded: dict[str, Any], update_hints: dict[str, Any]) -> dict[str, Any]:
+    explicit = (
+        expanded.get("candidate_boss")
+        or expanded.get("possible_boss")
+        or expanded.get("possible_entity")
+        or expanded.get("candidate_entity")
+    )
+    if explicit is not None:
+        return _primary_entity_data(explicit)
+    for key in ("current_target_candidate", "guide_only_entity", "new_current_target", "mentioned_entity"):
+        entity = _primary_entity_data(expanded.get(key) or update_hints.get(key))
+        if entity.get("value"):
+            return entity
+    boss = _primary_boss_data(update_hints.get("boss") or expanded.get("boss"))
+    if boss.get("value"):
+        return {
+            "value": boss.get("value"),
+            "surface_label": boss.get("surface_label"),
+            "confidence": boss.get("confidence", "low"),
+        }
+    return {"value": None, "surface_label": None, "confidence": "low"}
+
+
+def _primary_candidate_game_data(expanded: dict[str, Any], update_hints: dict[str, Any]) -> dict[str, Any]:
+    value = expanded.get("candidate_game") or expanded.get("possible_game")
+    if isinstance(value, dict):
+        return {
+            "value": value.get("value"),
+            "confidence": _shadow_confidence(value.get("confidence", value.get("conf", "low"))),
+        }
+    if isinstance(value, str):
+        return {"value": value, "confidence": _shadow_confidence(expanded.get("candidate_confidence", expanded.get("confidence")))}
+    game = _primary_operation_data(update_hints.get("game") or expanded.get("game"), include_value=True, allowed=SHADOW_GAME_OPERATIONS)
+    return {
+        "value": game.get("value") if game.get("operation") in {"set", "keep"} else None,
+        "confidence": game.get("confidence", "low"),
+    }
+
+
+def _primary_candidate_event(expanded: dict[str, Any], update_hints: dict[str, Any]) -> str:
+    raw = _safe_label(expanded.get("candidate_event") or expanded.get("possible_event")).lower()
+    aliases = {
+        "failed_attempt": "boss_failed",
+        "failure": "boss_failed",
+        "death_update": "boss_failed",
+        "death": "boss_failed",
+        "clear": "boss_cleared",
+        "cleared": "boss_cleared",
+        "strategy_request": "guide_request",
+    }
+    event = aliases.get(raw, raw)
+    if event in CANDIDATE_EVENTS:
+        return event
+    death = update_hints.get("death_count") or expanded.get("death_count") or {}
+    if isinstance(death, dict) and str(death.get("operation") or death.get("op") or "") in {"set", "increment"}:
+        return "boss_failed"
+    boss_cleared = update_hints.get("boss_cleared") or expanded.get("boss_cleared") or {}
+    if isinstance(boss_cleared, dict) and str(boss_cleared.get("operation") or boss_cleared.get("op") or "") == "set_true":
+        return "boss_cleared"
+    if _shadow_bool((expanded.get("guide_request") or {}).get("value") if isinstance(expanded.get("guide_request"), dict) else expanded.get("guide_request")):
+        return "guide_request"
+    if _shadow_bool((expanded.get("boss_switched") or {}).get("value") if isinstance(expanded.get("boss_switched"), dict) else expanded.get("boss_switched")):
+        return "boss_switch"
+    if update_hints.get("boss") or expanded.get("boss") or expanded.get("new_current_target") or expanded.get("current_target_candidate"):
+        return "boss_attempt"
+    if update_hints.get("game") or expanded.get("game"):
+        return "game_context"
+    return "none"
+
+
+def _primary_confirmation_intent(value: Any) -> str:
+    text = _safe_label(value).lower()
+    aliases = {
+        "yes": "confirm",
+        "true": "confirm",
+        "no": "deny",
+        "false": "deny",
+        "maybe": "uncertain",
+        "weak_confirmation": "uncertain",
+        "partial_confirmation": "uncertain",
+        "uncertain_confirmation": "uncertain",
+        "correction": "correct",
+    }
+    intent = aliases.get(text, text)
+    return intent if intent in CONFIRMATION_INTENTS else "unknown"
 
 
 def _primary_operation_data(value: Any, *, include_value: bool, allowed: set[str]) -> dict[str, Any]:
@@ -2140,27 +2404,42 @@ def _load_llm_shadow_json(raw: str) -> tuple[dict[str, Any], bool, str]:
     text = str(raw or "").lstrip("\ufeff").strip()
     parsed = _loads_shadow_json_value(text)
     if isinstance(parsed, dict):
-        return parsed, False, "strict"
+        return _unwrap_llm_json_object(parsed), False, "strict"
     if isinstance(parsed, list):
         first = _first_dict(parsed)
         if first is not None:
-            return first, True, "array_first"
+            return _unwrap_llm_json_object(first), True, "array_first"
 
     unfenced = _strip_json_fence(text)
     if unfenced != text:
         parsed = _loads_shadow_json_value(unfenced)
         if isinstance(parsed, dict):
-            return parsed, True, "fenced"
+            return _unwrap_llm_json_object(parsed), True, "fenced"
         if isinstance(parsed, list):
             first = _first_dict(parsed)
             if first is not None:
-                return first, True, "array_first"
+                return _unwrap_llm_json_object(first), True, "array_first"
 
     object_text = _extract_first_json_object(unfenced)
     if object_text:
         parsed = _loads_shadow_json_value(object_text)
         if isinstance(parsed, dict):
-            return parsed, True, "object_extract"
+            return _unwrap_llm_json_object(parsed), True, "object_extract"
+
+    repaired = _repair_jsonish_text(unfenced)
+    if repaired != unfenced:
+        parsed = _loads_shadow_json_value(repaired)
+        if isinstance(parsed, dict):
+            return _unwrap_llm_json_object(parsed), True, "jsonish_repair"
+        if isinstance(parsed, list):
+            first = _first_dict(parsed)
+            if first is not None:
+                return _unwrap_llm_json_object(first), True, "jsonish_repair"
+        object_text = _extract_first_json_object(repaired)
+        if object_text:
+            parsed = _loads_shadow_json_value(object_text)
+            if isinstance(parsed, dict):
+                return _unwrap_llm_json_object(parsed), True, "jsonish_repair"
 
     raise ValueError("LLM semantic extraction did not return valid JSON")
 
@@ -2170,6 +2449,51 @@ def _loads_shadow_json_value(text: str) -> Any:
         return json.loads(text)
     except (TypeError, json.JSONDecodeError):
         return None
+
+
+def _unwrap_llm_json_object(value: dict[str, Any]) -> dict[str, Any]:
+    current = value
+    for _ in range(2):
+        if len(current) != 1:
+            return current
+        key, nested = next(iter(current.items()))
+        if str(key).lower().strip() not in {"result", "output", "data", "json", "candidate", "extraction", "semantic"}:
+            return current
+        if not isinstance(nested, dict):
+            return current
+        current = nested
+    return current
+
+
+def _repair_jsonish_text(text: str) -> str:
+    repaired = str(text or "")
+    replacements = {
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2018": "'",
+        "\u2019": "'",
+        "\uff1a": ":",
+        "\uff0c": ",",
+        "\uff5b": "{",
+        "\uff5d": "}",
+        "\u3002": ".",
+    }
+    for old, new in replacements.items():
+        repaired = repaired.replace(old, new)
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+    return repaired.strip()
+
+
+def _json_failure_diagnostics(raw: str) -> dict[str, Any]:
+    text = str(raw or "").lstrip("\ufeff").strip()
+    has_json_shape = "{" in text or "[" in text
+    return {
+        "response_empty": not bool(text),
+        "no_json_object_found": bool(text and not has_json_shape),
+        "json_decode_error": bool(has_json_shape),
+        "recovery_failed": True,
+        "last_failure": "response_empty" if not text else ("no_json_object_found" if not has_json_shape else "json_decode_error"),
+    }
 
 
 def _first_dict(value: list[Any]) -> dict[str, Any] | None:
@@ -2289,10 +2613,26 @@ def _normalize_llm_shadow(data: dict[str, Any], user_message: str) -> dict[str, 
         "new_current_target",
         "guide_only_entity",
         "current_target_candidate",
+        "candidate_boss",
+        "guide_entity",
     ):
         entity = data.get(key)
         if isinstance(entity, dict):
             shadow[key] = _normalize_primary_entity_signal(entity, user_message)
+
+    candidate_game = data.get("candidate_game")
+    if isinstance(candidate_game, dict):
+        shadow["candidate_game"] = {
+            "value": _shadow_game_value(candidate_game.get("value")),
+            "confidence": _shadow_confidence(candidate_game.get("confidence")),
+        }
+
+    candidate_event = str(data.get("candidate_event") or "none").strip()
+    shadow["candidate_event"] = candidate_event if candidate_event in CANDIDATE_EVENTS else "unknown"
+    shadow["candidate_confidence"] = _shadow_confidence(data.get("candidate_confidence", data.get("confidence")))
+    shadow["candidate_reason"] = _sanitize_shadow_text(data.get("candidate_reason"), user_message, 80)
+    shadow["needs_confirmation"] = bool(data.get("needs_confirmation") or data.get("requires_clarification"))
+    shadow["confirmation_intent"] = _primary_confirmation_intent(data.get("confirmation_intent"))
 
     memory_candidate = data.get("memory_candidate")
     if isinstance(memory_candidate, dict):
@@ -2321,7 +2661,64 @@ def _normalize_llm_shadow(data: dict[str, Any], user_message: str) -> dict[str, 
     safe_trace_summary = data.get("safe_trace_summary") or data.get("reasoning_summary")
     shadow["safe_trace_summary"] = _sanitize_shadow_text(safe_trace_summary, user_message, 96)
     shadow["reasoning_summary"] = shadow["safe_trace_summary"]
+    _augment_guide_candidate_from_message(shadow, user_message)
     return shadow
+
+
+def _augment_guide_candidate_from_message(shadow: dict[str, Any], user_message: str) -> None:
+    if not _is_state_neutral_game_question(user_message, str(shadow.get("intent") or "casual_chat")):
+        return
+    guide_entity = _entity_signal_boss_name(shadow.get("guide_entity")) or _entity_signal_boss_name(shadow.get("guide_only_entity"))
+    if not guide_entity:
+        guide_entity = _entity_signal_boss_name(shadow.get("candidate_boss")) or _entity_signal_boss_name(shadow.get("current_target_candidate"))
+    if not guide_entity:
+        boss = shadow.get("boss") or {}
+        if boss.get("operation") in {"set", "keep"}:
+            guide_entity = _entity_signal_boss_name({"value": boss.get("value"), "confidence": boss.get("confidence")})
+    if not guide_entity:
+        return
+    canonical = _shadow_boss_value(guide_entity)
+    if not canonical:
+        return
+    confidence = shadow.get("candidate_confidence") or shadow.get("confidence") or "medium"
+    shadow["guide_request"] = {"value": True, "confidence": _safe_confidence(confidence)}
+    shadow["strategy_request"] = {"value": True, "confidence": _safe_confidence(confidence)}
+    entity = {"value": canonical, "surface_label": None, "confidence": _safe_confidence(confidence)}
+    shadow["guide_entity"] = entity
+    shadow["guide_only_entity"] = entity
+    if str(shadow.get("candidate_event") or "none") in {"none", "unknown"}:
+        shadow["candidate_event"] = "guide_request"
+
+
+def _augment_pending_candidate_from_state(shadow: dict[str, Any], game_state: dict[str, Any], rule_result: dict[str, Any]) -> None:
+    if shadow.get("status") != "succeeded":
+        return
+    confirmation_intent = str(shadow.get("confirmation_intent") or "unknown")
+    pending = game_state.get("pending_candidate") if isinstance(game_state.get("pending_candidate"), dict) else {}
+    if not pending:
+        return
+    pending_boss = _shadow_boss_value(pending.get("candidate_boss") or pending.get("boss"))
+    pending_event = _safe_label(pending.get("candidate_event") or pending.get("event") or "none")
+    pending_confidence = _safe_confidence(pending.get("candidate_confidence") or pending.get("confidence") or "medium")
+    current_candidate_boss = (shadow.get("candidate_boss") or {}).get("value")
+    if confirmation_intent == "unknown" and pending_boss and current_candidate_boss and current_candidate_boss != pending_boss:
+        confirmation_intent = "correct"
+        shadow["confirmation_intent"] = "correct"
+    elif confirmation_intent == "unknown" and shadow.get("needs_confirmation"):
+        confirmation_intent = "uncertain"
+        shadow["confirmation_intent"] = "uncertain"
+    if pending_boss and not (shadow.get("candidate_boss") or {}).get("value"):
+        shadow["candidate_boss"] = {"value": pending_boss, "surface_label": None, "confidence": pending_confidence}
+    if confirmation_intent == "correct" and str(shadow.get("candidate_event") or "none") in {"none", "unknown"}:
+        shadow["candidate_event"] = "boss_attempt"
+    elif pending_event in CANDIDATE_EVENTS and str(shadow.get("candidate_event") or "none") in {"none", "unknown"}:
+        shadow["candidate_event"] = pending_event
+    if not shadow.get("candidate_reason"):
+        shadow["candidate_reason"] = f"{confirmation_intent}_confirmation"
+    if confirmation_intent == "uncertain":
+        shadow["needs_confirmation"] = True
+    shadow["candidate_summary"] = _shadow_candidate_summary(shadow)
+    shadow["diff_summary"] = _shadow_diff_summary(rule_result, shadow)
 
 
 def _normalize_primary_entity_signal(entity: dict[str, Any], user_message: str) -> dict[str, Any]:
@@ -2660,11 +3057,22 @@ def _shadow_candidate_summary(shadow: dict[str, Any]) -> str:
         ("new_current_target", "新当前目标"),
         ("current_target_candidate", "当前候选"),
         ("guide_only_entity", "攻略实体"),
+        ("candidate_boss", "候选 Boss"),
+        ("guide_entity", "攻略候选"),
     ):
         entity = shadow.get(key) or {}
         entity_label = _entity_signal_label(entity)
         if entity_label:
             parts.append(f"{label}：{entity_label}")
+
+    candidate_event = str(shadow.get("candidate_event") or "none")
+    if candidate_event not in {"none", "unknown"}:
+        parts.append(f"候选事件：{candidate_event}")
+    if shadow.get("needs_confirmation"):
+        parts.append("需要确认")
+    confirmation_intent = str(shadow.get("confirmation_intent") or "unknown")
+    if confirmation_intent != "unknown":
+        parts.append(f"确认意图：{confirmation_intent}")
 
     switched = shadow.get("boss_switched") or {}
     if switched.get("value"):
@@ -2721,6 +3129,8 @@ def _shadow_has_candidate(shadow: dict[str, Any]) -> bool:
         shadow.get("new_current_target") or {},
         shadow.get("guide_only_entity") or {},
         shadow.get("current_target_candidate") or {},
+        shadow.get("candidate_boss") or {},
+        shadow.get("guide_entity") or {},
     )
     memory = shadow.get("memory_candidate") or {}
     proactive = shadow.get("proactive_signal") or {}
@@ -2734,6 +3144,8 @@ def _shadow_has_candidate(shadow: dict[str, Any]) -> bool:
         or strategy.get("value")
         or switched.get("value")
         or any(_entity_signal_label(entity) for entity in target_entities)
+        or str(shadow.get("candidate_event") or "none") not in {"none", "unknown"}
+        or str(shadow.get("confirmation_intent") or "unknown") != "unknown"
         or memory.get("should_create")
         or (proactive.get("type") and proactive.get("type") != "none")
     )
@@ -2899,6 +3311,27 @@ def _guard_llm_primary_candidate(
         )
 
     game_event = candidate_decision.get("game_event") or {}
+    confirmation_intent = str(candidate.get("confirmation_intent") or "unknown")
+    if confirmation_intent in {"uncertain", "deny", "unrelated"}:
+        return _empty_decision(), _empty_llm_guard(
+            input_source=input_source,
+            decision="candidate_only" if confirmation_intent == "uncertain" and _shadow_has_candidate(candidate) else "no_op",
+            reason=f"{confirmation_intent}_confirmation",
+            summary="确认意图未达到正式写入阈值，保留候选但不应用状态",
+            candidate_confidence=candidate.get("candidate_confidence") or candidate.get("confidence") or "low",
+            grounding_confidence=grounding_score,
+            context_confidence=context_score,
+        )
+    if confirmation_intent == "confirm" and _has_pending_game_candidate(game_state):
+        return _empty_decision(), _empty_llm_guard(
+            input_source=input_source,
+            decision="candidate_only",
+            reason="pending_candidate_runtime_not_implemented",
+            summary="识别到确认意图，但当前仅记录候选 trace，不写入正式状态",
+            candidate_confidence=candidate.get("candidate_confidence") or candidate.get("confidence") or "low",
+            grounding_confidence=grounding_score,
+            context_confidence=context_score,
+        )
     if guide_only and game_event.get("type") != "none":
         return _empty_decision(), _empty_llm_guard(
             input_source=input_source,
@@ -2906,6 +3339,27 @@ def _guard_llm_primary_candidate(
             reason="guide_or_strategy_request_only",
             summary="仅攻略/打法请求，未应用状态",
             candidate_confidence=candidate.get("confidence") or "low",
+            grounding_confidence=grounding_score,
+            context_confidence=context_score,
+        )
+    if _candidate_requires_confirmation_before_apply(
+        message,
+        game_state,
+        session_focus_boss,
+        candidate,
+        candidate_decision,
+        input_source=input_source,
+    ):
+        return _empty_decision(), _empty_llm_guard(
+            input_source=input_source,
+            decision=(
+                "ask_clarification"
+                if input_source == "voice_direct" or candidate.get("needs_confirmation") or candidate.get("requires_clarification")
+                else "candidate_only"
+            ),
+            reason="voice_candidate_below_apply_threshold" if input_source == "voice_direct" else "uncertain_entity_candidate",
+            summary="低确定性实体仅保留候选，未写入正式状态",
+            candidate_confidence=candidate.get("candidate_confidence") or candidate.get("confidence") or "low",
             grounding_confidence=grounding_score,
             context_confidence=context_score,
         )
@@ -3051,12 +3505,23 @@ def _llm_primary_candidate_decision(
     death = candidate.get("death_count") or {}
     boss = candidate.get("boss") or {}
     frustration = candidate.get("frustration") or {}
-    if cleared.get("operation") == "set_true" and boss_name and _confidence_score(cleared.get("confidence")) >= 0.7:
+    candidate_event = str(candidate.get("candidate_event") or "none")
+    confirmation_intent = str(candidate.get("confirmation_intent") or "unknown")
+    if (
+        cleared.get("operation") == "set_true"
+        and boss_name
+        and _confidence_score(cleared.get("confidence")) >= 0.7
+    ) or (candidate_event == "boss_cleared" and boss_name):
         decision["game_event"] = _game_event("boss_cleared", boss_name, candidate_confidence, True)
     elif death.get("operation") in {"set", "increment"} and death.get("value") is not None and boss_name:
         decision["game_event"] = _game_event("failed_attempt", boss_name, candidate_confidence, True)
         decision["game_event"]["death_count_operation"] = "absolute" if death.get("operation") == "set" else "increment"
         decision["game_event"]["death_count_value"] = int(death.get("value") or 0)
+    elif candidate_event == "boss_failed" and boss_name:
+        decision["game_event"] = _game_event("failed_attempt", boss_name, candidate_confidence, True)
+    elif confirmation_intent == "correct" and boss_name:
+        event_type = "boss_switch" if candidate_event == "boss_switch" else "boss_attempt"
+        decision["game_event"] = _game_event(event_type, boss_name, candidate_confidence, True)
     elif boss_name and (boss.get("operation") in {"set", "keep"} or _candidate_has_current_target_signal(candidate)) and (
         progress_signal or _candidate_has_current_target_signal(candidate)
     ):
@@ -3079,6 +3544,11 @@ def _candidate_boss_name(
 ) -> str | None:
     for key in ("new_current_target", "current_target_candidate"):
         boss_name = _entity_signal_boss_name(candidate.get(key))
+        if boss_name:
+            return boss_name
+    candidate_event = str(candidate.get("candidate_event") or "none")
+    if candidate_event in {"boss_attempt", "boss_failed", "boss_cleared", "boss_switch"}:
+        boss_name = _entity_signal_boss_name(candidate.get("candidate_boss"))
         if boss_name:
             return boss_name
     boss = candidate.get("boss") or {}
@@ -3136,6 +3606,9 @@ def _llm_candidate_confidence_score(candidate: dict[str, Any]) -> float:
         "new_current_target",
         "guide_only_entity",
         "current_target_candidate",
+        "candidate_boss",
+        "candidate_game",
+        "guide_entity",
     ):
         value = candidate.get(key)
         if isinstance(value, dict):
@@ -3365,6 +3838,82 @@ def _candidate_has_current_target_signal(candidate: dict[str, Any]) -> bool:
     )
 
 
+def _candidate_requires_confirmation_before_apply(
+    message: str,
+    game_state: dict[str, Any],
+    session_focus_boss: str | None,
+    candidate: dict[str, Any],
+    candidate_decision: dict[str, Any],
+    *,
+    input_source: InputSource,
+) -> bool:
+    event = candidate_decision.get("game_event") or {}
+    event_type = str(event.get("type") or "none")
+    if event_type in {"none", "game_context"}:
+        return False
+    boss_name = normalize_terminology(str(event.get("boss_name") or ""))
+    if not boss_name:
+        return False
+    explicit_boss = _detect_boss(message)
+    if explicit_boss and normalize_terminology(explicit_boss) == boss_name:
+        return False
+    context_boss = _context_boss_for_rule(game_state, normalize_terminology(session_focus_boss or "") or None, None)
+    if context_boss and normalize_terminology(context_boss) == boss_name and event_type in {
+        "failed_attempt",
+        "near_clear",
+        "boss_cleared",
+        "boss_attempt",
+    }:
+        return False
+    if candidate.get("needs_confirmation") or candidate.get("requires_clarification"):
+        return True
+    if _candidate_reason_requires_confirmation(candidate):
+        return True
+    if _has_vague_entity_reference(message):
+        return True
+    if input_source == "voice_direct" and _confidence_score(candidate.get("candidate_confidence") or candidate.get("confidence")) < 0.88:
+        return True
+    return False
+
+
+def _candidate_reason_requires_confirmation(candidate: dict[str, Any]) -> bool:
+    reason = _safe_label(candidate.get("candidate_reason")).lower()
+    return any(
+        marker in reason
+        for marker in (
+            "descriptive",
+            "nickname",
+            "low_certainty",
+            "uncertain",
+            "ambiguous",
+            "unknown_alias",
+        )
+    )
+
+
+def _has_vague_entity_reference(message: str) -> bool:
+    compact = _compact(message)
+    vague_markers = (
+        "那个",
+        "那個",
+        "这个",
+        "這個",
+        "金甲",
+        "骑马",
+        "騎馬",
+        "大哥",
+        "家伙",
+        "傢伙",
+        "东西",
+        "東西",
+        "没看清",
+        "沒看清",
+        "名字太长",
+        "名字太長",
+    )
+    return any(marker in compact for marker in vague_markers)
+
+
 def _entity_signal_boss_name(value: Any) -> str | None:
     if not isinstance(value, dict):
         return None
@@ -3476,6 +4025,14 @@ def _extraction_trace(
         "llm_guard_decision": llm_guard.get("decision"),
         "llm_guard_reason": llm_guard.get("reason"),
         "llm_guard_summary": llm_guard.get("summary"),
+        "candidate_boss": (llm_shadow.get("candidate_boss") or {}).get("value"),
+        "candidate_event": llm_shadow.get("candidate_event"),
+        "candidate_confidence": llm_shadow.get("candidate_confidence"),
+        "candidate_reason": llm_shadow.get("candidate_reason"),
+        "needs_confirmation": bool(llm_shadow.get("needs_confirmation")),
+        "guide_request": bool((llm_shadow.get("guide_request") or {}).get("value")),
+        "guide_entity": (llm_shadow.get("guide_entity") or llm_shadow.get("guide_only_entity") or {}).get("value"),
+        "confirmation_intent": llm_shadow.get("confirmation_intent"),
     }
 
 
@@ -3576,6 +4133,9 @@ def _shadow_exception_diagnostics(
                 "json_recovery_stage": "failed",
             },
         )
+    if isinstance(exc, TimeoutError):
+        diagnostics["provider_timeout"] = True
+        diagnostics["last_failure"] = "provider_timeout"
     diagnostics["response_format_used"] = response_format_used if diagnostics.get("response_format_used") is None else diagnostics["response_format_used"]
     diagnostics["compat_retry_used"] = compat_retry_used
     diagnostics["ultra_compact_used"] = ultra_compact_used
@@ -3672,6 +4232,7 @@ def _decision_confidence(decision: dict[str, Any]) -> float:
 
 
 def _brief_game_state(game_state: dict[str, Any]) -> dict[str, Any]:
+    pending_candidate = game_state.get("pending_candidate") if isinstance(game_state.get("pending_candidate"), dict) else {}
     return {
         "current_game": game_state.get("current_game"),
         "current_boss": _state_boss(game_state.get("current_boss")),
@@ -3679,6 +4240,11 @@ def _brief_game_state(game_state: dict[str, Any]) -> dict[str, Any]:
         "last_failed_boss": _state_boss(game_state.get("last_failed_boss")),
         "last_attempted_boss": _state_boss(game_state.get("last_attempted_boss")),
         "last_cleared_boss": _state_boss(game_state.get("last_cleared_boss")),
+        "pending_candidate": {
+            "candidate_boss": _state_boss(pending_candidate.get("candidate_boss") or pending_candidate.get("boss")),
+            "candidate_event": _safe_label(pending_candidate.get("candidate_event") or pending_candidate.get("event") or "none"),
+            "candidate_confidence": _safe_confidence(pending_candidate.get("candidate_confidence") or pending_candidate.get("confidence")),
+        } if pending_candidate else None,
         "boss_history": [
             {
                 "name": _state_boss(item.get("name")),

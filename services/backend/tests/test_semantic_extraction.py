@@ -98,6 +98,13 @@ def _primary_payload(
     new_current=None,
     guide_only=None,
     current_target=None,
+    candidate_boss=None,
+    candidate_event="none",
+    candidate_confidence=None,
+    candidate_reason="",
+    needs_confirmation=False,
+    guide_entity=None,
+    confirmation_intent="unknown",
     death_operation="none",
     death_value=None,
     frustration="none",
@@ -130,6 +137,13 @@ def _primary_payload(
     payload["new_current_target"] = _primary_entity(new_current, confidence)
     payload["guide_only_entity"] = _primary_entity(guide_only, confidence)
     payload["current_target_candidate"] = _primary_entity(current_target, confidence)
+    payload["candidate_boss"] = _primary_entity(candidate_boss, candidate_confidence or confidence)
+    payload["candidate_event"] = candidate_event
+    payload["candidate_confidence"] = candidate_confidence or confidence
+    payload["candidate_reason"] = candidate_reason
+    payload["needs_confirmation"] = needs_confirmation
+    payload["guide_entity"] = _primary_entity(guide_entity, candidate_confidence or confidence)
+    payload["confirmation_intent"] = confirmation_intent
     return payload
 
 
@@ -183,6 +197,13 @@ def _primary_updates_payload(
     guide_only_entity=None,
     guide_request=False,
     strategy_request=False,
+    candidate_boss=None,
+    candidate_event="none",
+    candidate_confidence="low",
+    candidate_reason="",
+    needs_confirmation=False,
+    guide_entity=None,
+    confirmation_intent="unknown",
     summary="安全候选摘要",
 ):
     return {
@@ -197,6 +218,13 @@ def _primary_updates_payload(
         "guide_only_entity": guide_only_entity,
         "guide_request": guide_request,
         "strategy_request": strategy_request,
+        "candidate_boss": candidate_boss,
+        "candidate_event": candidate_event,
+        "candidate_confidence": candidate_confidence,
+        "candidate_reason": candidate_reason,
+        "needs_confirmation": needs_confirmation,
+        "guide_entity": guide_entity,
+        "confirmation_intent": confirmation_intent,
         "safe_trace_summary": summary,
     }
 
@@ -522,10 +550,10 @@ def test_shadow_provider_uses_current_deepseek_config_and_fast_timeout(monkeypat
 
 def test_llm_primary_timeout_allows_slow_foreground_provider(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_timeout_seconds", 20)
-    assert sem._semantic_primary_timeout_seconds() == 8.0
+    assert sem._semantic_primary_timeout_seconds() == 20.0
 
     monkeypatch.setattr(sem.settings, "llm_timeout_seconds", 2)
-    assert sem._semantic_primary_timeout_seconds() == 2.0
+    assert sem._semantic_primary_timeout_seconds() == 8.0
 
 
 def test_shadow_can_use_openai_compatible_provider_config(monkeypatch):
@@ -616,6 +644,34 @@ def test_shadow_parser_recovers_json_with_prose_prefix_suffix():
     assert shadow["json_recovered"] is True
     assert shadow["json_recovery_stage"] == "object_extract"
     assert shadow["boss"]["value"] == "false_knight"
+
+
+def test_llm_primary_recovers_jsonish_smart_quotes_and_fullwidth_colon():
+    raw = "“result”： “ignored”"
+    payload = "{“is_game_related”： true， “confidence”： 0.92， “updates”： [{“field”： “boss”， “value”： “玛尔基特”， “canonical”： “margit”， “confidence”： 0.92}]}"
+
+    shadow = sem._parse_llm_primary_candidate(payload or raw, "我现在在打玛尔基特")
+
+    assert shadow["status"] == "succeeded"
+    assert shadow["json_recovered"] is True
+    assert shadow["json_recovery_stage"] == "jsonish_repair"
+    assert shadow["boss"]["value"] == "margit"
+
+
+def test_llm_primary_unwraps_result_wrapper():
+    payload = {
+        "result": {
+            "is_game_related": True,
+            "confidence": 0.92,
+            "updates": [{"field": "boss", "value": "玛尔基特", "canonical": "margit", "confidence": 0.92}],
+        }
+    }
+
+    shadow = sem._parse_llm_primary_candidate(json.dumps(payload, ensure_ascii=False), "我现在在打玛尔基特")
+
+    assert shadow["status"] == "succeeded"
+    assert shadow["json_recovery_stage"] == "strict"
+    assert shadow["boss"]["value"] == "margit"
 
 
 def test_shadow_parser_accepts_first_object_from_array():
@@ -2117,8 +2173,146 @@ def test_llm_primary_medium_unknown_alias_is_candidate_only(monkeypatch):
     assert result["final_decision"]["game_event"]["type"] == "none"
 
 
-def test_llm_primary_high_unknown_alias_can_apply_when_grounded_by_failure(monkeypatch):
-    _mock_primary(monkeypatch, _primary_payload(boss="tree_sentinel", death_operation="increment", death_value=1))
+def test_llm_primary_descriptive_plan_is_candidate_only(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(
+            boss="tree_sentinel",
+            candidate_boss="tree_sentinel",
+            candidate_event="boss_attempt",
+            candidate_reason="descriptive_nickname",
+            needs_confirmation=True,
+            confidence="high",
+        ),
+    )
+
+    result = sem.extract_semantics(
+        "我去打那个金甲的",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["llm_guard_decision"] == "ask_clarification"
+    assert result["llm_guard_reason"] == "uncertain_entity_candidate"
+    assert result["candidate_boss"] == "tree_sentinel"
+    assert result["candidate_event"] == "boss_attempt"
+    assert result["needs_confirmation"] is True
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_llm_primary_voice_direct_descriptive_entity_does_not_bypass_guard(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(
+            boss="tree_sentinel",
+            candidate_boss="tree_sentinel",
+            candidate_event="boss_attempt",
+            candidate_reason="descriptive_nickname",
+            needs_confirmation=True,
+            confidence="high",
+        ),
+    )
+
+    result = sem.extract_semantics(
+        "我去打那个金甲的",
+        "casual_chat",
+        _game_state(),
+        input_source="voice_direct",
+        run_llm_primary=True,
+    )
+
+    assert result["input_source"] == "voice_direct"
+    assert result["llm_guard_decision"] == "ask_clarification"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "有可能是大树守卫吧？我没看清名字，死太快了",
+        "名字太长我没记住，但是也许是吧？",
+    ],
+)
+def test_llm_primary_uncertain_confirmation_keeps_candidate_without_apply(monkeypatch, message):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(
+            boss="tree_sentinel",
+            candidate_boss="tree_sentinel",
+            candidate_event="boss_failed",
+            candidate_reason="uncertain_confirmation",
+            confirmation_intent="uncertain",
+            needs_confirmation=True,
+            confidence="high",
+        ),
+    )
+    game_state = _game_state()
+    game_state["pending_candidate"] = {"candidate_boss": "tree_sentinel", "candidate_event": "boss_failed"}
+
+    result = sem.extract_semantics(message, "casual_chat", game_state, run_llm_primary=True)
+
+    assert result["llm_guard_decision"] == "candidate_only"
+    assert result["llm_guard_reason"] == "uncertain_confirmation"
+    assert result["confirmation_intent"] == "uncertain"
+    assert result["candidate_boss"] == "tree_sentinel"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_llm_primary_clear_confirm_trace_does_not_apply_pending_runtime(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(
+            candidate_boss="tree_sentinel",
+            candidate_event="boss_failed",
+            confirmation_intent="confirm",
+            confidence="high",
+        ),
+    )
+    game_state = _game_state()
+    game_state["pending_candidate"] = {"candidate_boss": "tree_sentinel", "candidate_event": "boss_failed"}
+
+    result = sem.extract_semantics("对，就是它", "casual_chat", game_state, run_llm_primary=True)
+
+    assert result["confirmation_intent"] == "confirm"
+    assert result["llm_guard_decision"] == "candidate_only"
+    assert result["llm_guard_reason"] == "pending_candidate_runtime_not_implemented"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+
+
+def test_llm_primary_correction_applies_new_exact_target_without_old_candidate(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(
+            candidate_boss="margit",
+            candidate_event="boss_attempt",
+            confirmation_intent="correct",
+            confidence="high",
+        ),
+    )
+    game_state = _game_state()
+    game_state["pending_candidate"] = {"candidate_boss": "tree_sentinel", "candidate_event": "boss_failed"}
+
+    result = sem.extract_semantics("不是，是玛尔基特", "casual_chat", game_state, run_llm_primary=True)
+
+    assert result["confirmation_intent"] == "correct"
+    assert result["llm_guard_decision"] == "apply"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_llm_primary_high_unknown_alias_stays_candidate_without_confirmed_context(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(
+            boss="tree_sentinel",
+            candidate_boss="tree_sentinel",
+            candidate_event="boss_failed",
+            candidate_reason="descriptive_nickname",
+            needs_confirmation=True,
+            death_operation="increment",
+            death_value=1,
+        ),
+    )
 
     result = sem.extract_semantics(
         "那个骑马金甲大哥又寄了",
@@ -2127,7 +2321,36 @@ def test_llm_primary_high_unknown_alias_can_apply_when_grounded_by_failure(monke
         run_llm_primary=True,
     )
 
+    assert result["llm_guard_decision"] == "ask_clarification"
+    assert result["llm_guard_reason"] == "uncertain_entity_candidate"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["candidate_boss"] == "tree_sentinel"
+    assert result["candidate_event"] == "boss_failed"
+    assert result["needs_confirmation"] is True
+
+
+def test_llm_primary_descriptive_alias_can_apply_when_current_boss_is_confirmed(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_payload(
+            boss="tree_sentinel",
+            candidate_boss="tree_sentinel",
+            candidate_event="boss_failed",
+            candidate_reason="descriptive_nickname",
+            death_operation="increment",
+            death_value=1,
+        ),
+    )
+
+    result = sem.extract_semantics(
+        "那个骑马金甲大哥又寄了",
+        "casual_chat",
+        _game_state("大树守卫"),
+        run_llm_primary=True,
+    )
+
     assert result["llm_guard_decision"] == "apply"
+    assert result["final_decision"]["game_event"]["type"] == "failed_attempt"
     assert result["final_decision"]["game_event"]["boss_name"] == "大树守卫"
 
 

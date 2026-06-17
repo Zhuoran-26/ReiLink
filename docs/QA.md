@@ -229,41 +229,46 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 12. Test Voice 仍可播放固定测试文本，不写入聊天，也不代表角色音色。
 13. 直接对话自动发送时，已有未发送手打草稿不得被 Voice Profile 或播报策略清空。
 
-### 1.12 LLM-primary Guarded Extraction v1.0.1 Pilot 人工验收
+### 1.12 LLM-primary Guarded Extraction v1.0.3 Pilot 人工验收
 
-设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读验收场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`，固定 eval 场景见 `docs/qa/extraction_eval_scenarios.json`。本节验收当前 v1.0.2 pilot runtime 与 Extraction Eval Runner v0：foreground LLM semantic reader、tolerant-but-safe candidate schema、Shadow-style JSON recovery、compat retry、switch / negation role fields、deterministic guard、rule grounding / fallback、source metadata、safe trace 和 mock-first regression runner。
+设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读验收场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`，固定 eval 场景见 `docs/qa/extraction_eval_scenarios.json`。本节验收当前 v1.0.3 pilot runtime 与 Extraction Eval Runner v0：foreground LLM semantic reader、tolerant-but-safe candidate schema、live JSON / schema reliability、switch / negation role fields、formal game state 与 candidate understanding 分层、confirmation intent trace、deterministic guard、rule grounding / fallback、source metadata、safe parse diagnostics、safe trace 和 mock-first regression runner。
 
 1. 文档应明确 rule-first 的早期优势：可预测、易测、少量游戏稳定、不依赖 provider。
 2. 文档应明确 rule-first 的扩展瓶颈：多游戏 alias 爆炸、ASR 近音错字、规则 no-op 不等于语义不可理解、规则 confidence 不等于语义正确概率。
 3. 新架构必须是 LLM-primary semantic reader + schema validation + deterministic guard apply；LLM 不得直接写 game context。
 4. typed text、voice_confirmed 和 voice_direct 都应进入同一 LLM-primary extraction pipeline；source 只影响 reliability / confidence / trace。
 5. 规则层应降级为 grounding、sanity check、cross-check、fallback、regression comparison 或 emergency no-provider mode。
-6. 文档应给出 pilot candidate schema，覆盖 minimal `updates` 形状以及兼容的 game、boss、death_count、frustration、boss_cleared、guide_request、strategy_request、memory/proactive blocked fields 和 safe reasoning summary。
-7. schema 应区分 guide request 与 current boss report，也应区分 temporary game state 与 long-term memory candidate。
+6. 文档应给出 pilot candidate schema，覆盖 minimal `updates` 形状以及兼容的 game、boss、death_count、frustration、boss_cleared、guide_request、strategy_request、candidate_boss、candidate_event、candidate_game、candidate_confidence、candidate_reason、needs_confirmation、guide_entity、confirmation_intent、memory/proactive blocked fields 和 safe reasoning summary。
+7. schema 应区分 guide request 与 current boss report，也应区分 formal game state、candidate understanding、temporary game state 与 long-term memory candidate。
 8. 新 confidence 机制应至少拆分 semantic_confidence、grounding_confidence、context_confidence 和 apply_confidence。
 9. LLM self-confidence 不能单独决定 apply；rule exact match / catalog match 只能作为 grounding 支持。
 10. voice_direct 应因 ASR uncertainty 降低 source reliability；用户确认后的 voice_confirmed reliability 应更高。
 11. conflict with current boss 不应自动 no-op；显式 switch phrase 可以提高 context confidence。
 12. 当前 Boss 为女武神时，输入 `我现在不打女武神了，换去打玛尔基特。`、`先不打女武神了，我换去玛尔基特。` 或 `从女武神换到玛尔基特。` 应切换到玛尔基特；规则不得因先命中女武神而保留旧 boss。
 13. `我换去打马尔吉特了`、`我现在去打女巫神了` 等 voice_direct ASR 错字应产生 LLM candidate / apply / clarification trace；不得静默显示 no semantic signal。
-14. Guard decisions 应覆盖 `apply`、`ask_clarification`、`candidate_only`、`no_op` 和 `fallback_to_rule`。
-15. low confidence、invalid JSON、schema invalid、provider timeout、unsafe 或 memory-sensitive 输入不得写 state；fallback 只允许 exact safe rule evidence，不得把 switch / negation 中的旧目标写回当前 Boss。
-16. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
-17. LLM extraction 不得写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须走 pending memory confirmation。
-18. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
-19. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding、applied updates、primary_extractor、fallback_extractor、applied_by、first_attempt_failed、compat_retry_used / succeeded、ultra_compact_used 和 json_recovery_stage。
-20. 手测 `我现在在打玛尔基特` 应能在 Game workspace 更新 current boss，并在 Debug / Event Stream 看到 `llm_primary` / `apply` 或 provider unavailable 时的 `fallback_to_rule` 安全 trace。
-21. 手测当前 Boss 为 Malenia 时输入 `玛尔基特那边怎么打来着`，不得切换 current boss；Debug / Event Stream 应显示 candidate-only / guide-only 或等价安全判定。
-22. 手测 Direct Conversation Mode 下 `我换去打玛尔基特了`，chat flow、source `voice_direct`、guard trace、current boss 更新和语音播报策略都应保持正常。
-23. 手测 `又死了两次` 应做 death increment，不应被当成 absolute count；`下一把怎么打` 不应改变 boss。
-24. QA JSON 至少覆盖 typed boss report、voice_confirmed、voice_direct、ASR near-miss、explicit boss switch、switch / negation、guide-only mention、death increment / absolute、boss cleared、fenced / prefixed / array JSON recovery、compat retry success / failure、ultra-compact retry、schema invalid、invalid JSON、timeout fallback、rule/LLM agree and conflict、low/medium confidence、Shadow 不写状态、memory/proactive boundaries、Event Stream privacy、Game workspace visible、direct partial guard 和旧流程不崩。
-25. 固定 eval runner 应可从 backend 目录运行：`cd services/backend && . .venv/bin/activate && python scripts/run_extraction_eval.py --provider mock`。默认 mock provider 必须 deterministic、CI-safe，失败时返回非零 exit code。
-26. 可选 live provider 漂移检查使用 `python scripts/run_extraction_eval.py --provider live --allow-failures`；live eval 依赖当前 provider 配置，不作为 CI 必需项，也不应因 provider timeout / auth / quota 影响 mock regression。
-27. Eval report 至少包含 total / passed / failed / pass_rate、LLM-primary success、schema_valid、invalid_json、schema_invalid、fallback_to_rule、compat retry、ultra-compact retry、wrong_apply、missed_apply 和 correct candidate-only 指标。
-28. Eval result 应逐条输出 scenario id、input_source、expected / actual decision、expected / actual state、state delta、primary_extractor、primary_status、provider_status、schema_valid、retry flags、fallback_extractor、applied_by、pass 和 failure_reason。
-29. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、boss set / switch、switch negation、guide-only 不切换、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict 和 low-confidence candidate-only。
-30. Eval runner 应复用 `extract_semantics` 与 `GameSessionStore`，只应用 guarded `final_decision.game_event`，避免把 runner 变成第二套 extraction 规则。
-31. Eval report 和 pytest 输出不得包含 raw prompt、raw provider JSON、API key、`.env`、完整本地路径、stdout / stderr 或完整 transcript。当前已知限制：近音错字 `猫耳机特那边怎么打来着` 仍可能被上游 gating 视为 no-op；v0 将“不错误写入状态”视为通过，后续 alias / gating 扩展可单独收紧。
+14. Guard decisions 应覆盖 `apply`、`ask_clarification`、`candidate_only`、`no_op` 和 `fallback_to_rule`；`candidate_only` 可以用于当轮回复 / trace / 后续确认，但不得写正式状态。
+15. low confidence、invalid JSON、schema invalid、provider timeout、unsafe、uncertain confirmation 或 memory-sensitive 输入不得写 state；fallback 只允许 exact safe rule evidence，不得把 switch / negation 中的旧目标写回当前 Boss。
+16. Exact / canonical entity 搭配明确动作可以 `apply`；guide-only / strategy request 应 `candidate_only` 且不切 Boss；descriptive / nickname / low-certainty entity 默认只能 `candidate_only` 或 `ask_clarification`，除非当前上下文已有同一个 confirmed boss。
+17. Confirmation intent 应覆盖 `confirm`、`deny`、`correct`、`uncertain`、`unrelated`、`unknown`。v1.0.3 不实现完整 pending runtime，但 extraction result / trace / eval 必须显示这些字段；`uncertain` 不应正式 apply，`correct` + exact new target 可由 deterministic guard 应用新目标。
+18. `用于 Rei 回复` 不等于 `写入正式状态`：LLM 可以大胆理解候选，例如“那个骑马金甲大哥”可能是大树守卫，但 guard 必须谨慎写 `current_boss` / `death_count` / `last_cleared_boss` / 高风险 `current_activity`。
+19. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
+20. LLM extraction 不得写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须走 pending memory confirmation。
+21. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
+22. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding、applied updates、primary_extractor、fallback_extractor、applied_by、candidate_boss、candidate_event、candidate_confidence、candidate_reason、needs_confirmation、guide_request、guide_entity、confirmation_intent、first_attempt_failed、compat_retry_used / succeeded、ultra_compact_used、json_recovery_stage 和 safe parse diagnostic。
+23. 手测 `我现在在打玛尔基特` 应能在 Game workspace 更新 current boss，并在 Debug / Event Stream 看到 `llm_primary` / `apply` 或 provider unavailable 时的 `fallback_to_rule` 安全 trace。
+24. 手测当前 Boss 为 Malenia 时输入 `玛尔基特那边怎么打来着`，不得切换 current boss；Debug / Event Stream 应显示 candidate-only / guide-only、`guide_entity=margit` 或等价安全判定。
+25. 手测 `那个骑马金甲大哥又寄了` / `我去打那个金甲的` 在无 confirmed current boss 时不得写 current_boss / death_count；在 current_boss 已是大树守卫时，失败事件可以指代当前 boss 并 apply。
+26. 手测 pending candidate 后输入 `有可能是大树守卫吧？我没看清名字，死太快了` 或 `名字太长我没记住，但是也许是吧？` 应显示 `confirmation_intent=uncertain` 且不正式 apply；输入 `对，就是它` 应显示 confirm intent，但 v1.0.3 若未实现 pending runtime，则只 trace 不写正式状态；输入 `不是，是玛尔基特` 可以 apply 新 exact target。
+27. 手测 Direct Conversation Mode 下 `我换去打玛尔基特了`，chat flow、source `voice_direct`、guard trace、current boss 更新和语音播报策略都应保持正常；voice_direct 模糊实体不应绕过 guard。
+28. 手测 `又死了两次` 应做 death increment，不应被当成 absolute count；`下一把怎么打` 不应改变 boss。
+29. QA JSON 至少覆盖 typed boss report、voice_confirmed、voice_direct、ASR near-miss、explicit boss switch、switch / negation、guide-only mention、descriptive / nickname entity candidate-only、confirmed-current-boss alias apply、uncertain / weak / clear confirmation、correction、death increment / absolute、boss cleared、fenced / prefixed / array / JSON-ish recovery、wrapper recovery、compat retry success / failure、ultra-compact retry、schema invalid、invalid JSON、timeout fallback、rule/LLM agree and conflict、low/medium confidence、harmless game-context update、Shadow 不写状态、memory/proactive boundaries、Event Stream privacy、Game workspace visible、direct partial guard 和旧流程不崩。
+30. 固定 eval runner 应可从 backend 目录运行：`cd services/backend && . .venv/bin/activate && python scripts/run_extraction_eval.py --provider mock`。默认 mock provider 必须 deterministic、CI-safe，失败时返回非零 exit code。
+31. 可选 live provider 漂移检查使用 `python scripts/run_extraction_eval.py --provider live`；如只想观察 provider 漂移且不让失败阻塞脚本，可加 `--allow-failures`。live eval 依赖当前 provider 配置，不作为 CI 必需项，也不应因 provider timeout / auth / quota 影响 mock regression。
+32. Eval report 至少包含 total / passed / failed / pass_rate、LLM-primary success、schema_valid、invalid_json、schema_invalid、fallback_to_rule、compat retry、ultra-compact retry、wrong_apply、missed_apply、wrong_risky_apply、missed_risky_apply、harmless_extra_update 和 correct candidate-only 指标。
+33. Eval result 应逐条输出 scenario id、input_source、expected / actual decision、expected / actual state、state delta、risky_state_delta、harmless_state_delta、parse_diagnostic、primary_extractor、primary_status、provider_status、schema_valid、retry flags、fallback_extractor、applied_by、candidate fields、confirmation_intent、pass 和 failure_reason。
+34. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、boss set / switch、switch negation、guide-only 不切换、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict、low-confidence candidate-only、uncertain confirmation 和 harmless game-detected-only update。
+35. Eval runner 应复用 `extract_semantics` 与 `GameSessionStore`，只应用 guarded `final_decision.game_event`，避免把 runner 变成第二套 extraction 规则。
+36. Eval report 和 pytest 输出不得包含 raw prompt、raw provider JSON、API key、`.env`、完整本地路径、stdout / stderr 或完整 transcript。当前已知限制：v1.0.3 只把 pending candidate 做到 extraction result / trace / eval 层，不实现完整 pending candidate runtime、UI 弹窗或 Candidate Memory。
 
 ### 2. Voice Output 回归检查
 

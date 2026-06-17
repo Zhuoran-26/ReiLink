@@ -48,6 +48,12 @@ def test_extraction_eval_scenarios_cover_required_input_sources_and_cases():
         "extraction-eval-schema-invalid-no-op",
         "extraction-eval-compat-retry-success",
         "extraction-eval-ultra-compact-retry-success",
+        "extraction-eval-descriptive-failure-current-context-applies",
+        "extraction-eval-uncertain-confirmation-keeps-candidate",
+        "extraction-eval-weak-confirmation-keeps-candidate",
+        "extraction-eval-clear-confirm-trace-only",
+        "extraction-eval-correction-replaces-old-candidate",
+        "extraction-eval-harmless-game-context-not-risky",
     } <= ids
 
 
@@ -78,6 +84,16 @@ def test_extraction_eval_result_shape_is_stable_and_safe():
         "ultra_compact_used",
         "fallback_extractor",
         "applied_by",
+        "candidate_boss",
+        "candidate_event",
+        "candidate_confidence",
+        "candidate_reason",
+        "needs_confirmation",
+        "guide_entity",
+        "confirmation_intent",
+        "risky_state_delta",
+        "harmless_state_delta",
+        "parse_diagnostic",
         "pass",
         "failure_reason",
     } <= set(result)
