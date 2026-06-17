@@ -1,0 +1,606 @@
+# Hermes-style Memory Architecture v0
+
+Updated: 2026-06-18
+
+Status: architecture proposal and QA surface only. This document does not implement a new memory runtime, vector database, external memory provider, UI popup, or packaging change.
+
+## Purpose
+
+ReiLink is a local-first AI companion for single-player game players. Memory should make Rei feel more consistent and quietly attentive without turning every session event into a permanent fact, without drifting Rei's persona, and without exposing private data.
+
+The target pipeline is:
+
+```text
+session event / explicit preference / repeated pattern
+-> memory candidate
+-> safety / relevance / persona guard
+-> user confirmation or weak confirmation handling
+-> long-term memory
+-> bounded retrieval
+-> prompt assembly
+-> reply
+```
+
+Memory is not a second persona system. Memory is user-specific context; Persona Pack remains the stable Rei core.
+
+## Research Summary
+
+Light research focused on official Hermes Agent docs and public GitHub material:
+
+- Hermes Persistent Memory docs: bounded curated memory, two stores (`MEMORY.md` and `USER.md`), character limits, prompt injection at session start, write approval, duplicate prevention, security scanning, and session search separation: [Persistent Memory](https://hermes-agent.nousresearch.com/docs/user-guide/features/memory).
+- Hermes Memory Providers docs: optional external providers are additive, can prefetch relevant memories, sync turns, extract memories on session end, and provide search/manage tools: [Memory Providers](https://hermes-agent.nousresearch.com/docs/user-guide/features/memory-providers).
+- Hermes README: high-level idea of a long-running agent with curated memory, session search, skill creation, and cross-session user modeling: [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).
+- Hermes Memory Provider Plugin docs: provider lifecycle hooks such as `system_prompt_block`, `prefetch`, `queue_prefetch`, `sync_turn`, `on_session_end`, and `on_pre_compress`: [Memory Provider Plugins](https://hermes-agent.nousresearch.com/docs/developer-guide/memory-provider-plugin).
+
+Research limits:
+
+- This pass did not audit Hermes source code in depth.
+- Hermes is a general self-improving agent; ReiLink is a restrained game companion, so the useful material is architectural, not product behavior.
+- ReiLink should not copy Hermes code, prompt text, skill loop, provider abstractions, or auto-save defaults.
+
+Absorbable ideas:
+
+- Keep memory bounded, curated, and compact.
+- Separate user profile memory from agent/environment notes.
+- Keep session search / session archive distinct from always-injected memory.
+- Allow staged writes and user approval before memory becomes durable.
+- Treat external providers as optional and additive, not required.
+- Use prefetch / retrieval budgets before prompt injection.
+- Scan memory entries for unsafe content because injected memory can become prompt input.
+
+Not suitable for ReiLink v0:
+
+- Free-form autonomous memory writes by default.
+- Self-evolving skill creation.
+- Cloud memory providers as a first-class dependency.
+- Long-running multi-platform autonomous agent assumptions.
+- Letting user preferences reshape Rei's persona core.
+
+ReiLink translation:
+
+- Use Hermes-style bounded curation, but default to confirmation-first.
+- Treat memory candidates as user-visible, safe summaries.
+- Store only stable user preferences, interaction preferences, and repeated gameplay patterns.
+- Keep Game Session State, Session Timeline, Knowledge Retrieval, Persona Pack, and Long-term Memory separate.
+
+## Memory Layers
+
+### Working Context
+
+Current turn and short conversational context. It can influence the immediate reply but is not durable by itself.
+
+Examples:
+
+- The user is currently asking how to handle Margit's second phase.
+- Rei has just asked a clarification question.
+- A voice transcript is waiting for user confirmation.
+
+Rules:
+
+- It may include current conversation state.
+- It should not become long-term memory unless converted into a guarded Memory Candidate.
+- It should be dropped or summarized when the session moves on.
+
+### Game Session State
+
+Current-game state, owned by Game Session runtime:
+
+- `current_game`
+- `current_boss`
+- `death_count`
+- `frustration_count`
+- `current_activity`
+- `last_cleared_boss`
+
+This can come from LLM-primary extraction, but it is not long-term memory.
+
+Examples:
+
+- `current_boss=恶兆妖鬼 Margit`
+- `death_count=3`
+- `current_activity=boss_failed`
+
+Rules:
+
+- Single-session state can inform replies and proactive checks.
+- It should not be saved as long-term memory just because it happened.
+- Session Archive v1 may later summarize it, but that is a separate pipeline.
+
+### Session Timeline
+
+Current renderer-session safe event summaries. This already exists as v1.
+
+Examples:
+
+- `检测到 Boss：Margit`
+- `死亡次数更新：3`
+- `记忆已接受`
+
+Rules:
+
+- Default is non-persistent.
+- It is a possible future input to Session Archive.
+- It is not long-term memory and should not be injected wholesale into prompts.
+
+### Candidate Game Understanding
+
+LLM-primary Extraction v1.0.3 candidate fields:
+
+- `candidate_boss`
+- `candidate_event`
+- `candidate_game`
+- `candidate_confidence`
+- `candidate_reason`
+- `needs_confirmation`
+- `guide_entity`
+- `confirmation_intent`
+
+Rules:
+
+- These fields may help Rei phrase the current reply.
+- They are not formal Game Session State.
+- They are not Long-term Memory.
+- They may contribute to a Memory Candidate only if the content is about stable user preference or repeated pattern, not a one-off boss guess.
+
+### Memory Candidate
+
+A safe, user-visible proposal that might become Long-term Memory.
+
+Examples:
+
+- User prefers exploring before fighting bosses.
+- User dislikes detailed spoilers.
+- User wants shorter replies.
+- User often gets impatient after repeated fast deaths.
+
+Rules:
+
+- It must pass memory guard before it reaches pending UI.
+- It must be confirmable, ignorable, revisable, and expirable.
+- It must preserve evidence as a safe summary, not raw transcript.
+- It must never be created from assistant replies or proactive text alone.
+
+### Long-term Memory
+
+Confirmed durable user preference, habit, or important fact.
+
+Rules:
+
+- Must be user-visible.
+- Must be deletable.
+- Must be local-first.
+- Must not contain unconfirmed guesses.
+- Must not contain secrets, paths, `.env`, API keys, raw logs, or raw transcripts.
+- Must not rewrite Persona Core.
+
+### Retrieved Memory
+
+Relevant memories selected for the current reply.
+
+Rules:
+
+- Retrieval is query/context-dependent.
+- It should have item and token budgets.
+- It should use safe summaries.
+- It should not inject the entire memory store.
+- Explicit current user input beats stale retrieved memory.
+
+### Prompt Memory Block
+
+The bounded prompt section produced by Memory Retrieval.
+
+Rules:
+
+- It must have `max_items`.
+- It must have `token_budget`.
+- It should include omitted count and safety notes.
+- It should be injected as user-specific context, not identity or system instruction.
+
+### Persona Core
+
+Rei's stable character policy from Persona Pack.
+
+Rules:
+
+- Persona Core is higher priority than memory.
+- Memory can tune response strategy within bounds.
+- Memory cannot make Rei sweet, customer-service-like, therapist-like, or mascot-like.
+- Persona drift requests become bounded preferences only when safe.
+
+## Memory Guard Rules
+
+### Can Become Memory Candidate
+
+- Explicit remember request:
+  - `记住我打 Boss 前喜欢先探索地图。`
+- Stable gameplay preference:
+  - prefers exploration before bosses.
+  - dislikes direct hard rushing.
+  - avoids detailed spoilers.
+- Stable interaction preference:
+  - wants shorter answers.
+  - wants less voice output.
+  - prefers fewer strategy details unless asked.
+- Repeated gameplay pattern:
+  - repeatedly gets impatient after fast deaths.
+- User-confirmed fact:
+  - `对，我确实不喜欢直接冲 Boss。`
+- Bounded accessibility / comfort preference:
+  - prefers brief voice replies.
+  - wants text-first for long strategy.
+
+### Must Not Become Long-term Memory
+
+- One-off game event:
+  - `我刚刚死了三次。`
+- Unconfirmed candidate:
+  - `可能是大树守卫吧。`
+- Assistant reply content.
+- Proactive message content.
+- Game knowledge / guide content.
+- Low-confidence extraction candidate.
+- Persona-changing request:
+  - `以后你都撒娇一点。`
+  - `以后你像客服一样鼓励我。`
+- Sensitive personal information unless explicitly requested and safe.
+- API keys, file paths, `.env`, system logs, raw stdout/stderr, raw JSON.
+- Raw ASR transcript or raw prompt.
+
+## Anti Persona Drift
+
+Memory may affect strategy, not identity.
+
+Allowed bounded preferences:
+
+- `reply_length=short`
+- `avoid_spoilers=true`
+- `voice_reply_brief=true`
+- `strategy_detail=low_until_asked`
+- `check_in_frequency=low`
+
+Rejected persona-changing memory:
+
+- `Rei becomes cheerful`
+- `Rei should always praise the user`
+- `Rei should speak like customer support`
+- `Rei should be affectionate by default`
+- `Rei must comfort intensely after every death`
+
+Examples:
+
+| User request | Memory outcome |
+| --- | --- |
+| `以后回答短一点。` | Candidate: interaction preference, short replies. |
+| `别剧透支线，除非我问。` | Candidate: gameplay / knowledge preference, avoid spoilers. |
+| `以后你撒娇一点。` | Rejected by persona guard; optionally candidate: avoid overly formal tone only if safe. |
+| `每次我死了都夸我。` | Rejected / bounded; could become low-intensity encouragement preference only after confirmation. |
+| `语音少说点，文字里展开。` | Candidate: voice brief + text detail preference. |
+
+## Candidate Lifecycle
+
+```text
+source event
+-> semantic extraction / memory intent / repeated-pattern detector
+-> MemoryCandidate draft
+-> memory guard
+   -> rejected_by_guard
+   -> pending
+-> user response
+   -> accepted
+   -> ignored
+   -> revised
+   -> uncertain / weak confirmation
+   -> expired
+-> LongTermMemory
+-> retrieval index / prompt block
+```
+
+Candidate sources:
+
+- explicit user request.
+- LLM-primary memory intent.
+- user confirmation or correction.
+- repeated safe pattern from session timeline.
+- future Session Archive summary.
+
+Candidate statuses:
+
+- `pending`
+- `accepted`
+- `ignored`
+- `expired`
+- `rejected_by_guard`
+
+User confirmation:
+
+- `confirm`: accept if guard still passes.
+- `deny`: ignore.
+- `correct`: revise candidate, then require confirmation or accept exact bounded correction.
+- `uncertain`: keep pending, reduce confidence, avoid immediate save.
+- `unrelated`: leave candidate unchanged and let it age.
+- `unknown`: no state change.
+
+Important: weak confirmation such as `也许吧` or `可能是` is not enough to create Long-term Memory.
+
+## Confirmation Flow
+
+### Candidate Creation
+
+Memory Candidate generation can use:
+
+- existing pending memory trigger for explicit remember requests.
+- LLM-primary semantic extraction for memory intent and confirmation intent.
+- future repeated-pattern detection over Session Timeline.
+
+The candidate should include:
+
+- safe user-visible summary.
+- why it might matter.
+- confidence.
+- expiry.
+- guard reason.
+- source summary.
+
+### User Presentation
+
+Default UI:
+
+- Memory workspace Pending tab.
+- Optional low-noise inline prompt for explicit remember requests.
+- Debug safe trace for candidate lifecycle.
+
+Voice / Direct Conversation:
+
+- Avoid interrupting active gameplay.
+- Prefer a short spoken cue only when user explicitly requested remembering.
+- For implicit candidates, stage silently and surface later in Memory workspace.
+- Do not repeatedly ask in the same session.
+
+Overlay:
+
+- Default: do not show memory candidates.
+- Future: only show non-sensitive, explicit pending confirmations if user enables it.
+
+### Accept / Ignore / Delete / Revise
+
+- Accept moves candidate into Long-term Memory.
+- Ignore marks candidate as ignored and suppresses near-duplicate prompts.
+- Delete deactivates Long-term Memory and removes it from retrieval.
+- Revise creates an updated candidate or edits the user-visible text after confirmation.
+
+### Expiry And Dedup
+
+- Explicit remember candidates: longer expiry, e.g. 7 days.
+- Implicit repeated-pattern candidates: shorter expiry, e.g. current session or 24 hours.
+- Weak-confirmed candidates: keep pending but do not promote.
+- Duplicate candidates: merge evidence summaries, raise confidence only if sources are compatible.
+- Do-not-remember preference suppresses future candidates of the same class.
+
+## Prompt Assembly
+
+Suggested priority order:
+
+1. App identity and safety.
+2. Persona Pack / Persona Core.
+3. Voice Profile / current interaction mode.
+4. Current explicit user input and Working Context.
+5. Formal Game Session State.
+6. Retrieved Memory block.
+7. Knowledge Retrieval snippets.
+8. Candidate Game Understanding for current turn only.
+
+Memory rules:
+
+- Memory is user-specific context, not system instruction.
+- Memory cannot override Persona Core, safety, or current explicit input.
+- Memory should not override current Game Session State when the user is explicitly reporting a new state.
+- Memory should be injected as safe summaries, not raw transcript.
+- Memory should be limited, for example `max_items=3` and a small token budget.
+- Memory use should be natural. Rei should not over-explain "I remember..." unless it helps.
+
+Prompt memory block example:
+
+```json
+{
+  "max_items": 3,
+  "token_budget": 220,
+  "memories": [
+    {
+      "memory_id": "mem_123",
+      "type": "gameplay_preference",
+      "safe_summary": "User prefers light hints before detailed boss strategy.",
+      "injectable_text": "User prefers light hints before detailed strategy.",
+      "token_estimate": 12
+    }
+  ],
+  "omitted_count": 2,
+  "safety_notes": ["persona_core_has_priority", "raw_transcript_omitted"]
+}
+```
+
+## Data Model Draft
+
+### MemoryCandidate
+
+```json
+{
+  "id": "cand_...",
+  "source": "explicit_user_request | semantic_extraction | session_timeline | direct_voice | manual",
+  "source_event_id": "event_...",
+  "created_at": "2026-06-18T00:00:00Z",
+  "expires_at": "2026-06-25T00:00:00Z",
+  "type": "gameplay_preference | interaction_preference | emotional_pattern | accessibility_preference | do_not_remember",
+  "summary": "User prefers exploring before boss attempts.",
+  "evidence_summary": "User explicitly asked Rei to remember this preference.",
+  "confidence": "high | medium | low",
+  "requires_confirmation": true,
+  "status": "pending | accepted | ignored | expired | rejected_by_guard",
+  "guard_reason": "explicit_memory_request",
+  "privacy_level": "normal | sensitive | secret_rejected",
+  "related_game": "elden_ring",
+  "related_entity": "boss",
+  "from_voice": false,
+  "from_proactive": false,
+  "from_assistant": false,
+  "confirmation_intent": "confirm | deny | correct | uncertain | unrelated | unknown"
+}
+```
+
+### LongTermMemory
+
+```json
+{
+  "id": "mem_...",
+  "created_at": "2026-06-18T00:00:00Z",
+  "updated_at": "2026-06-18T00:00:00Z",
+  "type": "gameplay_preference",
+  "summary": "User prefers exploring before boss attempts.",
+  "normalized_value": {"boss_approach": "explore_first"},
+  "user_visible_text": "打 Boss 前喜欢先探索地图。",
+  "confidence": "high",
+  "source_candidate_id": "cand_...",
+  "last_used_at": null,
+  "use_count": 0,
+  "is_active": true,
+  "deletion_status": "active | deleted | pending_delete",
+  "related_game": "elden_ring",
+  "related_entity": "boss",
+  "retrieval_tags": ["boss", "approach", "exploration"]
+}
+```
+
+### MemoryRetrievalResult
+
+```json
+{
+  "memory_id": "mem_...",
+  "relevance_score": 0.82,
+  "reason": "current query asks for boss strategy",
+  "safe_summary": "User prefers light hints before detailed boss strategy.",
+  "injectable_text": "User prefers light hints before detailed boss strategy.",
+  "token_estimate": 12
+}
+```
+
+### PromptMemoryBlock
+
+```json
+{
+  "max_items": 3,
+  "token_budget": 220,
+  "memories": [],
+  "omitted_count": 0,
+  "safety_notes": []
+}
+```
+
+## Relationship To Existing Modules
+
+### LLM-primary Extraction
+
+- Provides memory intent and confirmation intent.
+- Candidate Game Understanding is separate from Memory Candidate.
+- Low-confidence extraction candidates should not become Long-term Memory.
+- `confirmation_intent=uncertain` keeps candidates pending.
+
+### Game Context
+
+- Owns current game/session facts.
+- Does not become Long-term Memory by default.
+- Current explicit user input and Game Session State override stale memory.
+
+### Session Timeline
+
+- Stores safe event summaries for current session.
+- Future Session Archive may summarize repeated patterns.
+- Timeline is not injected wholesale and is not Long-term Memory.
+
+### Proactive
+
+- May read accepted memory to tune low-interruption behavior.
+- Must not write memory from its own messages.
+- Must not create memory candidates without a user signal or repeated user pattern.
+
+### Persona Pack
+
+- Persona Core always wins.
+- Memory can tune response length, spoiler level, voice brevity, and interaction preferences.
+- Memory cannot change Rei into another character or tone family.
+
+### Knowledge Retrieval
+
+- Knowledge is factual game content.
+- User Memory is personal preference / habit / confirmed fact.
+- Knowledge snippets should never become user memory.
+
+### Voice / Direct Conversation
+
+- Voice transcript can produce Memory Candidate only after normal chat flow and guard.
+- Direct Conversation should avoid frequent confirmation interruptions.
+- Voice confirmation should use short, safe wording.
+
+### Overlay
+
+- Overlay should not show sensitive memory by default.
+- Future overlay memory cue must be opt-in and safe-summary-only.
+
+### Debug Trace
+
+- May show candidate status, type, guard reason, and safe summary.
+- Must not show raw transcript, raw prompt, raw model JSON, API key, `.env`, paths, stdout/stderr, or secrets.
+
+## QA Scenarios
+
+Machine-readable scenarios live in:
+
+```text
+docs/qa/memory_architecture_scenarios.json
+```
+
+The scenarios cover explicit memory requests, negative memory requests, one-off session events, spoiler and reply-length preferences, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, and Debug safe trace.
+
+## Roadmap
+
+### Candidate Memory v1
+
+- Normalize MemoryCandidate schema.
+- Route explicit remember requests into pending candidates.
+- Add guard reasons and expiry.
+- Keep current pending memory UI mostly intact.
+
+### Memory Retrieval v1
+
+- Add local-first retrieval over accepted memories.
+- Implement type and tag filters.
+- Build PromptMemoryBlock with token budget and omitted count.
+- Track `last_used_at` and `use_count`.
+
+### Session Archive v1
+
+- Summarize Session Timeline into safe session archive candidates.
+- Keep archive separate from Long-term Memory.
+- Promote only repeated user patterns through candidate flow.
+
+### Memory Workspace Polish
+
+- Show Pending / Confirmed / Ignored / Deleted.
+- Support delete and revise.
+- Show source and guard reason as safe summaries.
+- Add duplicate merge explanations.
+
+### Direct Voice Confirmation Flow
+
+- Use short, low-interruption confirmation.
+- Avoid confirming implicit candidates during active gameplay.
+- Keep uncertain confirmation pending.
+
+## Non-goals For v0
+
+- No vector database.
+- No external memory framework.
+- No Hermes provider integration.
+- No automatic saving of all input.
+- No runtime rewrite of Persona Pack.
+- No Overlay auto-show.
+- No Live2D / Vision.
+- No packaging change.

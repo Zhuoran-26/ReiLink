@@ -21,6 +21,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/voice_profile_scenarios.json`
 - `docs/qa/llm_primary_guarded_extraction_scenarios.json`
 - `docs/qa/extraction_eval_scenarios.json`
+- `docs/qa/memory_architecture_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -269,6 +270,31 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 34. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、boss set / switch、switch negation、guide-only 不切换、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict、low-confidence candidate-only、uncertain confirmation 和 harmless game-detected-only update。
 35. Eval runner 应复用 `extract_semantics` 与 `GameSessionStore`，只应用 guarded `final_decision.game_event`，避免把 runner 变成第二套 extraction 规则。
 36. Eval report 和 pytest 输出不得包含 raw prompt、raw provider JSON、API key、`.env`、完整本地路径、stdout / stderr 或完整 transcript。当前已知限制：v1.0.3 只把 pending candidate 做到 extraction result / trace / eval 层，不实现完整 pending candidate runtime、UI 弹窗或 Candidate Memory。
+
+### 1.13 Hermes-style Memory Architecture v0 人工验收
+
+设计文档见 `docs/memory_architecture_v0.md`，机器可读场景见 `docs/qa/memory_architecture_scenarios.json`。本节验收 architecture / docs / QA surface；不表示 Candidate Memory runtime、Memory Retrieval、Session Archive、向量数据库或外部 memory provider 已实现。
+
+1. 文档应包含 Hermes-style memory 的轻量 research 摘要，并说明只吸收 bounded / curated / approval / retrieval budget 等架构思想，不复制 Hermes 代码、prompt、人格或 provider 实现。
+2. 文档应明确区分 Working Context、Game Session State、Session Timeline、Memory Candidate、Long-term Memory、Retrieved Memory、Prompt Memory Block、Persona Core 和 Candidate Game Understanding。
+3. Game Session State 不是 Long-term Memory；`current_boss`、`death_count`、`current_activity` 等只表示当前局状态。
+4. Candidate Game Understanding 来自 LLM-primary Extraction v1.0.3，可影响当轮回复，但不等于长期记忆。
+5. Memory Candidate 必须经过 guard 和用户确认；不应直接进入 Long-term Memory。
+6. Long-term Memory 必须用户可查看、可删除、尽量本地保存，并且不得包含未确认猜测。
+7. Retrieved Memory 必须有相关性、数量和 token budget 限制；不得把全部 memory 塞进 prompt。
+8. Persona Core 永远优先；用户 memory 不得改写 Rei persona core。
+9. 用户希望回答短一点、少剧透、语音更短，可以成为 bounded preference；用户要求 Rei 撒娇、客服化、强烈安慰，不应保存为 persona-changing memory。
+10. 可以成为 Memory Candidate 的内容包括显式记住请求、稳定游戏偏好、稳定交互偏好、重复游戏习惯和用户主动确认事实。
+11. 不应成为长期 memory 的内容包括单次死亡事件、未确认候选、assistant 自己说的话、proactive 自己产生的内容、攻略知识、低置信 extraction candidate、敏感技术信息和人格漂移要求。
+12. Confirmation flow 应覆盖 accept、ignore、delete、revise、expiry、dedup、weak confirmation 和 do-not-remember preference。
+13. 弱确认如 `也许吧`、`可能是`、`先这么记也行` 不应靠固定关键词硬编码；后续 runtime 应由 LLM-primary semantic extraction 输出 confirmation intent，再由 deterministic guard 决定。
+14. Direct Conversation / Voice 下 memory confirmation 应低打扰；active gameplay 中隐式候选默认暂存，不频繁打断。
+15. Overlay 默认不显示敏感 memory candidate；未来如显示也必须 opt-in 且 safe-summary-only。
+16. Prompt assembly 应把 memory 作为 user-specific context，且低于 App safety / Persona Core / 当前明确输入；memory 注入使用 safe summary，不注入 raw transcript。
+17. Memory 与 Knowledge Retrieval 必须分离：game knowledge 不等于 user memory。
+18. Proactive 可参考已确认 memory，但 proactive message 本身不能直接写 memory。
+19. Debug Trace 可显示 memory candidate status、type、guard reason 和 safe summary；不得显示 raw transcript、raw prompt、raw JSON、API key、`.env`、完整路径、stdout/stderr 或 secret。
+20. QA scenarios 应覆盖显式记忆、拒绝记忆、单次游戏事件不保存、剧透偏好、短回复偏好、人格漂移拒绝、删除、接受、忽略、弱确认、语音、proactive、assistant reply、knowledge、prompt budget、current input priority、secret rejection、candidate expiry、dedup、workspace visibility、direct conversation、overlay 和 debug privacy。
 
 ### 2. Voice Output 回归检查
 

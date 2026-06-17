@@ -551,6 +551,7 @@ These boundaries must not regress:
 
 - LLM extraction cannot write long-term memory.
 - LLM extraction may emit `memory_candidate_hint`, but it must enter pending memory confirmation through the existing memory pipeline.
+- LLM extraction candidate fields such as `candidate_boss`, `candidate_event`, `candidate_game`, `needs_confirmation`, and `confirmation_intent` are current-turn understanding signals. They may help memory confirmation routing, but they are not Long-term Memory and must not be saved without the separate Memory Candidate guard described in `docs/memory_architecture_v0.md`.
 - LLM extraction cannot trigger proactive messages.
 - Proactive remains controlled by Proactive Safe Gating.
 - LLM extraction cannot modify persona.
