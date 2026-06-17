@@ -421,5 +421,72 @@
     "acceptable_decisions": ["fallback_to_rule", "apply"],
     "expected_behavior": "Existing rule-supported flow does not crash and still provides safe state updates when LLM-primary cannot run.",
     "must_not_do": ["break_rule_fallback", "block_chat_reply"]
+  },
+  {
+    "id": "llm-primary-v1-0-2-minimal-updates-schema",
+    "category": "llm_primary_guarded_extraction_schema",
+    "input_source": "text",
+    "input": "我换去打玛尔基特了。",
+    "precondition": "LLM returns minimal v1.0.2 JSON with is_game_related, intent, confidence, updates, and safe_trace_summary only",
+    "expected_decision": "apply",
+    "expected_trace_fields": ["llm_schema_valid", "primary_extractor", "guard_final_decision", "applied_by"],
+    "expected_behavior": "Missing optional fields do not fail schema; guard applies Margit through LLM-primary rather than rule fallback.",
+    "must_not_do": ["require_all_optional_fields", "fallback_to_rule_when_llm_candidate_valid"]
+  },
+  {
+    "id": "llm-primary-v1-0-2-json-recovery",
+    "category": "llm_primary_guarded_extraction_json_recovery",
+    "input_source": "text",
+    "input": "我换去打玛尔基特了。",
+    "precondition": "LLM returns fenced JSON, prose-wrapped JSON, or an array whose first item is the JSON object",
+    "expected_decision": "apply",
+    "expected_trace_fields": ["json_recovery_stage", "llm_schema_valid"],
+    "expected_behavior": "Safe parser recovers the first JSON object, validates schema, and does not expose raw provider text.",
+    "forbidden_trace_content": ["raw LLM JSON", "raw prompt", "API key", ".env", "full local path"]
+  },
+  {
+    "id": "llm-primary-v1-0-2-compat-retry-success",
+    "category": "llm_primary_guarded_extraction_json_recovery",
+    "input_source": "text",
+    "input": "我换去打玛尔基特了。",
+    "precondition": "First primary attempt returns invalid JSON, compat retry without response_format returns valid minimal JSON",
+    "expected_decision": "apply",
+    "expected_trace_fields": ["first_attempt_failed", "compat_retry_used", "compat_retry_succeeded", "llm_provider_status"],
+    "expected_behavior": "Trace shows first_attempt_failed=invalid_json and compat_retry_succeeded=true; final apply is still LLM-primary.",
+    "must_not_do": ["silently_fallback_to_rule", "hide_compat_retry"]
+  },
+  {
+    "id": "llm-primary-v1-0-2-ultra-compact-retry-success",
+    "category": "llm_primary_guarded_extraction_json_recovery",
+    "input_source": "text",
+    "input": "我现在不打女武神了，换去打玛尔基特。",
+    "precondition": "First primary attempt and compat retry both return invalid or truncated JSON; ultra-compact retry returns valid minimal JSON",
+    "expected_decision": "apply",
+    "expected_trace_fields": ["first_attempt_failed", "compat_retry_used", "compat_retry_succeeded", "ultra_compact_used", "json_recovery_stage"],
+    "expected_behavior": "Trace shows the third recovery stage was used; final state is still applied by LLM-primary and switches to Margit.",
+    "must_not_do": ["fallback_to_rule_before_ultra_retry", "hide_ultra_compact_retry", "apply_negated_old_target"]
+  },
+  {
+    "id": "llm-primary-v1-0-2-schema-invalid",
+    "category": "llm_primary_guarded_extraction_schema",
+    "input_source": "text",
+    "input": "我换去打玛尔基特了。",
+    "precondition": "LLM returns valid JSON but an unsafe schema value that cannot be normalized",
+    "expected_decision": "no_op",
+    "acceptable_decisions": ["no_op", "fallback_to_rule"],
+    "expected_trace_fields": ["llm_provider_status", "llm_schema_valid", "compat_retry_used"],
+    "expected_behavior": "Trace distinguishes schema_error from invalid_json; fallback, if any, is explicit rule fallback and not primary.",
+    "must_not_do": ["label_schema_error_as_primary_success", "leak_raw_schema_payload"]
+  },
+  {
+    "id": "llm-primary-v1-0-2-fallback-trace-explicit",
+    "category": "llm_primary_guarded_extraction_trace",
+    "input_source": "text",
+    "input": "我现在卡在玛尔基特",
+    "precondition": "Primary invalid JSON and exact safe rule fallback applies",
+    "expected_decision": "fallback_to_rule",
+    "expected_trace_fields": ["primary_extractor", "primary_status", "fallback_extractor", "guard_final_decision", "applied_by"],
+    "expected_behavior": "Trace shows primary_extractor=llm, fallback_extractor=rule, guard_final_decision=fallback_to_rule, and applied_by=rule_fallback.",
+    "must_not_do": ["show_only_source_rule", "pretend_rule_fallback_is_llm_primary"]
   }
 ]

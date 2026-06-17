@@ -54,6 +54,18 @@ SHADOW_MEMORY_KINDS = {"playstyle_preference", "game_preference", "progress", "n
 SHADOW_PROACTIVE_TYPES = {"silent_companion", "frustration_check", "repeated_death", "none"}
 SHADOW_GAME_IDS = {"elden_ring", "hollow_knight", "unknown"}
 SHADOW_BOSS_IDS = {"margit", "malenia", "tree_sentinel", "false_knight", "unknown"}
+PRIMARY_UPDATE_FIELDS = {
+    "game",
+    "boss",
+    "area",
+    "death_count_absolute",
+    "death_count_increment",
+    "frustration",
+    "frustration_level",
+    "boss_cleared",
+    "guide_request",
+    "strategy_request",
+}
 SEMANTIC_LLM_TIMEOUT_SECONDS = 12.0
 SEMANTIC_LLM_MIN_TIMEOUT_SECONDS = 8.0
 SEMANTIC_LLM_MAX_TIMEOUT_SECONDS = 15.0
@@ -132,11 +144,35 @@ class _LLMPrimaryProactiveSignal(BaseModel):
     reason: str = ""
 
 
+class _LLMPrimaryUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: Literal[
+        "game",
+        "boss",
+        "area",
+        "death_count_absolute",
+        "death_count_increment",
+        "frustration",
+        "frustration_level",
+        "boss_cleared",
+        "guide_request",
+        "strategy_request",
+    ]
+    value: str | int | float | bool | None = None
+    canonical: str | None = None
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    reason: str = Field(default="", max_length=120)
+
+
 class _LLMPrimaryCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     is_game_related: bool = False
+    intent: str = Field(default="none", max_length=48)
     confidence: ConfidenceLabel = "low"
+    requires_clarification: bool = False
+    updates: list[_LLMPrimaryUpdate] = Field(default_factory=list)
     game: _LLMPrimaryGame = Field(default_factory=_LLMPrimaryGame)
     boss: _LLMPrimaryBoss = Field(default_factory=_LLMPrimaryBoss)
     death_count: _LLMPrimaryDeathCount = Field(default_factory=_LLMPrimaryDeathCount)
@@ -153,6 +189,7 @@ class _LLMPrimaryCandidate(BaseModel):
     current_target_candidate: _LLMPrimaryEntitySignal = Field(default_factory=_LLMPrimaryEntitySignal)
     memory_candidate: _LLMPrimaryMemoryCandidate = Field(default_factory=_LLMPrimaryMemoryCandidate)
     proactive_signal: _LLMPrimaryProactiveSignal = Field(default_factory=_LLMPrimaryProactiveSignal)
+    safe_trace_summary: str = Field(default="", max_length=160)
     reasoning_summary: str = Field(default="", max_length=160)
 
 
@@ -213,36 +250,107 @@ def extract_semantics(
         primary_ran = True
         llm_called = True
         llm_start = time.perf_counter()
+        first_attempt_failed: str | None = None
+        primary_compat_retry_used = compat_retry_used
+        primary_ultra_compact_used = ultra_compact_used
         try:
-            response = _call_llm_primary(
-                normalized_message,
-                intent,
-                state,
-                session_focus_boss,
-                input_source=input_source_value,
-                use_response_format=llm_response_format,
-            )
-            extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
-            raw, provider_diagnostics = _shadow_response_parts(
-                response,
-                response_format_used=llm_response_format,
-                compat_retry_used=compat_retry_used,
-                ultra_compact_used=ultra_compact_used,
-            )
-            llm_shadow = _finalize_llm_shadow(
-                _parse_llm_primary_candidate(raw, normalized_message, provider_diagnostics=provider_diagnostics),
-                rule_result,
-            )
+            try:
+                response = _call_llm_primary(
+                    normalized_message,
+                    intent,
+                    state,
+                    session_focus_boss,
+                    input_source=input_source_value,
+                    use_response_format=llm_response_format,
+                )
+                extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
+                raw, provider_diagnostics = _shadow_response_parts(
+                    response,
+                    response_format_used=llm_response_format,
+                    compat_retry_used=compat_retry_used,
+                    ultra_compact_used=ultra_compact_used,
+                )
+                llm_shadow = _finalize_llm_shadow(
+                    _parse_llm_primary_candidate(raw, normalized_message, provider_diagnostics=provider_diagnostics),
+                    rule_result,
+                )
+            except SemanticShadowParseError as exc:
+                first_attempt_failed = _primary_failure_kind(exc)
+                if not _should_retry_primary_without_response_format(exc, llm_response_format, compat_retry_used):
+                    raise
+                primary_compat_retry_used = True
+                try:
+                    response = _call_llm_primary(
+                        normalized_message,
+                        intent,
+                        state,
+                        session_focus_boss,
+                        input_source=input_source_value,
+                        use_response_format=False,
+                        compat_retry=True,
+                    )
+                    extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
+                    raw, provider_diagnostics = _shadow_response_parts(
+                        response,
+                        response_format_used=False,
+                        compat_retry_used=True,
+                        ultra_compact_used=primary_ultra_compact_used,
+                    )
+                    provider_diagnostics["first_attempt_failed"] = first_attempt_failed
+                    provider_diagnostics["compat_retry_succeeded"] = True
+                    llm_shadow = _finalize_llm_shadow(
+                        _parse_llm_primary_candidate(raw, normalized_message, provider_diagnostics=provider_diagnostics),
+                        rule_result,
+                    )
+                except SemanticShadowParseError as retry_exc:
+                    if not _should_retry_primary_ultra_compact(retry_exc, primary_compat_retry_used, primary_ultra_compact_used):
+                        raise
+                    primary_ultra_compact_used = True
+                    response = _call_llm_primary(
+                        normalized_message,
+                        intent,
+                        state,
+                        session_focus_boss,
+                        input_source=input_source_value,
+                        use_response_format=False,
+                        compat_retry=True,
+                        ultra_compact=True,
+                    )
+                    extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
+                    raw, provider_diagnostics = _shadow_response_parts(
+                        response,
+                        response_format_used=False,
+                        compat_retry_used=True,
+                        ultra_compact_used=True,
+                    )
+                    provider_diagnostics["first_attempt_failed"] = first_attempt_failed
+                    provider_diagnostics["compat_retry_succeeded"] = True
+                    llm_shadow = _finalize_llm_shadow(
+                        _parse_llm_primary_candidate(raw, normalized_message, provider_diagnostics=provider_diagnostics),
+                        rule_result,
+                    )
         except Exception as exc:  # noqa: BLE001 - foreground extraction must never break chat.
             extraction_latency_ms = int((time.perf_counter() - llm_start) * 1000)
-            parse_error = _safe_parse_error(exc)
+            parse_error = _safe_primary_parse_error(exc)
             llm_shadow = _empty_llm_shadow(
                 status="failed",
                 failure_reason=_shadow_failure_reason(exc),
                 candidate_summary=f"失败：{_shadow_failure_reason(exc)}",
                 diff_summary="LLM 主识别失败，未应用状态",
             )
-            llm_shadow.update(_shadow_exception_diagnostics(exc, llm_response_format, compat_retry_used, ultra_compact_used))
+            llm_shadow.update(
+                _shadow_exception_diagnostics(
+                    exc,
+                    False if first_attempt_failed else llm_response_format,
+                    bool(first_attempt_failed) or primary_compat_retry_used,
+                    primary_ultra_compact_used,
+                )
+            )
+            if first_attempt_failed:
+                llm_shadow["first_attempt_failed"] = first_attempt_failed
+                llm_shadow["compat_retry_used"] = True
+                llm_shadow["compat_retry_succeeded"] = False
+                llm_shadow["attempts"] = _shadow_attempts(llm_response_format, True, primary_ultra_compact_used)
             logger.warning("semantic extraction primary skipped parse_error=%s", parse_error)
         final_decision, llm_guard = _guard_llm_primary_candidate(
             normalized_message,
@@ -326,6 +434,11 @@ def extract_semantics(
         "ambiguity_detected": bool(ambiguity_reason),
         "fallback_reason": trace["fallback_reason"],
         "source": trace["source"],
+        "primary_extractor": trace["primary_extractor"],
+        "primary_status": trace["primary_status"],
+        "fallback_extractor": trace["fallback_extractor"],
+        "guard_final_decision": trace["final_decision"],
+        "applied_by": trace["applied_by"],
         "confidence": trace["confidence"],
         "applied_updates": trace["applied_updates"],
         "extraction_trace": trace,
@@ -337,6 +450,11 @@ def extract_semantics(
         "llm_provider_status": _llm_provider_status(primary_ran=primary_ran, llm_called=llm_called, llm_shadow=llm_shadow, parse_error=parse_error),
         "llm_schema_valid": _llm_schema_valid(primary_ran=primary_ran, llm_shadow=llm_shadow, parse_error=parse_error),
         "rule_grounding": _safe_rule_grounding(rule_result),
+        "first_attempt_failed": _safe_optional_label(llm_shadow.get("first_attempt_failed")),
+        "compat_retry_used": bool(llm_shadow.get("compat_retry_used")),
+        "compat_retry_succeeded": llm_shadow.get("compat_retry_succeeded") if isinstance(llm_shadow.get("compat_retry_succeeded"), bool) else None,
+        "ultra_compact_used": bool(llm_shadow.get("ultra_compact_used")),
+        "json_recovery_stage": _safe_json_recovery_stage(llm_shadow.get("json_recovery_stage")),
         "llm_result": llm_shadow if llm_called and llm_shadow["status"] == "succeeded" else None,
         "llm_shadow": llm_shadow,
         "llm_primary": llm_shadow if primary_ran else None,
@@ -401,6 +519,9 @@ def _empty_llm_shadow(
         "candidate_summary": candidate_summary or (f"跳过：{skip_reason or 'not_run'}" if status_value == "skipped" else "低置信，未应用"),
         "diff_summary": diff_summary or "规则和 LLM 均无高置信更新",
         "is_game_related": False,
+        "intent": "none",
+        "requires_clarification": False,
+        "updates": [],
         "game": {"operation": "none", "value": None, "confidence": "low"},
         "boss": {"operation": "none", "value": None, "surface_label": None, "confidence": "low"},
         "death_count": {"operation": "none", "value": None, "confidence": "low"},
@@ -426,6 +547,7 @@ def _empty_llm_shadow(
             "confidence": "low",
             "reason": "",
         },
+        "safe_trace_summary": "",
         "reasoning_summary": "",
         "response_format_used": None,
         "compat_retry_used": False,
@@ -451,9 +573,19 @@ _latest_debug: dict[str, Any] = {
     "ambiguity_detected": False,
     "fallback_reason": None,
     "source": "none",
+    "primary_extractor": "llm",
+    "primary_status": "not_run",
+    "fallback_extractor": None,
+    "guard_final_decision": "no_op",
+    "applied_by": None,
     "confidence": "low",
     "applied_updates": [],
     "extraction_trace": {
+        "primary_extractor": "llm",
+        "primary_status": "not_run",
+        "fallback_extractor": None,
+        "final_decision": "no_op",
+        "applied_by": None,
         "source": "none",
         "confidence": "low",
         "fallback_reason": None,
@@ -476,6 +608,11 @@ _latest_debug: dict[str, Any] = {
     "llm_provider_status": "not_run",
     "llm_schema_valid": None,
     "rule_grounding": {},
+    "first_attempt_failed": None,
+    "compat_retry_used": False,
+    "compat_retry_succeeded": None,
+    "ultra_compact_used": False,
+    "json_recovery_stage": "not_run",
     "llm_result": None,
     "llm_shadow": _EMPTY_LLM_SHADOW,
     "llm_primary": None,
@@ -662,6 +799,30 @@ def _should_retry_shadow_ultra_compact(debug: dict[str, Any]) -> bool:
     )
 
 
+def _should_retry_primary_without_response_format(
+    exc: SemanticShadowParseError,
+    response_format_used: bool,
+    compat_retry_used: bool,
+) -> bool:
+    return (
+        response_format_used
+        and not compat_retry_used
+        and _primary_failure_kind(exc) in {"invalid_json", "schema_invalid"}
+    )
+
+
+def _should_retry_primary_ultra_compact(
+    exc: SemanticShadowParseError,
+    compat_retry_used: bool,
+    ultra_compact_used: bool,
+) -> bool:
+    return (
+        compat_retry_used
+        and not ultra_compact_used
+        and _primary_failure_kind(exc) in {"invalid_json", "schema_invalid"}
+    )
+
+
 def get_semantic_shadow_events(since_id: int = 0, limit: int = 50) -> dict[str, Any]:
     _expire_stale_shadow_events()
     safe_since = max(0, int(since_id or 0))
@@ -738,6 +899,11 @@ def _shadow_event_from_debug(
         "phase": phase,
         "status": event_status,
         "source": _safe_label(trace.get("source") or debug.get("source") or "none"),
+        "primary_extractor": _safe_optional_label(trace.get("primary_extractor") or debug.get("primary_extractor")),
+        "primary_status": _safe_optional_label(trace.get("primary_status") or debug.get("primary_status")),
+        "fallback_extractor": _safe_optional_label(trace.get("fallback_extractor") or debug.get("fallback_extractor")),
+        "guard_final_decision": _safe_optional_label(trace.get("final_decision") or debug.get("guard_final_decision")),
+        "applied_by": _safe_optional_label(trace.get("applied_by") or debug.get("applied_by")),
         "confidence": _safe_confidence(trace.get("confidence") or debug.get("confidence") or "low"),
         "fallback_reason": _safe_optional_label(trace.get("fallback_reason") or debug.get("fallback_reason")),
         "skip_reason": _safe_optional_label(skip_reason),
@@ -760,6 +926,8 @@ def _shadow_event_from_debug(
         ),
         "response_format_used": _safe_bool(shadow.get("response_format_used")),
         "compat_retry_used": _safe_bool(shadow.get("compat_retry_used")),
+        "compat_retry_succeeded": _safe_bool(shadow.get("compat_retry_succeeded")),
+        "first_attempt_failed": _safe_optional_label(shadow.get("first_attempt_failed") or debug.get("first_attempt_failed")),
         "ultra_compact_used": _safe_bool(shadow.get("ultra_compact_used")),
         "attempts": _safe_attempts(shadow.get("attempts")),
         "last_failure": _safe_optional_label(shadow.get("last_failure")),
@@ -855,7 +1023,8 @@ def _safe_label(value: Any) -> str:
         return ""
     text = re.sub(r"(?i)bearer\s+[a-z0-9._-]+", "bearer [redacted]", text)
     text = re.sub(r"(?i)(api[_-]?key|authorization|\.env|stdout|stderr|raw prompt|raw json)", "[redacted]", text)
-    text = re.sub(r"/[^\s]+", "[path]", text)
+    text = re.sub(r"/(?:Users|private|tmp|var|opt|usr|etc|Applications|Volumes|Library|System)[^\s，。；;,，)）]+", "[path]", text)
+    text = re.sub(r"[A-Za-z]:\\[^\s，。；;,，)）]+", "[path]", text)
     return text[:80]
 
 
@@ -1231,93 +1400,32 @@ def _call_llm_primary(
     *,
     input_source: InputSource,
     use_response_format: bool = True,
+    compat_retry: bool = False,
+    ultra_compact: bool = False,
 ) -> str | SemanticShadowProviderResponse:
     provider = _shadow_provider_config()
     if not provider:
         raise RuntimeError("semantic primary provider unavailable")
-    prompt = {
-        "task": "llm_primary_guarded_extraction_v1_0_1",
-        "input_source": input_source,
-        "intent": intent,
-        "message": user_message,
-        "focus_boss": normalize_terminology(session_focus_boss or "") or None,
-        "game_state": _brief_game_state(game_state),
-        "allowed_fields": [
-            "game",
-            "boss",
-            "mentioned_entity",
-            "negated_entity",
-            "previous_target",
-            "new_current_target",
-            "guide_only_entity",
-            "current_target_candidate",
-            "boss_switched",
-            "area",
-            "death_count_absolute",
-            "death_count_increment",
-            "frustration",
-            "boss_cleared",
-            "guide_request",
-            "strategy_request",
-        ],
-        "allowed_values": {
-            "confidence": ["high", "medium", "low"],
-            "game": ["elden_ring", "hollow_knight", "unknown", None],
-            "boss": ["margit", "malenia", "tree_sentinel", "false_knight", "unknown", None],
-            "game_operation": ["set", "keep", "none", "unknown"],
-            "boss_operation": ["set", "keep", "clear", "none", "unknown"],
-            "death_operation": ["set", "increment", "none", "unknown"],
-            "frustration_operation": ["raise", "lower", "clear", "keep", "none", "unknown"],
-            "boss_cleared_operation": ["set_true", "set_false", "none", "unknown"],
-        },
-        "format": {
-            "is_game_related": True,
-            "confidence": "medium",
-            "game": {"operation": "unknown", "value": "unknown", "confidence": "low"},
-            "boss": {"operation": "unknown", "value": "unknown", "surface_label": None, "confidence": "low"},
-            "death_count": {"operation": "none", "value": None, "confidence": "low"},
-            "frustration": {"operation": "none", "confidence": "low"},
-            "boss_cleared": {"operation": "none", "confidence": "low"},
-            "guide_request": {"value": False, "confidence": "low"},
-            "strategy_request": {"value": False, "confidence": "low"},
-            "boss_switched": {"value": False, "confidence": "low"},
-            "mentioned_entity": {"value": None, "surface_label": None, "confidence": "low"},
-            "negated_entity": {"value": None, "surface_label": None, "confidence": "low"},
-            "previous_target": {"value": None, "surface_label": None, "confidence": "low"},
-            "new_current_target": {"value": None, "surface_label": None, "confidence": "low"},
-            "guide_only_entity": {"value": None, "surface_label": None, "confidence": "low"},
-            "current_target_candidate": {"value": None, "surface_label": None, "confidence": "low"},
-            "memory_candidate": {"should_create": False, "kind": "none", "safe_summary": None, "confidence": "low"},
-            "proactive_signal": {"type": "none", "confidence": "low", "reason": ""},
-            "reasoning_summary": "safe short summary, no raw user text",
-        },
-        "instruction": (
-            "Return ONLY one JSON object matching the format keys. No markdown, prose, code fences, or chain-of-thought. "
-            "The model only proposes candidates; deterministic guard decides whether state can change. "
-            "Prefer unknown/none with low confidence when unsure. "
-            "For switch or negation, distinguish old/abandoned targets from the new current target. "
-            "Examples: '不打 A 了，换去打 B' means negated_entity/previous_target=A, new_current_target=B, boss_switched=true, boss=B. "
-            "For voice input, cautiously recover likely ASR homophones into canonical boss ids when the full sentence supports it; use medium/low confidence if unsure. "
-            "Guide or strategy questions must set guide_request/strategy_request and must not imply a boss switch unless the user explicitly says they are now fighting, switching, dying to, or clearing that boss. "
-            "Guide-only mentions should fill guide_only_entity, not new_current_target. "
-            "Never propose memory or proactive writes; keep those fields false/none. "
-            "Do not echo full user text, raw prompt, paths, secrets, stdout/stderr, API keys, or full transcript."
-        ),
-    }
+    prompt = _llm_primary_prompt(
+        user_message,
+        intent,
+        game_state,
+        session_focus_boss,
+        input_source=input_source,
+        compat_retry=compat_retry,
+        ultra_compact=ultra_compact,
+    )
     payload = {
         "model": provider.model,
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You are ReiLink's LLM-primary semantic reader. Return strict JSON only. "
-                    "You provide guarded candidates, not app state writes."
-                ),
+                "content": _llm_primary_system_prompt(compat_retry=compat_retry, ultra_compact=ultra_compact),
             },
             {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ],
         "temperature": 0,
-        "max_tokens": 640,
+        "max_tokens": 260 if ultra_compact else (360 if compat_retry else 520),
         "stream": False,
     }
     if use_response_format:
@@ -1340,7 +1448,8 @@ def _call_llm_primary(
             content=text,
             diagnostics={
                 "response_format_used": use_response_format,
-                "ultra_compact_used": False,
+                "ultra_compact_used": ultra_compact,
+                "compat_retry_used": compat_retry,
                 "finish_reason": _safe_optional_label(choice.get("finish_reason") if isinstance(choice, dict) else None),
                 "content_length_bucket": _content_length_bucket(text),
                 "first_char_type": _first_char_type(text),
@@ -1358,6 +1467,118 @@ def _call_llm_primary(
         raise RuntimeError(f"semantic primary extraction provider failed: {exc}") from exc
     except (KeyError, IndexError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"semantic primary extraction provider returned invalid response: {exc}") from exc
+
+
+def _llm_primary_system_prompt(*, compat_retry: bool, ultra_compact: bool) -> str:
+    if ultra_compact:
+        return "Return only one tiny JSON object. No prose. No markdown. Max 12 keys. Keep strings very short."
+    if compat_retry:
+        return "Return one compact valid JSON object only. No markdown, no prose, no code fence."
+    return (
+        "You are ReiLink's LLM-primary semantic reader. Return one compact JSON object only. "
+        "Use the minimal schema requested; deterministic guard writes state."
+    )
+
+
+def _llm_primary_prompt(
+    user_message: str,
+    intent: str,
+    game_state: dict[str, Any],
+    session_focus_boss: str | None,
+    *,
+    input_source: InputSource,
+    compat_retry: bool,
+    ultra_compact: bool,
+) -> dict[str, Any]:
+    if ultra_compact:
+        return {
+            "task": "llm_primary_extraction_v1_0_2_ultra",
+            "msg": user_message,
+            "intent": intent,
+            "focus": normalize_terminology(session_focus_boss or "") or None,
+            "state": _brief_game_state(game_state),
+            "schema": {
+                "is_game_related": True,
+                "intent": "boss_switch|boss_report|guide_request|death_update|none",
+                "confidence": 0.0,
+                "updates": [{"field": "boss", "value": "玛尔基特", "canonical": "margit", "confidence": 0.9}],
+                "previous_target": None,
+                "negated_entity": None,
+                "new_current_target": None,
+                "guide_only_entity": None,
+                "guide_request": False,
+                "strategy_request": False,
+                "safe_trace_summary": "short",
+            },
+            "rules": (
+                "Only JSON. Keys from schema only. updates max 3. "
+                "Boss ids: margit, malenia, tree_sentinel, false_knight, unknown. "
+                "Use null when absent. No explanations."
+            ),
+        }
+    base = {
+        "task": "llm_primary_extraction_v1_0_2_retry" if compat_retry else "llm_primary_extraction_v1_0_2",
+        "input_source": input_source,
+        "intent": intent,
+        "message": user_message,
+        "focus_boss": normalize_terminology(session_focus_boss or "") or None,
+        "game_state": _brief_game_state(game_state),
+        "allowed": {
+            "confidence": "number 0..1 or high/medium/low",
+            "update_fields": sorted(PRIMARY_UPDATE_FIELDS),
+            "game": ["elden_ring", "hollow_knight", "unknown", None],
+            "boss": ["margit", "malenia", "tree_sentinel", "false_knight", "unknown", None],
+        },
+        "format": {
+            "is_game_related": True,
+            "intent": "boss_switch|boss_report|guide_request|death_update|none",
+            "confidence": 0.0,
+            "requires_clarification": False,
+            "updates": [
+                {"field": "boss", "value": "玛尔基特", "canonical": "margit", "confidence": 0.92}
+            ],
+            "previous_target": None,
+            "negated_entity": None,
+            "new_current_target": None,
+            "guide_only_entity": None,
+            "guide_request": False,
+            "strategy_request": False,
+            "safe_trace_summary": "safe short summary",
+        },
+        "rules": [
+            "Output JSON object only; no markdown, prose, code fences, or explanations.",
+            "Use only keys shown in format. Omit memory_candidate and proactive_signal unless necessary.",
+            "updates max 3; reason is optional and must be omitted unless needed.",
+            "Extract game context candidates only. Do not create memory. Do not trigger proactive behavior.",
+            "If unsure, lower confidence or set requires_clarification=true.",
+            "For '不打 A 了，换去打 B', A is previous/negated target and B is new_current_target plus boss update.",
+            "For guide questions like 'X 那边怎么打', set guide_request and guide_only_entity; do not set new_current_target unless user says now fighting/switching/dying/clearing.",
+            "Do not echo the full user input, raw prompt, paths, secrets, stdout/stderr, API keys, or transcript.",
+        ],
+    }
+    if compat_retry:
+        base["format"] = {
+            "is_game_related": True,
+            "intent": "boss_switch|boss_report|guide_request|death_update|none",
+            "confidence": 0.0,
+            "requires_clarification": False,
+            "updates": [],
+            "previous_target": None,
+            "negated_entity": None,
+            "new_current_target": None,
+            "guide_only_entity": None,
+            "guide_request": False,
+            "strategy_request": False,
+            "safe_trace_summary": "short safe summary",
+        }
+        base["rules"] = [
+            "Only JSON. No markdown. No explanation.",
+            "Use keys from format only. Keep output under 1200 characters.",
+            "Allowed update fields: boss, game, death_count_absolute, death_count_increment, boss_cleared, guide_request, strategy_request.",
+            "Use canonical boss ids: margit, malenia, tree_sentinel, false_knight, unknown.",
+            "No memory or proactive writes.",
+        ]
+    return base
 
 
 def _call_deepseek_flash(
@@ -1670,33 +1891,68 @@ def _parse_llm_primary_candidate(
 
 def _primary_candidate_data(data: dict[str, Any]) -> dict[str, Any]:
     expanded = _expand_compact_llm_shadow(data)
+    updates = _primary_updates_data(expanded.get("updates"))
+    update_hints = _primary_update_hints(updates)
+    death_count = (
+        update_hints.get("death_count")
+        or _primary_death_count_from_expanded(expanded)
+        or expanded.get("death_count")
+    )
+    safe_trace_summary = str(
+        expanded.get("safe_trace_summary")
+        or expanded.get("reasoning_summary")
+        or expanded.get("summary")
+        or ""
+    )[:160]
     return {
         "is_game_related": bool(expanded.get("is_game_related")),
+        "intent": _safe_label(expanded.get("intent") or "none")[:48],
         "confidence": _shadow_confidence(expanded.get("confidence")),
-        "game": _primary_operation_data(expanded.get("game"), include_value=True),
-        "boss": _primary_boss_data(expanded.get("boss")),
-        "death_count": _primary_operation_data(expanded.get("death_count"), include_value=True),
-        "frustration": _primary_operation_data(expanded.get("frustration"), include_value=False),
-        "boss_cleared": _primary_operation_data(expanded.get("boss_cleared"), include_value=False),
-        "guide_request": _primary_boolean_signal(expanded.get("guide_request") or expanded.get("guide")),
-        "strategy_request": _primary_boolean_signal(expanded.get("strategy_request") or expanded.get("strategy")),
+        "requires_clarification": bool(expanded.get("requires_clarification")),
+        "updates": updates,
+        "game": _primary_operation_data(
+            update_hints.get("game") or expanded.get("game"),
+            include_value=True,
+            allowed=SHADOW_GAME_OPERATIONS,
+        ),
+        "boss": _primary_boss_data(update_hints.get("boss") or expanded.get("boss")),
+        "death_count": _primary_death_count_data(death_count),
+        "frustration": _primary_operation_data(
+            update_hints.get("frustration") or expanded.get("frustration"),
+            include_value=False,
+            allowed=SHADOW_FRUSTRATION_OPERATIONS,
+        ),
+        "boss_cleared": _primary_operation_data(
+            update_hints.get("boss_cleared") or expanded.get("boss_cleared"),
+            include_value=False,
+            allowed=SHADOW_BOSS_CLEARED_OPERATIONS,
+        ),
+        "guide_request": _primary_boolean_signal(update_hints.get("guide_request") or expanded.get("guide_request") or expanded.get("guide")),
+        "strategy_request": _primary_boolean_signal(update_hints.get("strategy_request") or expanded.get("strategy_request") or expanded.get("strategy")),
         "boss_switched": _primary_boolean_signal(expanded.get("boss_switched") or expanded.get("switch")),
         "mentioned_entity": _primary_entity_data(expanded.get("mentioned_entity") or expanded.get("mentioned")),
         "negated_entity": _primary_entity_data(expanded.get("negated_entity") or expanded.get("negated")),
         "previous_target": _primary_entity_data(expanded.get("previous_target") or expanded.get("old_target")),
-        "new_current_target": _primary_entity_data(expanded.get("new_current_target") or expanded.get("new_target")),
+        "new_current_target": _primary_entity_data(expanded.get("new_current_target") or expanded.get("new_target") or update_hints.get("new_current_target")),
         "guide_only_entity": _primary_entity_data(expanded.get("guide_only_entity") or expanded.get("guide_entity")),
-        "current_target_candidate": _primary_entity_data(expanded.get("current_target_candidate") or expanded.get("current_target")),
+        "current_target_candidate": _primary_entity_data(
+            expanded.get("current_target_candidate")
+            or expanded.get("current_target")
+            or update_hints.get("current_target_candidate")
+        ),
         "memory_candidate": _primary_memory_data(expanded.get("memory_candidate")),
         "proactive_signal": _primary_proactive_data(expanded.get("proactive_signal")),
-        "reasoning_summary": str(expanded.get("reasoning_summary") or expanded.get("summary") or "")[:160],
+        "safe_trace_summary": safe_trace_summary,
+        "reasoning_summary": safe_trace_summary,
     }
 
 
-def _primary_operation_data(value: Any, *, include_value: bool) -> dict[str, Any]:
+def _primary_operation_data(value: Any, *, include_value: bool, allowed: set[str]) -> dict[str, Any]:
+    if include_value and isinstance(value, str | int | float | bool):
+        return {"operation": "set", "value": value, "confidence": "medium"}
     if not isinstance(value, dict):
         return {"operation": "none", "value": None, "confidence": "low"} if include_value else {"operation": "none", "confidence": "low"}
-    operation = str(value.get("operation") or value.get("op") or "none").lower().strip()
+    operation = _primary_operation(value.get("operation") or value.get("op"), allowed, value_present=_has_primary_value(value.get("value")))
     confidence = _shadow_confidence(value.get("confidence", value.get("conf", "low")))
     if include_value:
         return {
@@ -1708,9 +1964,38 @@ def _primary_operation_data(value: Any, *, include_value: bool) -> dict[str, Any
 
 
 def _primary_boss_data(value: Any) -> dict[str, Any]:
-    data = _primary_operation_data(value, include_value=True)
+    if isinstance(value, str):
+        return {"operation": "set", "value": value, "surface_label": None, "confidence": "medium"}
+    data = _primary_operation_data(value, include_value=True, allowed=SHADOW_BOSS_OPERATIONS)
     data["surface_label"] = value.get("surface_label", value.get("label")) if isinstance(value, dict) else None
     return data
+
+
+def _primary_death_count_data(value: Any) -> dict[str, Any]:
+    if isinstance(value, int):
+        return {"operation": "set", "value": _shadow_death_count_value(value), "confidence": "medium"}
+    if not isinstance(value, dict):
+        return {"operation": "none", "value": None, "confidence": "low"}
+    operation = _primary_operation(
+        value.get("operation") or value.get("op"),
+        SHADOW_DEATH_OPERATIONS,
+        value_present=value.get("value") is not None,
+    )
+    return {
+        "operation": operation,
+        "value": _shadow_death_count_value(value.get("value")) if operation in {"set", "increment"} else None,
+        "confidence": _shadow_confidence(value.get("confidence", value.get("conf", "low"))),
+    }
+
+
+def _primary_death_count_from_expanded(expanded: dict[str, Any]) -> dict[str, Any] | None:
+    absolute = expanded.get("death_count_absolute")
+    increment = expanded.get("death_count_increment")
+    if absolute is not None:
+        return {"operation": "set", "value": absolute, "confidence": expanded.get("confidence", "medium")}
+    if increment is not None:
+        return {"operation": "increment", "value": increment, "confidence": expanded.get("confidence", "medium")}
+    return None
 
 
 def _primary_boolean_signal(value: Any) -> dict[str, Any]:
@@ -1761,6 +2046,94 @@ def _primary_proactive_data(value: Any) -> dict[str, Any]:
         "confidence": _shadow_confidence(value.get("confidence", value.get("conf", "low"))),
         "reason": str(value.get("reason") or ""),
     }
+
+
+def _primary_updates_data(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    updates: list[dict[str, Any]] = []
+    for item in value[:8]:
+        if not isinstance(item, dict):
+            continue
+        field = _safe_primary_update_field(item.get("field"))
+        if not field:
+            continue
+        confidence = _numeric_confidence(item.get("confidence", item.get("conf", 0.0)))
+        updates.append(
+            {
+                "field": field,
+                "value": item.get("value"),
+                "canonical": _safe_optional_label(item.get("canonical")),
+                "confidence": confidence,
+                "reason": _safe_short_text(item.get("reason") or "")[:120],
+            }
+        )
+    return updates
+
+
+def _primary_update_hints(updates: list[dict[str, Any]]) -> dict[str, Any]:
+    hints: dict[str, Any] = {}
+    for update in updates:
+        field = update.get("field")
+        value = update.get("canonical") or update.get("value")
+        confidence = _confidence_label_from_number(update.get("confidence"))
+        if field == "game":
+            hints["game"] = {"operation": "set", "value": value, "confidence": confidence}
+        elif field == "boss":
+            hints["boss"] = {
+                "operation": "set",
+                "value": value,
+                "surface_label": update.get("value") if isinstance(update.get("value"), str) else None,
+                "confidence": confidence,
+            }
+            hints.setdefault("current_target_candidate", {"value": value, "confidence": confidence})
+        elif field == "death_count_absolute":
+            hints["death_count"] = {"operation": "set", "value": value, "confidence": confidence}
+        elif field == "death_count_increment":
+            hints["death_count"] = {"operation": "increment", "value": value, "confidence": confidence}
+        elif field in {"frustration", "frustration_level"}:
+            operation = "raise" if str(value or "").lower().strip() not in {"none", "clear", "lower"} else str(value or "none")
+            hints["frustration"] = {"operation": operation, "confidence": confidence}
+        elif field == "boss_cleared":
+            hints["boss_cleared"] = {
+                "operation": "set_true" if bool(value) else "set_false",
+                "confidence": confidence,
+            }
+        elif field == "guide_request":
+            hints["guide_request"] = {"value": bool(value), "confidence": confidence}
+        elif field == "strategy_request":
+            hints["strategy_request"] = {"value": bool(value), "confidence": confidence}
+    return hints
+
+
+def _safe_primary_update_field(value: Any) -> str | None:
+    field = _safe_label(value)
+    return field if field in PRIMARY_UPDATE_FIELDS else None
+
+
+def _primary_operation(value: Any, allowed: set[str], *, value_present: bool) -> str:
+    raw = str(value or "").lower().strip()
+    aliases = {
+        "": "set" if value_present and "set" in allowed else "none",
+        "update": "set",
+        "add": "set",
+        "current": "set",
+        "set_current": "set",
+        "switch": "set",
+        "increment_by": "increment",
+        "increase": "increment",
+        "true": "set_true",
+        "cleared": "set_true",
+        "false": "set_false",
+    }
+    operation = aliases.get(raw, raw or "none")
+    if operation in allowed:
+        return operation
+    return "unknown" if "unknown" in allowed else "none"
+
+
+def _has_primary_value(value: Any) -> bool:
+    return value is not None and value != ""
 
 
 def _load_llm_shadow_json(raw: str) -> tuple[dict[str, Any], bool, str]:
@@ -1844,6 +2217,9 @@ def _normalize_llm_shadow(data: dict[str, Any], user_message: str) -> dict[str, 
     shadow = _empty_llm_shadow(status="succeeded", skip_reason=None)
     shadow["is_game_related"] = bool(data.get("is_game_related"))
     shadow["confidence"] = _shadow_confidence(data.get("confidence"))
+    shadow["intent"] = _safe_label(data.get("intent") or "none")
+    shadow["requires_clarification"] = bool(data.get("requires_clarification"))
+    shadow["updates"] = _safe_primary_updates_for_trace(data.get("updates"))
 
     game = data.get("game")
     if isinstance(game, dict):
@@ -1942,7 +2318,9 @@ def _normalize_llm_shadow(data: dict[str, Any], user_message: str) -> dict[str, 
             "reason": _sanitize_shadow_text(proactive_signal.get("reason"), user_message, 48),
         }
 
-    shadow["reasoning_summary"] = _sanitize_shadow_text(data.get("reasoning_summary"), user_message, 96)
+    safe_trace_summary = data.get("safe_trace_summary") or data.get("reasoning_summary")
+    shadow["safe_trace_summary"] = _sanitize_shadow_text(safe_trace_summary, user_message, 96)
+    shadow["reasoning_summary"] = shadow["safe_trace_summary"]
     return shadow
 
 
@@ -1953,6 +2331,28 @@ def _normalize_primary_entity_signal(entity: dict[str, Any], user_message: str) 
         "surface_label": _sanitize_shadow_text(entity.get("surface_label"), user_message, 24) or None,
         "confidence": _shadow_confidence(entity.get("confidence")),
     }
+
+
+def _safe_primary_updates_for_trace(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    updates: list[dict[str, Any]] = []
+    for item in value[:8]:
+        if not isinstance(item, dict):
+            continue
+        field = _safe_primary_update_field(item.get("field"))
+        if not field:
+            continue
+        updates.append(
+            {
+                "field": field,
+                "value": _safe_short_text(item.get("value") if item.get("value") is not None else ""),
+                "canonical": _safe_optional_label(item.get("canonical")),
+                "confidence": round(_numeric_confidence(item.get("confidence")), 3),
+                "reason": _safe_short_text(item.get("reason") or "")[:80],
+            }
+        )
+    return updates
 
 
 def _expand_compact_llm_shadow(data: dict[str, Any]) -> dict[str, Any]:
@@ -2094,8 +2494,39 @@ def _append_json_recovered_summary(summary: str) -> str:
 
 
 def _shadow_confidence(value: Any) -> str:
+    if isinstance(value, int | float):
+        return _confidence_label_from_number(value)
     label = str(value or "").lower().strip()
+    if re.fullmatch(r"0(?:\.\d+)?|1(?:\.0+)?", label):
+        return _confidence_label_from_number(float(label))
     return label if label in CONFIDENCE_LABELS else "low"
+
+
+def _numeric_confidence(value: Any) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    if isinstance(value, int | float):
+        return _clamp(float(value))
+    label = str(value or "").lower().strip()
+    if label == "high":
+        return 0.92
+    if label == "medium":
+        return 0.72
+    if label == "low":
+        return 0.45
+    try:
+        return _clamp(float(label))
+    except ValueError:
+        return 0.0
+
+
+def _confidence_label_from_number(value: Any) -> str:
+    score = _numeric_confidence(value)
+    if score >= 0.85:
+        return "high"
+    if score >= 0.6:
+        return "medium"
+    return "low"
 
 
 def _shadow_operation(value: Any, allowed: set[str]) -> str:
@@ -2987,6 +3418,10 @@ def _primary_failure_guard_summary(parse_error: str | None, *, fallback: bool) -
     suffix = "fallback_to_rule" if fallback else "未应用状态"
     if parse_error == "semantic_extraction_timeout":
         return f"LLM extraction timeout，{suffix}"
+    if parse_error == "semantic_extraction_invalid_json":
+        return f"LLM invalid JSON，{suffix}"
+    if parse_error == "semantic_extraction_schema_invalid":
+        return f"LLM schema invalid，{suffix}"
     if parse_error == "semantic_extraction_parse_error":
         return f"LLM invalid JSON/schema，{suffix}"
     if parse_error == "semantic_extraction_auth_failed":
@@ -3016,13 +3451,24 @@ def _extraction_trace(
     else:
         source = "rule"
     guard_confidence = _confidence_score(llm_guard.get("candidate_confidence")) if source == "llm_primary" else 0.0
+    guard_decision = _safe_guard_decision(llm_guard.get("decision"))
+    applied_updates = _applied_updates(final_decision)
+    fallback_extractor = "rule" if guard_decision == "fallback_to_rule" else None
+    applied_by = "llm_primary" if guard_decision == "apply" and applied_updates else None
+    if guard_decision == "fallback_to_rule" and applied_updates:
+        applied_by = "rule_fallback"
     return {
+        "primary_extractor": "llm",
+        "primary_status": llm_shadow.get("status"),
+        "fallback_extractor": fallback_extractor,
+        "final_decision": guard_decision,
+        "applied_by": applied_by,
         "source": source,
         "confidence": _confidence_label(max(final_confidence, rule_confidence, guard_confidence)),
         "fallback_reason": fallback_reason,
         "skip_reason": skip_reason,
         "parse_error": parse_error,
-        "applied_updates": _applied_updates(final_decision),
+        "applied_updates": applied_updates,
         "llm_shadow_status": llm_shadow.get("status"),
         "llm_shadow_confidence": llm_shadow.get("confidence"),
         "llm_shadow_summary": llm_shadow.get("candidate_summary"),
@@ -3044,6 +3490,10 @@ def _llm_provider_status(
         return "not_run"
     if parse_error == "semantic_extraction_timeout":
         return "timeout"
+    if parse_error == "semantic_extraction_invalid_json":
+        return "invalid_json"
+    if parse_error == "semantic_extraction_schema_invalid":
+        return "schema_error"
     if parse_error == "semantic_extraction_parse_error":
         return "invalid_json_or_schema"
     if parse_error == "semantic_extraction_auth_failed":
@@ -3067,7 +3517,7 @@ def _llm_schema_valid(
         return None
     if llm_shadow.get("status") == "succeeded":
         return bool(llm_shadow.get("schema_valid"))
-    if parse_error == "semantic_extraction_parse_error":
+    if parse_error in {"semantic_extraction_parse_error", "semantic_extraction_invalid_json", "semantic_extraction_schema_invalid"}:
         return False
     return None
 
@@ -3089,6 +3539,21 @@ def _safe_parse_error(exc: Exception) -> str:
         return "semantic_extraction_timeout"
     if isinstance(exc, (json.JSONDecodeError, ValueError)):
         return "semantic_extraction_parse_error"
+    return "semantic_extraction_provider_error"
+
+
+def _safe_primary_parse_error(exc: Exception) -> str:
+    if isinstance(exc, SemanticShadowAuthError):
+        return "semantic_extraction_auth_failed"
+    if isinstance(exc, TimeoutError):
+        return "semantic_extraction_timeout"
+    if isinstance(exc, SemanticShadowParseError):
+        kind = _primary_failure_kind(exc)
+        if kind == "schema_invalid":
+            return "semantic_extraction_schema_invalid"
+        return "semantic_extraction_invalid_json"
+    if isinstance(exc, (json.JSONDecodeError, ValueError)):
+        return "semantic_extraction_invalid_json"
     return "semantic_extraction_provider_error"
 
 
@@ -3125,9 +3590,18 @@ def _shadow_failure_reason(exc: Exception) -> str:
         return "auth_failed"
     if isinstance(exc, TimeoutError):
         return "timeout"
+    if isinstance(exc, SemanticShadowParseError):
+        return _primary_failure_kind(exc)
     if isinstance(exc, (json.JSONDecodeError, ValueError)):
         return "invalid_json"
     return "provider_error"
+
+
+def _primary_failure_kind(exc: Exception) -> str:
+    diagnostics = exc.diagnostics if isinstance(exc, SemanticShadowParseError) else {}
+    if diagnostics.get("schema_valid") is False:
+        return "schema_invalid"
+    return "invalid_json"
 
 
 def _confidence_label(value: float) -> str:

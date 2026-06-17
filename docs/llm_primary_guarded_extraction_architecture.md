@@ -1,8 +1,8 @@
-# LLM-primary Guarded Extraction Architecture v1.0.1 Pilot
+# LLM-primary Guarded Extraction Architecture v1.0.2 Pilot
 
 Updated: 2026-06-17
 
-Status: implemented pilot, updated in v1.0.1. ReiLink now has a foreground LLM-primary semantic reader for chat input when an LLM provider is configured, followed by strict JSON/schema validation and deterministic guard. v1.0.1 makes the LLM candidate the real primary path for typed and voice inputs, adds switch / negation target roles, prevents high-confidence rule hits on old entities from overriding a guarded LLM switch candidate, and adds Direct Conversation partial-transcript protection. This pilot does not add embeddings or vector databases and does not change memory, proactive, persona, voice core behavior, or Overlay runtime boundaries.
+Status: implemented pilot, updated in v1.0.2. ReiLink now has a foreground LLM-primary semantic reader for chat input when an LLM provider is configured, followed by tolerant-but-safe JSON/schema validation and deterministic guard. v1.0.2 stabilizes the primary JSON path by using a compact JSON-only prompt, Shadow-style JSON recovery, a no-response-format compat retry for invalid JSON/schema output, and clearer fallback trace fields. This pilot does not add embeddings or vector databases and does not change memory, proactive, persona, voice core behavior, or Overlay runtime boundaries.
 
 ## Purpose
 
@@ -170,9 +170,58 @@ For `不打女武神了，换去打玛尔基特`, rules may ground that `女武�
 
 For voice sources, the LLM may recover likely ASR near-misses into canonical candidates, such as `马尔吉特 -> margit` or `女巫神 -> malenia`, but uncertain candidates should become `ask_clarification` / `candidate_only` rather than silent no-op or unsafe writes.
 
+## v1.0.2 JSON / Schema Stabilization
+
+v1.0.2 fixes the next primary-path gap: the LLM could semantically understand an input but fail the foreground path because the JSON object or schema shape was unstable. Primary extraction now reuses the safe recovery lessons from Shadow Mode:
+
+- compact JSON-only system and user prompts.
+- low temperature and fast model provider config.
+- `response_format: {"type": "json_object"}` on the first attempt when available.
+- safe recovery for strict JSON, fenced JSON, prose around the first JSON object, and arrays whose first item is an object.
+- compat retry without `response_format` when the first primary attempt fails JSON parsing or schema validation.
+- ultra-compact retry if the compat attempt is still invalid JSON or schema invalid; this uses an even smaller key whitelist so real providers do not expand the full internal schema.
+- safe trace fields: `first_attempt_failed`, `compat_retry_used`, `compat_retry_succeeded`, `ultra_compact_used`, and `json_recovery_stage`.
+
+The primary parser accepts both the older expanded object and the v1.0.2 minimal shape:
+
+```json
+{
+  "is_game_related": true,
+  "intent": "boss_switch",
+  "confidence": 0.92,
+  "requires_clarification": false,
+  "updates": [
+    {
+      "field": "boss",
+      "value": "玛尔基特",
+      "canonical": "margit",
+      "confidence": 0.92,
+      "reason": "safe short reason"
+    }
+  ],
+  "previous_target": "malenia",
+  "negated_entity": "malenia",
+  "new_current_target": "margit",
+  "guide_only_entity": null,
+  "guide_request": false,
+  "strategy_request": false,
+  "safe_trace_summary": "safe short summary, no raw user text"
+}
+```
+
+Optional fields may be absent. Unknown enum-like operations are mapped to `unknown` / `none` instead of failing the whole extraction. Confidence may be `high` / `medium` / `low` or a number in `0..1`. The guard still only applies allowlisted game-context fields; memory and proactive fields remain disabled on this path.
+
+When primary fails and rule fallback is considered, trace must show the path explicitly:
+
+- `primary_extractor=llm`
+- `primary_status=failed`
+- `fallback_extractor=rule` when fallback is used
+- `guard_final_decision=fallback_to_rule` / `no_op` / `apply`
+- `applied_by=rule_fallback` when a rule fallback actually writes state
+
 ## LLM Candidate Schema v1 Pilot
 
-The foreground LLM returns one strict JSON object. It uses constrained IDs for the current pilot and must keep memory / proactive candidates disabled.
+The foreground LLM returns one JSON object. It uses constrained IDs for the current pilot and must keep memory / proactive candidates disabled. v1.0.2 prefers the minimal `updates` shape above, while the parser still accepts the expanded object below for compatibility.
 
 ```json
 {
@@ -345,8 +394,9 @@ Suggested thresholds for the pilot:
 
 - LLM unavailable.
 - Provider auth failed.
-- Timeout and rule exact match exists.
-- Fallback reason must be traced.
+- Timeout, invalid JSON, or schema invalid and rule exact match exists.
+- Fallback reason must be traced as `llm_timeout`, `llm_invalid_json`, or `llm_schema_invalid` equivalent runtime fields.
+- Trace must show the rule path as fallback with `fallback_extractor=rule` and `applied_by=rule_fallback` when it writes state.
 - Rule fallback still passes deterministic guard and must not revive broad alias patching.
 
 ## Rule Extractor's New Position

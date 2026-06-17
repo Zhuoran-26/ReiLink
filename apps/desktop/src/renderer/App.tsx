@@ -367,6 +367,16 @@ const emptySemanticExtractionDebug: SemanticExtractionDebugResponse = {
   llm_provider_status: "not_run",
   llm_schema_valid: null,
   rule_grounding: {},
+  primary_extractor: "llm",
+  primary_status: "not_run",
+  fallback_extractor: null,
+  guard_final_decision: "no_op",
+  applied_by: null,
+  first_attempt_failed: null,
+  compat_retry_used: false,
+  compat_retry_succeeded: null,
+  ultra_compact_used: false,
+  json_recovery_stage: "not_run",
   llm_result: null,
   llm_shadow: null,
   llm_primary: null,
@@ -724,6 +734,16 @@ const labelMap: Record<string, string> = {
   llm_guard_reason: "Guard 原因",
   llm_guard_summary: "Guard 摘要",
   llm_primary: "LLM 主候选",
+  primary_extractor: "Primary extractor",
+  primary_status: "Primary 状态",
+  fallback_extractor: "Fallback extractor",
+  guard_final_decision: "最终判定",
+  applied_by: "应用来源",
+  first_attempt_failed: "首次失败",
+  compat_retry_used: "Compat retry",
+  compat_retry_succeeded: "Compat 结果",
+  ultra_compact_used: "Ultra compact",
+  json_recovery_stage: "JSON 恢复",
   llm_primary_status: "主识别状态",
   llm_provider_status: "Provider 状态",
   llm_schema_valid: "Schema 有效",
@@ -2330,6 +2350,11 @@ export function App() {
   const emitSemanticExtractionTrace = useCallback((debug: SemanticExtractionDebugResponse) => {
     const trace = debug.extraction_trace;
     const source = trace?.source ?? debug.source ?? "none";
+    const primaryExtractor = trace?.primary_extractor ?? debug.primary_extractor ?? null;
+    const primaryStatus = trace?.primary_status ?? debug.primary_status ?? debug.llm_primary_status ?? null;
+    const fallbackExtractor = trace?.fallback_extractor ?? debug.fallback_extractor ?? null;
+    const guardFinalDecision = trace?.final_decision ?? debug.guard_final_decision ?? null;
+    const appliedBy = trace?.applied_by ?? debug.applied_by ?? null;
     const confidence = trace?.confidence ?? debug.confidence;
     const fallbackReason = trace?.fallback_reason ?? debug.fallback_reason ?? null;
     const skipReason = trace?.skip_reason ?? debug.skip_reason ?? null;
@@ -2342,6 +2367,11 @@ export function App() {
     const guardDecision = trace?.llm_guard_decision ?? debug.llm_guard_decision ?? null;
     const guardReason = trace?.llm_guard_reason ?? debug.llm_guard_reason ?? null;
     const guardSummary = trace?.llm_guard_summary ?? debug.llm_guard_summary ?? null;
+    const firstAttemptFailed = debug.first_attempt_failed ?? null;
+    const compatRetryUsed = Boolean(debug.compat_retry_used);
+    const compatRetrySucceeded = debug.compat_retry_succeeded ?? null;
+    const ultraCompactUsed = Boolean(debug.ultra_compact_used);
+    const jsonRecoveryStage = debug.json_recovery_stage ?? null;
     if (skipReason === "shadow_deferred" && shadowStatus === "skipped") return;
     const shouldEmit = Boolean(
       source !== "none"
@@ -2354,13 +2384,43 @@ export function App() {
       || (shadowSummary && !String(shadowSummary).startsWith("跳过：no_semantic_signal"))
     );
     if (!shouldEmit) return;
-    const key = JSON.stringify({ source, confidence, fallbackReason, skipReason, parseError, appliedUpdates, shadowStatus, shadowConfidence, shadowSummary, shadowDiff, guardDecision, guardReason, guardSummary, inputSource: debug.input_source });
+    const key = JSON.stringify({
+      source,
+      primaryExtractor,
+      primaryStatus,
+      fallbackExtractor,
+      guardFinalDecision,
+      appliedBy,
+      confidence,
+      fallbackReason,
+      skipReason,
+      parseError,
+      appliedUpdates,
+      shadowStatus,
+      shadowConfidence,
+      shadowSummary,
+      shadowDiff,
+      guardDecision,
+      guardReason,
+      guardSummary,
+      firstAttemptFailed,
+      compatRetryUsed,
+      compatRetrySucceeded,
+      ultraCompactUsed,
+      jsonRecoveryStage,
+      inputSource: debug.input_source
+    });
     if (lastSemanticTraceEventRef.current === key) return;
     lastSemanticTraceEventRef.current = key;
     eventBus.emit({
       type: "semantic_extraction_traced",
       timestamp: eventTimestamp(),
       source,
+      primary_extractor: primaryExtractor,
+      primary_status: primaryStatus,
+      fallback_extractor: fallbackExtractor,
+      guard_final_decision: guardFinalDecision,
+      applied_by: appliedBy,
       confidence,
       fallback_reason: fallbackReason,
       skip_reason: skipReason,
@@ -2373,7 +2433,12 @@ export function App() {
       input_source: debug.input_source,
       llm_guard_decision: guardDecision ?? undefined,
       llm_guard_reason: guardReason,
-      llm_guard_summary: guardSummary
+      llm_guard_summary: guardSummary,
+      first_attempt_failed: firstAttemptFailed,
+      compat_retry_used: compatRetryUsed,
+      compat_retry_succeeded: compatRetrySucceeded,
+      ultra_compact_used: ultraCompactUsed,
+      json_recovery_stage: jsonRecoveryStage
     });
   }, []);
 
@@ -2385,6 +2450,11 @@ export function App() {
         type: "semantic_extraction_traced",
         timestamp: event.timestamp,
         source: event.source ?? "none",
+        primary_extractor: event.primary_extractor ?? null,
+        primary_status: event.primary_status ?? null,
+        fallback_extractor: event.fallback_extractor ?? null,
+        guard_final_decision: event.guard_final_decision ?? null,
+        applied_by: event.applied_by ?? null,
         confidence: event.confidence ?? "low",
         fallback_reason: event.fallback_reason ?? null,
         skip_reason: event.skip_reason ?? null,
@@ -2398,6 +2468,11 @@ export function App() {
         llm_guard_decision: event.llm_guard_decision,
         llm_guard_reason: event.llm_guard_reason ?? null,
         llm_guard_summary: event.llm_guard_summary ?? null,
+        first_attempt_failed: event.first_attempt_failed ?? null,
+        compat_retry_used: event.compat_retry_used,
+        compat_retry_succeeded: event.compat_retry_succeeded ?? null,
+        ultra_compact_used: event.ultra_compact_used,
+        json_recovery_stage: event.json_recovery_stage ?? null,
         shadow_trace_id: event.trace_id,
         shadow_event_phase: event.phase,
         shadow_event_status: event.status
@@ -5081,6 +5156,22 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <dd>{debugText(semanticDebug.input_source)}</dd>
                 </div>
                 <div>
+                  <dt>{formatDebugLabel("primary_extractor")}</dt>
+                  <dd>{debugText(semanticDebug.primary_extractor)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("fallback_extractor")}</dt>
+                  <dd>{debugText(semanticDebug.fallback_extractor)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("guard_final_decision")}</dt>
+                  <dd>{debugText(semanticDebug.guard_final_decision)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("applied_by")}</dt>
+                  <dd>{debugText(semanticDebug.applied_by)}</dd>
+                </div>
+                <div>
                   <dt>{formatDebugLabel("llm_primary_status")}</dt>
                   <dd>{debugText(semanticDebug.llm_primary_status)}</dd>
                 </div>
@@ -5091,6 +5182,26 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <div>
                   <dt>{formatDebugLabel("llm_schema_valid")}</dt>
                   <dd>{semanticDebug.llm_schema_valid == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.llm_schema_valid)} />}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("first_attempt_failed")}</dt>
+                  <dd>{debugText(semanticDebug.first_attempt_failed)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("compat_retry_used")}</dt>
+                  <dd><BooleanBadge value={Boolean(semanticDebug.compat_retry_used)} /></dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("compat_retry_succeeded")}</dt>
+                  <dd>{semanticDebug.compat_retry_succeeded == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.compat_retry_succeeded)} />}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("ultra_compact_used")}</dt>
+                  <dd><BooleanBadge value={Boolean(semanticDebug.ultra_compact_used)} /></dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("json_recovery_stage")}</dt>
+                  <dd>{debugText(semanticDebug.json_recovery_stage)}</dd>
                 </div>
                 <div>
                   <dt>{formatDebugLabel("confidence")}</dt>
@@ -6816,6 +6927,22 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{debugText(semanticDebug.input_source)}</dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("primary_extractor")}</dt>
+                        <dd>{debugText(semanticDebug.primary_extractor)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("fallback_extractor")}</dt>
+                        <dd>{debugText(semanticDebug.fallback_extractor)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("guard_final_decision")}</dt>
+                        <dd>{debugText(semanticDebug.guard_final_decision)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("applied_by")}</dt>
+                        <dd>{debugText(semanticDebug.applied_by)}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("llm_primary_status")}</dt>
                         <dd>{debugText(semanticDebug.llm_primary_status)}</dd>
                       </div>
@@ -6826,6 +6953,26 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <div>
                         <dt>{formatDebugLabel("llm_schema_valid")}</dt>
                         <dd>{semanticDebug.llm_schema_valid == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.llm_schema_valid)} />}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("first_attempt_failed")}</dt>
+                        <dd>{debugText(semanticDebug.first_attempt_failed)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("compat_retry_used")}</dt>
+                        <dd><BooleanBadge value={Boolean(semanticDebug.compat_retry_used)} /></dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("compat_retry_succeeded")}</dt>
+                        <dd>{semanticDebug.compat_retry_succeeded == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.compat_retry_succeeded)} />}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("ultra_compact_used")}</dt>
+                        <dd><BooleanBadge value={Boolean(semanticDebug.ultra_compact_used)} /></dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("json_recovery_stage")}</dt>
+                        <dd>{debugText(semanticDebug.json_recovery_stage)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("confidence")}</dt>

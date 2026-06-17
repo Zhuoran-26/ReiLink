@@ -228,14 +228,14 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.12 LLM-primary Guarded Extraction v1.0.1 Pilot 人工验收
 
-设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`。本节验收当前 v1.0.1 pilot runtime：foreground LLM semantic reader、strict candidate schema、switch / negation role fields、deterministic guard、rule grounding / fallback、source metadata 和 safe trace。
+设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`。本节验收当前 v1.0.2 pilot runtime：foreground LLM semantic reader、tolerant-but-safe candidate schema、Shadow-style JSON recovery、compat retry、switch / negation role fields、deterministic guard、rule grounding / fallback、source metadata 和 safe trace。
 
 1. 文档应明确 rule-first 的早期优势：可预测、易测、少量游戏稳定、不依赖 provider。
 2. 文档应明确 rule-first 的扩展瓶颈：多游戏 alias 爆炸、ASR 近音错字、规则 no-op 不等于语义不可理解、规则 confidence 不等于语义正确概率。
 3. 新架构必须是 LLM-primary semantic reader + schema validation + deterministic guard apply；LLM 不得直接写 game context。
 4. typed text、voice_confirmed 和 voice_direct 都应进入同一 LLM-primary extraction pipeline；source 只影响 reliability / confidence / trace。
 5. 规则层应降级为 grounding、sanity check、cross-check、fallback、regression comparison 或 emergency no-provider mode。
-6. 文档应给出 pilot candidate schema，覆盖 game、boss、death_count、frustration、boss_cleared、guide_request、strategy_request、memory/proactive blocked fields 和 safe reasoning summary。
+6. 文档应给出 pilot candidate schema，覆盖 minimal `updates` 形状以及兼容的 game、boss、death_count、frustration、boss_cleared、guide_request、strategy_request、memory/proactive blocked fields 和 safe reasoning summary。
 7. schema 应区分 guide request 与 current boss report，也应区分 temporary game state 与 long-term memory candidate。
 8. 新 confidence 机制应至少拆分 semantic_confidence、grounding_confidence、context_confidence 和 apply_confidence。
 9. LLM self-confidence 不能单独决定 apply；rule exact match / catalog match 只能作为 grounding 支持。
@@ -244,16 +244,16 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 12. 当前 Boss 为女武神时，输入 `我现在不打女武神了，换去打玛尔基特。`、`先不打女武神了，我换去玛尔基特。` 或 `从女武神换到玛尔基特。` 应切换到玛尔基特；规则不得因先命中女武神而保留旧 boss。
 13. `我换去打马尔吉特了`、`我现在去打女巫神了` 等 voice_direct ASR 错字应产生 LLM candidate / apply / clarification trace；不得静默显示 no semantic signal。
 14. Guard decisions 应覆盖 `apply`、`ask_clarification`、`candidate_only`、`no_op` 和 `fallback_to_rule`。
-15. low confidence、invalid JSON、provider timeout、unsafe 或 memory-sensitive 输入不得写 state；timeout fallback 只允许 exact safe rule evidence，不得把 switch / negation 中的旧目标写回当前 Boss。
+15. low confidence、invalid JSON、schema invalid、provider timeout、unsafe 或 memory-sensitive 输入不得写 state；fallback 只允许 exact safe rule evidence，不得把 switch / negation 中的旧目标写回当前 Boss。
 16. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
 17. LLM extraction 不得写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须走 pending memory confirmation。
 18. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
-19. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding 和 applied updates。
+19. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding、applied updates、primary_extractor、fallback_extractor、applied_by、first_attempt_failed、compat_retry_used / succeeded、ultra_compact_used 和 json_recovery_stage。
 20. 手测 `我现在在打玛尔基特` 应能在 Game workspace 更新 current boss，并在 Debug / Event Stream 看到 `llm_primary` / `apply` 或 provider unavailable 时的 `fallback_to_rule` 安全 trace。
 21. 手测当前 Boss 为 Malenia 时输入 `玛尔基特那边怎么打来着`，不得切换 current boss；Debug / Event Stream 应显示 candidate-only / guide-only 或等价安全判定。
 22. 手测 Direct Conversation Mode 下 `我换去打玛尔基特了`，chat flow、source `voice_direct`、guard trace、current boss 更新和语音播报策略都应保持正常。
 23. 手测 `又死了两次` 应做 death increment，不应被当成 absolute count；`下一把怎么打` 不应改变 boss。
-24. QA JSON 至少覆盖 typed boss report、voice_confirmed、voice_direct、ASR near-miss、explicit boss switch、switch / negation、guide-only mention、death increment / absolute、boss cleared、invalid JSON、timeout fallback、rule/LLM agree and conflict、low/medium confidence、Shadow 不写状态、memory/proactive boundaries、Event Stream privacy、Game workspace visible、direct partial guard 和旧流程不崩。
+24. QA JSON 至少覆盖 typed boss report、voice_confirmed、voice_direct、ASR near-miss、explicit boss switch、switch / negation、guide-only mention、death increment / absolute、boss cleared、fenced / prefixed / array JSON recovery、compat retry success / failure、ultra-compact retry、schema invalid、invalid JSON、timeout fallback、rule/LLM agree and conflict、low/medium confidence、Shadow 不写状态、memory/proactive boundaries、Event Stream privacy、Game workspace visible、direct partial guard 和旧流程不崩。
 
 ### 2. Voice Output 回归检查
 

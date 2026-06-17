@@ -435,9 +435,19 @@ export type SemanticExtractionDebugResponse = {
   ambiguity_detected?: boolean;
   fallback_reason?: string | null;
   source?: "rule" | "llm_primary" | "llm_fallback" | "mixed" | "none";
+  primary_extractor?: string | null;
+  primary_status?: string | null;
+  fallback_extractor?: string | null;
+  guard_final_decision?: string | null;
+  applied_by?: string | null;
   confidence?: "high" | "medium" | "low";
   applied_updates?: string[];
   extraction_trace?: {
+    primary_extractor?: string | null;
+    primary_status?: string | null;
+    fallback_extractor?: string | null;
+    final_decision?: string | null;
+    applied_by?: string | null;
     source: "rule" | "llm_primary" | "llm_fallback" | "mixed" | "none";
     confidence: "high" | "medium" | "low";
     fallback_reason: string | null;
@@ -460,6 +470,11 @@ export type SemanticExtractionDebugResponse = {
   llm_provider_status?: string | null;
   llm_schema_valid?: boolean | null;
   rule_grounding?: Record<string, unknown>;
+  first_attempt_failed?: string | null;
+  compat_retry_used?: boolean;
+  compat_retry_succeeded?: boolean | null;
+  ultra_compact_used?: boolean;
+  json_recovery_stage?: string | null;
   llm_result: Record<string, unknown> | null;
   llm_shadow?: Record<string, unknown> | null;
   llm_primary?: Record<string, unknown> | null;
@@ -493,6 +508,11 @@ export type SemanticShadowEvent = {
     | "shadow_cancelled"
     | "shadow_expired";
   source?: "rule" | "llm_primary" | "llm_fallback" | "mixed" | "none";
+  primary_extractor?: string | null;
+  primary_status?: string | null;
+  fallback_extractor?: string | null;
+  guard_final_decision?: string | null;
+  applied_by?: string | null;
   confidence?: "high" | "medium" | "low";
   fallback_reason?: string | null;
   skip_reason?: string | null;
@@ -506,6 +526,11 @@ export type SemanticShadowEvent = {
   llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
   llm_guard_reason?: string | null;
   llm_guard_summary?: string | null;
+  first_attempt_failed?: string | null;
+  compat_retry_used?: boolean;
+  compat_retry_succeeded?: boolean | null;
+  ultra_compact_used?: boolean;
+  json_recovery_stage?: string | null;
   semantic_extraction_model?: string | null;
   semantic_extraction_latency_ms?: number;
 };

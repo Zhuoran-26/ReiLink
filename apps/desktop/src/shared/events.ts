@@ -15,6 +15,11 @@ export type ReiLinkEvent =
       type: "semantic_extraction_traced";
       timestamp: string;
       source?: string;
+      primary_extractor?: string | null;
+      primary_status?: string | null;
+      fallback_extractor?: string | null;
+      guard_final_decision?: string | null;
+      applied_by?: string | null;
       confidence?: string;
       fallback_reason?: string | null;
       skip_reason?: string | null;
@@ -28,6 +33,11 @@ export type ReiLinkEvent =
       llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
       llm_guard_reason?: string | null;
       llm_guard_summary?: string | null;
+      first_attempt_failed?: string | null;
+      compat_retry_used?: boolean;
+      compat_retry_succeeded?: boolean | null;
+      ultra_compact_used?: boolean;
+      json_recovery_stage?: string | null;
       shadow_trace_id?: string;
       shadow_event_phase?: "scheduled" | "final";
       shadow_event_status?:

@@ -151,6 +151,56 @@ def _mock_primary(monkeypatch, payload_or_exc):
     monkeypatch.setattr(sem, "_call_llm_primary", fake_primary)
 
 
+def _mock_primary_sequence(monkeypatch, payloads_or_excs):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    calls = []
+    responses = list(payloads_or_excs)
+
+    def fake_primary(*args, **kwargs):
+        del args
+        calls.append(kwargs)
+        payload_or_exc = responses.pop(0) if responses else payloads_or_excs[-1]
+        if isinstance(payload_or_exc, BaseException):
+            raise payload_or_exc
+        if isinstance(payload_or_exc, str):
+            return payload_or_exc
+        return json.dumps(payload_or_exc, ensure_ascii=False)
+
+    monkeypatch.setattr(sem, "_call_llm_primary", fake_primary)
+    return calls
+
+
+def _primary_updates_payload(
+    *,
+    updates=None,
+    confidence=0.92,
+    intent="boss_switch",
+    requires_clarification=False,
+    previous_target=None,
+    negated_entity=None,
+    new_current_target=None,
+    guide_only_entity=None,
+    guide_request=False,
+    strategy_request=False,
+    summary="安全候选摘要",
+):
+    return {
+        "is_game_related": True,
+        "intent": intent,
+        "confidence": confidence,
+        "requires_clarification": requires_clarification,
+        "updates": updates or [],
+        "previous_target": previous_target,
+        "negated_entity": negated_entity,
+        "new_current_target": new_current_target,
+        "guide_only_entity": guide_only_entity,
+        "guide_request": guide_request,
+        "strategy_request": strategy_request,
+        "safe_trace_summary": summary,
+    }
+
+
 def test_explicit_current_boss_uses_rule_without_llm(monkeypatch):
     monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LLM called")))
 
@@ -1169,6 +1219,15 @@ def test_shadow_invalid_json_fails_safely_without_raw_payload(monkeypatch):
     assert "sk-secret" not in serialized
 
 
+def test_safe_label_preserves_non_path_slash_and_redacts_local_paths():
+    assert sem._safe_label("仅攻略/策略请求，不写入当前 Boss") == "仅攻略/策略请求，不写入当前 Boss"
+    sanitized = sem._safe_label("raw prompt /Users/aragoto/private/.env C:\\Users\\name\\secret.env")
+    assert "[redacted]" in sanitized
+    assert "[path]" in sanitized
+    assert "/Users/aragoto" not in sanitized
+    assert "C:\\Users" not in sanitized
+
+
 def test_shadow_safe_summary_sanitizes_untrusted_model_text(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
@@ -1433,6 +1492,76 @@ def test_llm_primary_simple_rule_friendly_statement_still_uses_primary(monkeypat
     assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
 
 
+def test_llm_primary_minimal_updates_json_applies_without_optional_fields(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        {
+            "is_game_related": True,
+            "intent": "boss_switch",
+            "confidence": 0.92,
+            "updates": [
+                {
+                    "field": "boss",
+                    "value": "玛尔基特",
+                    "canonical": "margit",
+                    "confidence": 0.92,
+                    "reason": "用户说换去打玛尔基特",
+                }
+            ],
+            "safe_trace_summary": "切换到玛尔基特",
+        },
+    )
+
+    result = sem.extract_semantics(
+        "我换去打玛尔基特了。",
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] is None
+    assert result["llm_schema_valid"] is True
+    assert result["source"] == "llm_primary"
+    assert result["llm_guard_decision"] == "apply"
+    assert result["applied_by"] == "llm_primary"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_llm_primary_updates_json_switch_negation_applies_margit(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_updates_payload(
+            previous_target="malenia",
+            negated_entity="malenia",
+            new_current_target="margit",
+            updates=[
+                {
+                    "field": "boss",
+                    "value": "玛尔基特",
+                    "canonical": "margit",
+                    "confidence": 0.94,
+                    "reason": "用户说从女武神换去玛尔基特",
+                }
+            ],
+        ),
+    )
+
+    result = sem.extract_semantics(
+        "我现在不打女武神了，换去打玛尔基特。",
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["rule_result"]["game_event"]["boss_name"] == "女武神"
+    assert result["llm_schema_valid"] is True
+    assert result["llm_guard_decision"] == "apply"
+    assert result["llm_guard_reason"] == "switch_negation_candidate_overrules_rule_grounding"
+    assert result["source"] == "llm_primary"
+    assert result["final_decision"]["game_event"]["type"] == "boss_switch"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
 def test_llm_primary_guide_only_entity_does_not_switch_current_boss(monkeypatch):
     _mock_primary(
         monkeypatch,
@@ -1447,6 +1576,35 @@ def test_llm_primary_guide_only_entity_does_not_switch_current_boss(monkeypatch)
     )
 
     assert result["llm_guard_decision"] in {"candidate_only", "no_op"}
+    assert result["llm_shadow"]["guide_only_entity"]["value"] == "margit"
+    assert result["final_decision"]["game_event"]["type"] == "none"
+    assert result["applied_updates"] == []
+
+
+def test_llm_primary_updates_json_guide_only_does_not_switch(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_updates_payload(
+            intent="guide_request",
+            guide_request=True,
+            strategy_request=True,
+            guide_only_entity="margit",
+            updates=[
+                {"field": "guide_request", "value": True, "confidence": 0.9, "reason": "用户问打法"}
+            ],
+        ),
+    )
+
+    result = sem.extract_semantics(
+        "玛尔基特那边怎么打来着？",
+        "elden_ring_boss_strategy",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] is None
+    assert result["llm_schema_valid"] is True
+    assert result["llm_shadow"]["guide_request"]["value"] is True
     assert result["llm_shadow"]["guide_only_entity"]["value"] == "margit"
     assert result["final_decision"]["game_event"]["type"] == "none"
     assert result["applied_updates"] == []
@@ -1514,6 +1672,36 @@ def test_llm_primary_death_increment_applies_with_current_context(monkeypatch):
     assert event["death_count_value"] == 2
 
 
+def test_llm_primary_updates_json_death_increment(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_updates_payload(
+            intent="death_update",
+            updates=[
+                {
+                    "field": "death_count_increment",
+                    "value": 2,
+                    "confidence": 0.9,
+                    "reason": "用户说又死了两次",
+                }
+            ],
+        ),
+    )
+
+    result = sem.extract_semantics(
+        "又死了两次。",
+        "casual_chat",
+        _game_state("恶兆妖鬼 Margit"),
+        run_llm_primary=True,
+    )
+
+    event = result["final_decision"]["game_event"]
+    assert result["parse_error"] is None
+    assert result["llm_guard_decision"] == "apply"
+    assert event["death_count_operation"] == "increment"
+    assert event["death_count_value"] == 2
+
+
 def test_llm_primary_death_absolute_applies_with_current_context(monkeypatch):
     _mock_primary(monkeypatch, _primary_payload(boss="unknown", death_operation="set", death_value=7))
 
@@ -1528,6 +1716,36 @@ def test_llm_primary_death_absolute_applies_with_current_context(monkeypatch):
     assert event["type"] == "failed_attempt"
     assert event["death_count_operation"] == "absolute"
     assert event["death_count_value"] == 7
+
+
+def test_llm_primary_updates_json_death_absolute(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        _primary_updates_payload(
+            intent="death_update",
+            updates=[
+                {
+                    "field": "death_count_absolute",
+                    "value": 3,
+                    "confidence": 0.91,
+                    "reason": "用户说已经死了3次",
+                }
+            ],
+        ),
+    )
+
+    result = sem.extract_semantics(
+        "已经死了3次。",
+        "casual_chat",
+        _game_state("恶兆妖鬼 Margit"),
+        run_llm_primary=True,
+    )
+
+    event = result["final_decision"]["game_event"]
+    assert result["parse_error"] is None
+    assert result["llm_guard_decision"] == "apply"
+    assert event["death_count_operation"] == "absolute"
+    assert event["death_count_value"] == 3
 
 
 def test_llm_primary_boss_cleared_applies(monkeypatch):
@@ -1568,10 +1786,229 @@ def test_llm_primary_invalid_json_does_not_apply_unknown_alias(monkeypatch):
         run_llm_primary=True,
     )
 
-    assert result["parse_error"] == "semantic_extraction_parse_error"
+    assert result["parse_error"] == "semantic_extraction_invalid_json"
     assert result["llm_guard_decision"] == "no_op"
     assert result["final_decision"]["game_event"]["type"] == "none"
     assert result["applied_updates"] == []
+
+
+def test_llm_primary_schema_tolerates_unknown_operations_without_crashing(monkeypatch):
+    _mock_primary(
+        monkeypatch,
+        {
+            "is_game_related": True,
+            "confidence": 0.8,
+            "boss": {"operation": "teleport", "value": "margit", "confidence": 0.8},
+            "safe_trace_summary": "未知操作应安全降级",
+        },
+    )
+
+    result = sem.extract_semantics(
+        "我现在在打玛尔基特",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] is None
+    assert result["llm_schema_valid"] is True
+    assert result["llm_shadow"]["boss"]["operation"] == "unknown"
+    assert result["llm_guard_decision"] in {"candidate_only", "no_op"}
+
+
+@pytest.mark.parametrize(
+    "wrapped",
+    [
+        lambda payload: f"```json\n{payload}\n```",
+        lambda payload: f"先给结论：{payload}\n就这些。",
+        lambda payload: f"[{payload}]",
+    ],
+)
+def test_llm_primary_recovers_fenced_prefixed_and_array_json(monkeypatch, wrapped):
+    payload = json.dumps(
+        _primary_updates_payload(
+            updates=[
+                {
+                    "field": "boss",
+                    "value": "玛尔基特",
+                    "canonical": "margit",
+                    "confidence": 0.93,
+                    "reason": "用户说换去打玛尔基特",
+                }
+            ],
+        ),
+        ensure_ascii=False,
+    )
+    _mock_primary(monkeypatch, wrapped(payload))
+
+    result = sem.extract_semantics(
+        "我换去打玛尔基特了。",
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] is None
+    assert result["llm_schema_valid"] is True
+    assert result["llm_shadow"]["json_recovered"] is True
+    assert result["llm_guard_decision"] == "apply"
+
+
+def test_llm_primary_compat_retry_succeeds_after_invalid_json(monkeypatch):
+    calls = _mock_primary_sequence(
+        monkeypatch,
+        [
+            "not json",
+            _primary_updates_payload(
+                updates=[
+                    {
+                        "field": "boss",
+                        "value": "玛尔基特",
+                        "canonical": "margit",
+                        "confidence": 0.93,
+                        "reason": "兼容重试输出合法 JSON",
+                    }
+                ],
+            ),
+        ],
+    )
+
+    result = sem.extract_semantics(
+        "我换去打玛尔基特了。",
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert len(calls) == 2
+    assert calls[0]["use_response_format"] is True
+    assert calls[1]["use_response_format"] is False
+    assert calls[1]["compat_retry"] is True
+    assert result["parse_error"] is None
+    assert result["llm_schema_valid"] is True
+    assert result["compat_retry_used"] is True
+    assert result["compat_retry_succeeded"] is True
+    assert result["first_attempt_failed"] == "invalid_json"
+    assert result["llm_guard_decision"] == "apply"
+
+
+def test_llm_primary_ultra_compact_retry_succeeds_after_compat_invalid_json(monkeypatch):
+    calls = _mock_primary_sequence(
+        monkeypatch,
+        [
+            "not json",
+            "{\"is_game_related\": true,",
+            _primary_updates_payload(
+                updates=[
+                    {
+                        "field": "boss",
+                        "value": "玛尔基特",
+                        "canonical": "margit",
+                        "confidence": 0.94,
+                    }
+                ],
+                previous_target="malenia",
+                negated_entity="malenia",
+                new_current_target="margit",
+            ),
+        ],
+    )
+
+    result = sem.extract_semantics(
+        "我现在不打女武神了，换去打玛尔基特。",
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert len(calls) == 3
+    assert calls[0]["use_response_format"] is True
+    assert calls[1]["use_response_format"] is False
+    assert calls[1]["compat_retry"] is True
+    assert calls[2]["use_response_format"] is False
+    assert calls[2]["compat_retry"] is True
+    assert calls[2]["ultra_compact"] is True
+    assert result["parse_error"] is None
+    assert result["llm_schema_valid"] is True
+    assert result["compat_retry_used"] is True
+    assert result["compat_retry_succeeded"] is True
+    assert result["llm_shadow"]["ultra_compact_used"] is True
+    assert result["llm_shadow"]["attempts"] == ["normal_json", "compat_retry", "ultra_compact"]
+    assert result["llm_guard_decision"] == "apply"
+    assert result["source"] == "llm_primary"
+    assert result["applied_by"] == "llm_primary"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
+
+
+def test_llm_primary_compat_retry_failure_reports_invalid_json(monkeypatch):
+    _mock_primary_sequence(monkeypatch, ["not json", "still not json"])
+
+    result = sem.extract_semantics(
+        "我现在不打女武神了，换去打玛尔基特。",
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] == "semantic_extraction_invalid_json"
+    assert result["llm_provider_status"] == "invalid_json"
+    assert result["llm_schema_valid"] is False
+    assert result["first_attempt_failed"] == "invalid_json"
+    assert result["compat_retry_used"] is True
+    assert result["compat_retry_succeeded"] is False
+    assert result["llm_shadow"]["ultra_compact_used"] is True
+    assert result["llm_guard_decision"] == "no_op"
+
+
+def test_llm_primary_schema_invalid_is_distinct_from_invalid_json(monkeypatch):
+    invalid_schema_payload = {
+        "is_game_related": True,
+        "confidence": 0.9,
+        "updates": [
+            {
+                "field": "boss",
+                "value": {"unexpected": "object"},
+                "canonical": "margit",
+                "confidence": 0.9,
+            }
+        ],
+    }
+    _mock_primary_sequence(monkeypatch, [invalid_schema_payload, invalid_schema_payload])
+
+    result = sem.extract_semantics(
+        "我换去打玛尔基特了。",
+        "casual_chat",
+        _game_state("女武神"),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] == "semantic_extraction_schema_invalid"
+    assert result["llm_provider_status"] == "schema_error"
+    assert result["llm_schema_valid"] is False
+    assert result["first_attempt_failed"] == "schema_invalid"
+    assert result["compat_retry_used"] is True
+    assert result["compat_retry_succeeded"] is False
+
+
+def test_llm_primary_invalid_json_rule_fallback_trace_is_explicit(monkeypatch):
+    _mock_primary_sequence(monkeypatch, ["not json", "still not json"])
+
+    result = sem.extract_semantics(
+        "我现在卡在玛尔基特",
+        "casual_chat",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    assert result["parse_error"] == "semantic_extraction_invalid_json"
+    assert result["llm_provider_status"] == "invalid_json"
+    assert result["llm_guard_decision"] == "fallback_to_rule"
+    assert result["primary_extractor"] == "llm"
+    assert result["fallback_extractor"] == "rule"
+    assert result["guard_final_decision"] == "fallback_to_rule"
+    assert result["applied_by"] == "rule_fallback"
+    assert result["source"] == "rule"
+    assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
 
 
 def test_llm_primary_timeout_falls_back_to_high_confidence_rule(monkeypatch):
