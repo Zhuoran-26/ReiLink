@@ -540,14 +540,40 @@ Do not include memory writes, proactive triggers, persona edits, embeddings, or 
 
 ### Phase 3: Extraction Eval Runner v0
 
-Create fixed evaluation samples comparing:
+Implemented as a backend module plus CLI:
 
-- old rule result,
-- LLM candidate,
-- guarded decision,
-- expected update.
+- runner module: `services/backend/app/modules/dialogue_agent/extraction_eval.py`
+- CLI entrypoint: `services/backend/scripts/run_extraction_eval.py`
+- fixed scenarios: `docs/qa/extraction_eval_scenarios.json`
 
-Include voice-ASR-like typos, slang, guide requests, boss switches, death count, clear events, conflicts, invalid JSON, timeout, and memory-sensitive statements.
+The default command is deterministic and safe for CI:
+
+```bash
+cd services/backend
+. .venv/bin/activate
+python scripts/run_extraction_eval.py --provider mock
+```
+
+The optional live-provider drift check is manual:
+
+```bash
+cd services/backend
+. .venv/bin/activate
+python scripts/run_extraction_eval.py --provider live --allow-failures
+```
+
+The runner reuses the runtime `extract_semantics` path and `GameSessionStore`; it does not copy extraction business logic into a second ruleset. For each scenario it compares the guarded decision and state delta against expected results, applies only `final_decision.game_event`, and keeps raw user text / raw provider JSON / raw prompts / secrets out of the report.
+
+Fixed scenarios cover typed text, `voice_confirmed`, `voice_direct`, ASR-like variants, slang, guide-only references, boss set / switch, switch negation, death count absolute / increment, boss clear, rule conflict, invalid JSON, schema invalid, compat retry, ultra-compact retry, low-confidence candidate-only, and memory-sensitive boundaries.
+
+Metrics include total / passed / failed / pass_rate, LLM-primary success count, schema valid count, invalid_json count, schema_invalid count, fallback-to-rule count, compat retry count, ultra-compact retry count, wrong apply count, missed apply count, and correct candidate-only count.
+
+Known v0 limits:
+
+- Mock mode validates fixed guarded behavior and state deltas, not real-provider determinism.
+- Live mode is a drift / observation tool and can fail because of auth, timeout, quota, or provider output variance.
+- The runner applies only the guarded semantic event to isolate LLM-primary extraction from later raw-message rule re-interpretation.
+- Some ASR near-miss guide requests may still be blocked by upstream gating before the LLM path; v0 treats "no wrong state write" as acceptable until alias / gating expansion is separately scoped.
 
 ### Phase 4: Multi-game Catalog Expansion
 
@@ -572,6 +598,6 @@ It must remain separate from game context extraction and must route through pend
 - Use safe traces first; do not expose raw LLM JSON in UI.
 - Implement provider unavailable / timeout fallback before enabling real apply.
 - Keep rule-first behavior available behind fallback during rollout.
-- Add an eval runner before broadening to more games.
+- Keep the Extraction Eval Runner v0 mock suite green before broadening to more games.
 - Treat voice-direct source as medium reliability even when the transcript looks plausible.
 - Prefer `ask_clarification` over wrong state writes.

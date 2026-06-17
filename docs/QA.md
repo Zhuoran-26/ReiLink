@@ -18,6 +18,9 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/ui_ux_information_architecture_scenarios.json`
 - `docs/qa/ui_surface_scenarios.json`
 - `docs/qa/voice_interaction_v2_scenarios.json`
+- `docs/qa/voice_profile_scenarios.json`
+- `docs/qa/llm_primary_guarded_extraction_scenarios.json`
+- `docs/qa/extraction_eval_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -228,7 +231,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.12 LLM-primary Guarded Extraction v1.0.1 Pilot 人工验收
 
-设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`。本节验收当前 v1.0.2 pilot runtime：foreground LLM semantic reader、tolerant-but-safe candidate schema、Shadow-style JSON recovery、compat retry、switch / negation role fields、deterministic guard、rule grounding / fallback、source metadata 和 safe trace。
+设计文档见 `docs/llm_primary_guarded_extraction_architecture.md`，机器可读验收场景见 `docs/qa/llm_primary_guarded_extraction_scenarios.json`，固定 eval 场景见 `docs/qa/extraction_eval_scenarios.json`。本节验收当前 v1.0.2 pilot runtime 与 Extraction Eval Runner v0：foreground LLM semantic reader、tolerant-but-safe candidate schema、Shadow-style JSON recovery、compat retry、switch / negation role fields、deterministic guard、rule grounding / fallback、source metadata、safe trace 和 mock-first regression runner。
 
 1. 文档应明确 rule-first 的早期优势：可预测、易测、少量游戏稳定、不依赖 provider。
 2. 文档应明确 rule-first 的扩展瓶颈：多游戏 alias 爆炸、ASR 近音错字、规则 no-op 不等于语义不可理解、规则 confidence 不等于语义正确概率。
@@ -254,6 +257,13 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 22. 手测 Direct Conversation Mode 下 `我换去打玛尔基特了`，chat flow、source `voice_direct`、guard trace、current boss 更新和语音播报策略都应保持正常。
 23. 手测 `又死了两次` 应做 death increment，不应被当成 absolute count；`下一把怎么打` 不应改变 boss。
 24. QA JSON 至少覆盖 typed boss report、voice_confirmed、voice_direct、ASR near-miss、explicit boss switch、switch / negation、guide-only mention、death increment / absolute、boss cleared、fenced / prefixed / array JSON recovery、compat retry success / failure、ultra-compact retry、schema invalid、invalid JSON、timeout fallback、rule/LLM agree and conflict、low/medium confidence、Shadow 不写状态、memory/proactive boundaries、Event Stream privacy、Game workspace visible、direct partial guard 和旧流程不崩。
+25. 固定 eval runner 应可从 backend 目录运行：`cd services/backend && . .venv/bin/activate && python scripts/run_extraction_eval.py --provider mock`。默认 mock provider 必须 deterministic、CI-safe，失败时返回非零 exit code。
+26. 可选 live provider 漂移检查使用 `python scripts/run_extraction_eval.py --provider live --allow-failures`；live eval 依赖当前 provider 配置，不作为 CI 必需项，也不应因 provider timeout / auth / quota 影响 mock regression。
+27. Eval report 至少包含 total / passed / failed / pass_rate、LLM-primary success、schema_valid、invalid_json、schema_invalid、fallback_to_rule、compat retry、ultra-compact retry、wrong_apply、missed_apply 和 correct candidate-only 指标。
+28. Eval result 应逐条输出 scenario id、input_source、expected / actual decision、expected / actual state、state delta、primary_extractor、primary_status、provider_status、schema_valid、retry flags、fallback_extractor、applied_by、pass 和 failure_reason。
+29. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、boss set / switch、switch negation、guide-only 不切换、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict 和 low-confidence candidate-only。
+30. Eval runner 应复用 `extract_semantics` 与 `GameSessionStore`，只应用 guarded `final_decision.game_event`，避免把 runner 变成第二套 extraction 规则。
+31. Eval report 和 pytest 输出不得包含 raw prompt、raw provider JSON、API key、`.env`、完整本地路径、stdout / stderr 或完整 transcript。当前已知限制：近音错字 `猫耳机特那边怎么打来着` 仍可能被上游 gating 视为 no-op；v0 将“不错误写入状态”视为通过，后续 alias / gating 扩展可单独收紧。
 
 ### 2. Voice Output 回归检查
 

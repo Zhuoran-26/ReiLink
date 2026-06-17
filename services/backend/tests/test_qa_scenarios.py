@@ -11,6 +11,7 @@ OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
 SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_scenarios.json"
 PERSONA_PACK_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_pack_scenarios.json"
 PERSONA_REGRESSION_CASES_PATH = REPO_ROOT / "docs" / "qa" / "persona_regression_cases.json"
+EXTRACTION_EVAL_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "extraction_eval_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
 README_EN_PATH = REPO_ROOT / "README.en.md"
@@ -96,6 +97,15 @@ ALLOWED_PERSONA_PACK_STATUSES = {
     "persona_pack_cold_quiet",
     "persona_pack_packaged",
 }
+ALLOWED_EXTRACTION_EVAL_DECISIONS = {
+    "apply",
+    "ask_clarification",
+    "candidate_only",
+    "no_op",
+    "fallback_to_rule",
+    "no_state_change",
+}
+ALLOWED_EXTRACTION_EVAL_INPUT_SOURCES = {"text", "voice_confirmed", "voice_direct"}
 
 
 def _load_scenarios() -> list[dict]:
@@ -154,6 +164,14 @@ def _load_persona_regression_cases() -> list[dict]:
     return data
 
 
+def _load_extraction_eval_scenarios() -> list[dict]:
+    data = json.loads(EXTRACTION_EVAL_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def test_qa_scenarios_file_is_valid_json():
     scenarios = _load_scenarios()
 
@@ -196,6 +214,12 @@ def test_persona_regression_cases_file_is_valid_json():
     assert len(cases) >= 5
 
 
+def test_extraction_eval_scenarios_file_is_valid_json():
+    scenarios = _load_extraction_eval_scenarios()
+
+    assert 15 <= len(scenarios) <= 30
+
+
 def test_qa_scenario_ids_are_unique_and_categories_are_present():
     scenarios = [
         *_load_scenarios(),
@@ -205,6 +229,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_session_timeline_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
+        *_load_extraction_eval_scenarios(),
     ]
     ids = [item.get("id") for item in scenarios]
 
@@ -245,10 +270,49 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_session_timeline_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
+        *_load_extraction_eval_scenarios(),
     ]:
         forbidden_terms = item.get("forbidden_terms", [])
         assert isinstance(forbidden_terms, list)
         assert all(isinstance(term, str) and term for term in forbidden_terms)
+
+
+def test_extraction_eval_scenarios_have_required_fields():
+    scenarios = _load_extraction_eval_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "extraction-eval-text-boss-set-margit",
+        "extraction-eval-text-boss-switch-to-margit",
+        "extraction-eval-text-negation-switch-to-malenia",
+        "extraction-eval-text-guide-only-margit-no-switch",
+        "extraction-eval-text-death-absolute-three",
+        "extraction-eval-text-death-increment-two",
+        "extraction-eval-text-death-not-cleared-tree-sentinel",
+        "extraction-eval-text-boss-cleared-malenia",
+        "extraction-eval-memory-intent-boundary",
+        "extraction-eval-negative-memory-no-pending",
+        "extraction-eval-voice-confirmed-margit-asr-variant",
+        "extraction-eval-voice-direct-negation-switch-to-malenia",
+        "extraction-eval-voice-direct-uncertain-guide-candidate-only",
+        "extraction-eval-invalid-json-rule-fallback",
+        "extraction-eval-schema-invalid-no-op",
+        "extraction-eval-compat-retry-success",
+        "extraction-eval-ultra-compact-retry-success",
+    } <= ids
+    assert {"text", "voice_confirmed", "voice_direct"} <= {item.get("input_source") for item in scenarios}
+    for item in scenarios:
+        assert item.get("category") == "extraction_eval"
+        assert item.get("input_source") in ALLOWED_EXTRACTION_EVAL_INPUT_SOURCES
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert isinstance(item.get("expected"), dict)
+        expected = item["expected"]
+        assert expected.get("decision") in ALLOWED_EXTRACTION_EVAL_DECISIONS
+        assert all(
+            decision in ALLOWED_EXTRACTION_EVAL_DECISIONS
+            for decision in expected.get("acceptable_decisions", [])
+        )
+        assert "mock_primary" in item or "mock_primary_sequence" in item
 
 
 def test_voice_input_scenarios_have_required_fields():
