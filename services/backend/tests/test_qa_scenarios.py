@@ -13,6 +13,7 @@ PERSONA_PACK_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_pack_scenario
 PERSONA_REGRESSION_CASES_PATH = REPO_ROOT / "docs" / "qa" / "persona_regression_cases.json"
 EXTRACTION_EVAL_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "extraction_eval_scenarios.json"
 MEMORY_ARCHITECTURE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "memory_architecture_scenarios.json"
+CANDIDATE_MEMORY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "candidate_memory_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
 README_EN_PATH = REPO_ROOT / "README.en.md"
@@ -136,6 +137,37 @@ ALLOWED_MEMORY_ARCHITECTURE_TYPES = {
     "mixed",
     "none",
 }
+ALLOWED_CANDIDATE_MEMORY_STATUSES = {
+    "pending",
+    "accepted",
+    "ignored",
+    "expired",
+    "rejected_by_guard",
+    "no_candidate",
+    "deduplicated",
+}
+ALLOWED_CANDIDATE_MEMORY_TYPES = {
+    "accessibility_preference",
+    "do_not_remember",
+    "emotional_pattern",
+    "gameplay_preference",
+    "interaction_preference",
+    "unknown",
+    "none",
+}
+ALLOWED_CANDIDATE_MEMORY_GUARD_REASONS = {
+    "allow_candidate",
+    "reject_candidate",
+    "ignore_no_memory_intent",
+    "requires_confirmation",
+    "explicit_user_memory_request",
+    "session_event_only",
+    "persona_drift_blocked",
+    "sensitive_secret_blocked",
+    "assistant_source_blocked",
+    "duplicate_candidate",
+    "do_not_remember",
+}
 
 
 def _load_scenarios() -> list[dict]:
@@ -210,6 +242,14 @@ def _load_memory_architecture_scenarios() -> list[dict]:
     return data
 
 
+def _load_candidate_memory_scenarios() -> list[dict]:
+    data = json.loads(CANDIDATE_MEMORY_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def test_qa_scenarios_file_is_valid_json():
     scenarios = _load_scenarios()
 
@@ -264,6 +304,12 @@ def test_memory_architecture_scenarios_file_is_valid_json():
     assert 15 <= len(scenarios) <= 25
 
 
+def test_candidate_memory_scenarios_file_is_valid_json():
+    scenarios = _load_candidate_memory_scenarios()
+
+    assert 10 <= len(scenarios) <= 20
+
+
 def test_qa_scenario_ids_are_unique_and_categories_are_present():
     scenarios = [
         *_load_scenarios(),
@@ -275,6 +321,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_persona_regression_cases(),
         *_load_extraction_eval_scenarios(),
         *_load_memory_architecture_scenarios(),
+        *_load_candidate_memory_scenarios(),
     ]
     ids = [item.get("id") for item in scenarios]
 
@@ -317,6 +364,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_persona_regression_cases(),
         *_load_extraction_eval_scenarios(),
         *_load_memory_architecture_scenarios(),
+        *_load_candidate_memory_scenarios(),
     ]:
         forbidden_terms = item.get("forbidden_terms", [])
         assert isinstance(forbidden_terms, list)
@@ -406,6 +454,37 @@ def test_memory_architecture_scenarios_have_required_fields():
         assert item.get("expected_type") in ALLOWED_MEMORY_ARCHITECTURE_TYPES
         assert isinstance(item.get("requires_confirmation"), bool)
         assert isinstance(item.get("should_write_long_term_memory"), bool)
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+
+
+def test_candidate_memory_scenarios_have_required_fields():
+    scenarios = _load_candidate_memory_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "candidate-memory-explicit-gameplay-pending",
+        "candidate-memory-do-not-remember-rejected",
+        "candidate-memory-session-death-no-candidate",
+        "candidate-memory-short-reply-pending",
+        "candidate-memory-spoiler-pending",
+        "candidate-memory-persona-drift-rejected",
+        "candidate-memory-secret-rejected-no-leak",
+        "candidate-memory-voice-direct-pending",
+        "candidate-memory-accept-long-term",
+        "candidate-memory-ignore-no-long-term",
+        "candidate-memory-duplicate-deduped",
+        "candidate-memory-assistant-source-blocked",
+    } <= ids
+    for item in scenarios:
+        assert item.get("category") == "candidate_memory"
+        assert item.get("input_source") in {"text", "voice_confirmed", "voice_direct", "assistant", "proactive"}
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert item.get("expected_status") in ALLOWED_CANDIDATE_MEMORY_STATUSES
+        assert item.get("expected_type") in ALLOWED_CANDIDATE_MEMORY_TYPES
+        assert item.get("guard_reason") in ALLOWED_CANDIDATE_MEMORY_GUARD_REASONS
+        assert isinstance(item.get("requires_confirmation"), bool)
+        assert isinstance(item.get("should_write_long_term_memory"), bool)
+        assert isinstance(item.get("should_show_pending_ui"), bool)
         assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
 
 

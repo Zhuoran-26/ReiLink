@@ -2,7 +2,7 @@
 
 Updated: 2026-06-18
 
-Status: architecture proposal and QA surface only. This document does not implement a new memory runtime, vector database, external memory provider, UI popup, or packaging change.
+Status: architecture baseline plus Candidate Memory v1 runtime slice. This document still does not implement Memory Retrieval, Session Archive, vector database, external memory provider, UI popup, or packaging change.
 
 ## Purpose
 
@@ -159,6 +159,13 @@ Rules:
 - It must be confirmable, ignorable, revisable, and expirable.
 - It must preserve evidence as a safe summary, not raw transcript.
 - It must never be created from assistant replies or proactive text alone.
+
+Current v1 runtime:
+
+- Reuses the existing pending memory API and Memory workspace Pending tab.
+- Stores `summary`, `evidence_summary`, `guard_reason`, `expires_at`, source metadata, and voice / assistant / proactive flags.
+- Shows pending candidates only after guard passes.
+- Stores rejected guard results outside pending UI for no-memory, secret, persona drift, assistant source, or proactive source cases.
 
 ### Long-term Memory
 
@@ -555,6 +562,7 @@ Machine-readable scenarios live in:
 
 ```text
 docs/qa/memory_architecture_scenarios.json
+docs/qa/candidate_memory_scenarios.json
 ```
 
 The scenarios cover explicit memory requests, negative memory requests, one-off session events, spoiler and reply-length preferences, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, and Debug safe trace.
@@ -563,10 +571,13 @@ The scenarios cover explicit memory requests, negative memory requests, one-off 
 
 ### Candidate Memory v1
 
-- Normalize MemoryCandidate schema.
-- Route explicit remember requests into pending candidates.
-- Add guard reasons and expiry.
-- Keep current pending memory UI mostly intact.
+Status: implemented as the first minimal runtime slice.
+
+- Normalizes MemoryCandidate schema.
+- Routes explicit remember requests and selected stable preferences into pending candidates.
+- Adds guard reasons, expiry, source metadata, safe evidence summaries, and voice flags.
+- Keeps current pending memory UI mostly intact while adding safe source / guard display.
+- Accept writes a visible long-term memory item; pending / ignored / expired / rejected candidates are not injected into prompts.
 
 ### Memory Retrieval v1
 

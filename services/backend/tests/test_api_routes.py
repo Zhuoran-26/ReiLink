@@ -375,7 +375,9 @@ def test_memory_profile_and_episodes_routes():
     assert pending.status_code == 200
     pending_items = pending.json()
     assert pending_items
-    assert pending_items[0]["type"] == "user_preference"
+    assert pending_items[0]["type"] == "interaction_preference"
+    assert pending_items[0]["requires_confirmation"] is True
+    assert pending_items[0]["evidence"].get("user_message") is None
     assert "payload" not in pending_items[0]
 
     profile = client.get("/api/memory/profile")
@@ -389,6 +391,7 @@ def test_memory_profile_and_episodes_routes():
     profile = client.get("/api/memory/profile")
     assert profile.status_code == 200
     assert profile.json()["preferred_tone"] == "不喜欢长篇攻略"
+    assert profile.json()["long_term_memories"][0]["source_candidate_id"] == pending_items[0]["id"]
 
     episodes = client.get("/api/memory/episodes")
     assert episodes.status_code == 200
@@ -402,7 +405,7 @@ def test_debug_memory_returns_provenance_items():
     client.post("/api/chat", json={"message": "我不喜欢长篇攻略", "session_id": session_id})
     pending_items = client.get("/api/memory/pending").json()
     assert pending_items
-    preference_item = next(item for item in pending_items if item["type"] == "user_preference")
+    preference_item = next(item for item in pending_items if item["type"] == "interaction_preference")
     client.post(f"/api/memory/pending/{preference_item['id']}/accept")
 
     response = client.get(f"/api/debug/memory?session_id={session_id}")
@@ -552,7 +555,7 @@ def test_persona_pack_does_not_bypass_pending_memory_confirmation():
 
     pending_items = client.get("/api/memory/pending").json()
 
-    assert any(item["type"] == "playstyle" and "探索地图" in item["text"] for item in pending_items)
+    assert any(item["type"] == "gameplay_preference" and "探索地图" in item["text"] for item in pending_items)
     assert client.get("/api/memory/profile").json()["preferred_tone"] is None
 
     client.post("/api/memory/pending/clear")

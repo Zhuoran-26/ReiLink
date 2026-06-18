@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -56,6 +57,7 @@ class UserProfile:
     current_boss: str | None = None
     repeated_struggles: list[str] = field(default_factory=list)
     emotional_notes: list[str] = field(default_factory=list)
+    long_term_memories: list[dict[str, Any]] = field(default_factory=list)
     last_seen_at: str | None = None
     memory_updated_at: dict[str, str] = field(default_factory=dict)
 
@@ -69,6 +71,7 @@ class UserProfile:
             "current_boss": self.current_boss,
             "repeated_struggles": self.repeated_struggles,
             "emotional_notes": self.emotional_notes,
+            "long_term_memories": self.long_term_memories,
             "last_seen_at": self.last_seen_at,
             "memory_updated_at": self.memory_updated_at,
         }
@@ -134,6 +137,23 @@ class PlayerMemory:
             lines.append(
                 MemoryPromptLine("profile", "user_name", f"玩家名字：{profile.user_name}", profile.memory_updated_at.get("user_name"))
             )
+
+        for memory in reversed(profile.long_term_memories[-5:]):
+            if not isinstance(memory, dict) or memory.get("is_active") is False:
+                continue
+            text = normalize_terminology(str(memory.get("user_visible_text") or memory.get("summary") or "")).strip()
+            if not text:
+                continue
+            lines.append(
+                MemoryPromptLine(
+                    "profile",
+                    str(memory.get("type") or "long_term_memory"),
+                    f"已确认记忆：{text}",
+                    str(memory.get("updated_at") or memory.get("created_at") or ""),
+                )
+            )
+            if len([line for line in lines if line.source == "profile"]) >= 2:
+                break
 
         latest_episode = next(
             (
@@ -241,6 +261,7 @@ class PlayerMemory:
                 profile.current_boss,
                 profile.repeated_struggles,
                 profile.emotional_notes,
+                profile.long_term_memories,
                 self.recent_episodes(limit=1),
             ]
         )
@@ -258,16 +279,19 @@ class PlayerMemory:
         timestamp = _ensure_aware(timestamp or datetime.now(timezone.utc))
         normalized = normalize_mapping_values(pending)
         memory_type = str(normalized.get("type") or "")
-        text = normalize_terminology(str(normalized.get("text") or "")).strip()
+        text = normalize_terminology(str(normalized.get("summary") or normalized.get("text") or "")).strip()
         payload = normalize_mapping_values(normalized.get("payload") or {})
         evidence = normalize_mapping_values(normalized.get("evidence") or {})
-        if not text:
+        if not text or normalized.get("status") not in {"pending", "accepted"} or memory_type == "do_not_remember":
             return
 
         profile = self.load_profile()
         boss = normalize_terminology(str(payload.get("boss") or "")).strip() or None
         progress_status = str(payload.get("progress_status") or "")
         preferred_tone = normalize_terminology(str(payload.get("preferred_tone") or "")).strip() or None
+        long_term_memory = _long_term_memory_from_pending(normalized, text, timestamp)
+        if not _long_term_memory_exists(profile.long_term_memories, long_term_memory):
+            profile.long_term_memories = [*profile.long_term_memories, long_term_memory]
 
         if memory_type == "game_progress":
             if not profile.favorite_game:
@@ -279,14 +303,11 @@ class PlayerMemory:
             elif boss and progress_status == "cleared" and profile.current_boss == boss:
                 profile.current_boss = None
                 profile.memory_updated_at["current_boss"] = timestamp.isoformat()
-        elif memory_type == "relationship_preference" and preferred_tone:
-            profile.preferred_tone = preferred_tone
-            profile.likes_teasing = "吐槽" in preferred_tone
-            profile.memory_updated_at["preferred_tone"] = timestamp.isoformat()
-        elif memory_type == "user_preference":
-            preference = normalize_terminology(str(payload.get("preference") or "")).strip()
+        elif memory_type in {"interaction_preference", "relationship_preference", "user_preference"}:
+            preference = normalize_terminology(str(preferred_tone or payload.get("preference") or text.removeprefix("玩家"))).strip()
             if preference:
                 profile.preferred_tone = preference
+                profile.likes_teasing = "吐槽" in preference
                 profile.memory_updated_at["preferred_tone"] = timestamp.isoformat()
         elif memory_type == "emotional_pattern":
             emotional_state = normalize_terminology(str(payload.get("emotional_state") or text)).strip()
@@ -309,7 +330,7 @@ class PlayerMemory:
                 "topic": boss or memory_type,
                 "attitude_to_rei": None,
                 "user_name": None,
-                "user_message_sample": str(evidence.get("user_message") or "")[:120],
+                "user_message_sample": str(evidence.get("input_summary") or normalized.get("evidence_summary") or "")[:120],
                 "assistant_reply_sample": "",
                 "summary": text,
             }
@@ -477,6 +498,42 @@ def _build_summary(
     if attitude:
         return f"玩家对 Rei 的态度：{attitude}"
     return None
+
+
+def _long_term_memory_from_pending(pending: dict[str, Any], text: str, timestamp: datetime) -> dict[str, Any]:
+    existing_id = str(pending.get("long_term_memory_id") or "") or None
+    created_at = timestamp.isoformat()
+    return normalize_mapping_values(
+        {
+            "id": existing_id or f"ltm-{uuid.uuid4()}",
+            "created_at": created_at,
+            "updated_at": created_at,
+            "type": str(pending.get("type") or "unknown"),
+            "summary": text,
+            "user_visible_text": text,
+            "source_candidate_id": str(pending.get("id") or ""),
+            "is_active": True,
+            "related_game": pending.get("related_game"),
+            "related_entity": pending.get("related_entity"),
+        }
+    )
+
+
+def _long_term_memory_exists(memories: list[dict[str, Any]], candidate: dict[str, Any]) -> bool:
+    candidate_source_id = str(candidate.get("source_candidate_id") or "")
+    candidate_type = str(candidate.get("type") or "")
+    candidate_summary = normalize_terminology(str(candidate.get("summary") or "")).strip()
+    for memory in memories:
+        if not isinstance(memory, dict):
+            continue
+        if candidate_source_id and str(memory.get("source_candidate_id") or "") == candidate_source_id:
+            return True
+        if (
+            str(memory.get("type") or "") == candidate_type
+            and normalize_terminology(str(memory.get("summary") or "")).strip() == candidate_summary
+        ):
+            return True
+    return False
 
 
 def _normalize_profile_data(data: dict[str, Any]) -> dict[str, Any]:

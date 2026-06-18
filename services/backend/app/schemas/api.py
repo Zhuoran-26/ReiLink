@@ -117,6 +117,26 @@ class MemoryEntry(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class LongTermMemoryItem(BaseModel):
+    id: str
+    created_at: str
+    updated_at: str
+    type: Literal[
+        "gameplay_preference",
+        "interaction_preference",
+        "emotional_pattern",
+        "accessibility_preference",
+        "do_not_remember",
+        "unknown",
+    ]
+    summary: str
+    user_visible_text: str
+    source_candidate_id: str
+    is_active: bool = True
+    related_game: str | None = None
+    related_entity: str | None = None
+
+
 class UserProfileMemory(BaseModel):
     user_name: str | None = None
     favorite_game: str | None = None
@@ -126,6 +146,7 @@ class UserProfileMemory(BaseModel):
     current_boss: str | None = None
     repeated_struggles: list[str] = Field(default_factory=list)
     emotional_notes: list[str] = Field(default_factory=list)
+    long_term_memories: list[LongTermMemoryItem] = Field(default_factory=list)
     last_seen_at: str | None = None
     memory_updated_at: dict[str, str] = Field(default_factory=dict)
 
@@ -152,13 +173,54 @@ class MemoryResetResponse(BaseModel):
 
 class PendingMemoryItem(BaseModel):
     id: str
-    type: Literal["game_progress", "user_preference", "emotional_pattern", "relationship_preference", "playstyle"]
+    type: Literal[
+        "gameplay_preference",
+        "interaction_preference",
+        "emotional_pattern",
+        "accessibility_preference",
+        "do_not_remember",
+        "unknown",
+    ]
+    summary: str
     text: str
-    source: Literal["game_session", "conversation", "explicit_user_statement"]
+    source: Literal[
+        "game_session",
+        "conversation",
+        "explicit_user_statement",
+        "semantic_extraction",
+        "voice_confirmed",
+        "voice_direct",
+        "assistant",
+        "proactive",
+    ]
+    source_event_id: str | None = None
     confidence: float
-    status: Literal["pending", "accepted", "ignored"]
+    requires_confirmation: bool = True
+    status: Literal["pending", "accepted", "ignored", "expired", "rejected_by_guard"]
     created_at: str
+    expires_at: str
     updated_at: str
+    guard_reason: Literal[
+        "allow_candidate",
+        "reject_candidate",
+        "ignore_no_memory_intent",
+        "requires_confirmation",
+        "explicit_user_memory_request",
+        "session_event_only",
+        "persona_drift_blocked",
+        "sensitive_secret_blocked",
+        "assistant_source_blocked",
+        "duplicate_candidate",
+        "do_not_remember",
+    ] = "requires_confirmation"
+    privacy_level: Literal["normal", "sensitive", "secret"] = "normal"
+    related_game: str | None = None
+    related_entity: str | None = None
+    from_voice: bool = False
+    from_proactive: bool = False
+    from_assistant: bool = False
+    confirmation_intent: Literal["explicit", "implicit", "voice_confirmed", "voice_direct", "none"] = "implicit"
+    evidence_summary: str
     evidence: dict[str, Any] = Field(default_factory=dict)
 
 

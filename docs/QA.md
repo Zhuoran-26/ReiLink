@@ -269,11 +269,11 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 33. Eval result 应逐条输出 scenario id、input_source、expected / actual decision、expected / actual state、state delta、risky_state_delta、harmless_state_delta、parse_diagnostic、primary_extractor、primary_status、provider_status、schema_valid、retry flags、fallback_extractor、applied_by、candidate fields、confirmation_intent、pass 和 failure_reason。
 34. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、boss set / switch、switch negation、guide-only 不切换、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict、low-confidence candidate-only、uncertain confirmation 和 harmless game-detected-only update。
 35. Eval runner 应复用 `extract_semantics` 与 `GameSessionStore`，只应用 guarded `final_decision.game_event`，避免把 runner 变成第二套 extraction 规则。
-36. Eval report 和 pytest 输出不得包含 raw prompt、raw provider JSON、API key、`.env`、完整本地路径、stdout / stderr 或完整 transcript。当前已知限制：v1.0.3 只把 pending candidate 做到 extraction result / trace / eval 层，不实现完整 pending candidate runtime、UI 弹窗或 Candidate Memory。
+36. Eval report 和 pytest 输出不得包含 raw prompt、raw provider JSON、API key、`.env`、完整本地路径、stdout / stderr 或完整 transcript。Candidate Memory v1 已在正常 chat / memory flow 中接住 pending candidate runtime；extraction eval runner 本身仍只验证 extraction result / trace / eval 层，不创建 UI 弹窗。
 
 ### 1.13 Hermes-style Memory Architecture v0 人工验收
 
-设计文档见 `docs/memory_architecture_v0.md`，机器可读场景见 `docs/qa/memory_architecture_scenarios.json`。本节验收 architecture / docs / QA surface；不表示 Candidate Memory runtime、Memory Retrieval、Session Archive、向量数据库或外部 memory provider 已实现。
+设计文档见 `docs/memory_architecture_v0.md`，机器可读场景见 `docs/qa/memory_architecture_scenarios.json`。本节验收 architecture / docs / QA surface；Candidate Memory v1 已作为最小 runtime 接入，但本节仍不表示 Memory Retrieval、Session Archive、向量数据库或外部 memory provider 已实现。
 
 1. 文档应包含 Hermes-style memory 的轻量 research 摘要，并说明只吸收 bounded / curated / approval / retrieval budget 等架构思想，不复制 Hermes 代码、prompt、人格或 provider 实现。
 2. 文档应明确区分 Working Context、Game Session State、Session Timeline、Memory Candidate、Long-term Memory、Retrieved Memory、Prompt Memory Block、Persona Core 和 Candidate Game Understanding。
@@ -295,6 +295,23 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 18. Proactive 可参考已确认 memory，但 proactive message 本身不能直接写 memory。
 19. Debug Trace 可显示 memory candidate status、type、guard reason 和 safe summary；不得显示 raw transcript、raw prompt、raw JSON、API key、`.env`、完整路径、stdout/stderr 或 secret。
 20. QA scenarios 应覆盖显式记忆、拒绝记忆、单次游戏事件不保存、剧透偏好、短回复偏好、人格漂移拒绝、删除、接受、忽略、弱确认、语音、proactive、assistant reply、knowledge、prompt budget、current input priority、secret rejection、candidate expiry、dedup、workspace visibility、direct conversation、overlay 和 debug privacy。
+
+### 1.14 Candidate Memory v1 人工验收
+
+机器可读场景见 `docs/qa/candidate_memory_scenarios.json`。本节验收 Candidate Memory v1 最小 runtime；不表示 Memory Retrieval、Session Archive、向量数据库、外部 memory provider、Overlay auto-show 或自动保存所有输入已实现。
+
+1. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。` 后，应创建 `gameplay_preference` pending candidate，`requires_confirmation=true`，不直接写长期记忆。
+2. 发送 `以后不用记住这个，只是我这次随便说一下。` 后，不应出现在 pending UI；可以记录安全 `do_not_remember` guard 结果，但不得打断用户。
+3. 发送 `我刚刚打玛尔基特死了三次。` 这类单次 session event，只能影响当前游戏 / 会话状态，不应创建长期记忆候选。
+4. 发送 `以后你回答短一点。` 后，应创建 `interaction_preference` pending candidate，不修改 Persona Core。
+5. 发送 `之后别剧透支线，除非我主动问。` 后，应创建安全的剧透边界候选。
+6. 发送 `以后你都撒娇一点，每句话都夸我。` 后，应被 `persona_drift_blocked` 阻断，不保存原始人格漂移措辞。
+7. API key、`.env`、Authorization、Bearer、token、stdout/stderr、完整本地路径和 raw JSON 不得进入 candidate summary、evidence、UI、Prompt Preview 或 Event Stream。
+8. `voice_direct` 的显式记忆意图可以创建 `from_voice=true` 的 pending candidate，但不能自动 accepted，也不能弹出阻断式 modal。
+9. pending candidate 接受后，应从待确认列表消失，并在长期记忆中显示 `user_visible_text`、type、source candidate 关系等安全字段。
+10. ignored / expired / rejected_by_guard candidate 不得注入 prompt；pending candidate 也不得注入 prompt。
+11. assistant reply 和 proactive message 本身不能成为用户记忆来源。
+12. 重复或近似候选应 dedupe，不创建多条待确认记忆。
 
 ### 2. Voice Output 回归检查
 
@@ -655,7 +672,7 @@ packaged `.app` 手动 smoke 最低步骤：
 - Semantic Shadow QA Freeze 人工验收 E / Non-application boundary：无论 Shadow 成功还是失败，都不能直接改 Game Context、创建 pending memory、触发 proactive 或写长期记忆；如果规则路径独立命中，应在 trace 中能区分 applied_updates 来源。
 - Semantic Shadow QA Freeze 人工验收 F / Diagnostics：Shadow final event 可显示 `response_format_used`、`compat_retry_used`、`ultra_compact_used`、`attempts`、`last_failure`、`json_recovery_stage`、`finish_reason`、`content_length_bucket`、`first_char_type` 等短标签诊断，但不得显示 raw response。
 - 已击败 Boss 后继续问打法时，纯攻略 / 位置 / build 提问不应把已 cleared Boss 重新写成 current boss。Rei 可以轻轻承接“已经打过”的上下文，但不能只用反问阻断；仍应回答用户实际攻略 / 复盘需求。
-- 显式记忆回归：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 应创建 pending memory；`以后不用记住这个，只是我这次随便说一下` 不应创建 pending memory。
+- 显式记忆回归：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 应创建 pending candidate；`以后不用记住这个，只是我这次随便说一下` 不应出现在 pending UI，也不应写长期记忆。
 - Knowledge Retrieval 使用成功时应显示 `使用知识` 类摘要，只允许游戏名或安全 topic/title；不得显示完整 snippet、knowledge 文件路径或 prompt。
 - Proactive 显示时应记录 `主动陪伴已显示` 和安全 trigger 标签，不显示完整 proactive / assistant 文本。
 - 主动陪伴场景区分验收：

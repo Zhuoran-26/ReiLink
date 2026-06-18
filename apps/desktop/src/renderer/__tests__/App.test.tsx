@@ -198,6 +198,20 @@ const memoryProfile = {
   current_boss: "恶兆妖鬼 Margit",
   repeated_struggles: ["恶兆妖鬼 Margit死亡循环"],
   emotional_notes: ["玩家在死亡循环里有点急"],
+  long_term_memories: [
+    {
+      id: "ltm-1",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      type: "interaction_preference",
+      summary: "玩家不喜欢长篇攻略",
+      user_visible_text: "玩家不喜欢长篇攻略",
+      source_candidate_id: "pending-accepted",
+      is_active: true,
+      related_game: null,
+      related_entity: null
+    }
+  ],
   last_seen_at: new Date().toISOString(),
   memory_updated_at: {}
 };
@@ -722,15 +736,28 @@ let proactiveCheckStore: ProactiveCheckResponse = {
 const pendingMemories = [
   {
     id: "pending-1",
-    type: "user_preference",
+    type: "interaction_preference",
+    summary: "玩家不喜欢长篇攻略",
     text: "玩家不喜欢长篇攻略",
     source: "explicit_user_statement",
+    source_event_id: null,
     confidence: 0.95,
+    requires_confirmation: true,
     status: "pending",
     created_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
     updated_at: new Date().toISOString(),
+    guard_reason: "requires_confirmation",
+    privacy_level: "normal",
+    related_game: null,
+    related_entity: null,
+    from_voice: false,
+    from_proactive: false,
+    from_assistant: false,
+    confirmation_intent: "implicit",
+    evidence_summary: "用户表达了攻略呈现偏好：避免长篇攻略",
     evidence: {
-      user_message: "我不喜欢长篇攻略",
+      input_summary: "用户表达了攻略呈现偏好",
       game_state_summary: "current_boss=none"
     }
   }
@@ -4918,7 +4945,7 @@ describe("App", () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: "pending_memory_created",
-          memory_type: "user_preference",
+          memory_type: "interaction_preference",
           text: "玩家不喜欢长篇攻略"
         })
       ])

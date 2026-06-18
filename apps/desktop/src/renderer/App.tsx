@@ -253,6 +253,7 @@ const emptyProfile: UserProfileMemory = {
   current_boss: null,
   repeated_struggles: [],
   emotional_notes: [],
+  long_term_memories: [],
   last_seen_at: null,
   memory_updated_at: {}
 };
@@ -830,10 +831,12 @@ const valueMap: Record<string, string> = {
   boss: "Boss",
   elden_ring: "Elden Ring",
   explicit_user_statement: "明确表达",
+  explicit_user_memory_request: "显式记忆请求",
   fast: "快速",
   fresh: "新鲜",
   frustration_loop: "挫败循环",
   game_progress: "游戏进度",
+  gameplay_preference: "玩法偏好",
   game_session: "游戏状态",
   elden_ring_boss_strategy: "Boss 攻略",
   elden_ring_general_help: "游戏帮助",
@@ -857,6 +860,7 @@ const valueMap: Record<string, string> = {
   idle: "空闲",
   idle_silence: "沉默陪伴",
   ignored: "已忽略",
+  ignore_no_memory_intent: "无记忆意图",
   initial_grace: "初始等待中",
   late_night: "深夜提醒",
   low: "低",
@@ -900,17 +904,24 @@ const valueMap: Record<string, string> = {
   off: "关闭",
   on: "开启",
   pending: "待确认",
+  rejected_by_guard: "已阻止",
+  expired: "已过期",
   persona: "人格",
+  persona_drift_blocked: "人设漂移已阻止",
   persona_preference: "互动偏好",
   passive_death_statement: "被动死亡表达",
   provider_unavailable: "语义模型不可用",
   playstyle: "玩法",
   playstyle_preference: "玩法偏好",
+  proactive: "主动消息",
   pro: "高质量",
   profile: "长期记忆",
+  requires_confirmation: "需要确认",
   recent_user_message: "刚刚发言",
   recent_assistant_reply: "刚回复过",
   relationship_preference: "互动偏好",
+  semantic_extraction: "语义识别",
+  sensitive_secret_blocked: "敏感内容已阻止",
   repeated_death: "反复死亡",
   repeat_trigger_type: "同类主动陪伴已触发",
   rule: "规则",
@@ -942,6 +953,14 @@ const valueMap: Record<string, string> = {
   not_found: "未找到运行环境",
   user_is_typing: "正在输入",
   user_preference: "用户偏好",
+  interaction_preference: "互动偏好",
+  accessibility_preference: "舒适度偏好",
+  do_not_remember: "不要记住",
+  unknown: "未分类",
+  assistant: "助手消息",
+  assistant_source_blocked: "非用户来源已阻止",
+  voice_confirmed: "语音确认发送",
+  voice_direct: "直接语音对话",
   user_stop: "用户停止",
   unavailable: "当前环境不支持",
   waiting_for_user_activity_after_proactive: "等待用户回应",
@@ -967,8 +986,7 @@ const valueMap: Record<string, string> = {
   detected_only: "暂未支持",
   supported: "已支持",
   unsupported: "暂未支持",
-  window_title: "窗口标题",
-  unknown: "未知"
+  window_title: "窗口标题"
 };
 
 const formatDebugLabel = (key: string) => labelMap[key] ?? key;
@@ -1916,12 +1934,15 @@ export function SessionTimelinePanel({
 }
 
 const pendingEvidenceSummary = (memory: PendingMemory) => {
+  if (memory.evidence_summary) return memory.evidence_summary;
   const evidence = asRecord(memory.evidence);
-  const userMessage = debugText(evidence.user_message, "");
+  const inputSummary = debugText(evidence.input_summary, "");
   const gameState = debugText(evidence.game_state_summary, "");
+  const semanticReason = debugText(evidence.semantic_reason, "");
   const parts = [
-    userMessage ? `用户：${userMessage}` : "",
-    gameState ? `游戏：${gameState}` : ""
+    inputSummary ? `输入：${inputSummary}` : "",
+    gameState ? `游戏：${gameState}` : "",
+    semanticReason ? `识别：${semanticReason}` : ""
   ].filter(Boolean);
   return parts.join(" / ") || "无";
 };
@@ -4170,10 +4191,24 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               <div className="cardHeader">
                 <Database size={17} />
                 <h2>已保存记忆</h2>
+                <span className="countPill">{memoryProfile.long_term_memories.length}</span>
               </div>
               <p className="settingHint">
-                当前长期记忆仍通过待确认流程写入。后续会在这里整理已保存记忆列表、来源摘要、忽略项和本地搜索。
+                已保存记忆来自待确认候选；这里仅显示安全摘要，不显示原始输入或调试内容。
               </p>
+              <div className="pendingMemoryList">
+                {memoryProfile.long_term_memories.map((memory) => (
+                  <article className="pendingMemoryItem" key={memory.id}>
+                    <p>{memory.user_visible_text || memory.summary}</p>
+                    <div className="pendingMemoryMeta">
+                      <span>{debugText(memory.type)}</span>
+                      <span>{memory.is_active ? "有效" : "已停用"}</span>
+                      {memory.related_game && <span>{debugText(memory.related_game)}</span>}
+                    </div>
+                  </article>
+                ))}
+                {memoryProfile.long_term_memories.length === 0 && <p className="emptyDebugText">暂无已保存记忆</p>}
+              </div>
               <dl className="debugFacts">
                 <div>
                   <dt>记忆开关</dt>
@@ -6188,13 +6223,15 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             <div className="pendingMemoryList">
               {pendingMemories.map((memory) => (
                 <article className="pendingMemoryItem" key={memory.id}>
-                  <p>{memory.text}</p>
+                  <p>{memory.summary || memory.text}</p>
                   <div className="pendingMemoryMeta">
                     <span>{debugText(memory.type)}</span>
                     <span>{debugText(memory.source)}</span>
+                    <span>{memory.requires_confirmation ? "需确认" : "无需确认"}</span>
                     <span>{memory.confidence.toFixed(2)}</span>
                   </div>
                   <p className="pendingMemoryEvidence">{pendingEvidenceSummary(memory)}</p>
+                  <p className="pendingMemoryEvidence">Guard：{debugText(memory.guard_reason)}</p>
                   <div className="pendingMemoryActions">
                     <button
                       className="smallButton"

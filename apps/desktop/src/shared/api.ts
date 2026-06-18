@@ -274,6 +274,19 @@ export type ProactiveCheckResponse = {
   active_candidate_triggers: string[];
 };
 
+export type LongTermMemory = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  type: "gameplay_preference" | "interaction_preference" | "emotional_pattern" | "accessibility_preference" | "do_not_remember" | "unknown";
+  summary: string;
+  user_visible_text: string;
+  source_candidate_id: string;
+  is_active: boolean;
+  related_game: string | null;
+  related_entity: string | null;
+};
+
 export type UserProfileMemory = {
   user_name: string | null;
   favorite_game: string | null;
@@ -283,6 +296,7 @@ export type UserProfileMemory = {
   current_boss: string | null;
   repeated_struggles: string[];
   emotional_notes: string[];
+  long_term_memories: LongTermMemory[];
   last_seen_at: string | null;
   memory_updated_at: Record<string, string>;
 };
@@ -565,13 +579,26 @@ export type ProviderDebugResponse = {
 
 export type PendingMemory = {
   id: string;
-  type: "game_progress" | "user_preference" | "emotional_pattern" | "relationship_preference" | "playstyle";
+  type: "gameplay_preference" | "interaction_preference" | "emotional_pattern" | "accessibility_preference" | "do_not_remember" | "unknown";
+  summary: string;
   text: string;
-  source: "game_session" | "conversation" | "explicit_user_statement";
+  source: "game_session" | "conversation" | "explicit_user_statement" | "semantic_extraction" | "voice_confirmed" | "voice_direct" | "assistant" | "proactive";
+  source_event_id: string | null;
   confidence: number;
-  status: "pending" | "accepted" | "ignored";
+  requires_confirmation: boolean;
+  status: "pending" | "accepted" | "ignored" | "expired" | "rejected_by_guard";
   created_at: string;
+  expires_at: string;
   updated_at: string;
+  guard_reason: "allow_candidate" | "reject_candidate" | "ignore_no_memory_intent" | "requires_confirmation" | "explicit_user_memory_request" | "session_event_only" | "persona_drift_blocked" | "sensitive_secret_blocked" | "assistant_source_blocked" | "duplicate_candidate" | "do_not_remember";
+  privacy_level: "normal" | "sensitive" | "secret";
+  related_game: string | null;
+  related_entity: string | null;
+  from_voice: boolean;
+  from_proactive: boolean;
+  from_assistant: boolean;
+  confirmation_intent: "explicit" | "implicit" | "voice_confirmed" | "voice_direct" | "none";
+  evidence_summary: string;
   evidence: Record<string, unknown>;
 };
 
