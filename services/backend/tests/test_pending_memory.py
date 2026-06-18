@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.modules.dialogue_agent.prompt_preview import build_prompt_preview
+from app.modules.memory import candidate_check as memory_candidate_check
 from app.modules.memory.pending import PendingMemoryQueue
 from app.modules.memory.profile import PlayerMemory
 
@@ -46,6 +47,29 @@ def test_short_reply_preference_creates_interaction_candidate():
     assert created[0]["type"] == "interaction_preference"
     assert "简短" in created[0]["summary"]
     assert PlayerMemory().load_profile().preferred_tone is None
+
+
+def test_too_long_reply_preference_creates_interaction_candidate():
+    created = PendingMemoryQueue().generate_and_enqueue("每次你说太长我都看不过来。", "", "casual_chat", _now(), {})
+
+    assert len(created) == 1
+    assert created[0]["type"] == "interaction_preference"
+    assert "简短" in created[0]["summary"]
+    assert created[0]["evidence"]["memory_check_source"] == "deterministic_fallback"
+
+
+def test_soft_long_guide_preference_creates_interaction_candidate():
+    created = PendingMemoryQueue().generate_and_enqueue(
+        "我一般不太喜欢长篇攻略，给我一句重点就好。",
+        "",
+        "casual_chat",
+        _now(),
+        {},
+    )
+
+    assert len(created) == 1
+    assert created[0]["type"] == "interaction_preference"
+    assert created[0]["summary"] == "玩家不喜欢长篇攻略"
 
 
 def test_spirit_ashes_preference_creates_gameplay_candidate():
@@ -213,6 +237,151 @@ def test_secret_memory_request_is_rejected_without_secret_leak():
     assert "sk-secret-value" not in serialized
     assert "DEEPSEEK_API_KEY" not in serialized
     assert "sensitive_secret_blocked" in serialized
+
+
+def test_llm_memory_check_runs_for_implicit_preference_when_provider_available(monkeypatch):
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        memory_candidate_check,
+        "_provider_config",
+        lambda: {"provider": "deepseek", "api_key": "test", "base_url": "http://127.0.0.1", "model": "fast"},
+    )
+
+    def fake_call(provider, user_message, *, input_source, game_state_summary):
+        del provider, input_source, game_state_summary
+        calls.append(user_message)
+        return json.dumps(
+            {
+                "should_create": True,
+                "suggested_action": "pending",
+                "type": "interaction_preference",
+                "safe_summary": "玩家不喜欢详细攻略，容易觉得被剧透",
+                "confidence": 0.91,
+                "explicit_request": False,
+                "reason": "implicit_preference",
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(memory_candidate_check, "_call_memory_check_provider", fake_call)
+
+    result = memory_candidate_check.check_memory_candidate("我不喜欢看详细攻略，感觉像被剧透。")
+
+    assert calls == ["我不喜欢看详细攻略，感觉像被剧透。"]
+    assert result.source == "llm_primary"
+    assert result.suggested_action == "pending"
+    assert result.safe_summary == "玩家不喜欢详细攻略，容易觉得被剧透"
+
+
+def test_rule_prefilter_does_not_suppress_llm_for_too_long_reply_preference(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(
+        memory_candidate_check,
+        "_provider_config",
+        lambda: {"provider": "deepseek", "api_key": "test", "base_url": "http://127.0.0.1", "model": "fast"},
+    )
+
+    def fake_call(provider, user_message, *, input_source, game_state_summary):
+        del provider, input_source, game_state_summary
+        calls.append(user_message)
+        return json.dumps(
+            {
+                "should_create": True,
+                "suggested_action": "pending",
+                "type": "interaction_preference",
+                "safe_summary": "玩家觉得回复太长时看不过来",
+                "confidence": 0.86,
+                "explicit_request": False,
+                "reason": "implicit_interaction_preference",
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(memory_candidate_check, "_call_memory_check_provider", fake_call)
+
+    result = memory_candidate_check.check_memory_candidate("每次你说太长我都看不过来。")
+
+    assert calls == ["每次你说太长我都看不过来。"]
+    assert result.source == "llm_primary"
+    assert result.should_create is True
+
+
+def test_obvious_unrelated_short_input_skips_llm_memory_check(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(
+        memory_candidate_check,
+        "_provider_config",
+        lambda: {"provider": "deepseek", "api_key": "test", "base_url": "http://127.0.0.1", "model": "fast"},
+    )
+
+    def fake_call(provider, user_message, *, input_source, game_state_summary):
+        del provider, input_source, game_state_summary
+        calls.append(user_message)
+        return "{}"
+
+    monkeypatch.setattr(memory_candidate_check, "_call_memory_check_provider", fake_call)
+
+    result = memory_candidate_check.check_memory_candidate("嗯")
+
+    assert calls == []
+    assert result.should_create is False
+    assert result.source == "prefilter"
+    assert result.provider_status == "not_run"
+
+
+def test_llm_auto_save_suggestion_cannot_bypass_explicit_request_gate(monkeypatch):
+    monkeypatch.setattr(
+        memory_candidate_check,
+        "_provider_config",
+        lambda: {"provider": "deepseek", "api_key": "test", "base_url": "http://127.0.0.1", "model": "fast"},
+    )
+
+    def fake_call(provider, user_message, *, input_source, game_state_summary):
+        del provider, user_message, input_source, game_state_summary
+        return json.dumps(
+            {
+                "should_create": True,
+                "suggested_action": "auto_save",
+                "type": "interaction_preference",
+                "safe_summary": "玩家不喜欢详细攻略",
+                "confidence": 0.93,
+                "explicit_request": False,
+                "reason": "model_attempted_auto_save",
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(memory_candidate_check, "_call_memory_check_provider", fake_call)
+
+    result = memory_candidate_check.check_memory_candidate("我不喜欢看详细攻略，感觉像被剧透。")
+
+    assert result.should_create is True
+    assert result.suggested_action == "pending"
+    assert result.reason == "implicit_candidate_downgraded_to_pending"
+
+
+def test_guard_blocks_sensitive_input_before_llm_even_if_provider_available(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(
+        memory_candidate_check,
+        "_provider_config",
+        lambda: {"provider": "deepseek", "api_key": "test", "base_url": "http://127.0.0.1", "model": "fast"},
+    )
+
+    def fake_call(provider, user_message, *, input_source, game_state_summary):
+        del provider, input_source, game_state_summary
+        calls.append(user_message)
+        return "{}"
+
+    monkeypatch.setattr(memory_candidate_check, "_call_memory_check_provider", fake_call)
+
+    result = memory_candidate_check.check_memory_candidate("记住我的 API key 是 sk-test-secret。")
+
+    assert calls == []
+    assert result.suggested_action == "reject"
+    assert result.reason == "sensitive_secret_blocked"
+    assert result.provider_status == "blocked_before_llm"
 
 
 def test_voice_direct_memory_intent_creates_pending_candidate_not_accepted():

@@ -1289,6 +1289,36 @@ const eventSummary = (event: ReiLinkEvent) => {
       return event.memory_id;
     case "pending_memory_ignored":
       return event.memory_id;
+    case "long_term_memory_undone":
+      return event.memory_id;
+    case "memory_candidate_checked":
+      return [
+        `decision=${debugText(event.decision)}`,
+        event.memory_type ? `type=${debugText(event.memory_type)}` : "",
+        event.guard_reason ? `guard=${debugText(event.guard_reason)}` : "",
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
+    case "memory_candidate_pending":
+      return [
+        event.memory_type ? debugText(event.memory_type) : "",
+        event.guard_reason ? `guard=${debugText(event.guard_reason)}` : "",
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
+    case "memory_auto_saved":
+      return [
+        event.memory_id ? `memory=${debugText(event.memory_id)}` : "",
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
+    case "memory_auto_save_undo":
+      return [
+        `memory=${debugText(event.memory_id)}`,
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
+    case "memory_candidate_rejected":
+      return [
+        event.guard_reason ? `guard=${debugText(event.guard_reason)}` : "",
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
     case "game_context_changed":
       return [debugText(event.game), debugText(event.source)].join(" / ");
     case "semantic_extraction_traced":
@@ -1478,6 +1508,11 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     pending_memory_accepted: "记忆已保存",
     pending_memory_ignored: "记忆已忽略",
     long_term_memory_undone: "记忆已撤销",
+    memory_candidate_checked: "记忆候选已检查",
+    memory_candidate_pending: "记忆待确认",
+    memory_auto_saved: "记忆已自动保存",
+    memory_auto_save_undo: "自动保存记忆已撤销",
+    memory_candidate_rejected: "记忆候选已拒绝",
     game_context_changed: "游戏上下文变化",
     semantic_extraction_traced: "语义识别来源",
     game_session_changed: "游戏状态变化",
@@ -2567,6 +2602,45 @@ export function App() {
     return null;
   }, []);
 
+  const emitMemoryUpdateEvents = useCallback((update?: ChatMemoryUpdate) => {
+    if (!update || update.status === "none" || update.status === "failed") return;
+    const timestamp = eventTimestamp();
+    eventBus.emit({
+      type: "memory_candidate_checked",
+      timestamp,
+      decision: update.status,
+      summary: update.summary,
+      candidate_id: update.pending_memory_id,
+      memory_id: update.long_term_memory_id,
+      source: "chat_response"
+    });
+    if (update.status === "auto_saved") {
+      eventBus.emit({
+        type: "memory_auto_saved",
+        timestamp,
+        summary: update.summary,
+        candidate_id: update.pending_memory_id,
+        memory_id: update.long_term_memory_id,
+        source: "chat_response"
+      });
+    } else if (update.status === "pending") {
+      eventBus.emit({
+        type: "memory_candidate_pending",
+        timestamp,
+        summary: update.summary,
+        candidate_id: update.pending_memory_id,
+        source: "chat_response"
+      });
+    } else if (update.status === "blocked") {
+      eventBus.emit({
+        type: "memory_candidate_rejected",
+        timestamp,
+        summary: update.summary,
+        source: "chat_response"
+      });
+    }
+  }, []);
+
   const refreshStatus = useCallback(async (options: { emitPendingMemoryCreated?: boolean } = {}) => {
     try {
       setLastError("");
@@ -3407,6 +3481,7 @@ export function App() {
     try {
       const response = await api.chat(trimmed, "default", chatInputSource);
       const nextMemoryNotice = noticeFromMemoryUpdate(response.memory_update);
+      emitMemoryUpdateEvents(response.memory_update);
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
       emitModelRouted(response.model_used, response.route_reason, response.request_started_at ?? String(requestStartedAt));
@@ -3859,6 +3934,7 @@ export function App() {
     try {
       await api.undoLongTermMemory(memoryId);
       eventBus.emit({ type: "long_term_memory_undone", timestamp: eventTimestamp(), memory_id: memoryId });
+      eventBus.emit({ type: "memory_auto_save_undo", timestamp: eventTimestamp(), memory_id: memoryId, summary });
       setMemoryNotice({
         status: "undone",
         summary: summary || "已撤销这条记忆",

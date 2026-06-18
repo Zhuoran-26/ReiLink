@@ -2519,9 +2519,18 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
 
     expect(await screen.findByText("已记住：玩家打 Boss 前喜欢先探索地图，不喜欢直接硬打")).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "memory_candidate_checked", decision: "auto_saved" }),
+        expect.objectContaining({ type: "memory_auto_saved", memory_id: "ltm-1" })
+      ])
+    );
     await userEvent.click(screen.getByRole("button", { name: "撤销" }));
 
     await screen.findByText("已撤销这条记忆");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "memory_auto_save_undo", memory_id: "ltm-1" })])
+    );
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/memory/long-term/ltm-1/undo"),
       expect.objectContaining({ method: "POST" })
@@ -2546,6 +2555,12 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
 
     expect(await screen.findByText("有新的记忆待确认")).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "memory_candidate_checked", decision: "pending" }),
+        expect.objectContaining({ type: "memory_candidate_pending", candidate_id: "pending-1" })
+      ])
+    );
     await userEvent.click(screen.getByRole("button", { name: "查看" }));
 
     expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();

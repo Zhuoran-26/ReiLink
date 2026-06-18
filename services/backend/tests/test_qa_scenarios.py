@@ -14,6 +14,7 @@ PERSONA_REGRESSION_CASES_PATH = REPO_ROOT / "docs" / "qa" / "persona_regression_
 EXTRACTION_EVAL_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "extraction_eval_scenarios.json"
 MEMORY_ARCHITECTURE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "memory_architecture_scenarios.json"
 CANDIDATE_MEMORY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "candidate_memory_scenarios.json"
+MEMORY_UX_V1_1_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "memory_ux_v1_1_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
 README_PATH = REPO_ROOT / "README.md"
 README_EN_PATH = REPO_ROOT / "README.en.md"
@@ -170,6 +171,27 @@ ALLOWED_CANDIDATE_MEMORY_GUARD_REASONS = {
     "duplicate_candidate",
     "do_not_remember",
 }
+ALLOWED_MEMORY_UX_V1_1_STATUSES = {
+    "accepted",
+    "auto_saved",
+    "deduplicated",
+    "expired",
+    "ignored",
+    "no_candidate",
+    "pending",
+    "rejected_by_guard",
+    "undone",
+}
+ALLOWED_MEMORY_UX_V1_1_TYPES = {
+    "accessibility_preference",
+    "do_not_remember",
+    "emotional_pattern",
+    "gameplay_preference",
+    "interaction_preference",
+    "mixed",
+    "none",
+    "unknown",
+}
 
 
 def _load_scenarios() -> list[dict]:
@@ -252,6 +274,14 @@ def _load_candidate_memory_scenarios() -> list[dict]:
     return data
 
 
+def _load_memory_ux_v1_1_scenarios() -> list[dict]:
+    data = json.loads(MEMORY_UX_V1_1_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def test_qa_scenarios_file_is_valid_json():
     scenarios = _load_scenarios()
 
@@ -312,6 +342,12 @@ def test_candidate_memory_scenarios_file_is_valid_json():
     assert 10 <= len(scenarios) <= 20
 
 
+def test_memory_ux_v1_1_scenarios_file_is_valid_json():
+    scenarios = _load_memory_ux_v1_1_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+
+
 def test_qa_scenario_ids_are_unique_and_categories_are_present():
     scenarios = [
         *_load_scenarios(),
@@ -324,6 +360,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_extraction_eval_scenarios(),
         *_load_memory_architecture_scenarios(),
         *_load_candidate_memory_scenarios(),
+        *_load_memory_ux_v1_1_scenarios(),
     ]
     ids = [item.get("id") for item in scenarios]
 
@@ -367,6 +404,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_extraction_eval_scenarios(),
         *_load_memory_architecture_scenarios(),
         *_load_candidate_memory_scenarios(),
+        *_load_memory_ux_v1_1_scenarios(),
     ]:
         forbidden_terms = item.get("forbidden_terms", [])
         assert isinstance(forbidden_terms, list)
@@ -487,6 +525,58 @@ def test_candidate_memory_scenarios_have_required_fields():
         assert isinstance(item.get("requires_confirmation"), bool)
         assert isinstance(item.get("should_write_long_term_memory"), bool)
         assert isinstance(item.get("should_show_pending_ui"), bool)
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+
+
+def test_memory_ux_v1_1_scenarios_have_required_fields():
+    scenarios = _load_memory_ux_v1_1_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "memory-ux-v1-1-explicit-remember-auto-save",
+        "memory-ux-v1-1-explicit-memory-updated-hint",
+        "memory-ux-v1-1-explicit-undo",
+        "memory-ux-v1-1-safe-rei-acknowledgement",
+        "memory-ux-v1-1-explicit-do-not-remember",
+        "memory-ux-v1-1-implicit-preference-pending",
+        "memory-ux-v1-1-implicit-pending-chat-hint",
+        "memory-ux-v1-1-pending-not-in-prompt",
+        "memory-ux-v1-1-weak-emotion-no-memory",
+        "memory-ux-v1-1-session-event-no-memory",
+        "memory-ux-v1-1-persona-drift-rejected",
+        "memory-ux-v1-1-sensitive-secret-rejected",
+        "memory-ux-v1-1-voice-direct-explicit",
+        "memory-ux-v1-1-voice-direct-implicit",
+        "memory-ux-v1-1-assistant-source-blocked",
+        "memory-ux-v1-1-proactive-source-blocked",
+        "memory-ux-v1-1-duplicate-explicit-deduped",
+        "memory-ux-v1-1-multiple-pending-count",
+        "memory-ux-v1-1-accept-pending-count-decreases",
+        "memory-ux-v1-1-ignore-pending-count-decreases",
+        "memory-ux-v1-1-expired-pending-hidden",
+        "memory-ux-v1-1-auto-saved-visible-in-saved-tab",
+        "memory-ux-v1-1-undone-memory-inactive",
+        "memory-ux-v1-1-persona-core-priority",
+        "memory-ux-v1-1-llm-check-implicit-no-explicit-rule",
+        "memory-ux-v1-1-rule-prefilter-not-overstrong",
+        "memory-ux-v1-1-short-unrelated-skips-llm",
+        "memory-ux-v1-1-safe-event-no-secret-leak",
+        "memory-ux-v1-1-direct-conversation-no-modal",
+        "memory-ux-v1-1-no-vector-or-external-provider",
+    } <= ids
+    for item in scenarios:
+        assert item.get("category") == "memory_ux_v1_1"
+        assert item.get("input_source") in {"text", "voice_confirmed", "voice_direct", "assistant", "proactive"}
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert item.get("expected_status") in ALLOWED_MEMORY_UX_V1_1_STATUSES
+        assert item.get("expected_type") in ALLOWED_MEMORY_UX_V1_1_TYPES
+        assert item.get("guard_reason") in ALLOWED_CANDIDATE_MEMORY_GUARD_REASONS
+        assert isinstance(item.get("explicit_user_request"), bool)
+        assert isinstance(item.get("should_write_long_term_memory"), bool)
+        assert isinstance(item.get("should_show_pending_ui"), bool)
+        assert isinstance(item.get("undo_available"), bool)
+        assert isinstance(item.get("should_inject_prompt"), bool)
+        assert item.get("safe_trace_only") is True
         assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
 
 

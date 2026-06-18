@@ -23,6 +23,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/extraction_eval_scenarios.json`
 - `docs/qa/memory_architecture_scenarios.json`
 - `docs/qa/candidate_memory_scenarios.json`
+- `docs/qa/memory_ux_v1_1_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -297,9 +298,9 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 19. Debug Trace 可显示 memory candidate status、type、guard reason 和 safe summary；不得显示 raw transcript、raw prompt、raw JSON、API key、`.env`、完整路径、stdout/stderr 或 secret。
 20. QA scenarios 应覆盖显式记忆、拒绝记忆、单次游戏事件不保存、剧透偏好、短回复偏好、人格漂移拒绝、删除、接受、忽略、弱确认、语音、proactive、assistant reply、knowledge、prompt budget、current input priority、secret rejection、candidate expiry、dedup、workspace visibility、direct conversation、overlay 和 debug privacy。
 
-### 1.14 Candidate Memory v1 人工验收
+### 1.14 Candidate Memory / Memory UX v1.1 人工验收
 
-机器可读场景见 `docs/qa/candidate_memory_scenarios.json`。本节验收 Candidate Memory v1 最小 runtime；不表示 Memory Retrieval、Session Archive、向量数据库、外部 memory provider、Overlay auto-show 或自动保存所有输入已实现。
+机器可读场景见 `docs/qa/candidate_memory_scenarios.json` 与 `docs/qa/memory_ux_v1_1_scenarios.json`。本节验收 Candidate Memory v1.1 最小 runtime；不表示 Memory Retrieval、Session Archive、向量数据库、外部 memory provider、Overlay auto-show 或自动保存所有输入已实现。
 
 1. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。` 后，应经 Memory Candidate guard 写入 `gameplay_preference` 长期记忆，并在聊天页显示可撤销轻量提示。
 2. 发送 `以后不用记住这个，只是我这次随便说一下。` 后，不应出现在 pending UI；可以记录安全 `do_not_remember` guard 结果，但不得打断用户。
@@ -313,6 +314,8 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 10. ignored / expired / rejected_by_guard candidate 不得注入 prompt；pending candidate 也不得注入 prompt。
 11. assistant reply 和 proactive message 本身不能成为用户记忆来源。
 12. 重复或近似候选应 dedupe，不创建多条待确认记忆。
+13. Memory Candidate Check 保持 LLM-primary：偏好类、剧透类、回答长度类、显式记忆类输入进入语义检查；规则只做 fast prefilter / grounding / deterministic fallback，最终写入仍由 guard 决定。
+14. 明显无关的短输入如 `嗯` 可以跳过 provider check；但 `每次你说太长我都看不过来。`、`我一般不太喜欢长篇攻略，给我一句重点就好。` 这类隐式偏好不能被规则层直接吞掉。
 
 ### 2. Voice Output 回归检查
 

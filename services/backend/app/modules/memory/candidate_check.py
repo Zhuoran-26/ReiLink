@@ -431,7 +431,11 @@ def _should_run_memory_check(compact: str) -> bool:
         for marker in ("回答", "回复", "回覆", "说话", "說話", "攻略", "提醒", "剧透", "劇透", "语音", "語音", "播报", "播報")
     ):
         return True
-    if any(marker in compact for marker in ("不喜欢长篇", "不喜歡長篇", "别剧透", "不要剧透", "不想召", "不召骨灰")):
+    if any(marker in compact for marker in ("不喜欢长篇", "不喜歡長篇", "不太喜欢长篇", "不太喜歡長篇", "别剧透", "不要剧透", "不想召", "不召骨灰")):
+        return True
+    if "一句重点" in compact or "一句重點" in compact:
+        return True
+    if any(marker in compact for marker in ("说太长", "說太長", "回答太长", "回答太長", "看不过来", "看不過來")):
         return True
     if ("boss" in compact or "Boss" in compact.lower()) and any(marker in compact for marker in ("喜欢先探索", "先探索", "探索地图", "直接硬打")):
         return True
@@ -543,6 +547,7 @@ def _mentions_short_reply_preference(compact: str) -> bool:
     return bool(
         re.search(r"(?:以后|之後|之后|后面|後面)?.{0,4}(?:回答|回复|回覆|说话|說話|攻略|提醒).{0,8}(?:短一点|短點|简短|簡短|少一点|少點)", compact)
         or re.search(r"(?:以后|之後|之后|后面|後面).{0,8}(?:短一点|短點|简短|簡短|少一点|少點).{0,6}(?:回答|回复|回覆|说话|說話|攻略|提醒)", compact)
+        or re.search(r"(?:回答|回复|回覆|说话|說話|说|說).{0,6}(?:太长|太長|太多).{0,10}(?:看不过来|看不過來|读不过来|讀不過來)", compact)
     )
 
 
@@ -550,7 +555,7 @@ def _mentions_long_guide_preference(compact: str) -> bool:
     return any(
         re.search(pattern, compact)
         for pattern in (
-            r"不(?:想|要|喜欢|喜歡).{0,8}(?:长篇|長篇|详细|攻略)",
+            r"不(?:太)?(?:想|要|喜欢|喜歡).{0,8}(?:长篇|長篇|详细|攻略)",
             r"(?:别|不要).{0,8}(?:长篇|長篇|攻略站|详细攻略)",
             r"(?:少|少一点|少點).{0,8}(?:攻略|长篇|長篇)",
             r"不喜欢攻略站",

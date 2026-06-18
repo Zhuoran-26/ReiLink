@@ -11,6 +11,11 @@ export type ReiLinkEvent =
   | { type: "pending_memory_accepted"; timestamp: string; memory_id: string }
   | { type: "pending_memory_ignored"; timestamp: string; memory_id: string }
   | { type: "long_term_memory_undone"; timestamp: string; memory_id: string }
+  | { type: "memory_candidate_checked"; timestamp: string; memory_type?: string; summary?: string | null; decision: string; confidence?: number; guard_reason?: string; candidate_id?: string | null; memory_id?: string | null; source?: string }
+  | { type: "memory_candidate_pending"; timestamp: string; memory_type?: string; summary?: string | null; confidence?: number; guard_reason?: string; candidate_id?: string | null; source?: string }
+  | { type: "memory_auto_saved"; timestamp: string; memory_type?: string; summary?: string | null; guard_reason?: string; candidate_id?: string | null; memory_id?: string | null; source?: string }
+  | { type: "memory_auto_save_undo"; timestamp: string; memory_id: string; summary?: string }
+  | { type: "memory_candidate_rejected"; timestamp: string; memory_type?: string; summary?: string | null; guard_reason?: string; source?: string }
   | { type: "game_context_changed"; timestamp: string; game?: string; source?: string }
   | {
       type: "semantic_extraction_traced";

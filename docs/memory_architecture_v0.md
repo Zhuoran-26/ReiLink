@@ -565,9 +565,10 @@ Machine-readable scenarios live in:
 ```text
 docs/qa/memory_architecture_scenarios.json
 docs/qa/candidate_memory_scenarios.json
+docs/qa/memory_ux_v1_1_scenarios.json
 ```
 
-The scenarios cover explicit memory requests, negative memory requests, one-off session events, spoiler and reply-length preferences, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, and Debug safe trace.
+The scenarios cover explicit memory requests, auto-save hints, undo, negative memory requests, one-off session events, spoiler and reply-length preferences, LLM-primary candidate checks, rule prefilter boundaries, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, and Debug safe trace.
 
 ## Roadmap
 
