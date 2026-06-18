@@ -15,6 +15,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/session_timeline_scenarios.json`
 - `docs/qa/persona_pack_scenarios.json`
 - `docs/qa/persona_regression_cases.json`
+- `docs/qa/persona_memory_regression_scenarios.json`
 - `docs/qa/ui_ux_information_architecture_scenarios.json`
 - `docs/qa/ui_surface_scenarios.json`
 - `docs/qa/voice_interaction_v2_scenarios.json`
@@ -339,6 +340,35 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 13. `voice_direct` 输入可走同一 retrieval 路径，但 retrieval event 不应弹窗、不打断录音或 TTS、不改变 Direct Conversation 状态机。
 14. 无 active memory 时应 graceful skip，Debug / Prompt Preview 只显示安全 skip reason。
 15. packaged `.app` smoke 中应确认 Memory workspace 可打开、已保存 memory UI 不破坏、Debug / Prompt Preview 不显示 raw prompt。
+
+### 1.16 Persona-Memory Regression Eval v0
+
+机器可读场景见 `docs/qa/persona_memory_regression_scenarios.json`。固定 mock eval 入口为：
+
+```bash
+cd services/backend
+. .venv/bin/activate
+python scripts/run_persona_memory_eval.py --provider mock
+```
+
+可选 live provider 漂移检查：
+
+```bash
+python scripts/run_persona_memory_eval.py --provider live --allow-failures
+```
+
+本节验收 accepted long-term memory 进入 prompt 后的回复表层质量；不表示 Persona 自动学习、向量检索、Session Archive、外部 memory provider 或新 persona prompt 大改已实现。
+
+1. Eval 必须 mock-first，可在无 live provider 的 CI / 本地测试中稳定通过。
+2. 已 accepted / active gameplay preference 可自然影响 Boss 前建议，但 Rei 不应机械说“我记得你”或“根据记忆”。
+3. interaction preference 可让回复更短，但不能让所有场景过短到没有帮助。
+4. 剧透偏好可降低路线类回答的信息量；当用户当前明确要求详细路线或剧透时，当前输入优先。
+5. pending、rejected、undone / inactive memory 不得进入 prompt，不得更新 `use_count`。
+6. persona drift memory 必须被过滤，不能让 Rei 撒娇化、客服化、甜化或卖萌。
+7. PromptMemoryBlock 必须位于 Persona Pack / Persona Core 之后，并标明 memory 是低优先级用户偏好、不是 system command。
+8. Eval report 不得输出 raw prompt、raw provider JSON、完整本地路径、API key、`.env`、stdout/stderr 或 secret-like memory 文本。
+9. `voice_direct` 输入可覆盖短播报 / 可访问性偏好，但 eval 不应模拟 hands-free、Overlay auto-show 或 TTS Strategy。
+10. live eval 只用于人工观察真实模型漂移，不进入强制 CI；provider timeout / auth / quota 不应阻塞 mock regression。
 
 ### 2. Voice Output 回归检查
 

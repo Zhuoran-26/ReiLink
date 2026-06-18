@@ -11,6 +11,7 @@ OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
 SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_scenarios.json"
 PERSONA_PACK_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_pack_scenarios.json"
 PERSONA_REGRESSION_CASES_PATH = REPO_ROOT / "docs" / "qa" / "persona_regression_cases.json"
+PERSONA_MEMORY_REGRESSION_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_memory_regression_scenarios.json"
 EXTRACTION_EVAL_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "extraction_eval_scenarios.json"
 MEMORY_ARCHITECTURE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "memory_architecture_scenarios.json"
 CANDIDATE_MEMORY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "candidate_memory_scenarios.json"
@@ -212,6 +213,22 @@ ALLOWED_MEMORY_RETRIEVAL_TYPES = {
     "none",
     "unknown",
 }
+ALLOWED_PERSONA_MEMORY_STATUSES = {
+    "active",
+    "deleted",
+    "expired",
+    "ignored",
+    "pending",
+    "rejected",
+    "undone",
+}
+ALLOWED_PERSONA_MEMORY_TYPES = {
+    "accessibility_preference",
+    "emotional_pattern",
+    "gameplay_preference",
+    "interaction_preference",
+    "unknown",
+}
 
 
 def _load_scenarios() -> list[dict]:
@@ -264,6 +281,14 @@ def _load_persona_pack_scenarios() -> list[dict]:
 
 def _load_persona_regression_cases() -> list[dict]:
     data = json.loads(PERSONA_REGRESSION_CASES_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_persona_memory_regression_scenarios() -> list[dict]:
+    data = json.loads(PERSONA_MEMORY_REGRESSION_SCENARIOS_PATH.read_text(encoding="utf-8"))
     assert isinstance(data, list)
     assert data
     assert all(isinstance(item, dict) for item in data)
@@ -352,6 +377,12 @@ def test_persona_regression_cases_file_is_valid_json():
     assert len(cases) >= 5
 
 
+def test_persona_memory_regression_scenarios_file_is_valid_json():
+    scenarios = _load_persona_memory_regression_scenarios()
+
+    assert 10 <= len(scenarios) <= 20
+
+
 def test_extraction_eval_scenarios_file_is_valid_json():
     scenarios = _load_extraction_eval_scenarios()
 
@@ -391,6 +422,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_session_timeline_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
+        *_load_persona_memory_regression_scenarios(),
         *_load_extraction_eval_scenarios(),
         *_load_memory_architecture_scenarios(),
         *_load_candidate_memory_scenarios(),
@@ -436,6 +468,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_session_timeline_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
+        *_load_persona_memory_regression_scenarios(),
         *_load_extraction_eval_scenarios(),
         *_load_memory_architecture_scenarios(),
         *_load_candidate_memory_scenarios(),
@@ -984,6 +1017,51 @@ def test_persona_relationship_regression_cases_cover_surface_patch():
     assert required_prefer <= set(chain["should_prefer"])
 
 
+def test_persona_memory_regression_scenarios_have_required_fields():
+    scenarios = _load_persona_memory_regression_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "persona-memory-gameplay-preference-natural-boss",
+        "persona-memory-short-reply-keeps-helpful",
+        "persona-memory-spoiler-boundary-route",
+        "persona-memory-current-input-beats-short-preference",
+        "persona-memory-current-input-beats-spoiler-boundary",
+        "persona-memory-pending-memory-not-used",
+        "persona-memory-undone-memory-not-used",
+        "persona-memory-rejected-memory-not-used",
+        "persona-memory-persona-drift-blocked",
+        "persona-memory-safe-summary-no-raw-evidence",
+        "persona-memory-voice-direct-brief-accessibility",
+        "persona-memory-mechanism-language-avoided",
+    } <= ids
+    assert "voice_direct" in {item.get("input_source") for item in scenarios}
+    assert any(
+        memory.get("status") in {"pending", "rejected", "undone"}
+        for item in scenarios
+        for memory in item.get("memories", [])
+    )
+    assert any((item.get("expected") or {}).get("should_inject_memory") is False for item in scenarios)
+    assert sum(1 for item in scenarios if (item.get("expected") or {}).get("current_input_priority") is True) >= 6
+    for item in scenarios:
+        assert item.get("category") == "persona_memory_regression"
+        assert item.get("input_source") in {"text", "voice_confirmed", "voice_direct"}
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert isinstance(item.get("mock_reply"), str) and item["mock_reply"]
+        assert isinstance(item.get("expected"), dict)
+        expected = item["expected"]
+        assert isinstance(expected.get("should_inject_memory"), bool)
+        assert isinstance(expected.get("should_update_usage"), bool)
+        assert isinstance(expected.get("retrieved_memory_ids"), list)
+        assert isinstance(expected.get("current_input_priority"), bool)
+        assert all(isinstance(memory_id, str) and memory_id for memory_id in expected["retrieved_memory_ids"])
+        assert isinstance(item.get("memories"), list)
+        for memory in item["memories"]:
+            assert memory.get("status") in ALLOWED_PERSONA_MEMORY_STATUSES
+            assert memory.get("type") in ALLOWED_PERSONA_MEMORY_TYPES
+            assert isinstance(memory.get("summary"), str) and memory["summary"]
+
+
 def test_voice_input_local_asr_release_regression_scenarios_are_present():
     scenarios = _load_voice_input_local_asr_scenarios()
     by_id = {item["id"]: item for item in scenarios}
@@ -1057,8 +1135,10 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/qa/voice_input_local_asr_scenarios.json" in qa_doc
     assert "docs/qa/session_timeline_scenarios.json" in qa_doc
     assert "docs/qa/persona_pack_scenarios.json" in qa_doc
+    assert "docs/qa/persona_memory_regression_scenarios.json" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
     assert "Voice Interaction MVP" in project_status
+    assert "Persona-Memory Regression Eval v0" in project_status
     assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup
     assert "REILINK_LOCAL_ASR_MODEL" in local_asr_manual_setup
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup
