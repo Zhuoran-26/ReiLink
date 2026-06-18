@@ -91,6 +91,10 @@ def test_prompt_includes_structured_rei_persona_pack(monkeypatch):
     assert "玩家死亡多次" in prompt
     assert "玩家追问关系或关心" in prompt
     assert "连续相似问题" in prompt
+    assert "记忆状态由 UI 小字提示负责透明度" in prompt
+    assert "自然承接或边界回应" in prompt
+    assert "我先放进待确认" not in prompt
+    assert "你确认后再算长期记忆" not in prompt
     assert "固定陪伴意象" in prompt
     assert "关系元语言" in prompt
     assert "重复强意象" in prompt

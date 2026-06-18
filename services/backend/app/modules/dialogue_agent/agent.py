@@ -5,6 +5,11 @@ from typing import Any
 
 from app.modules.dialogue_agent.emotion import build_companion_policy
 from app.modules.dialogue_agent.intent import detect_intent
+from app.modules.dialogue_agent.memory_acknowledgement import (
+    build_memory_acknowledgement_policy,
+    build_memory_acknowledgement_retry_guard,
+    violates_memory_acknowledgement_policy,
+)
 from app.modules.dialogue_agent.metrics import ChatLatencyMetrics, set_last_chat_metrics
 from app.modules.dialogue_agent.providers import get_provider, log_provider_state
 from app.modules.dialogue_agent.providers import ProviderTimeoutError
@@ -133,6 +138,7 @@ class DialogueAgent:
             )
             if item
         )
+        memory_acknowledgement_policy = build_memory_acknowledgement_policy(request.message)
         companion_policy = build_companion_policy(request.message, intent_result.intent)
         system_prompt = self.persona.build_prompt(
             self.persona_id,
@@ -141,6 +147,7 @@ class DialogueAgent:
             memory_context=memory_context.as_prompt_text(),
             session_context=session_context,
             companion_policy=companion_policy,
+            memory_response_policy=memory_acknowledgement_policy,
             repetition_guard=repetition_guard,
         )
         knowledge_result = self.knowledge.retrieve(
@@ -160,6 +167,31 @@ class DialogueAgent:
                 raise DialogueTimeoutError(str(exc)) from exc
             raise DialogueError(str(exc)) from exc
         reply = self._finalize_reply(llm_result.reply, intent_result.intent, request.session_id, request.message)
+        if memory_acknowledgement_policy and violates_memory_acknowledgement_policy(reply, request.message):
+            retry_prompt = f"{system_prompt}\n{build_memory_acknowledgement_retry_guard(request.message, reply)}"
+            try:
+                retry_result = self.provider.generate_with_metrics(
+                    retry_prompt,
+                    request.message,
+                    snippets,
+                    intent_result.intent,
+                )
+            except RuntimeError:
+                logger.exception("memory acknowledgement retry failed")
+                reply = self._finalize_reply("", intent_result.intent, request.session_id, request.message)
+            else:
+                retry_reply = self._finalize_reply(
+                    retry_result.reply,
+                    intent_result.intent,
+                    request.session_id,
+                    request.message,
+                )
+                reply = (
+                    retry_reply
+                    if not violates_memory_acknowledgement_policy(retry_reply, request.message)
+                    else self._finalize_reply("", intent_result.intent, request.session_id, request.message)
+                )
+                llm_result = _combine_retry_metrics(llm_result, retry_result)
         if is_repetitive_reply(reply, recent_assistant_replies):
             retry_prompt = f"{system_prompt}\n{build_retry_repetition_guard(reply)}"
             try:
@@ -168,13 +200,7 @@ class DialogueAgent:
                 logger.exception("repetition retry failed")
             else:
                 reply = self._finalize_reply(retry_result.reply, intent_result.intent, request.session_id, request.message)
-                llm_result = replace(
-                    retry_result,
-                    llm_latency_ms=llm_result.llm_latency_ms + retry_result.llm_latency_ms,
-                    provider_latency_ms=int(llm_result.provider_latency_ms or llm_result.llm_latency_ms)
-                    + int(retry_result.provider_latency_ms or retry_result.llm_latency_ms),
-                    fallback_reason=retry_result.fallback_reason or llm_result.fallback_reason,
-                )
+                llm_result = _combine_retry_metrics(llm_result, retry_result)
         reply_segments = segment_reply(reply, intent_result.intent, request.message)
         self.store.append(
             session_id=request.session_id,
@@ -334,3 +360,13 @@ class DialogueAgent:
     def _finalize_reply(self, raw_reply: str, intent: str, session_id: str, user_message: str) -> str:
         reply = apply_rei_style(validate_or_repair(raw_reply, intent), seed=f"{session_id}:{user_message}")
         return normalize_terminology(reply)
+
+
+def _combine_retry_metrics(previous: Any, retry_result: Any) -> Any:
+    return replace(
+        retry_result,
+        llm_latency_ms=previous.llm_latency_ms + retry_result.llm_latency_ms,
+        provider_latency_ms=int(previous.provider_latency_ms or previous.llm_latency_ms)
+        + int(retry_result.provider_latency_ms or retry_result.llm_latency_ms),
+        fallback_reason=retry_result.fallback_reason or previous.fallback_reason,
+    )

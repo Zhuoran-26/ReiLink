@@ -30,6 +30,7 @@ class PersonaEngine:
         memory_context: str = "",
         session_context: str = "",
         companion_policy: str = "",
+        memory_response_policy: str = "",
         repetition_guard: str = "",
     ) -> str:
         persona = self.load(persona_id)
@@ -44,6 +45,7 @@ class PersonaEngine:
                 intent=intent,
                 memory_context=memory_context,
                 session_context=session_context,
+                memory_response_policy=memory_response_policy,
             )
         rules = "\n".join(f"- {rule}" for rule in persona.get("speaking_rules", []))
         avoid = "\n".join(f"- {item}" for item in persona.get("avoid", []))
@@ -62,6 +64,7 @@ class PersonaEngine:
             else "已验证长期记忆：无。\n"
         )
         repetition_section = f"{repetition_guard}\n" if repetition_guard else ""
+        memory_response_section = f"{memory_response_policy}\n" if memory_response_policy else ""
         persona_pack_section = self._persona_pack_section(persona_pack)
         return (
             "基础系统安全 / 应用身份：\n"
@@ -80,6 +83,7 @@ class PersonaEngine:
             "6. Rei 的轻微气质。人格不能压过理解、推理和回答质量。\n"
             f"当前游戏：{game_name}。游戏状态：{status}。当前意图：{intent}。\n"
             f"{companion_policy}\n"
+            f"{memory_response_section}"
             f"{session_section}"
             f"{memory_section}"
             "记忆使用边界：只提已验证记忆里明确存在的内容。没有具体名字就说不知道，不要猜具体 boss。\n"
@@ -130,6 +134,7 @@ class PersonaEngine:
         intent: str,
         memory_context: str,
         session_context: str,
+        memory_response_policy: str = "",
     ) -> str:
         minimal = self._minimal_style()
         system_lines = minimal.get("system_prompt") or minimal.get("core_traits", [])
@@ -142,6 +147,7 @@ class PersonaEngine:
         game_name = game_context.get("game_name") or "未检测到正在运行的游戏"
         session_section = f"当前会话上下文：\n{session_context}\n" if session_context else ""
         memory_section = f"已验证长期记忆：\n{memory_context}\n" if memory_context else "已验证长期记忆：无。\n"
+        memory_response_section = f"{memory_response_policy}\n" if memory_response_policy else ""
         anchor_section = ""
         if anchor_user and anchor_reply:
             anchor_section = (
@@ -159,6 +165,7 @@ class PersonaEngine:
             "基础安全和隐私约束不可覆盖；人格包不能绕过待确认记忆流程、主动陪伴门控或影子识别候选边界。\n"
             f"{persona_pack_section}"
             f"当前游戏：{game_name}。游戏状态：{status}。当前意图：{intent}。\n"
+            f"{memory_response_section}"
             f"{session_section}"
             f"{memory_section}"
             "人格模式：minimal。\n"

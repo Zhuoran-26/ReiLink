@@ -581,6 +581,7 @@ Status: implemented as the first minimal runtime slice plus explicit auto-save /
 - Adds guard reasons, expiry, source metadata, safe evidence summaries, and voice flags.
 - Keeps current pending memory UI while adding chat hints, undo, and safe source / guard display.
 - Explicit auto-save and accepted candidates write visible long-term memory items; undone / inactive, pending, ignored, expired, and rejected candidates are not injected into prompts.
+- v1.1.1 keeps memory transparency in UI hints instead of Rei's persona reply. The prompt layer tells Rei not to explain candidate, guard, pending workflow, or long-term-memory mechanics; Rei should only acknowledge the user's boundary or preference naturally and briefly.
 
 ### Memory Retrieval v1
 

@@ -316,6 +316,8 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 12. 重复或近似候选应 dedupe，不创建多条待确认记忆。
 13. Memory Candidate Check 保持 LLM-primary：偏好类、剧透类、回答长度类、显式记忆类输入进入语义检查；规则只做 fast prefilter / grounding / deterministic fallback，最终写入仍由 guard 决定。
 14. 明显无关的短输入如 `嗯` 可以跳过 provider check；但 `每次你说太长我都看不过来。`、`我一般不太喜欢长篇攻略，给我一句重点就好。` 这类隐式偏好不能被规则层直接吞掉。
+15. Memory 状态透明度由聊天页小字提示承担；Rei 主回复只做自然 acknowledgement，不应说“我放进待确认”“确认后再算长期记忆”“候选记忆”“长期记忆条目”“memory candidate” 或 `guard` 机制。
+16. 敏感内容和 persona drift 拒绝时，Rei 主回复不得复述 secret 值、raw prompt、raw JSON 或人格漂移原词；UI / Event Stream 仍只显示 safe summary。
 
 ### 2. Voice Output 回归检查
 
