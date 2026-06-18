@@ -2,7 +2,7 @@
 
 Updated: 2026-06-18
 
-Status: architecture baseline plus Candidate Memory v1 and Memory Retrieval v1 runtime slices. This document still does not implement Session Archive, vector database, external memory provider, UI popup, or packaging change.
+Status: architecture baseline plus Candidate Memory v1, Memory Retrieval v1 runtime slice, and Persona-Memory Regression Eval v0. This document still does not implement Session Archive, vector database, external memory provider, UI popup, or packaging change.
 
 ## Purpose
 
@@ -22,6 +22,8 @@ session event / explicit preference / repeated pattern
 ```
 
 Memory is not a second persona system. Memory is user-specific context; Persona Pack remains the stable Rei core.
+
+After Memory Retrieval v1, accepted memory can finally affect the model prompt. Persona-Memory Regression Eval v0 exists to keep that effect quiet and natural: memory may tune pacing, spoiler level, answer length, and voice brevity, but it must not become a repeated "I remember" template, a hidden system command, or a persona override.
 
 ## Research Summary
 
@@ -569,9 +571,10 @@ docs/qa/memory_architecture_scenarios.json
 docs/qa/candidate_memory_scenarios.json
 docs/qa/memory_ux_v1_1_scenarios.json
 docs/qa/memory_retrieval_scenarios.json
+docs/qa/persona_memory_regression_scenarios.json
 ```
 
-The scenarios cover explicit memory requests, auto-save hints, undo, negative memory requests, one-off session events, spoiler and reply-length preferences, LLM-primary candidate checks, rule prefilter boundaries, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, accepted-memory retrieval, inactive / pending / rejected exclusion, use-count updates, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, and Debug safe trace.
+The scenarios cover explicit memory requests, auto-save hints, undo, negative memory requests, one-off session events, spoiler and reply-length preferences, LLM-primary candidate checks, rule prefilter boundaries, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, accepted-memory retrieval, inactive / pending / rejected exclusion, use-count updates, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, Debug safe trace, and Persona-Memory regression behavior after retrieval.
 
 ## Roadmap
 
@@ -597,6 +600,19 @@ Status: implemented as a minimal local-first prompt assembly slice.
 - Tracks `last_used_at` and `use_count` when chat retrieval actually injects memory; prompt preview does not increment usage.
 - Keeps Persona Core and current explicit user input higher priority than memory.
 - Keeps Debug / Prompt Preview safe-summary-only and omits raw prompt, raw transcript, raw JSON, API keys, `.env`, full paths, stdout/stderr, and secrets.
+
+### Persona-Memory Regression Eval v0
+
+Status: implemented as a mock-first eval / tests / docs surface.
+
+- Verifies accepted memory can naturally influence replies without mechanical memory announcements.
+- Checks that Persona Core stays higher priority than memory and blocks persona drift such as sweetness, customer-service encouragement, praise loops, or mascot-like behavior.
+- Covers gameplay preference, reply-length preference, spoiler preference, accessibility / voice brevity, emotional pattern, multiple-memory budget, game mismatch, assistant-source blocking, secret filtering, pending exclusion, rejected exclusion, and undone / inactive exclusion.
+- Uses deterministic prompt assembly checks plus fixed mock reply checks. The mock path is stable enough for automated tests.
+- Provides optional live provider evaluation for manual drift checks, but live eval is not required for CI because provider cost, auth, timeout, and model drift should not block local regression.
+- Tracks coarse v0 metrics: `prompt_memory_block_correct_count`, `pending_memory_blocked_count`, `inactive_memory_blocked_count`, `persona_drift_blocked_count`, `mechanism_phrase_violation_count`, `mechanical_memory_recall_count`, `persona_override_violation_count`, `secret_leak_count`, and `current_input_priority_count`.
+- Keeps eval reports safe by omitting raw prompts and filtering secret-like terms. Reports may show safe reply previews and safe ids, but not raw transcript, raw evidence, API keys, `.env`, full paths, stdout/stderr, or raw provider JSON.
+- Known limitation: forbidden phrase checks are intentionally coarse. They catch obvious mechanism leaks and template failures, but real model naturalness still needs occasional human sampling or a future style judge.
 
 ### Session Archive v1
 

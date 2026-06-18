@@ -357,7 +357,7 @@ python scripts/run_persona_memory_eval.py --provider mock
 python scripts/run_persona_memory_eval.py --provider live --allow-failures
 ```
 
-本节验收 accepted long-term memory 进入 prompt 后的回复表层质量；不表示 Persona 自动学习、向量检索、Session Archive、外部 memory provider 或新 persona prompt 大改已实现。
+本节验收 accepted long-term memory 进入 prompt 后的回复表层质量；不表示 Persona 自动学习、向量检索、Session Archive、外部 memory provider 或新 persona prompt 大改已实现。v0 场景数量保持在 20-30 条，先用 deterministic prompt checks + mock output checks 建立稳定回归底座。
 
 1. Eval 必须 mock-first，可在无 live provider 的 CI / 本地测试中稳定通过。
 2. 已 accepted / active gameplay preference 可自然影响 Boss 前建议，但 Rei 不应机械说“我记得你”或“根据记忆”。
@@ -369,6 +369,8 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 8. Eval report 不得输出 raw prompt、raw provider JSON、完整本地路径、API key、`.env`、stdout/stderr 或 secret-like memory 文本。
 9. `voice_direct` 输入可覆盖短播报 / 可访问性偏好，但 eval 不应模拟 hands-free、Overlay auto-show 或 TTS Strategy。
 10. live eval 只用于人工观察真实模型漂移，不进入强制 CI；provider timeout / auth / quota 不应阻塞 mock regression。
+11. Eval metrics 至少覆盖 `total_scenarios`、`passed`、`failed`、`pass_rate`、`prompt_memory_block_correct_count`、`pending_memory_blocked_count`、`inactive_memory_blocked_count`、`persona_drift_blocked_count`、`mechanism_phrase_violation_count`、`mechanical_memory_recall_count`、`persona_override_violation_count`、`secret_leak_count` 和 `current_input_priority_count`。
+12. v0 forbidden phrase 检查是粗粒度保护，覆盖机制泄露、机械记忆复述、persona drift 和 secret 泄露；后续可升级为更细的 repetition / style judge。
 
 ### 2. Voice Output 回归检查
 

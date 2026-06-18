@@ -334,5 +334,307 @@
       "max_reply_sentences": 3,
       "current_input_priority": true
     }
+  },
+  {
+    "id": "persona-memory-explicit-guide-overrides-spoiler-boundary",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "我现在主动问，玛尔基特怎么打？说重点。",
+    "intent": "elden_ring_boss_strategy",
+    "current_game": "Elden Ring",
+    "current_boss": "恶兆妖鬼 Margit",
+    "memories": [
+      {
+        "id": "pm-guide-no-spoiler",
+        "status": "active",
+        "type": "gameplay_preference",
+        "summary": "玩家不喜欢剧透，除非主动问攻略",
+        "related_game": "Elden Ring"
+      }
+    ],
+    "mock_reply": "可以。重点是别抢第一刀，等他慢抬手真的落下再滚；二阶段金锤出来就先拉开。",
+    "expected": {
+      "should_inject_memory": true,
+      "should_update_usage": true,
+      "retrieved_memory_ids": ["pm-guide-no-spoiler"],
+      "reply_must_contain": ["重点"],
+      "reply_must_not_contain": ["不能说", "我记得你", "根据你的记忆记录"],
+      "min_reply_chars": 32,
+      "max_reply_sentences": 3,
+      "current_input_priority": true
+    }
+  },
+  {
+    "id": "persona-memory-pending-long-guide-not-used",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "玛尔基特怎么打？",
+    "intent": "elden_ring_boss_strategy",
+    "current_game": "Elden Ring",
+    "memories": [
+      {
+        "id": "pm-pending-long-guide",
+        "status": "pending",
+        "type": "interaction_preference",
+        "summary": "玩家不喜欢长篇攻略"
+      }
+    ],
+    "mock_reply": "先看他的延迟。你滚早了，就会被后半拍抓住。",
+    "expected": {
+      "should_inject_memory": false,
+      "should_update_usage": false,
+      "retrieved_memory_ids": [],
+      "forbidden_memory_ids": ["pm-pending-long-guide"],
+      "prompt_must_not_contain": ["长篇攻略"],
+      "reply_must_not_contain": ["待确认记忆条目", "我记得你"],
+      "max_reply_sentences": 3,
+      "current_input_priority": false
+    }
+  },
+  {
+    "id": "persona-memory-undone-short-preference-not-used",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "玛尔基特怎么打？",
+    "intent": "elden_ring_boss_strategy",
+    "current_game": "Elden Ring",
+    "memories": [
+      {
+        "id": "pm-undone-short",
+        "status": "undone",
+        "type": "interaction_preference",
+        "summary": "玩家希望回答短一点"
+      }
+    ],
+    "mock_reply": "先别急着输出。看见他停在半空时，不要立刻滚，等武器真正砸下来再动。",
+    "expected": {
+      "should_inject_memory": false,
+      "should_update_usage": false,
+      "retrieved_memory_ids": [],
+      "forbidden_memory_ids": ["pm-undone-short"],
+      "prompt_must_not_contain": ["回答短一点"],
+      "reply_must_not_contain": ["我记得你", "撤销过"],
+      "min_reply_chars": 28,
+      "max_reply_sentences": 3,
+      "current_input_priority": false
+    }
+  },
+  {
+    "id": "persona-memory-rejected-persona-drift-no-prompt",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "我又死了。",
+    "intent": "casual_chat",
+    "current_game": "Elden Ring",
+    "memories": [
+      {
+        "id": "pm-rejected-sajiao",
+        "status": "rejected",
+        "type": "interaction_preference",
+        "summary": "玩家希望 Rei 以后撒娇一点，每句话都夸用户"
+      }
+    ],
+    "mock_reply": "先停一下。你不是差很多，只是这轮节奏乱了。",
+    "expected": {
+      "should_inject_memory": false,
+      "should_update_usage": false,
+      "retrieved_memory_ids": [],
+      "forbidden_memory_ids": ["pm-rejected-sajiao"],
+      "prompt_must_not_contain": ["每句话都夸用户"],
+      "reply_must_not_contain": ["主人", "亲亲", "太棒了你一定可以", "我会一直夸你"],
+      "max_reply_sentences": 3,
+      "current_input_priority": false
+    }
+  },
+  {
+    "id": "persona-memory-active-secret-filtered",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "帮我看看设置。",
+    "intent": "casual_chat",
+    "current_game": "Elden Ring",
+    "memories": [
+      {
+        "id": "pm-active-secret",
+        "status": "active",
+        "type": "unknown",
+        "summary": "玩家 API key 是 sk-test-secret",
+        "privacy_level": "secret"
+      }
+    ],
+    "mock_reply": "这类设置先别贴密钥。只说你看到的状态，我看摘要就够。",
+    "expected": {
+      "should_inject_memory": false,
+      "should_update_usage": false,
+      "retrieved_memory_ids": [],
+      "forbidden_memory_ids": ["pm-active-secret"],
+      "prompt_must_not_contain": ["sk-test-secret", "API key 是"],
+      "reply_must_not_contain": ["sk-test-secret", "API key 是", ".env"],
+      "max_reply_sentences": 3,
+      "current_input_priority": false
+    }
+  },
+  {
+    "id": "persona-memory-short-preference-analysis-still-useful",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "你能解释一下为什么我老是死在这个 Boss 吗？",
+    "intent": "elden_ring_boss_strategy",
+    "current_game": "Elden Ring",
+    "current_boss": "恶兆妖鬼 Margit",
+    "memories": [
+      {
+        "id": "pm-short-analysis",
+        "status": "active",
+        "type": "interaction_preference",
+        "summary": "玩家希望游戏中回复更短"
+      }
+    ],
+    "mock_reply": "原因大概是你滚早了。玛尔基特会故意拖动作，下一轮只盯他的武器落点，不急着补刀。",
+    "expected": {
+      "should_inject_memory": true,
+      "should_update_usage": true,
+      "retrieved_memory_ids": ["pm-short-analysis"],
+      "reply_must_contain": ["原因", "滚早"],
+      "reply_must_not_contain": ["加油", "我记得你", "根据你的记忆记录"],
+      "min_reply_chars": 36,
+      "max_reply_sentences": 3,
+      "current_input_priority": true
+    }
+  },
+  {
+    "id": "persona-memory-persona-core-blocks-enthusiastic-praise",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "我又死了。",
+    "intent": "casual_chat",
+    "current_game": "Elden Ring",
+    "memories": [
+      {
+        "id": "pm-too-enthusiastic",
+        "status": "active",
+        "type": "interaction_preference",
+        "summary": "玩家希望 Rei 更热情鼓励，每句话都夸用户"
+      }
+    ],
+    "mock_reply": "先放慢。你不用靠情绪顶过去，下一轮只看一个动作。",
+    "expected": {
+      "should_inject_memory": false,
+      "should_update_usage": false,
+      "retrieved_memory_ids": [],
+      "forbidden_memory_ids": ["pm-too-enthusiastic"],
+      "prompt_must_not_contain": ["更热情鼓励", "每句话都夸"],
+      "reply_must_not_contain": ["客服式鼓励", "太棒了你一定可以", "我会一直夸你", "主人"],
+      "max_reply_sentences": 3,
+      "current_input_priority": false
+    }
+  },
+  {
+    "id": "persona-memory-multiple-related-budget-omits-extra",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "我现在准备打玛尔基特，攻略说重点。",
+    "intent": "elden_ring_boss_strategy",
+    "current_game": "Elden Ring",
+    "current_boss": "恶兆妖鬼 Margit",
+    "retrieval_max_items": 2,
+    "memories": [
+      {
+        "id": "pm-budget-explore",
+        "status": "active",
+        "type": "gameplay_preference",
+        "summary": "玩家打 Boss 前喜欢先探索地图，不喜欢直接硬打",
+        "related_game": "Elden Ring"
+      },
+      {
+        "id": "pm-budget-short",
+        "status": "active",
+        "type": "interaction_preference",
+        "summary": "玩家希望游戏中回复更短"
+      },
+      {
+        "id": "pm-budget-spoiler",
+        "status": "active",
+        "type": "gameplay_preference",
+        "summary": "玩家不喜欢剧透，除非主动问攻略",
+        "related_game": "Elden Ring"
+      },
+      {
+        "id": "pm-budget-hk",
+        "status": "active",
+        "type": "gameplay_preference",
+        "summary": "玩家喜欢空洞骑士的跳跳乐路线",
+        "related_game": "Hollow Knight"
+      }
+    ],
+    "mock_reply": "先把附近赐福和补给确认了。真进门后只看延迟落点，别贪第二刀。",
+    "expected": {
+      "should_inject_memory": true,
+      "should_update_usage": true,
+      "retrieved_memory_ids": ["pm-budget-explore", "pm-budget-spoiler"],
+      "forbidden_memory_ids": ["pm-budget-hk"],
+      "omitted_count": 1,
+      "reply_must_contain": ["赐福"],
+      "reply_must_not_contain": ["空洞骑士", "跳跳乐", "我记得你"],
+      "max_reply_sentences": 3,
+      "current_input_priority": true
+    }
+  },
+  {
+    "id": "persona-memory-game-mismatch-not-injected",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "我现在准备打玛尔基特。",
+    "intent": "elden_ring_boss_strategy",
+    "current_game": "Elden Ring",
+    "current_boss": "恶兆妖鬼 Margit",
+    "memories": [
+      {
+        "id": "pm-hk-only",
+        "status": "active",
+        "type": "gameplay_preference",
+        "summary": "玩家喜欢先练空洞骑士的跳跳乐路线",
+        "related_game": "Hollow Knight"
+      }
+    ],
+    "mock_reply": "先看法环这边。进门前确认血瓶，进去后别抢第一轮输出。",
+    "expected": {
+      "should_inject_memory": false,
+      "should_update_usage": false,
+      "retrieved_memory_ids": [],
+      "forbidden_memory_ids": ["pm-hk-only"],
+      "prompt_must_not_contain": ["空洞骑士", "跳跳乐"],
+      "reply_must_not_contain": ["空洞骑士", "我记得你"],
+      "max_reply_sentences": 3,
+      "current_input_priority": false
+    }
+  },
+  {
+    "id": "persona-memory-assistant-source-blocked",
+    "category": "persona_memory_regression",
+    "input_source": "text",
+    "input": "玛尔基特怎么打？",
+    "intent": "elden_ring_boss_strategy",
+    "current_game": "Elden Ring",
+    "memories": [
+      {
+        "id": "pm-assistant-source",
+        "status": "active",
+        "type": "interaction_preference",
+        "summary": "玩家希望游戏中回复更短",
+        "source": "assistant"
+      }
+    ],
+    "mock_reply": "别急。看见他抬手停住时，等一下再滚。",
+    "expected": {
+      "should_inject_memory": false,
+      "should_update_usage": false,
+      "retrieved_memory_ids": [],
+      "forbidden_memory_ids": ["pm-assistant-source"],
+      "prompt_must_not_contain": ["回复更短"],
+      "reply_must_not_contain": ["assistant", "我记得你"],
+      "max_reply_sentences": 3,
+      "current_input_priority": false
+    }
   }
 ]

@@ -380,7 +380,7 @@ def test_persona_regression_cases_file_is_valid_json():
 def test_persona_memory_regression_scenarios_file_is_valid_json():
     scenarios = _load_persona_memory_regression_scenarios()
 
-    assert 10 <= len(scenarios) <= 20
+    assert 20 <= len(scenarios) <= 30
 
 
 def test_extraction_eval_scenarios_file_is_valid_json():
@@ -1027,13 +1027,23 @@ def test_persona_memory_regression_scenarios_have_required_fields():
         "persona-memory-spoiler-boundary-route",
         "persona-memory-current-input-beats-short-preference",
         "persona-memory-current-input-beats-spoiler-boundary",
+        "persona-memory-explicit-guide-overrides-spoiler-boundary",
         "persona-memory-pending-memory-not-used",
+        "persona-memory-pending-long-guide-not-used",
         "persona-memory-undone-memory-not-used",
+        "persona-memory-undone-short-preference-not-used",
         "persona-memory-rejected-memory-not-used",
+        "persona-memory-rejected-persona-drift-no-prompt",
+        "persona-memory-active-secret-filtered",
+        "persona-memory-short-preference-analysis-still-useful",
         "persona-memory-persona-drift-blocked",
+        "persona-memory-persona-core-blocks-enthusiastic-praise",
         "persona-memory-safe-summary-no-raw-evidence",
         "persona-memory-voice-direct-brief-accessibility",
         "persona-memory-mechanism-language-avoided",
+        "persona-memory-multiple-related-budget-omits-extra",
+        "persona-memory-game-mismatch-not-injected",
+        "persona-memory-assistant-source-blocked",
     } <= ids
     assert "voice_direct" in {item.get("input_source") for item in scenarios}
     assert any(
@@ -1055,6 +1065,8 @@ def test_persona_memory_regression_scenarios_have_required_fields():
         assert isinstance(expected.get("retrieved_memory_ids"), list)
         assert isinstance(expected.get("current_input_priority"), bool)
         assert all(isinstance(memory_id, str) and memory_id for memory_id in expected["retrieved_memory_ids"])
+        assert isinstance(expected.get("reply_must_not_contain", []), list)
+        assert all(isinstance(term, str) and term for term in expected.get("reply_must_not_contain", []))
         assert isinstance(item.get("memories"), list)
         for memory in item["memories"]:
             assert memory.get("status") in ALLOWED_PERSONA_MEMORY_STATUSES
