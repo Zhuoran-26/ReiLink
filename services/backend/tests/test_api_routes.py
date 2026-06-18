@@ -430,7 +430,7 @@ def test_debug_memory_returns_provenance_items():
 
     assert response.status_code == 200
     data = response.json()
-    assert data["prompt_order"] == ["current_user_message", "current_session", "memory", "persona"]
+    assert data["prompt_order"] == ["persona", "memory", "current_session", "game_state", "current_user_message"]
     assert data["memory_written"] is True
     assert data["recent_episode_count"] >= 1
     sources = {item["source"] for item in data["items"]}

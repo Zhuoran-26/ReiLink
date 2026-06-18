@@ -97,7 +97,6 @@ class DialogueAgent:
             else None
         )
         intent_result = detect_intent(request.message)
-        memory_context = self.memory.build_prompt_context_with_provenance()
         recent_user_messages = self.store.recent_user_messages(request.session_id)
         recent_assistant_replies = self.store.recent_assistant_replies(request.session_id)
         session_focus = resolve_session_focus(request.message, recent_user_messages)
@@ -130,6 +129,14 @@ class DialogueAgent:
             insert_at = 1 if session_focus.has_boss else 0
             session_context_items.insert(insert_at, game_session_summary)
         session_context = "\n".join(f"- {text}" for text in session_context_items)
+        prompt_memory_block = _retrieve_prompt_memory_block(
+            self.memory,
+            user_message=request.message,
+            current_game=game_context.active_game_display_name or game_status.game_name or game_session_debug.get("current_game"),
+            current_boss=session_focus.boss or ((game_session_debug.get("current_boss") or {}).get("name")),
+            input_source=request.input_source,
+            now=now,
+        )
         repetition_guard = "\n".join(
             item
             for item in (
@@ -144,7 +151,7 @@ class DialogueAgent:
             self.persona_id,
             game_status.model_dump(),
             intent_result.intent,
-            memory_context=memory_context.as_prompt_text(),
+            memory_context=prompt_memory_block.as_prompt_text(),
             session_context=session_context,
             companion_policy=companion_policy,
             memory_response_policy=memory_acknowledgement_policy,
@@ -290,6 +297,7 @@ class DialogueAgent:
             knowledge_retrieval_status=knowledge_result.retrieval_status,
             knowledge_not_used_reason=knowledge_result.not_used_reason,
             knowledge_retrieval_min_score=knowledge_result.retrieval_min_score,
+            memory_summary={"retrieval": prompt_memory_block.as_debug_dict()},
         )
         set_last_chat_metrics(metrics)
         logger.info(
@@ -370,3 +378,30 @@ def _combine_retry_metrics(previous: Any, retry_result: Any) -> Any:
         + int(retry_result.provider_latency_ms or retry_result.llm_latency_ms),
         fallback_reason=retry_result.fallback_reason or previous.fallback_reason,
     )
+
+
+def _retrieve_prompt_memory_block(
+    memory: Any,
+    *,
+    user_message: str,
+    current_game: str | None,
+    current_boss: str | None,
+    input_source: str,
+    now: datetime,
+) -> Any:
+    from app.modules.memory.retrieval import PromptMemoryBlock
+
+    if not hasattr(memory, "retrieve_prompt_memory"):
+        return PromptMemoryBlock(skip_reason="memory_store_unavailable")
+    try:
+        return memory.retrieve_prompt_memory(
+            user_message=user_message,
+            current_game=current_game,
+            current_boss=current_boss,
+            input_source=input_source,
+            update_usage=True,
+            now=now,
+        )
+    except Exception:
+        logger.exception("memory retrieval error")
+        return PromptMemoryBlock(skip_reason="memory_retrieval_failed")

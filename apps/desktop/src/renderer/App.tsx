@@ -3750,6 +3750,9 @@ export function App() {
   };
   const knowledgeSummary = asRecord(promptPreview.knowledge_summary);
   const memorySummary = asRecord(promptPreview.memory_summary);
+  const memoryRetrievalSummary = asRecord(memorySummary.retrieval);
+  const memoryRetrievalSafeSummaries = asArray(memoryRetrievalSummary.safe_summaries);
+  const memoryRetrievalSafetyNotes = asArray(memoryRetrievalSummary.safety_notes);
   const injectedMemory = asArray(memorySummary.injected);
   const skippedMemory = asArray(memorySummary.skipped);
   const recentBossHistory = gameSessionDebug.boss_history.slice(0, 5);
@@ -4375,6 +4378,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <span>{debugText(memory.type)}</span>
                       <span>{memory.is_active ? "有效" : "已停用"}</span>
                       {memory.related_game && <span>{debugText(memory.related_game)}</span>}
+                      <span>使用 {memory.use_count ?? 0} 次</span>
+                      {memory.last_used_at && <span>最近使用 {formatMessageTime(memory.last_used_at)}</span>}
                     </div>
                     {memory.is_active && (
                       <div className="pendingMemoryActions">
@@ -7779,7 +7784,39 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         已注入 {injectedMemory.length} / 已跳过 {skippedMemory.length}
                       </dd>
                     </div>
+                    <div>
+                      <dt>记忆检索</dt>
+                      <dd>
+                        已检索 {debugText(memoryRetrievalSummary.retrieved_count ?? 0)} / 省略{" "}
+                        {debugText(memoryRetrievalSummary.omitted_count ?? 0)} / 约{" "}
+                        {debugText(memoryRetrievalSummary.token_estimate ?? 0)} token
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("skip_reason")}</dt>
+                      <dd className={memoryRetrievalSummary.skip_reason ? "debugError" : ""}>
+                        {debugText(memoryRetrievalSummary.skip_reason)}
+                      </dd>
+                    </div>
                   </dl>
+                  <div className="debugSubgroup">
+                    <h4>检索记忆</h4>
+                    <ul className="debugList">
+                      {memoryRetrievalSafeSummaries.map((item, index) => (
+                        <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
+                      ))}
+                      {memoryRetrievalSafeSummaries.length === 0 && <li>无</li>}
+                    </ul>
+                  </div>
+                  <div className="debugSubgroup">
+                    <h4>记忆检索边界</h4>
+                    <ul className="debugList">
+                      {memoryRetrievalSafetyNotes.map((item, index) => (
+                        <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
+                      ))}
+                      {memoryRetrievalSafetyNotes.length === 0 && <li>无</li>}
+                    </ul>
+                  </div>
                   <div className="debugSubgroup">
                     <h4>注入记忆</h4>
                     <ul className="debugList">

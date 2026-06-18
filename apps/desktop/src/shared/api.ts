@@ -295,6 +295,10 @@ export type LongTermMemory = {
   is_active: boolean;
   related_game: string | null;
   related_entity: string | null;
+  last_used_at?: string | null;
+  use_count?: number;
+  retrieval_tags?: string[];
+  deletion_status?: string;
 };
 
 export type UserProfileMemory = {

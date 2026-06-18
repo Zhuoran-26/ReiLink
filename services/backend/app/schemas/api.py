@@ -145,6 +145,10 @@ class LongTermMemoryItem(BaseModel):
     is_active: bool = True
     related_game: str | None = None
     related_entity: str | None = None
+    last_used_at: str | None = None
+    use_count: int = 0
+    retrieval_tags: list[str] = Field(default_factory=list)
+    deletion_status: str = "active"
 
 
 class UserProfileMemory(BaseModel):

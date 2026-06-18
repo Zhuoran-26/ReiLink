@@ -42,7 +42,7 @@ def debug_memory(session_id: str = "default") -> dict:
     memory_items = memory.build_prompt_context_with_provenance().as_debug_items()
     session_items = ConversationStore().recent_context(session_id)
     return {
-        "prompt_order": ["current_user_message", "current_session", "memory", "persona"],
+        "prompt_order": ["persona", "memory", "current_session", "game_state", "current_user_message"],
         "memory_written": active_state["memory_written"],
         "current_boss": active_state["current_boss"],
         "emotional_note": active_state["emotional_note"],

@@ -218,7 +218,7 @@ const memoryProfile = {
 };
 
 const memoryDebug = {
-  prompt_order: ["current_user_message", "current_session", "memory", "persona"],
+  prompt_order: ["persona", "memory", "current_session", "game_state", "current_user_message"],
   memory_written: true,
   current_boss: "恶兆妖鬼 Margit",
   emotional_note: "frustrated",
@@ -407,10 +407,10 @@ const promptPreview = {
   prompt_order: [
     "base_system_safety",
     "persona_pack",
+    "memory",
     "current_session_context",
     "session_focus",
     "game_state",
-    "memory",
     "knowledge",
     "current_user_message"
   ],
@@ -489,7 +489,18 @@ const promptPreview = {
   },
   memory_summary: {
     injected: memoryDebug.items,
-    skipped: [{ source: "profile", field: "current_boss", reason: "conflict_with_fresh_game_state", text: "玩家当前卡点：大树守卫" }]
+    skipped: [{ source: "profile", field: "current_boss", reason: "conflict_with_fresh_game_state", text: "玩家当前卡点：大树守卫" }],
+    retrieval: {
+      retrieved_count: 1,
+      omitted_count: 1,
+      token_estimate: 18,
+      memory_types: ["interaction_preference"],
+      memory_ids: ["ltm-1"],
+      safe_summaries: ["玩家不喜欢长篇攻略"],
+      safety_notes: ["safe_summary_only", "current_user_input_priority", "persona_core_priority"],
+      skip_reason: null,
+      raw_prompt_omitted: true
+    }
   },
   final_context_summary: { raw_prompt_omitted: true, memory_injected_count: 2 },
   warnings: ["memory boss conflicts with fresh game state"]
@@ -5735,6 +5746,9 @@ describe("App", () => {
     expect(await screen.findByText("上下文顺序")).toBeInTheDocument();
     expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
     expect(screen.getByText("记忆摘要")).toBeInTheDocument();
+    expect(screen.getAllByText("记忆检索").length).toBeGreaterThan(0);
+    expect(screen.getByText(/已检索 1 .*省略 1/)).toBeInTheDocument();
+    expect(screen.getAllByText("玩家不喜欢长篇攻略").length).toBeGreaterThan(0);
 
     await openMemoryWorkspace();
     expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();

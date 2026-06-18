@@ -6,6 +6,7 @@ from app.modules.dialogue_agent.prompt_preview import build_prompt_preview
 from app.modules.memory import candidate_check as memory_candidate_check
 from app.modules.memory.pending import PendingMemoryQueue
 from app.modules.memory.profile import PlayerMemory
+from app.modules.memory.store import ConversationStore
 
 
 def _now() -> datetime:
@@ -506,6 +507,14 @@ def test_pending_candidate_is_not_in_prompt_preview_until_accepted():
     assert "探索地图" not in pending_preview_text
 
     queue.accept(created[0]["id"])
+    ConversationStore().append(
+        "default",
+        None,
+        "rei_like",
+        "我现在准备去打玛尔基特。",
+        "先看附近路和赐福。",
+        _now(),
+    )
     accepted_preview = build_prompt_preview()
     accepted_preview_text = json.dumps(accepted_preview["memory_summary"], ensure_ascii=False)
 

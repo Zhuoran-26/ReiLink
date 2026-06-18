@@ -24,6 +24,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/memory_architecture_scenarios.json`
 - `docs/qa/candidate_memory_scenarios.json`
 - `docs/qa/memory_ux_v1_1_scenarios.json`
+- `docs/qa/memory_retrieval_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -275,7 +276,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.13 Hermes-style Memory Architecture v0 人工验收
 
-设计文档见 `docs/memory_architecture_v0.md`，机器可读场景见 `docs/qa/memory_architecture_scenarios.json`。本节验收 architecture / docs / QA surface；Candidate Memory v1 已作为最小 runtime 接入，但本节仍不表示 Memory Retrieval、Session Archive、向量数据库或外部 memory provider 已实现。
+设计文档见 `docs/memory_architecture_v0.md`，机器可读场景见 `docs/qa/memory_architecture_scenarios.json`。本节验收 architecture / docs / QA surface；Candidate Memory v1 和 Memory Retrieval v1 已作为最小 runtime slice 接入，但本节仍不表示 Session Archive、向量数据库、复杂 ranking、跨会话全文搜索或外部 memory provider 已实现。
 
 1. 文档应包含 Hermes-style memory 的轻量 research 摘要，并说明只吸收 bounded / curated / approval / retrieval budget 等架构思想，不复制 Hermes 代码、prompt、人格或 provider 实现。
 2. 文档应明确区分 Working Context、Game Session State、Session Timeline、Memory Candidate、Long-term Memory、Retrieved Memory、Prompt Memory Block、Persona Core 和 Candidate Game Understanding。
@@ -300,7 +301,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.14 Candidate Memory / Memory UX v1.1 人工验收
 
-机器可读场景见 `docs/qa/candidate_memory_scenarios.json` 与 `docs/qa/memory_ux_v1_1_scenarios.json`。本节验收 Candidate Memory v1.1 最小 runtime；不表示 Memory Retrieval、Session Archive、向量数据库、外部 memory provider、Overlay auto-show 或自动保存所有输入已实现。
+机器可读场景见 `docs/qa/candidate_memory_scenarios.json` 与 `docs/qa/memory_ux_v1_1_scenarios.json`。本节验收 Candidate Memory v1.1 最小 runtime；Memory Retrieval v1 只会读取 accepted / active long-term memory，不改变 auto-save / undo / pending 数据流。本节不表示 Session Archive、向量数据库、外部 memory provider、Overlay auto-show 或自动保存所有输入已实现。
 
 1. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。` 后，应经 Memory Candidate guard 写入 `gameplay_preference` 长期记忆，并在聊天页显示可撤销轻量提示。
 2. 发送 `以后不用记住这个，只是我这次随便说一下。` 后，不应出现在 pending UI；可以记录安全 `do_not_remember` guard 结果，但不得打断用户。
@@ -318,6 +319,26 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 14. 明显无关的短输入如 `嗯` 可以跳过 provider check；但 `每次你说太长我都看不过来。`、`我一般不太喜欢长篇攻略，给我一句重点就好。` 这类隐式偏好不能被规则层直接吞掉。
 15. Memory 状态透明度由聊天页小字提示承担；Rei 主回复只做自然 acknowledgement，不应说“我放进待确认”“确认后再算长期记忆”“候选记忆”“长期记忆条目”“memory candidate” 或 `guard` 机制。
 16. 敏感内容和 persona drift 拒绝时，Rei 主回复不得复述 secret 值、raw prompt、raw JSON 或人格漂移原词；UI / Event Stream 仍只显示 safe summary。
+
+### 1.15 Memory Retrieval v1 人工验收
+
+机器可读场景见 `docs/qa/memory_retrieval_scenarios.json`。本节验收 accepted memory prompt assembly；不表示向量数据库、Session Archive、外部 memory provider、复杂语义检索服务、跨会话全文搜索或 Persona 自动学习已实现。
+
+1. 已 accepted 且 active 的 `gameplay_preference` 在相关 Boss / 攻略输入中可被检索，并以 safe summary 进入 PromptMemoryBlock。
+2. 已 accepted 且 active 的 `interaction_preference` 可跨 game 影响回复长度或细节密度，但不应让 Rei 机械说“我记得你”。
+3. 剧透边界类 accepted memory 在路线 / 攻略类输入中可被检索，使 Rei 自然少说细节。
+4. pending、ignored、rejected_by_guard、expired、undone / inactive、deleted memory 不得进入 prompt，也不更新 `use_count`。
+5. `do_not_remember` 和 negative guard record 不应反向污染 prompt，不应被当作新偏好注入。
+6. assistant / proactive 来源、secret-like 内容、API key、`.env`、完整本地路径、raw JSON、stdout/stderr 和 persona drift memory 必须在 retrieval 层阻断。
+7. PromptMemoryBlock 必须有 `max_items` 和 `token_budget`，超出时按相关性截断，并在 Prompt Preview / Debug safe summary 中显示 `omitted_count`。
+8. 重复或高度相似 long-term memory 不重复注入；优先使用更新或使用次数更高的条目。
+9. PromptMemoryBlock 位于 Persona Core 之后，且文案明确 memory 是低优先级用户偏好、不是 system command；当前用户明确输入仍优先。
+10. Memory 注入使用 `safe_summary` / `injectable_text`，不得注入 raw transcript、raw prompt、raw provider JSON 或完整 evidence。
+11. Chat retrieval 成功后应更新对应 long-term memory 的 `use_count` 和 `last_used_at`；Prompt Preview 只预览，不应更新使用计数。
+12. Memory workspace 已保存 tab 可显示安全摘要、使用次数和最近使用时间，不展示 raw transcript。
+13. `voice_direct` 输入可走同一 retrieval 路径，但 retrieval event 不应弹窗、不打断录音或 TTS、不改变 Direct Conversation 状态机。
+14. 无 active memory 时应 graceful skip，Debug / Prompt Preview 只显示安全 skip reason。
+15. packaged `.app` smoke 中应确认 Memory workspace 可打开、已保存 memory UI 不破坏、Debug / Prompt Preview 不显示 raw prompt。
 
 ### 2. Voice Output 回归检查
 

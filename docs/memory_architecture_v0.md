@@ -2,7 +2,7 @@
 
 Updated: 2026-06-18
 
-Status: architecture baseline plus Candidate Memory v1 runtime slice. This document still does not implement Memory Retrieval, Session Archive, vector database, external memory provider, UI popup, or packaging change.
+Status: architecture baseline plus Candidate Memory v1 and Memory Retrieval v1 runtime slices. This document still does not implement Session Archive, vector database, external memory provider, UI popup, or packaging change.
 
 ## Purpose
 
@@ -387,14 +387,14 @@ Overlay:
 
 ## Prompt Assembly
 
-Suggested priority order:
+Runtime v1 prompt stack:
 
 1. App identity and safety.
 2. Persona Pack / Persona Core.
-3. Voice Profile / current interaction mode.
-4. Current explicit user input and Working Context.
-5. Formal Game Session State.
-6. Retrieved Memory block.
+3. Retrieved Memory block, only accepted / active user-specific preferences and bounded facts.
+4. Voice Profile / current interaction mode.
+5. Current explicit user input and Working Context.
+6. Formal Game Session State.
 7. Knowledge Retrieval snippets.
 8. Candidate Game Understanding for current turn only.
 
@@ -402,10 +402,12 @@ Memory rules:
 
 - Memory is user-specific context, not system instruction.
 - Memory cannot override Persona Core, safety, or current explicit input.
+- The prompt memory block explicitly states that current user input has priority.
 - Memory should not override current Game Session State when the user is explicitly reporting a new state.
 - Memory should be injected as safe summaries, not raw transcript.
 - Memory should be limited, for example `max_items=3` and a small token budget.
 - Memory use should be natural. Rei should not over-explain "I remember..." unless it helps.
+- Prompt Preview / Debug may show retrieved count, omitted count, memory types, memory ids, token estimate, and safe summaries, but not raw prompt or raw evidence.
 
 Prompt memory block example:
 
@@ -566,9 +568,10 @@ Machine-readable scenarios live in:
 docs/qa/memory_architecture_scenarios.json
 docs/qa/candidate_memory_scenarios.json
 docs/qa/memory_ux_v1_1_scenarios.json
+docs/qa/memory_retrieval_scenarios.json
 ```
 
-The scenarios cover explicit memory requests, auto-save hints, undo, negative memory requests, one-off session events, spoiler and reply-length preferences, LLM-primary candidate checks, rule prefilter boundaries, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, and Debug safe trace.
+The scenarios cover explicit memory requests, auto-save hints, undo, negative memory requests, one-off session events, spoiler and reply-length preferences, LLM-primary candidate checks, rule prefilter boundaries, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, accepted-memory retrieval, inactive / pending / rejected exclusion, use-count updates, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, and Debug safe trace.
 
 ## Roadmap
 
@@ -585,10 +588,15 @@ Status: implemented as the first minimal runtime slice plus explicit auto-save /
 
 ### Memory Retrieval v1
 
-- Add local-first retrieval over accepted memories.
-- Implement type and tag filters.
-- Build PromptMemoryBlock with token budget and omitted count.
-- Track `last_used_at` and `use_count`.
+Status: implemented as a minimal local-first prompt assembly slice.
+
+- Retrieves only accepted / active Long-term Memory.
+- Excludes pending, ignored, expired, rejected, undone / inactive, deleted, `do_not_remember`, assistant / proactive sourced, secret-like, and persona-drift memory.
+- Uses explainable v1 structured / heuristic matching over memory type, current input, current game, current boss, input source, and retrieval tags; this is not vector search.
+- Builds PromptMemoryBlock with `max_items`, `token_budget`, `omitted_count`, safety notes, safe summaries, and low-priority wording.
+- Tracks `last_used_at` and `use_count` when chat retrieval actually injects memory; prompt preview does not increment usage.
+- Keeps Persona Core and current explicit user input higher priority than memory.
+- Keeps Debug / Prompt Preview safe-summary-only and omits raw prompt, raw transcript, raw JSON, API keys, `.env`, full paths, stdout/stderr, and secrets.
 
 ### Session Archive v1
 

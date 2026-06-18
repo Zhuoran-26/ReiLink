@@ -19,10 +19,10 @@ from app.modules.persona_engine.engine import PersonaEngine
 PROMPT_ORDER = [
     "base_system_safety",
     "persona_pack",
+    "memory",
     "current_session_context",
     "session_focus",
     "game_state",
-    "memory",
     "knowledge",
     "current_user_message",
 ]
@@ -50,8 +50,15 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
     )
     game_prompt_summary = game_session.build_prompt_summary(now=now, session_focus_boss=session_focus.boss)
     knowledge_result = _knowledge_summary_result(current_user_message, session_focus.boss, game_debug, game_context)
-    memory_context = memory.build_prompt_context_with_provenance(now=now)
-    memory_debug_items = memory_context.as_debug_items()
+    prompt_memory_block = memory.retrieve_prompt_memory(
+        user_message=current_user_message or "",
+        current_game=game_context.active_game_display_name or game_debug.get("current_game"),
+        current_boss=session_focus.boss or ((game_debug.get("current_boss") or {}).get("name")),
+        input_source="text",
+        update_usage=False,
+        now=now,
+    )
+    memory_debug_items = prompt_memory_block.as_debug_items()
     skipped_memory, memory_warnings = _skipped_memory_items(memory, memory_debug_items, game_debug, now)
     session_items = store.recent_context(session_id)
     persona_pack_summary = PersonaEngine().persona_pack_summary()
@@ -94,6 +101,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
                 "injected": memory_debug_items,
                 "skipped": skipped_memory,
                 "active_state": memory.active_memory_state(now=now),
+                "retrieval": prompt_memory_block.as_debug_dict(),
             },
             "final_context_summary": _final_context_summary(
                 current_user_message=current_user_message,
@@ -102,6 +110,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
                 game_prompt_summary=game_prompt_summary,
                 knowledge_result=knowledge_result,
                 memory_items=memory_debug_items,
+                prompt_memory_block=prompt_memory_block.as_debug_dict(),
                 persona_pack_summary=persona_pack_summary,
             ),
             "warnings": _dedupe(warnings),
@@ -116,6 +125,7 @@ def _final_context_summary(
     game_prompt_summary: str,
     knowledge_result: KnowledgeRetrievalResult,
     memory_items: list[dict[str, str]],
+    prompt_memory_block: dict[str, Any],
     persona_pack_summary: dict[str, Any],
 ) -> dict[str, Any]:
     blocks = [
@@ -173,6 +183,10 @@ def _final_context_summary(
             "name": "memory",
             "present": bool(memory_items),
             "items": [_truncate(item["text"]) for item in memory_items],
+            "retrieved_count": prompt_memory_block.get("retrieved_count", 0),
+            "omitted_count": prompt_memory_block.get("omitted_count", 0),
+            "token_estimate": prompt_memory_block.get("token_estimate", 0),
+            "safety_notes": prompt_memory_block.get("safety_notes") or [],
         },
     ]
     return {
