@@ -74,9 +74,19 @@ export type ChatResponse = {
   provider_latency_ms?: number;
   model_used?: string | null;
   route_reason?: string | null;
+  memory_update?: ChatMemoryUpdate;
 };
 
 export type ChatInputSource = "text" | "voice_confirmed" | "voice_direct";
+
+export type ChatMemoryUpdate = {
+  status: "none" | "auto_saved" | "pending" | "blocked" | "failed";
+  summary: string | null;
+  pending_memory_id: string | null;
+  long_term_memory_id: string | null;
+  pending_count: number;
+  undo_available: boolean;
+};
 
 export type SetupStatus = {
   backend_ready: boolean;
@@ -584,6 +594,7 @@ export type PendingMemory = {
   text: string;
   source: "game_session" | "conversation" | "explicit_user_statement" | "semantic_extraction" | "voice_confirmed" | "voice_direct" | "assistant" | "proactive";
   source_event_id: string | null;
+  long_term_memory_id: string | null;
   confidence: number;
   requires_confirmation: boolean;
   status: "pending" | "accepted" | "ignored" | "expired" | "rejected_by_guard";
@@ -780,6 +791,7 @@ export const api = {
   pendingMemories: () => request<PendingMemory[]>("/api/memory/pending"),
   acceptPendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/accept`, { method: "POST" }),
   ignorePendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/ignore`, { method: "POST" }),
+  undoLongTermMemory: (id: string) => request<LongTermMemory>(`/api/memory/long-term/${encodeURIComponent(id)}/undo`, { method: "POST" }),
   clearPendingMemories: () => request<{ status: "cleared" }>("/api/memory/pending/clear", { method: "POST" }),
   resetGameSession: () => request<{ status: string }>("/api/debug/game-session/reset", { method: "POST" }),
   resetMemory: () => request<{ status: "reset" }>("/api/memory/reset", { method: "POST" }),

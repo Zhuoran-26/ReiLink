@@ -110,6 +110,7 @@ ALLOWED_EXTRACTION_EVAL_DECISIONS = {
 ALLOWED_EXTRACTION_EVAL_INPUT_SOURCES = {"text", "voice_confirmed", "voice_direct"}
 ALLOWED_MEMORY_ARCHITECTURE_STATUSES = {
     "accepted",
+    "auto_saved",
     "candidate_pending",
     "candidate_pending_silent",
     "current_input_priority",
@@ -138,6 +139,7 @@ ALLOWED_MEMORY_ARCHITECTURE_TYPES = {
     "none",
 }
 ALLOWED_CANDIDATE_MEMORY_STATUSES = {
+    "auto_saved",
     "pending",
     "accepted",
     "ignored",
@@ -462,14 +464,14 @@ def test_candidate_memory_scenarios_have_required_fields():
     ids = {item.get("id") for item in scenarios}
 
     assert {
-        "candidate-memory-explicit-gameplay-pending",
+        "candidate-memory-explicit-gameplay-auto-save",
         "candidate-memory-do-not-remember-rejected",
         "candidate-memory-session-death-no-candidate",
         "candidate-memory-short-reply-pending",
         "candidate-memory-spoiler-pending",
         "candidate-memory-persona-drift-rejected",
         "candidate-memory-secret-rejected-no-leak",
-        "candidate-memory-voice-direct-pending",
+        "candidate-memory-voice-direct-explicit-auto-save",
         "candidate-memory-accept-long-term",
         "candidate-memory-ignore-no-long-term",
         "candidate-memory-duplicate-deduped",

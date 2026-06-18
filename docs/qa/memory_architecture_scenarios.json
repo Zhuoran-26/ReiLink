@@ -4,11 +4,12 @@
     "category": "memory_architecture",
     "layer": "memory_candidate",
     "input": "记住我打 Boss 前喜欢先探索地图。",
-    "expected_status": "candidate_pending",
+    "expected_status": "auto_saved",
     "expected_type": "gameplay_preference",
-    "requires_confirmation": true,
-    "should_write_long_term_memory": false,
-    "expected_behavior": "Create a safe pending MemoryCandidate for the gameplay preference; do not write LongTermMemory until accepted.",
+    "requires_confirmation": false,
+    "should_write_long_term_memory": true,
+    "undo_available": true,
+    "expected_behavior": "After Memory Candidate guard passes, save the explicit gameplay preference as LongTermMemory, show a lightweight chat hint, and allow undo.",
     "forbidden_terms": ["raw prompt", "raw JSON", ".env", "API key"]
   },
   {
@@ -128,11 +129,12 @@
     "layer": "voice",
     "input": "语音 transcript: 记住我不喜欢听长攻略。",
     "input_source": "voice_confirmed",
-    "expected_status": "candidate_pending",
+    "expected_status": "auto_saved",
     "expected_type": "interaction_preference",
-    "requires_confirmation": true,
-    "should_write_long_term_memory": false,
-    "expected_behavior": "Confirmed voice transcript can create a candidate, but still needs memory guard and user confirmation.",
+    "requires_confirmation": false,
+    "should_write_long_term_memory": true,
+    "undo_available": true,
+    "expected_behavior": "Confirmed voice transcript with an explicit remember request still passes Memory Candidate guard, then can auto-save with a non-blocking undo hint.",
     "forbidden_terms": ["full transcript", "raw audio"]
   },
   {

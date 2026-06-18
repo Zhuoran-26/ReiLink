@@ -55,7 +55,7 @@ class _FastProvider:
         )
 
 
-def test_memory_update_is_scheduled_without_blocking_chat_response(monkeypatch, tmp_path: Path):
+def test_memory_update_returns_inline_status_without_blocking_normal_chat(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("app.modules.dialogue_agent.agent.get_provider", lambda: _FastProvider())
     agent = DialogueAgent()
     agent.store = ConversationStore(tmp_path / "conversations")
@@ -67,8 +67,9 @@ def test_memory_update_is_scheduled_without_blocking_chat_response(monkeypatch, 
     elapsed = time.perf_counter() - start
 
     assert response.reply
+    assert response.memory_update.status == "none"
     assert elapsed < 0.1
-    assert len(background_tasks.tasks) == 1
+    assert background_tasks.tasks == []
 
 
 def test_timeout_returns_clear_error(monkeypatch):

@@ -398,6 +398,24 @@ def test_memory_profile_and_episodes_routes():
     assert episodes.json()[0]["summary"] == "玩家不喜欢长篇攻略"
 
 
+def test_long_term_memory_undo_route_deactivates_memory():
+    client.post("/api/memory/reset")
+    response = client.post(
+        "/api/chat",
+        json={"message": "记住我不喜欢长篇攻略", "session_id": "api-memory-undo"},
+    )
+    memory_id = response.json()["memory_update"]["long_term_memory_id"]
+
+    undone = client.post(f"/api/memory/long-term/{memory_id}/undo")
+    profile = client.get("/api/memory/profile").json()
+
+    assert undone.status_code == 200
+    assert undone.json()["id"] == memory_id
+    assert undone.json()["is_active"] is False
+    assert profile["long_term_memories"][0]["is_active"] is False
+    assert profile["preferred_tone"] is None
+
+
 def test_debug_memory_returns_provenance_items():
     session_id = "api-memory-debug"
     client.post("/api/debug/game-session/reset")
@@ -416,7 +434,7 @@ def test_debug_memory_returns_provenance_items():
     assert data["memory_written"] is True
     assert data["recent_episode_count"] >= 1
     sources = {item["source"] for item in data["items"]}
-    assert {"current_session", "episode"} <= sources
+    assert {"current_session", "profile"} <= sources
     assert all(item["text"] for item in data["items"])
 
     game_data = client.get("/api/debug/game-session").json()
@@ -545,7 +563,7 @@ def test_prompt_preview_sanitizes_sensitive_preview_strings():
 
 def test_persona_pack_does_not_bypass_pending_memory_confirmation():
     client.post("/api/memory/reset")
-    client.post(
+    response = client.post(
         "/api/chat",
         json={
             "message": "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。",
@@ -554,9 +572,12 @@ def test_persona_pack_does_not_bypass_pending_memory_confirmation():
     )
 
     pending_items = client.get("/api/memory/pending").json()
+    profile = client.get("/api/memory/profile").json()
 
-    assert any(item["type"] == "gameplay_preference" and "探索地图" in item["text"] for item in pending_items)
-    assert client.get("/api/memory/profile").json()["preferred_tone"] is None
+    assert response.json()["memory_update"]["status"] == "auto_saved"
+    assert pending_items == []
+    assert any(memory["type"] == "gameplay_preference" and "探索地图" in memory["summary"] for memory in profile["long_term_memories"])
+    assert profile["preferred_tone"] is None
 
     client.post("/api/memory/pending/clear")
     client.post(

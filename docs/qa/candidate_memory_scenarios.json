@@ -1,16 +1,18 @@
 [
   {
-    "id": "candidate-memory-explicit-gameplay-pending",
+    "id": "candidate-memory-explicit-gameplay-auto-save",
     "category": "candidate_memory",
     "input_source": "text",
     "input": "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。",
-    "expected_status": "pending",
+    "expected_status": "auto_saved",
     "expected_type": "gameplay_preference",
     "guard_reason": "explicit_user_memory_request",
-    "requires_confirmation": true,
-    "should_write_long_term_memory": false,
-    "should_show_pending_ui": true,
-    "expected_behavior": "Create a pending candidate with a safe gameplay preference summary; do not write long-term memory until accepted.",
+    "requires_confirmation": false,
+    "should_write_long_term_memory": true,
+    "should_show_pending_ui": false,
+    "should_show_chat_hint": true,
+    "undo_available": true,
+    "expected_behavior": "After Memory Candidate guard passes, auto-save the explicit request as a visible long-term memory, show a lightweight chat hint, and allow undo.",
     "forbidden_terms": ["raw prompt", "raw JSON", ".env", "API key"]
   },
   {
@@ -98,17 +100,19 @@
     "forbidden_terms": ["API key", ".env", "Authorization", "Bearer", "sk-secret"]
   },
   {
-    "id": "candidate-memory-voice-direct-pending",
+    "id": "candidate-memory-voice-direct-explicit-auto-save",
     "category": "candidate_memory",
     "input_source": "voice_direct",
     "input": "记住我打 Boss 前喜欢先探索地图。",
-    "expected_status": "pending",
+    "expected_status": "auto_saved",
     "expected_type": "gameplay_preference",
     "guard_reason": "explicit_user_memory_request",
-    "requires_confirmation": true,
-    "should_write_long_term_memory": false,
-    "should_show_pending_ui": true,
-    "expected_behavior": "Voice direct input can create a pending candidate with from_voice=true, but must not auto-accept or pop a blocking modal.",
+    "requires_confirmation": false,
+    "should_write_long_term_memory": true,
+    "should_show_pending_ui": false,
+    "should_show_chat_hint": true,
+    "undo_available": true,
+    "expected_behavior": "Voice direct explicit memory can auto-save after guard passes and show a non-blocking undo hint; it must not pop a blocking modal.",
     "forbidden_terms": ["raw transcript"]
   },
   {

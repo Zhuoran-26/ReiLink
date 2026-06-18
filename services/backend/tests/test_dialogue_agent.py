@@ -248,8 +248,8 @@ def test_retrieved_knowledge_is_passed_to_provider_but_not_memory(monkeypatch, t
     provider = _PromptCapturingProvider(["先看延迟攻击。"])
     agent.provider = provider
 
-    def capture_memory(user_message, reply, intent, timestamp, semantic_extraction=None):
-        memory_calls.append((user_message, reply, intent, semantic_extraction))
+    def capture_memory(user_message, reply, intent, timestamp, semantic_extraction=None, input_source=None):
+        memory_calls.append((user_message, reply, intent, semantic_extraction, input_source))
 
     agent._safe_memory_update = capture_memory
 

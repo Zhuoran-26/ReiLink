@@ -198,7 +198,7 @@ Before confirmation in `confirm_send`:
 After confirmation or Direct Conversation auto-send:
 
 - The text enters the existing chat flow as normal user input.
-- Existing memory confirmation, knowledge retrieval, game context, Semantic Extraction, and proactive gates continue to apply.
+- Existing Memory Candidate guard, knowledge retrieval, game context, Semantic Extraction, and proactive gates continue to apply. Explicit memory can show a non-blocking undo hint; implicit candidates still require later confirmation.
 - Voice should not introduce a separate memory or game-state path.
 - Direct Conversation events may show mode, provider, and character count, but not the full transcript.
 
@@ -360,7 +360,7 @@ Voice v2 keeps these fixed boundaries:
 - Audio is not persisted after transcription.
 - Temp files are cleaned after success, failure, or timeout.
 - Unconfirmed transcript stays outside memory, prompt, retrieval, game context, Semantic Extraction, and proactive behavior.
-- Voice never bypasses memory confirmation.
+- Voice never bypasses Memory Candidate guard.
 - Voice does not create a separate proactive trigger path.
 - Voice Output does not speak diagnostics or hidden context.
 - Debug / Prompt Preview / Event Stream remain safe summaries.

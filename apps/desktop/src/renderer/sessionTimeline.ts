@@ -12,7 +12,8 @@ export type SessionTimelineType =
   | "knowledge_used"
   | "proactive_shown"
   | "memory_accepted"
-  | "memory_ignored";
+  | "memory_ignored"
+  | "memory_undone";
 
 export type SessionTimelineSource =
   | "game_context"
@@ -144,6 +145,10 @@ export const sessionTimelineItemsFromEvent = (event: ReiLinkEvent): SessionTimel
     }
     case "pending_memory_ignored": {
       const item = createTimelineItem(timestamp, "memory_ignored", "memory", "记忆已忽略");
+      return item ? [item] : [];
+    }
+    case "long_term_memory_undone": {
+      const item = createTimelineItem(timestamp, "memory_undone", "memory", "记忆已撤销");
       return item ? [item] : [];
     }
     default:

@@ -89,6 +89,15 @@ class ChatRequest(BaseModel):
     input_source: Literal["text", "voice_confirmed", "voice_direct"] = "text"
 
 
+class ChatMemoryUpdate(BaseModel):
+    status: Literal["none", "auto_saved", "pending", "blocked", "failed"] = "none"
+    summary: str | None = None
+    pending_memory_id: str | None = None
+    long_term_memory_id: str | None = None
+    pending_count: int = 0
+    undo_available: bool = False
+
+
 class ChatResponse(BaseModel):
     reply: str
     reply_segments: list[str] = Field(default_factory=list)
@@ -102,6 +111,7 @@ class ChatResponse(BaseModel):
     provider_latency_ms: int = 0
     model_used: str | None = None
     route_reason: str | None = None
+    memory_update: ChatMemoryUpdate = Field(default_factory=ChatMemoryUpdate)
 
 
 class MemoryEntry(BaseModel):
@@ -194,6 +204,7 @@ class PendingMemoryItem(BaseModel):
         "proactive",
     ]
     source_event_id: str | None = None
+    long_term_memory_id: str | None = None
     confidence: float
     requires_confirmation: bool = True
     status: Literal["pending", "accepted", "ignored", "expired", "rejected_by_guard"]

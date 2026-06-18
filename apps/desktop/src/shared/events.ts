@@ -10,6 +10,7 @@ export type ReiLinkEvent =
   | { type: "pending_memory_created"; timestamp: string; memory_type: string; text: string }
   | { type: "pending_memory_accepted"; timestamp: string; memory_id: string }
   | { type: "pending_memory_ignored"; timestamp: string; memory_id: string }
+  | { type: "long_term_memory_undone"; timestamp: string; memory_id: string }
   | { type: "game_context_changed"; timestamp: string; game?: string; source?: string }
   | {
       type: "semantic_extraction_traced";

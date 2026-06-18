@@ -28,6 +28,7 @@ import {
   AudioProbeResponse,
   ChatInputSource,
   ChatDebugResponse,
+  ChatMemoryUpdate,
   GameContextResponse,
   GameDetectionResponse,
   GameSessionDebugResponse,
@@ -93,6 +94,15 @@ type Message = {
   pending?: boolean;
   messageType?: "chat" | "proactive";
   triggerType?: string;
+};
+
+type MemoryNotice = {
+  status: "auto_saved" | "pending" | "undone";
+  summary: string;
+  pendingMemoryId?: string | null;
+  longTermMemoryId?: string | null;
+  pendingCount?: number;
+  undoAvailable?: boolean;
 };
 
 type DemoResetAction =
@@ -1467,6 +1477,7 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     pending_memory_created: "发现待确认记忆",
     pending_memory_accepted: "记忆已保存",
     pending_memory_ignored: "记忆已忽略",
+    long_term_memory_undone: "记忆已撤销",
     game_context_changed: "游戏上下文变化",
     semantic_extraction_traced: "语义识别来源",
     game_session_changed: "游戏状态变化",
@@ -2075,6 +2086,8 @@ export function App() {
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
   const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
+  const [memoryNotice, setMemoryNotice] = useState<MemoryNotice | null>(null);
+  const [longTermMemoryBusyId, setLongTermMemoryBusyId] = useState("");
   const [debugActionBusy, setDebugActionBusy] = useState("");
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -2528,6 +2541,30 @@ export function App() {
     }
     knownPendingMemoryIdsRef.current = new Set(memories.map((memory) => memory.id));
     setPendingMemories(memories);
+  }, []);
+
+  const noticeFromMemoryUpdate = useCallback((update?: ChatMemoryUpdate): MemoryNotice | null => {
+    if (!update || update.status === "none" || update.status === "blocked" || update.status === "failed") return null;
+    const summary = update.summary?.trim() || "";
+    if (update.status === "auto_saved") {
+      return {
+        status: "auto_saved",
+        summary,
+        pendingMemoryId: update.pending_memory_id,
+        longTermMemoryId: update.long_term_memory_id,
+        pendingCount: update.pending_count,
+        undoAvailable: update.undo_available
+      };
+    }
+    if (update.status === "pending") {
+      return {
+        status: "pending",
+        summary,
+        pendingMemoryId: update.pending_memory_id,
+        pendingCount: update.pending_count
+      };
+    }
+    return null;
   }, []);
 
   const refreshStatus = useCallback(async (options: { emitPendingMemoryCreated?: boolean } = {}) => {
@@ -3336,6 +3373,7 @@ export function App() {
     setLastInterimPlaceholderShown(false);
     setLastError("");
     setLastRawError("");
+    setMemoryNotice(null);
     queueMessageAutoScroll(true);
     setMessages((current) => [...current, userMessage]);
     if (voiceTranscript?.autoSent) {
@@ -3368,6 +3406,7 @@ export function App() {
     }, PLACEHOLDER_DELAY_MS);
     try {
       const response = await api.chat(trimmed, "default", chatInputSource);
+      const nextMemoryNotice = noticeFromMemoryUpdate(response.memory_update);
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
       emitModelRouted(response.model_used, response.route_reason, response.request_started_at ?? String(requestStartedAt));
@@ -3448,6 +3487,7 @@ export function App() {
         }
       }
       setLastInterimPlaceholderShown(placeholderShown);
+      setMemoryNotice(nextMemoryNotice);
       await refreshStatus({ emitPendingMemoryCreated: true });
     } catch (error) {
       window.clearTimeout(placeholderTimer);
@@ -3772,6 +3812,16 @@ export function App() {
   const onboardingApiKeyText = setupStatus.api_key_loaded
     ? "当前 DeepSeek API Key 已加载。"
     : "当前 API Key 未配置，请先完成模型配置。";
+  const memoryNoticeSummary = memoryNotice?.summary?.trim() || "";
+  const memoryNoticeText = memoryNotice
+    ? memoryNotice.status === "auto_saved"
+      ? memoryNoticeSummary
+        ? `已记住：${memoryNoticeSummary}`
+        : "记忆已更新"
+      : memoryNotice.status === "pending"
+        ? `${memoryNotice.pendingCount && memoryNotice.pendingCount > 1 ? `${memoryNotice.pendingCount} 条` : "有新的"}记忆待确认`
+        : "已撤销这条记忆"
+    : "";
   const activeWorkspaceTabs = WORKSPACE_TABS[activeWorkspace];
   const activeWorkspaceTab = workspaceTabs[activeWorkspace] || DEFAULT_WORKSPACE_TABS[activeWorkspace];
   const settingsWorkspaceTitle = ({
@@ -3789,7 +3839,7 @@ export function App() {
   const settingsWorkspaceFooter = ({
     app: `本地保存到 settings.json，不包含密钥。自动游戏检测当前为${debugText(appSettings.auto_game_detection)}。`,
     provider: "模型配置只显示 provider、模型名和 API Key 加载状态，不显示 .env 或密钥原文。",
-    privacy: "本地数据操作保持显式按钮；不会改变 memory、proactive 或 Shadow Mode 的写入边界。",
+    privacy: "本地数据操作保持显式按钮；显式记忆可撤销，隐式候选仍需确认。",
     advanced: "高级设置复用现有功能入口；Voice v2.1 只提供主动开启的直接对话，不实现 hands-free、常驻监听或 Overlay auto-show。"
   } as Record<string, string>)[activeWorkspaceTab] || "本地保存到 settings.json，不包含密钥。";
 
@@ -3799,6 +3849,30 @@ export function App() {
       setWorkspaceTabs((current) => ({ ...current, [workspaceId]: tabId }));
     }
   }, []);
+
+  const openPendingMemory = useCallback(() => {
+    openWorkspace("memory", "pending");
+  }, [openWorkspace]);
+
+  const handleUndoLongTermMemory = useCallback(async (memoryId: string, summary = "") => {
+    setLongTermMemoryBusyId(memoryId);
+    try {
+      await api.undoLongTermMemory(memoryId);
+      eventBus.emit({ type: "long_term_memory_undone", timestamp: eventTimestamp(), memory_id: memoryId });
+      setMemoryNotice({
+        status: "undone",
+        summary: summary || "已撤销这条记忆",
+        longTermMemoryId: memoryId,
+        undoAvailable: false
+      });
+      await refreshStatus();
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "撤销记忆失败"));
+    } finally {
+      setLongTermMemoryBusyId("");
+    }
+  }, [refreshStatus]);
 
   const closeWorkspace = useCallback(() => {
     setActiveWorkspace("home");
@@ -4048,7 +4122,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </li>
                     <li>
                       <strong>确认记忆</strong>
-                      <span>ReiLink 不会直接写入长期记忆，需要你手动保存。</span>
+                      <span>显式记忆会给出可撤销提示；隐式候选仍需要你确认。</span>
                     </li>
                     <li>
                       <strong>开启主动陪伴</strong>
@@ -4093,6 +4167,27 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             </div>
 
             {lastError && <div className="errorNotice" role="status">{lastError}</div>}
+
+            {memoryNotice && (
+              <div className={`memoryNotice ${memoryNotice.status}`} role="status" aria-label="记忆提示">
+                <span>{memoryNoticeText}</span>
+                {memoryNotice.status === "pending" && (
+                  <button className="textButton" type="button" onClick={openPendingMemory}>
+                    查看
+                  </button>
+                )}
+                {memoryNotice.status === "auto_saved" && memoryNotice.undoAvailable && memoryNotice.longTermMemoryId && (
+                  <button
+                    className="textButton"
+                    type="button"
+                    disabled={longTermMemoryBusyId === memoryNotice.longTermMemoryId}
+                    onClick={() => void handleUndoLongTermMemory(memoryNotice.longTermMemoryId || "", memoryNotice.summary)}
+                  >
+                    撤销
+                  </button>
+                )}
+              </div>
+            )}
 
             <form className="composer" onSubmit={sendMessage}>
               <button
@@ -4194,7 +4289,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <span className="countPill">{memoryProfile.long_term_memories.length}</span>
               </div>
               <p className="settingHint">
-                已保存记忆来自待确认候选；这里仅显示安全摘要，不显示原始输入或调试内容。
+                已保存记忆来自显式记忆请求或你确认过的候选；这里仅显示安全摘要，不显示原始输入或调试内容。
               </p>
               <div className="pendingMemoryList">
                 {memoryProfile.long_term_memories.map((memory) => (
@@ -4205,6 +4300,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <span>{memory.is_active ? "有效" : "已停用"}</span>
                       {memory.related_game && <span>{debugText(memory.related_game)}</span>}
                     </div>
+                    {memory.is_active && (
+                      <div className="pendingMemoryActions">
+                        <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={longTermMemoryBusyId === memory.id}
+                          onClick={() => void handleUndoLongTermMemory(memory.id, memory.user_visible_text || memory.summary)}
+                        >
+                          撤销
+                        </button>
+                      </div>
+                    )}
                   </article>
                 ))}
                 {memoryProfile.long_term_memories.length === 0 && <p className="emptyDebugText">暂无已保存记忆</p>}
@@ -4280,7 +4387,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <h2>候选记忆</h2>
               </div>
               <p className="settingHint">
-                Hermes-style candidate memory 尚未实现。这里先保留未来入口：候选记忆、来源摘要、忽略 / 删除 / 不再询问、Session Archive 和本地搜索。
+                候选记忆已接入基础确认流；后续这里会承接来源筛选、忽略记录、Session Archive 和本地搜索。
               </p>
             </section>
           )}

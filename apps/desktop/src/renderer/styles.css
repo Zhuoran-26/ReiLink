@@ -480,6 +480,50 @@ button {
   font-weight: 560;
 }
 
+.memoryNotice {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-height: 28px;
+  padding: 0 32px 2px;
+  color: #9aa6bd;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.memoryNotice.auto_saved {
+  color: #b8c9d8;
+}
+
+.memoryNotice.pending {
+  color: #aeb7ca;
+}
+
+.memoryNotice.undone {
+  color: #8995ad;
+}
+
+.textButton {
+  border: 0;
+  padding: 2px 0;
+  color: #c9d7f2;
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.textButton:hover {
+  color: #ffffff;
+}
+
+.textButton:disabled {
+  color: #6f7890;
+  cursor: default;
+}
+
 .messageBubble.user .messageSpeaker {
   color: #c8c7e8;
 }

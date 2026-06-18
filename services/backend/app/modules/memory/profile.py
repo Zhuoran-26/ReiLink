@@ -159,7 +159,9 @@ class PlayerMemory:
             (
                 episode
                 for episode in reversed(self.recent_episodes(limit=5))
-                if episode.get("summary") and _is_fresh(episode.get("timestamp"), now, BOSS_FRESHNESS)
+                if episode.get("summary")
+                and not str(episode.get("intent") or "").startswith("pending_")
+                and _is_fresh(episode.get("timestamp"), now, BOSS_FRESHNESS)
             ),
             None,
         )
@@ -275,7 +277,7 @@ class PlayerMemory:
             for episode in self.recent_episodes(limit=100)
         )
 
-    def apply_pending_memory(self, pending: dict[str, Any], timestamp: datetime | None = None) -> None:
+    def apply_pending_memory(self, pending: dict[str, Any], timestamp: datetime | None = None) -> dict[str, Any] | None:
         timestamp = _ensure_aware(timestamp or datetime.now(timezone.utc))
         normalized = normalize_mapping_values(pending)
         memory_type = str(normalized.get("type") or "")
@@ -283,14 +285,17 @@ class PlayerMemory:
         payload = normalize_mapping_values(normalized.get("payload") or {})
         evidence = normalize_mapping_values(normalized.get("evidence") or {})
         if not text or normalized.get("status") not in {"pending", "accepted"} or memory_type == "do_not_remember":
-            return
+            return None
 
         profile = self.load_profile()
         boss = normalize_terminology(str(payload.get("boss") or "")).strip() or None
         progress_status = str(payload.get("progress_status") or "")
         preferred_tone = normalize_terminology(str(payload.get("preferred_tone") or "")).strip() or None
         long_term_memory = _long_term_memory_from_pending(normalized, text, timestamp)
-        if not _long_term_memory_exists(profile.long_term_memories, long_term_memory):
+        existing_memory = _find_long_term_memory(profile.long_term_memories, long_term_memory)
+        if existing_memory:
+            long_term_memory = existing_memory
+        else:
             profile.long_term_memories = [*profile.long_term_memories, long_term_memory]
 
         if memory_type == "game_progress":
@@ -337,6 +342,30 @@ class PlayerMemory:
         )
         if not self._episode_summary_exists(text):
             self._append_episode(episode)
+        return long_term_memory
+
+    def deactivate_long_term_memory(self, memory_id: str, timestamp: datetime | None = None) -> dict[str, Any]:
+        timestamp = _ensure_aware(timestamp or datetime.now(timezone.utc))
+        profile = self.load_profile()
+        updated_memory: dict[str, Any] | None = None
+        memories: list[dict[str, Any]] = []
+        for memory in profile.long_term_memories:
+            if not isinstance(memory, dict):
+                memories.append(memory)
+                continue
+            item = normalize_mapping_values(memory)
+            if str(item.get("id") or "") == memory_id:
+                item["is_active"] = False
+                item["updated_at"] = timestamp.isoformat()
+                updated_memory = item
+            memories.append(item)
+        if not updated_memory:
+            raise KeyError(memory_id)
+        profile.long_term_memories = memories
+        _reconcile_profile_fields_after_deactivation(profile, updated_memory, timestamp)
+        profile.last_seen_at = timestamp.isoformat()
+        self.save_profile(profile)
+        return updated_memory
 
     def extract_and_update(
         self,
@@ -520,6 +549,10 @@ def _long_term_memory_from_pending(pending: dict[str, Any], text: str, timestamp
 
 
 def _long_term_memory_exists(memories: list[dict[str, Any]], candidate: dict[str, Any]) -> bool:
+    return _find_long_term_memory(memories, candidate) is not None
+
+
+def _find_long_term_memory(memories: list[dict[str, Any]], candidate: dict[str, Any]) -> dict[str, Any] | None:
     candidate_source_id = str(candidate.get("source_candidate_id") or "")
     candidate_type = str(candidate.get("type") or "")
     candidate_summary = normalize_terminology(str(candidate.get("summary") or "")).strip()
@@ -527,13 +560,61 @@ def _long_term_memory_exists(memories: list[dict[str, Any]], candidate: dict[str
         if not isinstance(memory, dict):
             continue
         if candidate_source_id and str(memory.get("source_candidate_id") or "") == candidate_source_id:
-            return True
+            return normalize_mapping_values(memory)
         if (
             str(memory.get("type") or "") == candidate_type
             and normalize_terminology(str(memory.get("summary") or "")).strip() == candidate_summary
         ):
-            return True
-    return False
+            return normalize_mapping_values(memory)
+    return None
+
+
+def _reconcile_profile_fields_after_deactivation(
+    profile: UserProfile,
+    deactivated_memory: dict[str, Any],
+    timestamp: datetime,
+) -> None:
+    memory_type = str(deactivated_memory.get("type") or "")
+    if memory_type in {"interaction_preference", "relationship_preference", "user_preference"}:
+        active_interaction = _latest_active_memory(
+            profile.long_term_memories,
+            {"interaction_preference", "relationship_preference", "user_preference"},
+        )
+        if active_interaction:
+            profile.preferred_tone = _profile_preference_from_memory(active_interaction)
+            profile.likes_teasing = "吐槽" in str(profile.preferred_tone or "")
+            profile.memory_updated_at["preferred_tone"] = timestamp.isoformat()
+        else:
+            profile.preferred_tone = None
+            profile.likes_teasing = None
+            profile.memory_updated_at.pop("preferred_tone", None)
+    if memory_type == "emotional_pattern":
+        text = normalize_terminology(str(deactivated_memory.get("summary") or deactivated_memory.get("user_visible_text") or "")).strip()
+        normalized_notes = [note for note in profile.emotional_notes if normalize_terminology(str(note)).strip() != text]
+        if len(normalized_notes) != len(profile.emotional_notes):
+            profile.emotional_notes = normalized_notes
+            if profile.emotional_notes:
+                profile.memory_updated_at["emotional_notes"] = timestamp.isoformat()
+            else:
+                profile.memory_updated_at.pop("emotional_notes", None)
+
+
+def _latest_active_memory(memories: list[dict[str, Any]], memory_types: set[str]) -> dict[str, Any] | None:
+    active = [
+        normalize_mapping_values(memory)
+        for memory in memories
+        if isinstance(memory, dict)
+        and memory.get("is_active") is not False
+        and str(memory.get("type") or "") in memory_types
+    ]
+    if not active:
+        return None
+    return max(active, key=lambda memory: str(memory.get("updated_at") or memory.get("created_at") or ""))
+
+
+def _profile_preference_from_memory(memory: dict[str, Any]) -> str:
+    text = normalize_terminology(str(memory.get("user_visible_text") or memory.get("summary") or "")).strip()
+    return text.removeprefix("玩家").strip()
 
 
 def _normalize_profile_data(data: dict[str, Any]) -> dict[str, Any]:

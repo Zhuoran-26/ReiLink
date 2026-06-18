@@ -49,6 +49,17 @@ class DialogueTimeoutError(DialogueError):
     pass
 
 
+def _empty_memory_update() -> dict[str, Any]:
+    return {
+        "status": "none",
+        "summary": None,
+        "pending_memory_id": None,
+        "long_term_memory_id": None,
+        "pending_count": 0,
+        "undo_available": False,
+    }
+
+
 class DialogueAgent:
     persona_id = "rei_like"
 
@@ -175,15 +186,15 @@ class DialogueAgent:
             assistant_reply_segments=reply_segments.segments,
         )
         memory_start = time.perf_counter()
+        memory_update = self._safe_memory_update(
+            request.message,
+            reply,
+            intent_result.intent,
+            now,
+            semantic_extraction,
+            input_source=request.input_source,
+        ) or _empty_memory_update()
         if background_tasks is not None:
-            background_tasks.add_task(
-                self._safe_memory_update,
-                request.message,
-                reply,
-                intent_result.intent,
-                now,
-                semantic_extraction,
-            )
             if (semantic_extraction.get("llm_shadow") or {}).get("skip_reason") == "shadow_deferred":
                 shadow_trace_id = schedule_semantic_shadow_event(semantic_extraction)
                 background_tasks.add_task(
@@ -195,8 +206,6 @@ class DialogueAgent:
                     input_source=request.input_source,
                     trace_id=shadow_trace_id,
                 )
-        else:
-            self._safe_memory_update(request.message, reply, intent_result.intent, now, semantic_extraction)
         memory_latency_ms = int((time.perf_counter() - memory_start) * 1000)
         total_latency_ms = int((time.perf_counter() - total_start) * 1000)
         provider_latency_ms = int(llm_result.provider_latency_ms or llm_result.llm_latency_ms)
@@ -287,6 +296,7 @@ class DialogueAgent:
             provider_latency_ms=provider_latency_ms,
             model_used=llm_result.selected_model,
             route_reason=llm_result.route_reason,
+            memory_update=memory_update,
         )
 
     def _safe_memory_update(
@@ -296,25 +306,30 @@ class DialogueAgent:
         intent: str,
         timestamp: datetime,
         semantic_extraction: dict[str, Any] | None = None,
-    ) -> None:
+        input_source: str | None = None,
+    ) -> dict[str, Any]:
         start = time.perf_counter()
         try:
-            pending = PendingMemoryQueue().generate_and_enqueue(
+            memory_update = PendingMemoryQueue().process_user_message(
                 user_message,
                 reply,
                 intent,
                 timestamp,
                 self.game_session.debug_state(now=timestamp),
                 semantic_extraction=semantic_extraction,
+                input_source=input_source,
             )
         except Exception:
             logger.exception("memory update error")
+            return {**_empty_memory_update(), "status": "failed"}
         else:
             logger.info(
-                "memory update completed pending_count=%s memory_latency_ms=%s",
-                len(pending),
+                "memory update completed status=%s pending_count=%s memory_latency_ms=%s",
+                memory_update.get("status"),
+                memory_update.get("pending_count"),
                 int((time.perf_counter() - start) * 1000),
             )
+            return memory_update
 
     def _finalize_reply(self, raw_reply: str, intent: str, session_id: str, user_message: str) -> str:
         reply = apply_rei_style(validate_or_repair(raw_reply, intent), seed=f"{session_id}:{user_message}")

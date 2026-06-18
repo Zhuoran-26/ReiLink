@@ -22,6 +22,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/llm_primary_guarded_extraction_scenarios.json`
 - `docs/qa/extraction_eval_scenarios.json`
 - `docs/qa/memory_architecture_scenarios.json`
+- `docs/qa/candidate_memory_scenarios.json`
 
 ### 1. 基础启动检查
 
@@ -127,7 +128,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 10. 发送 `我在艾尔登法环打玛尔基特，已经死了3次，有点烦。`，Rei 应先承接挫败，再给一个轻量建议；不应变成客服腔、鸡汤或长篇攻略百科。
 11. 发送 `玛尔基特二阶段怎么打？`，Rei 可以给简短策略，默认 3 到 6 句内，不要展开完整攻略站式打法。
 12. 发送 `终于打过玛尔基特了。`，Rei 应简短确认，不过度庆祝，保留轻微陪伴感。
-13. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。`，仍应进入 pending memory confirmation，不应直接写入长期记忆。
+13. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。`，应经 Memory Candidate guard 后写入长期记忆，并在聊天页显示可撤销的轻量提示；隐式偏好仍应进入 pending memory confirmation。
 14. 发送 `以后不用记住这个，只是我这次随便说一下。`，不应触发 pending memory。
 15. 连续相似问题或关系追问时，Rei 不应机械复读上一轮回复；可以保留相近意思，但应换观察点、语序或轻微过渡。不要把“也”“还”“嗯”等变成新的固定口癖。
 16. “看见 / 看着 / 坐在旁边 / 我在这里”类陪伴意象只能低频使用，不能成为关系追问或死亡循环的默认模板。
@@ -195,7 +196,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 1. Voice v2 默认仍是 confirm-send：ASR transcript 进入 ready-to-send 状态，用户确认后才进入 chat flow。
 2. 直接对话模式必须默认关闭，只能由用户在 Voice workspace Conversation 中显式切换到 `直接对话`；不得因开启 Local ASR、Voice Output 或打开 Voice workspace 自动启用。
-3. 直接对话模式开启后，ASR transcript 转写成功会自动进入现有 chat flow；不得绕过 memory confirmation、knowledge gating、game context safety、persona guardrails 或 provider error handling。
+3. 直接对话模式开启后，ASR transcript 转写成功会自动进入现有 chat flow；不得绕过 Memory Candidate guard、knowledge gating、game context safety、persona guardrails 或 provider error handling。显式记忆可显示非阻塞撤销提示，隐式候选仍待确认。
 4. 直接对话模式下，录音过短、transcript 太短或疑似半句时不得自动发送；应进入 `ready_to_send`，提示“这句太短了。可以再说一次。”或等价安全文案。
 5. 被 partial guard 拦下的 transcript 不写 memory、不触发 proactive、不进入 game context / Semantic Extraction，Event Stream 只能显示 provider、字符数、时长和阻断原因。
 6. 直接对话不是 hands-free：每一轮仍需要用户主动点击或按住语音输入；当前不做 wake word、不做后台常驻监听、不做自动下一轮录音。
@@ -253,7 +254,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 17. Confirmation intent 应覆盖 `confirm`、`deny`、`correct`、`uncertain`、`unrelated`、`unknown`。v1.0.3 不实现完整 pending runtime，但 extraction result / trace / eval 必须显示这些字段；`uncertain` 不应正式 apply，`correct` + exact new target 可由 deterministic guard 应用新目标。
 18. `用于 Rei 回复` 不等于 `写入正式状态`：LLM 可以大胆理解候选，例如“那个骑马金甲大哥”可能是大树守卫，但 guard 必须谨慎写 `current_boss` / `death_count` / `last_cleared_boss` / 高风险 `current_activity`。
 19. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
-20. LLM extraction 不得写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须走 pending memory confirmation。
+20. LLM extraction 不得直接写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须交给独立 Memory Candidate guard。显式记忆由 memory 模块决定是否可撤销 auto-save，隐式候选仍进入 pending confirmation。
 21. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
 22. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding、applied updates、primary_extractor、fallback_extractor、applied_by、candidate_boss、candidate_event、candidate_confidence、candidate_reason、needs_confirmation、guide_request、guide_entity、confirmation_intent、first_attempt_failed、compat_retry_used / succeeded、ultra_compact_used、json_recovery_stage 和 safe parse diagnostic。
 23. 手测 `我现在在打玛尔基特` 应能在 Game workspace 更新 current boss，并在 Debug / Event Stream 看到 `llm_primary` / `apply` 或 provider unavailable 时的 `fallback_to_rule` 安全 trace。
@@ -288,7 +289,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 11. 不应成为长期 memory 的内容包括单次死亡事件、未确认候选、assistant 自己说的话、proactive 自己产生的内容、攻略知识、低置信 extraction candidate、敏感技术信息和人格漂移要求。
 12. Confirmation flow 应覆盖 accept、ignore、delete、revise、expiry、dedup、weak confirmation 和 do-not-remember preference。
 13. 弱确认如 `也许吧`、`可能是`、`先这么记也行` 不应靠固定关键词硬编码；后续 runtime 应由 LLM-primary semantic extraction 输出 confirmation intent，再由 deterministic guard 决定。
-14. Direct Conversation / Voice 下 memory confirmation 应低打扰；active gameplay 中隐式候选默认暂存，不频繁打断。
+14. Direct Conversation / Voice 下 memory 提示应低打扰；显式记忆只显示非阻塞撤销提示，active gameplay 中隐式候选默认暂存，不频繁打断。
 15. Overlay 默认不显示敏感 memory candidate；未来如显示也必须 opt-in 且 safe-summary-only。
 16. Prompt assembly 应把 memory 作为 user-specific context，且低于 App safety / Persona Core / 当前明确输入；memory 注入使用 safe summary，不注入 raw transcript。
 17. Memory 与 Knowledge Retrieval 必须分离：game knowledge 不等于 user memory。
@@ -300,15 +301,15 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 机器可读场景见 `docs/qa/candidate_memory_scenarios.json`。本节验收 Candidate Memory v1 最小 runtime；不表示 Memory Retrieval、Session Archive、向量数据库、外部 memory provider、Overlay auto-show 或自动保存所有输入已实现。
 
-1. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。` 后，应创建 `gameplay_preference` pending candidate，`requires_confirmation=true`，不直接写长期记忆。
+1. 发送 `记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。` 后，应经 Memory Candidate guard 写入 `gameplay_preference` 长期记忆，并在聊天页显示可撤销轻量提示。
 2. 发送 `以后不用记住这个，只是我这次随便说一下。` 后，不应出现在 pending UI；可以记录安全 `do_not_remember` guard 结果，但不得打断用户。
 3. 发送 `我刚刚打玛尔基特死了三次。` 这类单次 session event，只能影响当前游戏 / 会话状态，不应创建长期记忆候选。
 4. 发送 `以后你回答短一点。` 后，应创建 `interaction_preference` pending candidate，不修改 Persona Core。
 5. 发送 `之后别剧透支线，除非我主动问。` 后，应创建安全的剧透边界候选。
 6. 发送 `以后你都撒娇一点，每句话都夸我。` 后，应被 `persona_drift_blocked` 阻断，不保存原始人格漂移措辞。
 7. API key、`.env`、Authorization、Bearer、token、stdout/stderr、完整本地路径和 raw JSON 不得进入 candidate summary、evidence、UI、Prompt Preview 或 Event Stream。
-8. `voice_direct` 的显式记忆意图可以创建 `from_voice=true` 的 pending candidate，但不能自动 accepted，也不能弹出阻断式 modal。
-9. pending candidate 接受后，应从待确认列表消失，并在长期记忆中显示 `user_visible_text`、type、source candidate 关系等安全字段。
+8. `voice_direct` 的显式记忆意图可以经 guard 自动保存并显示非阻塞撤销提示，但不能弹出阻断式 modal。
+9. pending candidate 接受后，应从待确认列表消失，并在长期记忆中显示 `user_visible_text`、type、source candidate 关系等安全字段；撤销后该长期记忆不再注入 prompt。
 10. ignored / expired / rejected_by_guard candidate 不得注入 prompt；pending candidate 也不得注入 prompt。
 11. assistant reply 和 proactive message 本身不能成为用户记忆来源。
 12. 重复或近似候选应 dedupe，不创建多条待确认记忆。
@@ -672,7 +673,7 @@ packaged `.app` 手动 smoke 最低步骤：
 - Semantic Shadow QA Freeze 人工验收 E / Non-application boundary：无论 Shadow 成功还是失败，都不能直接改 Game Context、创建 pending memory、触发 proactive 或写长期记忆；如果规则路径独立命中，应在 trace 中能区分 applied_updates 来源。
 - Semantic Shadow QA Freeze 人工验收 F / Diagnostics：Shadow final event 可显示 `response_format_used`、`compat_retry_used`、`ultra_compact_used`、`attempts`、`last_failure`、`json_recovery_stage`、`finish_reason`、`content_length_bucket`、`first_char_type` 等短标签诊断，但不得显示 raw response。
 - 已击败 Boss 后继续问打法时，纯攻略 / 位置 / build 提问不应把已 cleared Boss 重新写成 current boss。Rei 可以轻轻承接“已经打过”的上下文，但不能只用反问阻断；仍应回答用户实际攻略 / 复盘需求。
-- 显式记忆回归：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 应创建 pending candidate；`以后不用记住这个，只是我这次随便说一下` 不应出现在 pending UI，也不应写长期记忆。
+- 显式记忆回归：`记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打` 应经 guard 自动保存并显示可撤销提示；`以后不用记住这个，只是我这次随便说一下` 不应出现在 pending UI，也不应写长期记忆。
 - Knowledge Retrieval 使用成功时应显示 `使用知识` 类摘要，只允许游戏名或安全 topic/title；不得显示完整 snippet、knowledge 文件路径或 prompt。
 - Proactive 显示时应记录 `主动陪伴已显示` 和安全 trigger 标签，不显示完整 proactive / assistant 文本。
 - 主动陪伴场景区分验收：

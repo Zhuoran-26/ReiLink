@@ -11,6 +11,7 @@ import { voiceOutput } from "../voiceOutput";
 import type {
   AppSettings,
   AudioProbeResponse,
+  ChatResponse,
   GameContextResponse,
   GameDetectionResponse,
   LocalAsrProbeResponse,
@@ -741,6 +742,7 @@ const pendingMemories = [
     text: "玩家不喜欢长篇攻略",
     source: "explicit_user_statement",
     source_event_id: null,
+    long_term_memory_id: null,
     confidence: 0.95,
     requires_confirmation: true,
     status: "pending",
@@ -1381,6 +1383,9 @@ const pendingMemoryResponse = (url: string, init?: RequestInit) => {
   if (url.includes("/api/memory/pending/pending-1/ignore") && init?.method === "POST") {
     return Response.json({ ...pendingMemories[0], status: "ignored" });
   }
+  if (url.includes("/api/memory/long-term/ltm-1/undo") && init?.method === "POST") {
+    return Response.json({ ...memoryProfile.long_term_memories[0], is_active: false });
+  }
   return null;
 };
 
@@ -1394,7 +1399,7 @@ const debugActionResponse = (url: string, init?: RequestInit) => {
   return null;
 };
 
-const chatResponse = {
+const chatResponse: ChatResponse = {
   reply: "别急着翻滚。先看动作。再试一次。",
   reply_segments: ["别急着翻滚。先看动作。再试一次。"],
   segmenter_mode: "compact",
@@ -2113,7 +2118,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "快速开始 ReiLink" })).toBeInTheDocument();
     expect(screen.getByText("当前 DeepSeek API Key 已加载。")).toBeInTheDocument();
     expect(screen.getByText("可以让 ReiLink 自动检测，也可以手动选择当前游戏。")).toBeInTheDocument();
-    expect(screen.getByText("ReiLink 不会直接写入长期记忆，需要你手动保存。")).toBeInTheDocument();
+    expect(screen.getByText("显式记忆会给出可撤销提示；隐式候选仍需要你确认。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "开始使用" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开设置" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看 Demo 文档" })).toBeInTheDocument();
@@ -2494,6 +2499,57 @@ describe("App", () => {
       expect.stringContaining("/api/chat"),
       expect.objectContaining({ method: "POST" })
     );
+  });
+
+  it("shows an undoable memory notice after explicit auto-save", async () => {
+    chatResponseStore = {
+      ...chatResponse,
+      memory_update: {
+        status: "auto_saved",
+        summary: "玩家打 Boss 前喜欢先探索地图，不喜欢直接硬打",
+        pending_memory_id: "pending-auto",
+        long_term_memory_id: "ltm-1",
+        pending_count: 0,
+        undo_available: true
+      }
+    };
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    expect(await screen.findByText("已记住：玩家打 Boss 前喜欢先探索地图，不喜欢直接硬打")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "撤销" }));
+
+    await screen.findByText("已撤销这条记忆");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/long-term/ltm-1/undo"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("shows a pending memory hint that opens the Memory workspace", async () => {
+    chatResponseStore = {
+      ...chatResponse,
+      memory_update: {
+        status: "pending",
+        summary: "玩家不喜欢长篇攻略",
+        pending_memory_id: "pending-1",
+        long_term_memory_id: null,
+        pending_count: 1,
+        undo_available: false
+      }
+    };
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "我不喜欢长篇攻略");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    expect(await screen.findByText("有新的记忆待确认")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "查看" }));
+
+    expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
+    expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
   });
 
   it("emits interaction events for sent messages and shown assistant segments", async () => {

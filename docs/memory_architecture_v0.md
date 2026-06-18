@@ -155,16 +155,16 @@ Examples:
 
 Rules:
 
-- It must pass memory guard before it reaches pending UI.
+- It must pass memory guard before it reaches pending UI or explicit auto-save.
 - It must be confirmable, ignorable, revisable, and expirable.
 - It must preserve evidence as a safe summary, not raw transcript.
 - It must never be created from assistant replies or proactive text alone.
 
-Current v1 runtime:
+Current v1.1 runtime:
 
-- Reuses the existing pending memory API and Memory workspace Pending tab.
+- Reuses the existing pending memory API, Memory workspace Pending tab, and undoable Long-term Memory items.
 - Stores `summary`, `evidence_summary`, `guard_reason`, `expires_at`, source metadata, and voice / assistant / proactive flags.
-- Shows pending candidates only after guard passes.
+- Shows pending candidates only after guard passes; explicit remember requests can auto-save after guard and show a lightweight undo hint.
 - Stores rejected guard results outside pending UI for no-memory, secret, persona drift, assistant source, or proactive source cases.
 
 ### Long-term Memory
@@ -291,6 +291,7 @@ source event
 -> MemoryCandidate draft
 -> memory guard
    -> rejected_by_guard
+   -> explicit_auto_saved
    -> pending
 -> user response
    -> accepted
@@ -353,13 +354,13 @@ The candidate should include:
 Default UI:
 
 - Memory workspace Pending tab.
-- Optional low-noise inline prompt for explicit remember requests.
+- Low-noise inline chat hint for explicit remember requests, with undo.
 - Debug safe trace for candidate lifecycle.
 
 Voice / Direct Conversation:
 
 - Avoid interrupting active gameplay.
-- Prefer a short spoken cue only when user explicitly requested remembering.
+- Prefer a short non-blocking cue only when user explicitly requested remembering.
 - For implicit candidates, stage silently and surface later in Memory workspace.
 - Do not repeatedly ask in the same session.
 
@@ -370,9 +371,10 @@ Overlay:
 
 ### Accept / Ignore / Delete / Revise
 
-- Accept moves candidate into Long-term Memory.
+- Accept moves pending candidate into Long-term Memory.
+- Explicit auto-save moves guarded explicit remember requests into Long-term Memory and exposes undo.
 - Ignore marks candidate as ignored and suppresses near-duplicate prompts.
-- Delete deactivates Long-term Memory and removes it from retrieval.
+- Delete / undo deactivates Long-term Memory and removes it from retrieval / prompt assembly.
 - Revise creates an updated candidate or edits the user-visible text after confirmation.
 
 ### Expiry And Dedup
@@ -442,7 +444,7 @@ Prompt memory block example:
   "confidence": "high | medium | low",
   "requires_confirmation": true,
   "status": "pending | accepted | ignored | expired | rejected_by_guard",
-  "guard_reason": "explicit_memory_request",
+  "guard_reason": "explicit_memory_request | requires_confirmation",
   "privacy_level": "normal | sensitive | secret_rejected",
   "related_game": "elden_ring",
   "related_entity": "boss",
@@ -569,15 +571,15 @@ The scenarios cover explicit memory requests, negative memory requests, one-off 
 
 ## Roadmap
 
-### Candidate Memory v1
+### Candidate Memory v1.1
 
-Status: implemented as the first minimal runtime slice.
+Status: implemented as the first minimal runtime slice plus explicit auto-save / undo.
 
 - Normalizes MemoryCandidate schema.
-- Routes explicit remember requests and selected stable preferences into pending candidates.
+- Routes explicit remember requests through Memory Candidate guard into undoable Long-term Memory; selected stable implicit preferences become pending candidates.
 - Adds guard reasons, expiry, source metadata, safe evidence summaries, and voice flags.
-- Keeps current pending memory UI mostly intact while adding safe source / guard display.
-- Accept writes a visible long-term memory item; pending / ignored / expired / rejected candidates are not injected into prompts.
+- Keeps current pending memory UI while adding chat hints, undo, and safe source / guard display.
+- Explicit auto-save and accepted candidates write visible long-term memory items; undone / inactive, pending, ignored, expired, and rejected candidates are not injected into prompts.
 
 ### Memory Retrieval v1
 

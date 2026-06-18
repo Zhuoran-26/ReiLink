@@ -33,7 +33,7 @@ def test_explicit_long_guide_preference_creates_pending_candidate():
     assert len(created) == 1
     assert created[0]["type"] == "interaction_preference"
     assert created[0]["summary"] == "玩家不喜欢长篇攻略"
-    assert created[0]["source"] == "explicit_user_statement"
+    assert created[0]["source"] == "semantic_extraction"
     assert created[0]["status"] == "pending"
     assert created[0]["requires_confirmation"] is True
     assert created[0]["evidence"].get("user_message") is None
@@ -87,6 +87,51 @@ def test_explicit_boss_exploration_preference_creates_pending_candidate_not_long
     assert created[0]["requires_confirmation"] is True
     assert created[0]["guard_reason"] == "explicit_user_memory_request"
     assert PlayerMemory().load_profile().long_term_memories == []
+
+
+def test_process_explicit_memory_request_auto_saves_and_returns_undo_target():
+    queue = PendingMemoryQueue()
+    result = queue.process_user_message(
+        "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。",
+        "嗯，记住了。",
+        "casual_chat",
+        _now(),
+        {},
+    )
+
+    profile = PlayerMemory().load_profile()
+    all_items = queue.list(status=None)
+
+    assert result["status"] == "auto_saved"
+    assert result["summary"] == "玩家打 Boss 前喜欢先探索地图，不喜欢直接硬打"
+    assert result["long_term_memory_id"]
+    assert result["undo_available"] is True
+    assert queue.list() == []
+    assert all_items[0]["status"] == "accepted"
+    assert all_items[0]["long_term_memory_id"] == result["long_term_memory_id"]
+    assert profile.long_term_memories[0]["id"] == result["long_term_memory_id"]
+    assert profile.long_term_memories[0]["is_active"] is True
+
+
+def test_undo_auto_saved_memory_removes_it_from_prompt_context():
+    queue = PendingMemoryQueue()
+    result = queue.process_user_message(
+        "记住我不喜欢长篇攻略",
+        "我记下了。",
+        "casual_chat",
+        _now(),
+        {},
+    )
+    memory_id = result["long_term_memory_id"]
+
+    undone = PlayerMemory().deactivate_long_term_memory(memory_id)
+    profile = PlayerMemory().load_profile()
+    prompt_text = PlayerMemory().build_prompt_context()
+
+    assert undone["is_active"] is False
+    assert profile.long_term_memories[0]["is_active"] is False
+    assert profile.preferred_tone is None
+    assert "长篇攻略" not in prompt_text
 
 
 def test_negative_memory_request_records_guarded_rejection_without_pending_candidate():

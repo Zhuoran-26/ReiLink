@@ -11,6 +11,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.modules.elden_ring_knowledge.terminology import normalize_mapping_values, normalize_terminology
+from app.modules.memory.candidate_check import MemoryCandidateCheck, check_memory_candidate
 from app.modules.memory.profile import PlayerMemory
 
 CANDIDATE_MEMORY_TYPES = {
@@ -72,6 +73,7 @@ class PendingMemory:
     evidence: dict[str, Any] = field(default_factory=dict)
     payload: dict[str, Any] = field(default_factory=dict)
     source_event_id: str | None = None
+    long_term_memory_id: str | None = None
     expires_at: str | None = None
     summary: str | None = None
     evidence_summary: str | None = None
@@ -95,6 +97,7 @@ class PendingMemory:
                 "type": self.type,
                 "source": self.source,
                 "source_event_id": self.source_event_id,
+                "long_term_memory_id": self.long_term_memory_id,
                 "created_at": created_at,
                 "expires_at": expires_at,
                 "summary": summary,
@@ -156,6 +159,52 @@ class PendingMemoryQueue:
             from_proactive=from_proactive,
         )
         return self.enqueue(candidates)
+
+    def process_user_message(
+        self,
+        user_message: str,
+        assistant_reply: str,
+        intent: str,
+        timestamp: datetime,
+        game_state_summary: dict[str, Any] | None = None,
+        semantic_extraction: dict[str, Any] | None = None,
+        input_source: str | None = None,
+        source_event_id: str | None = None,
+        from_assistant: bool = False,
+        from_proactive: bool = False,
+    ) -> dict[str, Any]:
+        created = self.generate_and_enqueue(
+            user_message,
+            assistant_reply,
+            intent,
+            timestamp,
+            game_state_summary,
+            semantic_extraction=semantic_extraction,
+            input_source=input_source,
+            source_event_id=source_event_id,
+            from_assistant=from_assistant,
+            from_proactive=from_proactive,
+        )
+        auto_saved: dict[str, Any] | None = None
+        for item in created:
+            if _should_auto_save(item):
+                auto_saved = self.accept(str(item["id"]))
+                break
+        pending = self.list()
+        if auto_saved:
+            return _memory_update_result(
+                status="auto_saved",
+                item=auto_saved,
+                pending_count=len(pending),
+            )
+        pending_created = [item for item in created if item.get("status") == "pending"]
+        if pending_created:
+            return _memory_update_result(
+                status="pending",
+                item=pending_created[0],
+                pending_count=len(pending),
+            )
+        return _memory_update_result(status="none", pending_count=len(pending))
 
     def generate_candidates(
         self,
@@ -254,8 +303,45 @@ class PendingMemoryQueue:
             "from_assistant": False,
         }
         candidates: list[PendingMemory] = []
+        memory_check = check_memory_candidate(
+            normalized_message,
+            input_source=input_source_value,
+            game_state_summary=game_summary,
+        )
+        memory_check_created = False
 
-        if _mentions_short_guide_preference(normalized_message) or _mentions_short_reply_preference(normalized_message):
+        if memory_check.suggested_action == "reject":
+            return [
+                _rejected_candidate(
+                    created_at=now,
+                    source=_candidate_source(input_source_value, "semantic_extraction"),
+                    source_event_id=source_event_id,
+                    summary="记忆候选检查未通过",
+                    guard_reason=_memory_check_reject_reason(memory_check),
+                    from_voice=from_voice,
+                    confirmation_intent=_confirmation_intent(input_source_value, explicit=memory_check.explicit_request),
+                ).as_dict()
+            ]
+
+        if memory_check.should_create:
+            candidates.append(
+                _candidate_from_memory_check(
+                    memory_check,
+                    created_at=now,
+                    updated_at=now,
+                    expires_at=(now_dt + CANDIDATE_TTL).isoformat(),
+                    source=_candidate_source(input_source_value, "semantic_extraction"),
+                    source_event_id=source_event_id,
+                    evidence=_safe_evidence({**evidence, **memory_check.as_evidence()}),
+                    input_source=input_source_value,
+                    from_voice=from_voice,
+                )
+            )
+            memory_check_created = True
+
+        if not memory_check_created and (
+            _mentions_short_guide_preference(normalized_message) or _mentions_short_reply_preference(normalized_message)
+        ):
             candidates.append(
                 _pending_candidate(
                     summary="玩家偏好简短回答和简短游戏提醒",
@@ -269,7 +355,7 @@ class PendingMemoryQueue:
                 )
             )
 
-        if _mentions_long_guide_preference(normalized_message):
+        if not memory_check_created and _mentions_long_guide_preference(normalized_message):
             candidates.append(
                 _pending_candidate(
                     summary="玩家不喜欢长篇攻略",
@@ -283,7 +369,7 @@ class PendingMemoryQueue:
                 )
             )
 
-        if _mentions_spirit_ashes_preference(normalized_message):
+        if not memory_check_created and _mentions_spirit_ashes_preference(normalized_message):
             candidates.append(
                 _pending_candidate(
                     summary="玩家不喜欢召唤骨灰，倾向自己打",
@@ -297,7 +383,7 @@ class PendingMemoryQueue:
                 )
             )
 
-        if _mentions_companion_style_preference(normalized_message):
+        if not memory_check_created and _mentions_companion_style_preference(normalized_message):
             candidates.append(
                 _pending_candidate(
                     summary="玩家偏好 Rei 回应克制、低打扰",
@@ -312,7 +398,7 @@ class PendingMemoryQueue:
             )
 
         explicit_preference = _explicit_personal_preference(normalized_message)
-        if explicit_preference:
+        if explicit_preference and not memory_check_created:
             candidates.append(
                 _pending_candidate(
                     summary=f"玩家{explicit_preference}",
@@ -327,7 +413,7 @@ class PendingMemoryQueue:
             )
 
         playstyle_preference = _explicit_boss_exploration_preference(normalized_message)
-        if playstyle_preference:
+        if playstyle_preference and not memory_check_created:
             candidates.append(
                 _pending_candidate(
                     summary=f"玩家{playstyle_preference}",
@@ -342,7 +428,7 @@ class PendingMemoryQueue:
             )
 
         spoiler_preference = _spoiler_preference(normalized_message)
-        if spoiler_preference:
+        if spoiler_preference and not memory_check_created:
             candidates.append(
                 _pending_candidate(
                     summary=spoiler_preference,
@@ -357,7 +443,7 @@ class PendingMemoryQueue:
             )
 
         accessibility_preference = _accessibility_preference(normalized_message)
-        if accessibility_preference:
+        if accessibility_preference and not memory_check_created:
             candidates.append(
                 _pending_candidate(
                     summary=accessibility_preference,
@@ -412,7 +498,9 @@ class PendingMemoryQueue:
             if item.get("id") != memory_id:
                 continue
             if item.get("status") == "pending":
-                self.player_memory.apply_pending_memory(item, timestamp=now)
+                long_term_memory = self.player_memory.apply_pending_memory(item, timestamp=now)
+                if long_term_memory:
+                    item["long_term_memory_id"] = long_term_memory.get("id")
                 item["status"] = "accepted"
                 item["requires_confirmation"] = False
                 item["updated_at"] = now.isoformat()
@@ -531,6 +619,7 @@ def _normalize_pending_item(item: dict[str, Any]) -> dict[str, Any] | None:
         "text": text,
         "source": source,
         "source_event_id": str(normalized.get("source_event_id") or "") or None,
+        "long_term_memory_id": str(normalized.get("long_term_memory_id") or "") or None,
         "confidence": float(normalized.get("confidence") or 0),
         "requires_confirmation": requires_confirmation,
         "status": status,
@@ -597,7 +686,16 @@ def _safe_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(evidence, dict):
         return {}
     normalized = normalize_mapping_values(evidence)
-    allowed_keys = ("input_summary", "source_channel", "game_state_summary", "semantic_reason", "guard_decision")
+    allowed_keys = (
+        "input_summary",
+        "source_channel",
+        "game_state_summary",
+        "semantic_reason",
+        "guard_decision",
+        "memory_check_source",
+        "memory_check_reason",
+        "memory_check_status",
+    )
     safe: dict[str, Any] = {}
     for key in allowed_keys:
         value = normalized.get(key)
@@ -815,9 +913,106 @@ def _semantic_memory_candidate(
 
 
 def _minimum_candidate_confidence(candidate: PendingMemory) -> float:
+    if candidate.payload.get("memory_check_source"):
+        return 0.72
     if candidate.source == "semantic_extraction" and candidate.payload.get("semantic_type") == "persona_preference":
         return 0.65
     return 0.85
+
+
+def _candidate_from_memory_check(
+    memory_check: MemoryCandidateCheck,
+    *,
+    created_at: str,
+    updated_at: str,
+    expires_at: str,
+    source: str,
+    source_event_id: str | None,
+    evidence: dict[str, Any],
+    input_source: str,
+    from_voice: bool,
+) -> PendingMemory:
+    explicit = bool(memory_check.explicit_request)
+    guard_reason = "explicit_user_memory_request" if explicit else "requires_confirmation"
+    evidence_summary = (
+        "显式记忆请求已通过 Memory Candidate Check"
+        if explicit
+        else "LLM-primary Memory Candidate Check 提出了待确认记忆候选"
+    )
+    return _pending_candidate(
+        summary=memory_check.safe_summary,
+        type=memory_check.memory_type,
+        confidence=memory_check.confidence,
+        created_at=created_at,
+        updated_at=updated_at,
+        expires_at=expires_at,
+        source=source,
+        source_event_id=source_event_id,
+        evidence=evidence,
+        evidence_summary=evidence_summary,
+        payload=_memory_check_payload(memory_check),
+        guard_reason=guard_reason,
+        confirmation_intent=_confirmation_intent(input_source, explicit=explicit),
+        from_voice=from_voice,
+        from_proactive=False,
+        from_assistant=False,
+    )
+
+
+def _memory_check_payload(memory_check: MemoryCandidateCheck) -> dict[str, Any]:
+    text = memory_check.safe_summary.removeprefix("玩家").strip()
+    payload: dict[str, Any] = {
+        "memory_check_source": memory_check.source,
+        "memory_check_reason": memory_check.reason,
+        "memory_check_action": memory_check.suggested_action,
+    }
+    if memory_check.memory_type == "gameplay_preference":
+        payload["playstyle"] = text
+    elif memory_check.memory_type == "interaction_preference":
+        payload["preference"] = text
+    elif memory_check.memory_type == "accessibility_preference":
+        payload["preference"] = text
+    elif memory_check.memory_type == "emotional_pattern":
+        payload["emotional_state"] = text
+    else:
+        payload["preference"] = text
+    return payload
+
+
+def _memory_check_reject_reason(memory_check: MemoryCandidateCheck) -> str:
+    if memory_check.reason in {"sensitive_secret_blocked", "persona_drift_blocked", "do_not_remember"}:
+        return memory_check.reason
+    return "reject_candidate"
+
+
+def _should_auto_save(item: dict[str, Any]) -> bool:
+    if item.get("status") != "pending":
+        return False
+    if item.get("guard_reason") != "explicit_user_memory_request":
+        return False
+    if item.get("type") == "do_not_remember":
+        return False
+    if item.get("from_assistant") or item.get("from_proactive"):
+        return False
+    if item.get("privacy_level") == "secret":
+        return False
+    return item.get("confirmation_intent") in {"explicit", "voice_confirmed", "voice_direct"}
+
+
+def _memory_update_result(
+    *,
+    status: str,
+    item: dict[str, Any] | None = None,
+    pending_count: int = 0,
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "summary": (item or {}).get("summary") or None,
+        "pending_memory_id": (item or {}).get("id") or None,
+        "long_term_memory_id": (item or {}).get("long_term_memory_id") or None,
+        "pending_count": pending_count,
+        "undo_available": status == "auto_saved" and bool((item or {}).get("long_term_memory_id")),
+    }
 
 
 def _semantic_payload(source_type: str, text: str) -> dict[str, Any]:

@@ -550,12 +550,12 @@ New architecture:
 These boundaries must not regress:
 
 - LLM extraction cannot write long-term memory.
-- LLM extraction may emit `memory_candidate_hint`, but it must enter pending memory confirmation through the existing memory pipeline.
-- LLM extraction candidate fields such as `candidate_boss`, `candidate_event`, `candidate_game`, `needs_confirmation`, and `confirmation_intent` are current-turn understanding signals. They may help memory confirmation routing, but they are not Long-term Memory and must not be saved without the separate Memory Candidate guard described in `docs/memory_architecture_v0.md`.
+- LLM extraction may emit `memory_candidate_hint`, but it must enter the separate Memory Candidate guard rather than write memory itself.
+- LLM extraction candidate fields such as `candidate_boss`, `candidate_event`, `candidate_game`, `needs_confirmation`, and `confirmation_intent` are current-turn understanding signals. They may help memory routing, but they are not Long-term Memory and must not be saved without the separate Memory Candidate guard described in `docs/memory_architecture_v0.md`. Explicit memory requests can only auto-save through that memory module, with undo; implicit candidates remain pending.
 - LLM extraction cannot trigger proactive messages.
 - Proactive remains controlled by Proactive Safe Gating.
 - LLM extraction cannot modify persona.
-- Voice Direct Conversation does not bypass memory confirmation.
+- Voice Direct Conversation does not bypass Memory Candidate guard.
 - Relationship or emotional attachment input should not automatically become memory.
 - Game context extraction and memory extraction remain separate modules with separate schemas and guards.
 
@@ -680,7 +680,7 @@ Avoid alias explosion. Exact aliases are still useful, but only as grounding evi
 
 Create a separate memory-candidate extraction path if needed.
 
-It must remain separate from game context extraction and must route through pending memory confirmation.
+It must remain separate from game context extraction and must route through Memory Candidate guard. Explicit remember requests may become undoable auto-saves; implicit candidates remain pending.
 
 ## Next Pilot Recommendations
 
