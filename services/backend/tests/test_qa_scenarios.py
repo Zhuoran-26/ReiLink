@@ -229,6 +229,15 @@ ALLOWED_PERSONA_MEMORY_TYPES = {
     "interaction_preference",
     "unknown",
 }
+ALLOWED_PERSONA_MEMORY_LIVE_SCORING_MODES = {
+    "semantic_relaxed",
+    "safety_boundary",
+}
+ALLOWED_PERSONA_MEMORY_HELPFULNESS_LEVELS = {
+    "low",
+    "medium",
+    "high",
+}
 
 
 def _load_scenarios() -> list[dict]:
@@ -381,6 +390,18 @@ def test_persona_memory_regression_scenarios_file_is_valid_json():
     scenarios = _load_persona_memory_regression_scenarios()
 
     assert 20 <= len(scenarios) <= 30
+    for item in scenarios:
+        assert item.get("live_scoring_mode") in ALLOWED_PERSONA_MEMORY_LIVE_SCORING_MODES
+        assert item.get("min_helpfulness_level") in ALLOWED_PERSONA_MEMORY_HELPFULNESS_LEVELS
+        assert isinstance(item.get("semantic_expectations"), list)
+        assert all(
+            isinstance(expectation, str) and expectation
+            for expectation in item["semantic_expectations"]
+        )
+        assert isinstance(item.get("suggested_markers"), list)
+        assert all(isinstance(marker, str) and marker for marker in item["suggested_markers"])
+        assert isinstance(item.get("hard_required_terms"), list)
+        assert all(isinstance(term, str) and term for term in item["hard_required_terms"])
 
 
 def test_extraction_eval_scenarios_file_is_valid_json():
@@ -1150,7 +1171,7 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/qa/persona_memory_regression_scenarios.json" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
     assert "Voice Interaction MVP" in project_status
-    assert "Persona-Memory Regression Eval v0" in project_status
+    assert "Persona-Memory Eval v0.1" in project_status
     assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup
     assert "REILINK_LOCAL_ASR_MODEL" in local_asr_manual_setup
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup

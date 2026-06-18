@@ -38,7 +38,10 @@ def main() -> int:
     report = run_persona_memory_eval(scenarios_path=args.scenarios, provider_mode=args.provider)
     assert_report_is_safe(report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    failed = int(report["metrics"]["failed"])
+    if args.provider == "live":
+        failed = int(report["metrics"].get("hard_failed", report["metrics"]["failed"]))
+    else:
+        failed = int(report["metrics"]["failed"])
     return 0 if failed == 0 or args.allow_failures else 1
 
 

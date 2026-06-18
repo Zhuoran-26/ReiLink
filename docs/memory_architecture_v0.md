@@ -2,7 +2,7 @@
 
 Updated: 2026-06-18
 
-Status: architecture baseline plus Candidate Memory v1, Memory Retrieval v1 runtime slice, and Persona-Memory Regression Eval v0. This document still does not implement Session Archive, vector database, external memory provider, UI popup, or packaging change.
+Status: architecture baseline plus Candidate Memory v1, Memory Retrieval v1 runtime slice, and Persona-Memory Eval v0.1. This document still does not implement Session Archive, vector database, external memory provider, UI popup, or packaging change.
 
 ## Purpose
 
@@ -23,7 +23,7 @@ session event / explicit preference / repeated pattern
 
 Memory is not a second persona system. Memory is user-specific context; Persona Pack remains the stable Rei core.
 
-After Memory Retrieval v1, accepted memory can finally affect the model prompt. Persona-Memory Regression Eval v0 exists to keep that effect quiet and natural: memory may tune pacing, spoiler level, answer length, and voice brevity, but it must not become a repeated "I remember" template, a hidden system command, or a persona override.
+After Memory Retrieval v1, accepted memory can finally affect the model prompt. Persona-Memory Eval v0.1 exists to keep that effect quiet and natural: memory may tune pacing, spoiler level, answer length, and voice brevity, but it must not become a repeated "I remember" template, a hidden system command, or a persona override. The v0.1 scoring split keeps mock regression strict while treating live provider output as manual drift review with `soft_pass`, `warning`, and `hard_fail` tiers.
 
 ## Research Summary
 
@@ -601,18 +601,19 @@ Status: implemented as a minimal local-first prompt assembly slice.
 - Keeps Persona Core and current explicit user input higher priority than memory.
 - Keeps Debug / Prompt Preview safe-summary-only and omits raw prompt, raw transcript, raw JSON, API keys, `.env`, full paths, stdout/stderr, and secrets.
 
-### Persona-Memory Regression Eval v0
+### Persona-Memory Eval v0.1
 
-Status: implemented as a mock-first eval / tests / docs surface.
+Status: implemented as a mock-first eval / tests / docs surface with live scoring calibration.
 
 - Verifies accepted memory can naturally influence replies without mechanical memory announcements.
 - Checks that Persona Core stays higher priority than memory and blocks persona drift such as sweetness, customer-service encouragement, praise loops, or mascot-like behavior.
 - Covers gameplay preference, reply-length preference, spoiler preference, accessibility / voice brevity, emotional pattern, multiple-memory budget, game mismatch, assistant-source blocking, secret filtering, pending exclusion, rejected exclusion, and undone / inactive exclusion.
-- Uses deterministic prompt assembly checks plus fixed mock reply checks. The mock path is stable enough for automated tests.
+- Uses deterministic prompt assembly checks plus fixed mock reply checks. The mock path remains strict enough for automated tests.
 - Provides optional live provider evaluation for manual drift checks, but live eval is not required for CI because provider cost, auth, timeout, and model drift should not block local regression.
-- Tracks coarse v0 metrics: `prompt_memory_block_correct_count`, `pending_memory_blocked_count`, `inactive_memory_blocked_count`, `persona_drift_blocked_count`, `mechanism_phrase_violation_count`, `mechanical_memory_recall_count`, `persona_override_violation_count`, `secret_leak_count`, and `current_input_priority_count`.
+- Splits live results into `pass`, `soft_pass`, `warning`, and `hard_fail`. `hard_fail` is reserved for secret leaks, mechanism leaks, persona override, pending / inactive / rejected / undone memory usage, raw prompt leakage, raw transcript injection, current-input priority failure, provider errors, or blocked memory injection. Missing suggested markers, slightly short replies, weak memory influence, and generic helpfulness issues are warnings for human review.
+- Tracks v0.1 metrics: `hard_passed`, `soft_passed`, `warnings`, `hard_failed`, `hard_fail_rate`, `warning_rate`, `safe_boundary_pass_count`, `style_warning_count`, `helpfulness_warning_count`, `semantic_marker_warning_count`, `prompt_memory_block_correct_count`, `pending_memory_blocked_count`, `inactive_memory_blocked_count`, `persona_drift_blocked_count`, `mechanism_phrase_violation_count`, `mechanical_memory_recall_count`, `persona_override_violation_count`, `secret_leak_count`, and `current_input_priority_count`.
 - Keeps eval reports safe by omitting raw prompts and filtering secret-like terms. Reports may show safe reply previews and safe ids, but not raw transcript, raw evidence, API keys, `.env`, full paths, stdout/stderr, or raw provider JSON.
-- Known limitation: forbidden phrase checks are intentionally coarse. They catch obvious mechanism leaks and template failures, but real model naturalness still needs occasional human sampling or a future style judge.
+- Known limitation: v0.1 natural usage scoring is still heuristic. It combines injection status, safety boundaries, relaxed markers, reply length, and current-input priority; real model naturalness still needs occasional human sampling or a future style judge.
 
 ### Session Archive v1
 

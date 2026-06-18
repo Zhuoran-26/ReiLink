@@ -20,6 +20,7 @@ DEFAULT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_memory_regression_
 
 ALLOWED_PROVIDER_MODES = {"mock", "live"}
 ALLOWED_INPUT_SOURCES = {"text", "voice_confirmed", "voice_direct"}
+PASS_SEVERITIES = {"pass", "soft_pass"}
 LIVE_EVAL_SCENARIO_DELAY_SECONDS = 0.2
 
 MEMORY_MECHANIC_TERMS = (
@@ -67,6 +68,44 @@ SECRET_LEAK_TERMS = (
     "sk-",
     ".env",
     "api key 是",
+)
+CURRENT_INPUT_REFUSAL_TERMS = (
+    "不能剧透",
+    "不剧透",
+    "不能说",
+    "不告诉",
+    "自己探索",
+    "自己去看",
+)
+CURRENT_INPUT_DETAIL_TERMS = (
+    "详细",
+    "完整",
+    "攻略",
+    "直接告诉",
+    "会遇到什么也说",
+)
+RELAXED_SEMANTIC_MARKERS = (
+    "绕",
+    "探索",
+    "逛",
+    "赐福",
+    "补给",
+    "回来",
+    "别急",
+    "别硬",
+    "少打一刀",
+    "只补一刀",
+    "滚",
+    "延迟",
+    "落",
+    "拉开",
+    "不剧透",
+    "具体名字",
+    "提前知道",
+    "说重点",
+    "先停一下",
+    "节奏",
+    "慢",
 )
 SAFE_REPORT_FORBIDDEN_TERMS = (
     "sk-test-secret",
@@ -169,9 +208,11 @@ def _run_scenario(scenario: dict[str, Any], *, provider_mode: str) -> dict[str, 
         setup=setup,
         provider_error=provider_error,
     )
-    failures = _evaluate_scenario(expected, actual)
+    evaluation = _evaluate_scenario(scenario, expected, actual, provider_mode=provider_mode)
     return {
         "scenario_id": scenario_id,
+        "live_scoring_mode": str(scenario.get("live_scoring_mode") or "strict_mock"),
+        "semantic_expectations": _safe_string_list(scenario.get("semantic_expectations") or []),
         "memory_statuses": actual["memory_statuses"],
         "has_pending_memory": actual["has_pending_memory"],
         "has_inactive_memory": actual["has_inactive_memory"],
@@ -199,9 +240,21 @@ def _run_scenario(scenario: dict[str, Any], *, provider_mode: str) -> dict[str, 
         "persona_drift_leak": actual["persona_drift_leak"],
         "secret_leak": actual["secret_leak"],
         "pending_or_inactive_used": actual["pending_or_inactive_used"],
+        "memory_natural_usage_observed": evaluation["memory_natural_usage_observed"],
         "provider_error": provider_error,
-        "pass": not failures,
-        "failure_reason": "; ".join(failures),
+        "severity": evaluation["severity"],
+        "hard_fail_reasons": evaluation["hard_fail_reasons"],
+        "warning_reasons": evaluation["warning_reasons"],
+        "soft_pass_reasons": evaluation["soft_pass_reasons"],
+        "required_term_failures": evaluation["required_term_failures"],
+        "suggested_marker_misses": evaluation["suggested_marker_misses"],
+        "safety_boundary_ok": evaluation["safety_boundary_ok"],
+        "style_boundary_ok": evaluation["style_boundary_ok"],
+        "helpfulness_warning": evaluation["helpfulness_warning"],
+        "pass": evaluation["severity"] in PASS_SEVERITIES,
+        "failure_reason": "; ".join(
+            [*evaluation["hard_fail_reasons"], *evaluation["warning_reasons"]]
+        ),
     }
 
 
@@ -332,86 +385,185 @@ def _actual_result(
     }
 
 
-def _evaluate_scenario(expected: dict[str, Any], actual: dict[str, Any]) -> list[str]:
-    failures: list[str] = []
+def _evaluate_scenario(
+    scenario: dict[str, Any],
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+    *,
+    provider_mode: str,
+) -> dict[str, Any]:
+    hard_fail_reasons: list[str] = []
+    warning_reasons: list[str] = []
+    soft_pass_reasons: list[str] = []
+    required_term_failures: list[str] = []
+    suggested_marker_misses: list[str] = []
+    reply_hard_required_terms = _merged_string_list(
+        scenario.get("hard_required_terms"),
+        expected.get("hard_required_terms"),
+    )
+    suggested_markers = _merged_string_list(
+        scenario.get("suggested_markers"),
+        expected.get("suggested_markers"),
+    )
     if "should_inject_memory" in expected and bool(expected["should_inject_memory"]) != bool(actual["retrieved_memory_ids"]):
-        failures.append("memory injection expectation mismatch")
+        hard_fail_reasons.append("memory injection expectation mismatch")
     if "retrieved_memory_ids" in expected and list(expected["retrieved_memory_ids"]) != actual["retrieved_memory_ids"]:
-        failures.append("retrieved memory ids mismatch")
+        hard_fail_reasons.append("retrieved memory ids mismatch")
     for memory_id in _safe_string_list(expected.get("forbidden_memory_ids") or []):
         if memory_id in actual["retrieved_memory_ids"]:
-            failures.append("forbidden memory id retrieved")
+            hard_fail_reasons.append("forbidden memory id retrieved")
     if expected.get("should_update_usage") is True and not any(delta > 0 for delta in actual["usage_deltas"].values()):
-        failures.append("expected memory usage update")
+        hard_fail_reasons.append("expected memory usage update")
     if expected.get("should_update_usage") is False and any(delta != 0 for delta in actual["usage_deltas"].values()):
-        failures.append("unexpected memory usage update")
+        hard_fail_reasons.append("unexpected memory usage update")
     if expected.get("prompt_order_persona_before_memory", True) and not actual["prompt_order_ok"]:
-        failures.append("persona pack should remain before memory block")
+        hard_fail_reasons.append("persona pack should remain before memory block")
     if expected.get("current_input_priority") and not actual["prompt_current_input_priority"]:
-        failures.append("prompt missing current input priority")
+        hard_fail_reasons.append("prompt missing current input priority")
     if expected.get("raw_prompt_omitted", True) and not actual["raw_prompt_omitted"]:
-        failures.append("raw prompt omission flag missing")
-    _check_required_terms(actual["prompt"], expected.get("prompt_must_contain"), "prompt", failures)
-    _check_forbidden_terms(actual["prompt"], expected.get("prompt_must_not_contain"), "prompt", failures)
-    _check_required_terms(actual["reply"], expected.get("reply_must_contain"), "reply", failures)
-    _check_forbidden_terms(actual["reply"], expected.get("reply_must_not_contain"), "reply", failures)
+        hard_fail_reasons.append("raw prompt omission flag missing")
+    _check_required_terms(actual["prompt"], expected.get("prompt_must_contain"), "prompt", hard_fail_reasons)
+    _check_forbidden_terms(actual["prompt"], expected.get("prompt_must_not_contain"), "prompt", hard_fail_reasons)
+    _check_required_terms(actual["reply"], reply_hard_required_terms, "reply", hard_fail_reasons)
+    required_term_failures.extend(
+        _missing_terms(actual["reply"], reply_hard_required_terms, "reply")
+    )
+    if provider_mode == "mock":
+        mock_reply_terms = _safe_string_list(expected.get("reply_must_contain") or [])
+        _check_required_terms(actual["reply"], mock_reply_terms, "reply", hard_fail_reasons)
+        required_term_failures.extend(_missing_terms(actual["reply"], mock_reply_terms, "reply"))
+    else:
+        live_suggested_markers = _merged_string_list(
+            suggested_markers,
+            expected.get("reply_must_contain"),
+        )
+        suggested_marker_misses.extend(_missing_terms(actual["reply"], live_suggested_markers, "reply"))
+        if suggested_marker_misses:
+            warning_reasons.append("reply missing suggested marker")
+    _check_forbidden_terms(actual["reply"], expected.get("reply_must_not_contain"), "reply", hard_fail_reasons)
     if expected.get("must_not_expose_memory_mechanics", True) and actual["memory_mechanic_leak"]:
-        failures.append("reply exposed memory mechanics")
+        hard_fail_reasons.append("reply exposed memory mechanics")
     if expected.get("must_not_mechanically_recall_memory", True) and actual["mechanical_memory_recall"]:
-        failures.append("reply mechanically recalled memory")
+        hard_fail_reasons.append("reply mechanically recalled memory")
     if expected.get("must_preserve_persona", True) and actual["persona_drift_leak"]:
-        failures.append("reply drifted from persona boundary")
+        hard_fail_reasons.append("reply drifted from persona boundary")
     if expected.get("must_not_leak_secret", True) and actual["secret_leak"]:
-        failures.append("secret leaked into prompt or reply")
+        hard_fail_reasons.append("secret leaked into prompt or reply")
     if actual["pending_or_inactive_used"]:
-        failures.append("pending or inactive memory was retrieved")
+        hard_fail_reasons.append("pending or inactive memory was retrieved")
     if "omitted_count" in expected and int(expected["omitted_count"]) != actual["omitted_count"]:
-        failures.append("omitted_count mismatch")
+        hard_fail_reasons.append("omitted_count mismatch")
     if "skip_reason" in expected and expected["skip_reason"] != actual["skip_reason"]:
-        failures.append("skip_reason mismatch")
-    if "max_reply_sentences" in expected and actual["reply_sentence_count"] > int(expected["max_reply_sentences"]):
-        failures.append("reply has too many sentences")
-    if "min_reply_sentences" in expected and actual["reply_sentence_count"] < int(expected["min_reply_sentences"]):
-        failures.append("reply has too few sentences")
-    if "max_reply_chars" in expected and actual["reply_char_count"] > int(expected["max_reply_chars"]):
-        failures.append("reply is too long")
-    if "min_reply_chars" in expected and actual["reply_char_count"] < int(expected["min_reply_chars"]):
-        failures.append("reply is too short")
+        hard_fail_reasons.append("skip_reason mismatch")
+    length_warnings = _reply_length_findings(expected, actual)
+    if provider_mode == "mock":
+        hard_fail_reasons.extend(length_warnings)
+    else:
+        warning_reasons.extend(length_warnings)
+    if provider_mode == "live" and _current_input_priority_failed(scenario, expected, actual):
+        hard_fail_reasons.append("current input priority failed")
     if actual["provider_error"]:
-        failures.append(f"provider error: {actual['provider_error']}")
-    return failures
+        hard_fail_reasons.append(f"provider error: {actual['provider_error']}")
+
+    memory_natural_usage_observed = _memory_natural_usage_observed(
+        actual,
+        suggested_markers=suggested_markers,
+        expected=expected,
+    )
+    if (
+        provider_mode == "live"
+        and actual["retrieved_memory_ids"]
+        and not memory_natural_usage_observed
+        and not hard_fail_reasons
+    ):
+        warning_reasons.append("memory influence weak")
+    helpfulness_warning = any(
+        reason in {"reply is too short", "reply has too few sentences", "memory influence weak"}
+        or reason.startswith("reply missing suggested marker")
+        for reason in warning_reasons
+    )
+    if not hard_fail_reasons and not warning_reasons:
+        if provider_mode == "live" and memory_natural_usage_observed:
+            soft_pass_reasons.append("live reply used memory naturally by heuristic")
+        elif provider_mode == "live":
+            soft_pass_reasons.append("live reply stayed within safety and style boundaries")
+    severity = _severity(
+        hard_fail_reasons=hard_fail_reasons,
+        warning_reasons=warning_reasons,
+        soft_pass_reasons=soft_pass_reasons,
+    )
+    return {
+        "severity": severity,
+        "hard_fail_reasons": hard_fail_reasons,
+        "warning_reasons": warning_reasons,
+        "soft_pass_reasons": soft_pass_reasons,
+        "required_term_failures": required_term_failures,
+        "suggested_marker_misses": suggested_marker_misses,
+        "safety_boundary_ok": not _has_safety_boundary_failure(hard_fail_reasons),
+        "style_boundary_ok": "reply drifted from persona boundary" not in hard_fail_reasons,
+        "helpfulness_warning": helpfulness_warning,
+        "memory_natural_usage_observed": memory_natural_usage_observed,
+    }
 
 
 def _eval_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(results)
     passed = sum(1 for item in results if item["pass"])
     failed = total - passed
+    hard_failed = sum(1 for item in results if item["severity"] == "hard_fail")
+    warnings = sum(1 for item in results if item["severity"] == "warning")
+    soft_passed = sum(1 for item in results if item["severity"] == "soft_pass")
+    hard_passed = sum(1 for item in results if item["severity"] == "pass")
     return {
         "total_scenarios": total,
         "passed": passed,
         "failed": failed,
         "pass_rate": round(passed / total, 4) if total else 0,
+        "hard_passed": hard_passed,
+        "soft_passed": soft_passed,
+        "warnings": warnings,
+        "hard_failed": hard_failed,
+        "hard_fail_count": hard_failed,
+        "warning_count": warnings,
+        "soft_pass_count": soft_passed,
+        "hard_fail_rate": round(hard_failed / total, 4) if total else 0,
+        "warning_rate": round(warnings / total, 4) if total else 0,
+        "safe_boundary_pass_count": sum(1 for item in results if item["safety_boundary_ok"]),
+        "style_warning_count": sum(
+            1
+            for item in results
+            if not item["style_boundary_ok"]
+            or any("style" in reason for reason in item["warning_reasons"])
+        ),
+        "helpfulness_warning_count": sum(1 for item in results if item["helpfulness_warning"]),
+        "semantic_marker_warning_count": sum(
+            1 for item in results if item["suggested_marker_misses"]
+        ),
         "memory_injected_count": sum(1 for item in results if item["actual_memory_injected"]),
         "memory_skipped_count": sum(1 for item in results if not item["actual_memory_injected"]),
         "prompt_memory_block_correct_count": sum(
             1
             for item in results
-            if item["expected_memory_injected"] == item["actual_memory_injected"] and item["pass"]
+            if item["expected_memory_injected"] == item["actual_memory_injected"]
+            and (
+                "retrieved memory ids mismatch" not in item["hard_fail_reasons"]
+                and "forbidden memory id retrieved" not in item["hard_fail_reasons"]
+            )
         ),
         "pending_memory_blocked_count": sum(
             1
             for item in results
-            if item["has_pending_memory"] and not item["actual_memory_injected"] and item["pass"]
+            if item["has_pending_memory"] and not item["actual_memory_injected"] and item["severity"] != "hard_fail"
         ),
         "inactive_memory_blocked_count": sum(
             1
             for item in results
-            if item["has_inactive_memory"] and not item["actual_memory_injected"] and item["pass"]
+            if item["has_inactive_memory"] and not item["actual_memory_injected"] and item["severity"] != "hard_fail"
         ),
         "persona_drift_blocked_count": sum(
             1
             for item in results
-            if item["has_persona_drift_memory"] and not item["actual_memory_injected"] and item["pass"]
+            if item["has_persona_drift_memory"] and not item["actual_memory_injected"] and item["severity"] != "hard_fail"
         ),
         "prompt_order_failure_count": sum(1 for item in results if not item["prompt_order_ok"]),
         "reply_mechanic_leak_count": sum(1 for item in results if item["memory_mechanic_leak"]),
@@ -432,15 +584,13 @@ def _eval_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "response_too_short_count": sum(
             1 for item in results if item["failure_reason"] and "reply is too short" in item["failure_reason"]
         ),
-        "memory_used_naturally_count": sum(
-            1
-            for item in results
-            if item["actual_memory_injected"]
-            and not item["memory_mechanic_leak"]
-            and not item["mechanical_memory_recall"]
-            and not item["persona_drift_leak"]
-            and item["pass"]
+        "memory_natural_usage_observed_count": sum(
+            1 for item in results if item["memory_natural_usage_observed"]
         ),
+        "memory_used_naturally_count": sum(
+            1 for item in results if item["memory_natural_usage_observed"]
+        ),
+        "live_review_recommended": bool(warnings or hard_failed),
     }
 
 
@@ -478,6 +628,106 @@ def _check_forbidden_terms(text: str, terms: Any, label: str, failures: list[str
     for term in _safe_string_list(terms or []):
         if _contains_any(text, (term,)):
             failures.append(f"{label} leaked forbidden term")
+
+
+def _missing_terms(text: str, terms: Any, label: str) -> list[str]:
+    return [
+        f"{label} missing required term: {term}"
+        for term in _safe_string_list(terms or [])
+        if term not in text
+    ]
+
+
+def _reply_length_findings(expected: dict[str, Any], actual: dict[str, Any]) -> list[str]:
+    findings: list[str] = []
+    if "max_reply_sentences" in expected and actual["reply_sentence_count"] > int(expected["max_reply_sentences"]):
+        findings.append("reply has too many sentences")
+    if "min_reply_sentences" in expected and actual["reply_sentence_count"] < int(expected["min_reply_sentences"]):
+        findings.append("reply has too few sentences")
+    if "max_reply_chars" in expected and actual["reply_char_count"] > int(expected["max_reply_chars"]):
+        findings.append("reply is too long")
+    if "min_reply_chars" in expected and actual["reply_char_count"] < int(expected["min_reply_chars"]):
+        findings.append("reply is too short")
+    return findings
+
+
+def _current_input_priority_failed(
+    scenario: dict[str, Any],
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+) -> bool:
+    if not expected.get("current_input_priority"):
+        return False
+    user_message = str(scenario.get("input") or "")
+    reply = str(actual.get("reply") or "")
+    asks_for_detail = _contains_any(user_message, CURRENT_INPUT_DETAIL_TERMS)
+    refuses_detail = _contains_any(reply, CURRENT_INPUT_REFUSAL_TERMS)
+    empty_or_vague = actual["reply_char_count"] < 12 or reply.strip() in {"嗯。", "不知道。", "不清楚。"}
+    return asks_for_detail and (refuses_detail or empty_or_vague)
+
+
+def _memory_natural_usage_observed(
+    actual: dict[str, Any],
+    *,
+    suggested_markers: list[str],
+    expected: dict[str, Any],
+) -> bool:
+    if not actual["retrieved_memory_ids"]:
+        return False
+    if (
+        actual["memory_mechanic_leak"]
+        or actual["mechanical_memory_recall"]
+        or actual["persona_drift_leak"]
+        or actual["secret_leak"]
+        or actual["reply_char_count"] <= 0
+    ):
+        return False
+    reply = str(actual.get("reply") or "")
+    if _contains_any(reply, suggested_markers) or _contains_any(reply, RELAXED_SEMANTIC_MARKERS):
+        return True
+    if "max_reply_chars" in expected and actual["reply_char_count"] <= int(expected["max_reply_chars"]):
+        return True
+    if "max_reply_sentences" in expected and actual["reply_sentence_count"] <= int(expected["max_reply_sentences"]):
+        return True
+    if actual["prompt_current_input_priority"]:
+        return True
+    return not suggested_markers and not _safe_string_list(expected.get("reply_must_contain") or [])
+
+
+def _severity(
+    *,
+    hard_fail_reasons: list[str],
+    warning_reasons: list[str],
+    soft_pass_reasons: list[str],
+) -> str:
+    if hard_fail_reasons:
+        return "hard_fail"
+    if warning_reasons:
+        return "warning"
+    if soft_pass_reasons:
+        return "soft_pass"
+    return "pass"
+
+
+def _has_safety_boundary_failure(reasons: list[str]) -> bool:
+    safety_terms = (
+        "memory injection expectation mismatch",
+        "retrieved memory ids mismatch",
+        "forbidden memory id retrieved",
+        "persona pack should remain before memory block",
+        "raw prompt omission flag missing",
+        "prompt missing current input priority",
+        "prompt missing required term",
+        "prompt leaked forbidden term",
+        "reply leaked forbidden term",
+        "reply exposed memory mechanics",
+        "reply mechanically recalled memory",
+        "reply drifted from persona boundary",
+        "secret leaked into prompt or reply",
+        "pending or inactive memory was retrieved",
+        "provider error:",
+    )
+    return any(any(reason.startswith(term) for term in safety_terms) for reason in reasons)
 
 
 def _contains_any(text: str, terms: Iterable[str]) -> bool:
@@ -521,6 +771,15 @@ def _safe_string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if isinstance(item, str) and item]
+
+
+def _merged_string_list(*values: Any) -> list[str]:
+    merged: list[str] = []
+    for value in values:
+        for item in _safe_string_list(value):
+            if item not in merged:
+                merged.append(item)
+    return merged
 
 
 def _safe_positive_int(value: Any, *, default: int) -> int:
