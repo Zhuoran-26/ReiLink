@@ -112,16 +112,18 @@ Runtime v1 implements:
 - `GET /session-archives/search`
 - `GET /session-archives/{archive_id}`
 - `POST /session-archives/archive-current`
+- `POST /session-archives/{archive_id}/memory-candidates`
+- `POST /session-archives/memory-candidates/scan-recent`
 - `DELETE /session-archives/{archive_id}`
 - `POST /session-archives/clear`
-- Memory workspace `最近会话` tab with archive current, refresh, keyword / filter search, read detail, delete, and clear controls.
-- Safe event stream summaries: `session_archive_created`, `session_archive_deleted`, `session_archive_cleared`, `session_archive_skipped`, `session_archive_search_started`, `session_archive_search_completed`, and `session_archive_search_cleared`.
+- Memory workspace `最近会话` tab with archive current, refresh, keyword / filter search, read detail, explicit candidate scan, delete, and clear controls.
+- Safe event stream summaries: `session_archive_created`, `session_archive_deleted`, `session_archive_cleared`, `session_archive_skipped`, `session_archive_search_started`, `session_archive_search_completed`, `session_archive_search_cleared`, `archive_memory_scan_started`, `archive_memory_scan_completed`, `archive_memory_candidate_created`, `archive_memory_candidate_skipped`, and `archive_memory_candidate_rejected`.
 
 Runtime v1 deliberately does not implement:
 
 - auto archive on lifecycle events
 - semantic / vector search
-- Archive-to-Memory Candidate runtime
+- archive search auto-candidate generation
 - prompt archive retrieval
 - raw transcript, raw prompt, raw JSON, audio, secrets, or full local path storage
 - Memory Retrieval changes
@@ -216,6 +218,8 @@ Session Archive safe event summary
 -> user accept / ignore
 -> Long-term Memory
 ```
+
+Bridge v0 implements this path as an explicit user action from `最近会话`. It uses deterministic safe-summary rules, reuses the Candidate Memory pending queue and guard boundaries, and never scans raw transcripts or search results automatically.
 
 Good bridge signals:
 
@@ -337,16 +341,24 @@ Machine-readable search scenarios live in:
 docs/qa/session_archive_search_scenarios.json
 ```
 
+Machine-readable Archive-to-Memory Candidate scenarios live in:
+
+```text
+docs/qa/archive_to_memory_candidate_scenarios.json
+```
+
 Architecture scenarios cover safe archive input, forbidden raw content, voice transcript boundaries, memory bridge requirements, search safe summaries, user delete / disable controls, retention, export placeholder, prompt exclusion, current-input priority, Persona Core priority, and privacy-level retrieval blocking.
 
 Runtime scenarios cover manual archive-current, safe summary generation, local persistence, list / read / delete / clear, UI rendering, empty timeline skipping, repeated archive idempotency, Event Stream safety, and prompt / memory privacy boundaries.
 
 Search scenarios cover keyword search, game / boss / event type / date filters, limit and omitted_count, deleted archive exclusion, empty results, privacy redaction, prompt / memory boundaries, renderer controls, delete / clear behavior, Event Stream safety, and packaged smoke.
 
+Archive-to-Memory Candidate scenarios cover explicit safe-summary scanning, stable preference detection, single-event skipping, assistant / proactive / secret / persona-drift blocking, duplicate pending / accepted dedupe, accept / ignore confirmation boundary, search not auto-creating candidates, renderer scan controls, pending count updates, prompt exclusion, and packaged smoke.
+
 ## Implementation Roadmap
 
 1. Session Archive v1 runtime: local safe-summary persistence, latest-20 retention, delete / clear, and Memory workspace recent sessions tab. Implemented.
 2. Archive Search v1: local keyword and structured filters over safe summaries. Implemented.
-3. Archive-to-Memory Candidate v1: repeated-pattern detector plus Memory Candidate guard and user confirmation.
+3. Archive-to-Memory Candidate Bridge v0: deterministic safe-summary detector plus Memory Candidate guard and user confirmation. Implemented as explicit scan.
 4. Session Archive UI expansion: search, filters, retention controls, and future export.
 5. Optional semantic search later: only after safe-summary storage, privacy filters, and user controls are stable.

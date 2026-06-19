@@ -31,6 +31,11 @@ export type ReiLinkEvent =
       safe_result_summaries?: string[];
     }
   | { type: "session_archive_search_cleared"; timestamp: string; query_summary?: string; filters?: Record<string, string> }
+  | { type: "archive_memory_scan_started"; timestamp: string; archive_id?: string | null; mode: "single_archive" | "recent_archives" }
+  | { type: "archive_memory_scan_completed"; timestamp: string; archive_id?: string | null; mode: "single_archive" | "recent_archives"; archives_scanned: number; events_scanned: number; created_count: number; skipped_count: number; rejected_count: number }
+  | { type: "archive_memory_candidate_created"; timestamp: string; archive_id?: string | null; candidate_id: string; memory_type: string; summary?: string | null }
+  | { type: "archive_memory_candidate_skipped"; timestamp: string; archive_id?: string | null; guard_reason: string; safe_summary?: string | null }
+  | { type: "archive_memory_candidate_rejected"; timestamp: string; archive_id?: string | null; guard_reason: string; safe_summary?: string | null }
   | { type: "game_context_changed"; timestamp: string; game?: string; source?: string }
   | {
       type: "semantic_extraction_traced";

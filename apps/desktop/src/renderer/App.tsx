@@ -51,6 +51,7 @@ import {
   SemanticShadowEvent,
   SessionArchiveDetail,
   SessionArchiveEventInput,
+  SessionArchiveMemoryCandidateScanResponse,
   SessionArchiveSearchResult,
   SessionArchiveSummary,
   SetupStatus,
@@ -1362,6 +1363,33 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.query_summary ? sanitizeSessionTimelineText(event.query_summary, 64) : "已清除",
         ...Object.entries(event.filters ?? {}).map(([key, value]) => `${key}=${sanitizeSessionTimelineText(value, 36)}`)
       ].filter(Boolean).join(" / ");
+    case "archive_memory_scan_started":
+      return [
+        event.mode === "recent_archives" ? "最近归档" : debugText(event.archive_id, "单条归档"),
+        "检查可保存偏好"
+      ].filter(Boolean).join(" / ");
+    case "archive_memory_scan_completed":
+      return [
+        event.mode === "recent_archives" ? "最近归档" : debugText(event.archive_id, "单条归档"),
+        `归档 ${event.archives_scanned}`,
+        `事件 ${event.events_scanned}`,
+        `新候选 ${event.created_count}`,
+        event.skipped_count ? `跳过 ${event.skipped_count}` : "",
+        event.rejected_count ? `拒绝 ${event.rejected_count}` : ""
+      ].filter(Boolean).join(" / ");
+    case "archive_memory_candidate_created":
+      return [
+        debugText(event.memory_type),
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : "",
+        event.archive_id ? `archive=${debugText(event.archive_id)}` : ""
+      ].filter(Boolean).join(" / ");
+    case "archive_memory_candidate_skipped":
+    case "archive_memory_candidate_rejected":
+      return [
+        `guard=${debugText(event.guard_reason)}`,
+        event.safe_summary ? sanitizeSessionTimelineText(event.safe_summary, 64) : "",
+        event.archive_id ? `archive=${debugText(event.archive_id)}` : ""
+      ].filter(Boolean).join(" / ");
     case "game_context_changed":
       return [debugText(event.game), debugText(event.source)].join(" / ");
     case "semantic_extraction_traced":
@@ -1563,6 +1591,11 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     session_archive_search_started: "会话归档搜索开始",
     session_archive_search_completed: "会话归档搜索完成",
     session_archive_search_cleared: "会话归档搜索已清除",
+    archive_memory_scan_started: "归档记忆检查开始",
+    archive_memory_scan_completed: "归档记忆检查完成",
+    archive_memory_candidate_created: "归档生成待确认记忆",
+    archive_memory_candidate_skipped: "归档记忆候选已跳过",
+    archive_memory_candidate_rejected: "归档记忆候选已拒绝",
     game_context_changed: "游戏上下文变化",
     semantic_extraction_traced: "语义识别来源",
     game_session_changed: "游戏状态变化",
@@ -2043,6 +2076,38 @@ const pendingEvidenceSummary = (memory: PendingMemory) => {
   return parts.join(" / ") || "无";
 };
 
+const archiveMemoryGuardText = (reason: string) => ({
+  single_session_event_only: "只是一局里的单次事件",
+  single_emotional_state_only: "只是单次情绪状态",
+  assistant_source_blocked: "来源是 Rei 回复",
+  proactive_source_blocked: "来源是主动提示",
+  sensitive_secret_blocked: "含敏感内容或已脱敏内容",
+  persona_drift_blocked: "像人格偏移请求",
+  duplicate_candidate: "已有相同候选或已保存",
+  no_recent_archives: "暂无最近归档",
+  no_safe_archive_events: "没有可检查的安全事件",
+  no_candidate: "没有稳定偏好"
+} as Record<string, string>)[reason] || debugText(reason);
+
+const archiveMemoryScanFeedback = (response: SessionArchiveMemoryCandidateScanResponse) => {
+  const { created_count, skipped_count, rejected_count } = response.scan_summary;
+  if (created_count > 0) {
+    return `生成 ${created_count} 条待确认记忆`;
+  }
+  const firstRejected = response.rejected_candidates[0];
+  if (firstRejected) {
+    return `没有生成候选：${archiveMemoryGuardText(firstRejected.guard_reason)}`;
+  }
+  const firstSkipped = response.skipped_candidates[0];
+  if (firstSkipped) {
+    return `没有发现值得保存的偏好：${archiveMemoryGuardText(firstSkipped.guard_reason)}`;
+  }
+  if (skipped_count || rejected_count) {
+    return `没有生成候选：跳过 ${skipped_count} 条，拒绝 ${rejected_count} 条`;
+  }
+  return "没有发现值得保存的偏好";
+};
+
 const firstDefined = (...values: unknown[]) => values.find((value) => value !== null && value !== undefined && value !== "");
 
 function BooleanBadge({ value }: { value: boolean }) {
@@ -2204,6 +2269,7 @@ export function App() {
   const [sessionArchiveDetail, setSessionArchiveDetail] = useState<SessionArchiveDetail | null>(null);
   const [sessionArchiveBusy, setSessionArchiveBusy] = useState("");
   const [sessionArchiveFeedback, setSessionArchiveFeedback] = useState("");
+  const [sessionArchiveScanCreatedCount, setSessionArchiveScanCreatedCount] = useState(0);
   const [sessionArchiveSearchQuery, setSessionArchiveSearchQuery] = useState("");
   const [sessionArchiveSearchGame, setSessionArchiveSearchGame] = useState("");
   const [sessionArchiveSearchBoss, setSessionArchiveSearchBoss] = useState("");
@@ -4052,6 +4118,109 @@ export function App() {
       setSessionArchiveBusy("");
     }
   };
+
+  const emitArchiveMemoryScanEvents = (
+    response: SessionArchiveMemoryCandidateScanResponse,
+    archiveId: string | null,
+    mode: "single_archive" | "recent_archives"
+  ) => {
+    eventBus.emit({
+      type: "archive_memory_scan_completed",
+      timestamp: eventTimestamp(),
+      archive_id: archiveId,
+      mode,
+      archives_scanned: response.scan_summary.archives_scanned,
+      events_scanned: response.scan_summary.events_scanned,
+      created_count: response.scan_summary.created_count,
+      skipped_count: response.scan_summary.skipped_count,
+      rejected_count: response.scan_summary.rejected_count
+    });
+    response.created_candidates.forEach((candidate) => {
+      eventBus.emit({
+        type: "archive_memory_candidate_created",
+        timestamp: eventTimestamp(),
+        archive_id: archiveId,
+        candidate_id: candidate.id,
+        memory_type: candidate.type,
+        summary: candidate.summary
+      });
+    });
+    response.skipped_candidates.slice(0, 3).forEach((item) => {
+      eventBus.emit({
+        type: "archive_memory_candidate_skipped",
+        timestamp: eventTimestamp(),
+        archive_id: item.archive_id ?? archiveId,
+        guard_reason: item.guard_reason,
+        safe_summary: item.safe_summary
+      });
+    });
+    response.rejected_candidates.slice(0, 3).forEach((item) => {
+      eventBus.emit({
+        type: "archive_memory_candidate_rejected",
+        timestamp: eventTimestamp(),
+        archive_id: item.archive_id ?? archiveId,
+        guard_reason: item.guard_reason,
+        safe_summary: item.safe_summary
+      });
+    });
+  };
+
+  const scanSessionArchiveMemoryCandidates = async (archiveId: string) => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy(`scan-${archiveId}`);
+    setSessionArchiveScanCreatedCount(0);
+    try {
+      setLastError("");
+      setLastRawError("");
+      eventBus.emit({
+        type: "archive_memory_scan_started",
+        timestamp: eventTimestamp(),
+        archive_id: archiveId,
+        mode: "single_archive"
+      });
+      const response = await api.scanSessionArchiveMemoryCandidates(archiveId);
+      emitArchiveMemoryScanEvents(response, archiveId, "single_archive");
+      setSessionArchiveFeedback(archiveMemoryScanFeedback(response));
+      setSessionArchiveScanCreatedCount(response.scan_summary.created_count);
+      if (response.scan_summary.created_count > 0) {
+        recordPendingMemories(await api.pendingMemories(), true);
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "检查归档候选记忆失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  };
+
+  const scanRecentSessionArchiveMemoryCandidates = async () => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy("scan-recent");
+    setSessionArchiveScanCreatedCount(0);
+    try {
+      setLastError("");
+      setLastRawError("");
+      eventBus.emit({
+        type: "archive_memory_scan_started",
+        timestamp: eventTimestamp(),
+        archive_id: null,
+        mode: "recent_archives"
+      });
+      const response = await api.scanRecentSessionArchiveMemoryCandidates({ limit: 5 });
+      emitArchiveMemoryScanEvents(response, null, "recent_archives");
+      setSessionArchiveFeedback(archiveMemoryScanFeedback(response));
+      setSessionArchiveScanCreatedCount(response.scan_summary.created_count);
+      if (response.scan_summary.created_count > 0) {
+        recordPendingMemories(await api.pendingMemories(), true);
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "检查最近归档候选记忆失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  };
+
   const localAsrConfigReady = localAsrStatus.status === "local_asr_ready";
   const localAsrTranscriptionBusy = localAsrTranscriptionPhase !== "idle";
   const localAsrTranscriptionButtonDisabled = !localAsrConfigReady ||
@@ -4743,6 +4912,15 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   className="smallButton quiet"
                   type="button"
                   disabled={sessionArchiveBusy !== "" || sessionArchives.length === 0 || backendStatus !== "connected"}
+                  onClick={() => void scanRecentSessionArchiveMemoryCandidates()}
+                >
+                  <Sparkles size={14} />
+                  从最近归档检查候选
+                </button>
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  disabled={sessionArchiveBusy !== "" || sessionArchives.length === 0 || backendStatus !== "connected"}
                   onClick={() => void clearSessionArchives()}
                 >
                   <Trash2 size={14} />
@@ -4817,6 +4995,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 </div>
               </form>
               {sessionArchiveFeedback && <p className="demoResetFeedback" role="status">{sessionArchiveFeedback}</p>}
+              {sessionArchiveScanCreatedCount > 0 && (
+                <button className="textButton" type="button" onClick={openPendingMemory}>
+                  查看待确认记忆
+                </button>
+              )}
               {sessionArchiveSearchActive ? (
                 <div className="pendingMemoryList" aria-label="会话归档搜索结果">
                   {sessionArchiveSearchResults.map((result) => (
@@ -4842,6 +5025,15 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           onClick={() => void loadSessionArchiveDetail(result.archive_id)}
                         >
                           查看
+                        </button>
+                        <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                          onClick={() => void scanSessionArchiveMemoryCandidates(result.archive_id)}
+                        >
+                          <Sparkles size={14} />
+                          检查可保存偏好
                         </button>
                         <button
                           aria-label={`删除会话归档搜索结果 ${result.safe_summary}`}
@@ -4894,6 +5086,15 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                           查看
                         </button>
                         <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                          onClick={() => void scanSessionArchiveMemoryCandidates(archive.id)}
+                        >
+                          <Sparkles size={14} />
+                          检查可保存偏好
+                        </button>
+                        <button
                           aria-label={`删除会话归档 ${archive.title}`}
                           className="smallButton quiet"
                           type="button"
@@ -4939,6 +5140,17 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <dd>{debugText(sessionArchiveDetail.retention_policy)}</dd>
                     </div>
                   </dl>
+                  <div className="debugActions">
+                    <button
+                      className="smallButton quiet"
+                      type="button"
+                      disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                      onClick={() => void scanSessionArchiveMemoryCandidates(sessionArchiveDetail.id)}
+                    >
+                      <Sparkles size={14} />
+                      检查可保存偏好
+                    </button>
+                  </div>
                   <ol className="eventStreamList" aria-label="会话归档安全事件">
                     {sessionArchiveDetail.events.map((event) => (
                       <li key={event.id}>

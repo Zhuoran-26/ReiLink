@@ -165,7 +165,7 @@ Rules:
 Current v1.1 runtime:
 
 - Reuses the existing pending memory API, Memory workspace Pending tab, and undoable Long-term Memory items.
-- Stores `summary`, `evidence_summary`, `guard_reason`, `expires_at`, source metadata, and voice / assistant / proactive flags.
+- Stores `summary`, `evidence_summary`, `guard_reason`, `expires_at`, source metadata, and voice / assistant / proactive / session_archive flags.
 - Shows pending candidates only after guard passes; explicit remember requests can auto-save after guard and show a lightweight undo hint.
 - Stores rejected guard results outside pending UI for no-memory, secret, persona drift, assistant source, or proactive source cases.
 
@@ -573,9 +573,10 @@ docs/qa/memory_ux_v1_1_scenarios.json
 docs/qa/memory_retrieval_scenarios.json
 docs/qa/persona_memory_regression_scenarios.json
 docs/qa/session_archive_scenarios.json
+docs/qa/archive_to_memory_candidate_scenarios.json
 ```
 
-The scenarios cover explicit memory requests, auto-save hints, undo, negative memory requests, one-off session events, spoiler and reply-length preferences, LLM-primary candidate checks, rule prefilter boundaries, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, accepted-memory retrieval, inactive / pending / rejected exclusion, use-count updates, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, Debug safe trace, Persona-Memory regression behavior after retrieval, and Session Archive architecture boundaries.
+The scenarios cover explicit memory requests, auto-save hints, undo, negative memory requests, one-off session events, spoiler and reply-length preferences, LLM-primary candidate checks, rule prefilter boundaries, archive safe-summary candidate scanning, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, accepted-memory retrieval, inactive / pending / rejected exclusion, use-count updates, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, Debug safe trace, Persona-Memory regression behavior after retrieval, and Session Archive architecture boundaries.
 
 ## Roadmap
 
@@ -616,18 +617,32 @@ Status: implemented as a mock-first eval / tests / docs surface with live scorin
 - Keeps eval reports safe by omitting raw prompts and filtering secret-like terms. Reports may show safe reply previews and safe ids, but not raw transcript, raw evidence, API keys, `.env`, full paths, stdout/stderr, or raw provider JSON.
 - Known limitation: v0.1 natural usage scoring is still heuristic. It combines injection status, safety boundaries, relaxed markers, reply length, and current-input priority; real model naturalness still needs occasional human sampling or a future style judge.
 
+### Archive-to-Memory Candidate Bridge v0
+
+Status: implemented as an explicit safe-summary scan into the existing pending Memory Candidate flow.
+
+- Adds `session_archive` as a pending memory source.
+- Provides bounded backend scan endpoints for one archive and recent archives.
+- Uses deterministic v0 rules for stable gameplay preference, interaction preference, and spoiler preference from archive safe summaries.
+- Skips single death / single session event and single emotional state summaries.
+- Blocks assistant / proactive sources, sensitive or redacted content, and persona drift.
+- Reuses pending memory dedupe, accept, ignore, and long-term write behavior.
+- Keeps archive search results from auto-creating candidates.
+- Keeps pending archive candidates out of PromptMemoryBlock and Memory Retrieval until the user explicitly accepts them.
+- Keeps UI and Event Stream safe-summary-only; no raw transcript, raw prompt, raw JSON, secret, full local path, stdout/stderr, or full voice transcript is displayed.
+
 ### Session Archive v1
 
-Status: architecture / docs / QA baseline only. Runtime is not implemented.
+Status: implemented as a local safe-summary archive, search layer, and explicit archive-to-memory candidate bridge.
 
 - Dedicated architecture: `docs/session_archive_v1_architecture.md`.
-- Machine-readable scenarios: `docs/qa/session_archive_scenarios.json`.
+- Machine-readable scenarios: `docs/qa/session_archive_scenarios.json`, `docs/qa/session_archive_runtime_scenarios.json`, `docs/qa/session_archive_search_scenarios.json`, and `docs/qa/archive_to_memory_candidate_scenarios.json`.
 - Positions archive as a safe, user-controlled session history summary and review layer.
 - Keeps archive separate from Session Timeline, Game Session State, Memory Candidate, Long-term Memory, and PromptMemoryBlock.
 - Defines safe-summary-only content boundaries and forbids raw prompt, raw model response, raw JSON, API keys, `.env`, full paths, stdout/stderr, raw voice audio, full voice transcript, and unredacted raw chat transcript.
-- Recommends persistent archive default off, with future retention such as latest 20 sessions or 30 days if enabled.
+- Uses manual archive-current, latest-20 retention, list / read / delete / clear, and safe keyword / filter search.
 - Defines the bridge path: archive safe event summary -> archive-to-memory candidate detector -> memory guard -> pending Memory Candidate -> user accept / ignore -> Long-term Memory.
-- Keeps Session Archive out of prompt by default; any future Session Retrieval must pass recency, relevance, privacy, token budget, and user-control gates.
+- Keeps Session Archive and pending archive candidates out of prompt by default; any future Session Retrieval must pass recency, relevance, privacy, token budget, and user-control gates.
 
 ### Memory Workspace Polish
 

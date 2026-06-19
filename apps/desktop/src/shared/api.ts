@@ -222,6 +222,38 @@ export type SessionArchiveSearchResponse = {
   safe_result_summaries: string[];
 };
 
+export type SessionArchiveMemoryCandidateScanParams = {
+  limit?: number;
+  date_from?: string;
+  date_to?: string;
+};
+
+export type SessionArchiveMemoryCandidateScanItem = {
+  archive_id: string | null;
+  archive_event_ids: string[];
+  candidate_id: string | null;
+  candidate_type: string | null;
+  guard_reason: string;
+  safe_summary: string;
+  evidence_summary: string | null;
+};
+
+export type SessionArchiveMemoryCandidateScanSummary = {
+  mode: "single_archive" | "recent_archives";
+  archives_scanned: number;
+  events_scanned: number;
+  created_count: number;
+  skipped_count: number;
+  rejected_count: number;
+};
+
+export type SessionArchiveMemoryCandidateScanResponse = {
+  created_candidates: PendingMemory[];
+  skipped_candidates: SessionArchiveMemoryCandidateScanItem[];
+  rejected_candidates: SessionArchiveMemoryCandidateScanItem[];
+  scan_summary: SessionArchiveMemoryCandidateScanSummary;
+};
+
 export type SessionArchiveCreateResponse = {
   status: "created" | "existing" | "skipped";
   archive: SessionArchiveDetail | null;
@@ -714,7 +746,7 @@ export type PendingMemory = {
   type: "gameplay_preference" | "interaction_preference" | "emotional_pattern" | "accessibility_preference" | "do_not_remember" | "unknown";
   summary: string;
   text: string;
-  source: "game_session" | "conversation" | "explicit_user_statement" | "semantic_extraction" | "voice_confirmed" | "voice_direct" | "assistant" | "proactive";
+  source: "game_session" | "conversation" | "explicit_user_statement" | "semantic_extraction" | "voice_confirmed" | "voice_direct" | "session_archive" | "assistant" | "proactive";
   source_event_id: string | null;
   long_term_memory_id: string | null;
   confidence: number;
@@ -903,6 +935,15 @@ export const api = {
   },
   archiveCurrentSession: (payload: SessionArchiveCurrentRequest) =>
     request<SessionArchiveCreateResponse>("/api/session-archives/archive-current", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  scanSessionArchiveMemoryCandidates: (archiveId: string) =>
+    request<SessionArchiveMemoryCandidateScanResponse>(`/api/session-archives/${encodeURIComponent(archiveId)}/memory-candidates`, {
+      method: "POST"
+    }),
+  scanRecentSessionArchiveMemoryCandidates: (payload: SessionArchiveMemoryCandidateScanParams = {}) =>
+    request<SessionArchiveMemoryCandidateScanResponse>("/api/session-archives/memory-candidates/scan-recent", {
       method: "POST",
       body: JSON.stringify(payload)
     }),

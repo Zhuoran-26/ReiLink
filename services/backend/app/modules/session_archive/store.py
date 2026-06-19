@@ -42,6 +42,7 @@ SAFE_EVENT_SOURCES = {
     "game_session",
     "knowledge",
     "proactive",
+    "assistant",
     "memory",
     "voice",
     "manual",

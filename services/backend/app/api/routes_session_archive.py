@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 
+from app.modules.session_archive.memory_bridge import ArchiveMemoryCandidateBridge
 from app.modules.session_archive.store import SessionArchiveStore
 from app.schemas.api import (
     SessionArchiveClearResponse,
@@ -7,6 +8,8 @@ from app.schemas.api import (
     SessionArchiveCurrentRequest,
     SessionArchiveDeleteResponse,
     SessionArchiveDetail,
+    SessionArchiveMemoryCandidateScanRequest,
+    SessionArchiveMemoryCandidateScanResponse,
     SessionArchiveSearchResponse,
     SessionArchiveSummary,
 )
@@ -38,6 +41,31 @@ def search_session_archives(
         date_to=date_to,
         limit=limit,
     )
+
+
+@router.post(
+    "/session-archives/memory-candidates/scan-recent",
+    response_model=SessionArchiveMemoryCandidateScanResponse,
+)
+def scan_recent_session_archive_memory_candidates(request: SessionArchiveMemoryCandidateScanRequest) -> dict:
+    result = ArchiveMemoryCandidateBridge().scan_recent(
+        limit=request.limit,
+        date_from=request.date_from,
+        date_to=request.date_to,
+    )
+    return _public_memory_candidate_scan_result(result)
+
+
+@router.post(
+    "/session-archives/{archive_id}/memory-candidates",
+    response_model=SessionArchiveMemoryCandidateScanResponse,
+)
+def scan_session_archive_memory_candidates(archive_id: str) -> dict:
+    try:
+        result = ArchiveMemoryCandidateBridge().scan_archive(archive_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="session archive not found") from exc
+    return _public_memory_candidate_scan_result(result)
 
 
 @router.get("/session-archives/{archive_id}", response_model=SessionArchiveDetail)
@@ -118,3 +146,14 @@ def _public_summary(entry: dict) -> dict:
 
 def _public_detail(entry: dict) -> dict:
     return {**_public_summary(entry), "events": entry.get("events", [])}
+
+
+def _public_memory_candidate_scan_result(result: dict) -> dict:
+    return {
+        **result,
+        "created_candidates": [
+            {key: value for key, value in item.items() if key != "payload"}
+            for item in result.get("created_candidates", [])
+            if isinstance(item, dict)
+        ],
+    }

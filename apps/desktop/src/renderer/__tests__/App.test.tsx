@@ -18,6 +18,7 @@ import type {
   LocalAsrSettings,
   LocalAsrStatus,
   LocalAsrTranscriptionResponse,
+  PendingMemory,
   ProactiveCheckResponse,
   ProactiveStatusResponse,
   SessionArchiveDetail,
@@ -747,36 +748,36 @@ let proactiveCheckStore: ProactiveCheckResponse = {
   active_candidate_triggers: [] as string[]
 };
 
-const pendingMemories = [
-  {
-    id: "pending-1",
-    type: "interaction_preference",
-    summary: "玩家不喜欢长篇攻略",
-    text: "玩家不喜欢长篇攻略",
-    source: "explicit_user_statement",
-    source_event_id: null,
-    long_term_memory_id: null,
-    confidence: 0.95,
-    requires_confirmation: true,
-    status: "pending",
-    created_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
-    updated_at: new Date().toISOString(),
-    guard_reason: "requires_confirmation",
-    privacy_level: "normal",
-    related_game: null,
-    related_entity: null,
-    from_voice: false,
-    from_proactive: false,
-    from_assistant: false,
-    confirmation_intent: "implicit",
-    evidence_summary: "用户表达了攻略呈现偏好：避免长篇攻略",
-    evidence: {
-      input_summary: "用户表达了攻略呈现偏好",
-      game_state_summary: "current_boss=none"
-    }
+const pendingMemoryFixture: PendingMemory = {
+  id: "pending-1",
+  type: "interaction_preference",
+  summary: "玩家不喜欢长篇攻略",
+  text: "玩家不喜欢长篇攻略",
+  source: "explicit_user_statement",
+  source_event_id: null,
+  long_term_memory_id: null,
+  confidence: 0.95,
+  requires_confirmation: true,
+  status: "pending",
+  created_at: new Date().toISOString(),
+  expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+  updated_at: new Date().toISOString(),
+  guard_reason: "requires_confirmation",
+  privacy_level: "normal",
+  related_game: null,
+  related_entity: null,
+  from_voice: false,
+  from_proactive: false,
+  from_assistant: false,
+  confirmation_intent: "implicit",
+  evidence_summary: "用户表达了攻略呈现偏好：避免长篇攻略",
+  evidence: {
+    input_summary: "用户表达了攻略呈现偏好",
+    game_state_summary: "current_boss=none"
   }
-];
+};
+let pendingMemoriesStore: PendingMemory[] = [{ ...pendingMemoryFixture, evidence: { ...pendingMemoryFixture.evidence } }];
+let sessionArchiveScanMode: "created" | "empty" = "created";
 
 const sessionArchiveFixture: SessionArchiveDetail = {
   id: "archive-1",
@@ -1455,15 +1456,15 @@ const proactiveResponse = (url: string, init?: RequestInit) => {
 };
 
 const pendingMemoryResponse = (url: string, init?: RequestInit) => {
-  if (url.endsWith("/api/memory/pending")) return Response.json(pendingMemories);
+  if (url.endsWith("/api/memory/pending")) return Response.json(pendingMemoriesStore);
   if (url.endsWith("/api/memory/pending/clear") && init?.method === "POST") {
     return Response.json({ status: "cleared" });
   }
   if (url.includes("/api/memory/pending/pending-1/accept") && init?.method === "POST") {
-    return Response.json({ ...pendingMemories[0], status: "accepted" });
+    return Response.json({ ...pendingMemoriesStore[0], status: "accepted" });
   }
   if (url.includes("/api/memory/pending/pending-1/ignore") && init?.method === "POST") {
-    return Response.json({ ...pendingMemories[0], status: "ignored" });
+    return Response.json({ ...pendingMemoriesStore[0], status: "ignored" });
   }
   if (url.includes("/api/memory/long-term/ltm-1/undo") && init?.method === "POST") {
     return Response.json({ ...memoryProfile.long_term_memories[0], is_active: false });
@@ -1516,6 +1517,67 @@ const sessionArchiveSearchResult = (archive: SessionArchiveDetail, params: URLSe
   };
 };
 
+const sessionArchiveMemoryCandidateResponse = (archiveId: string | null, mode: "single_archive" | "recent_archives") => {
+  if (sessionArchiveScanMode === "empty") {
+    return {
+      created_candidates: [],
+      skipped_candidates: [
+        {
+          archive_id: archiveId,
+          archive_event_ids: archiveId ? ["archive-event-3"] : [],
+          candidate_id: null,
+          candidate_type: null,
+          guard_reason: "single_session_event_only",
+          safe_summary: "死亡次数更新：3",
+          evidence_summary: "艾尔登法环 / 恶兆妖鬼 Margit"
+        }
+      ],
+      rejected_candidates: [],
+      scan_summary: {
+        mode,
+        archives_scanned: archiveId ? 1 : sessionArchivesStore.length,
+        events_scanned: archiveId ? 3 : sessionArchivesStore.reduce((total, archive) => total + archive.event_count, 0),
+        created_count: 0,
+        skipped_count: 1,
+        rejected_count: 0
+      }
+    };
+  }
+  const candidate: PendingMemory = {
+    ...pendingMemoryFixture,
+    id: `archive-pending-${pendingMemoriesStore.length + 1}`,
+    type: "gameplay_preference",
+    summary: "用户打 Boss 前偏好先探索地图，不喜欢直接硬打。",
+    text: "用户打 Boss 前偏好先探索地图，不喜欢直接硬打。",
+    source: "session_archive",
+    source_event_id: `${archiveId ?? "recent"}:archive-event-preference`,
+    confidence: 0.9,
+    related_game: "艾尔登法环",
+    related_entity: "恶兆妖鬼 Margit",
+    evidence_summary: "来自 1 条会话归档安全摘要：用户偏好先探索地图",
+    evidence: {
+      source_channel: "session_archive",
+      input_summary: "来自会话归档安全摘要",
+      source_archive_id: archiveId ?? "recent",
+      archive_evidence_count: "1"
+    }
+  };
+  pendingMemoriesStore = [...pendingMemoriesStore, candidate];
+  return {
+    created_candidates: [candidate],
+    skipped_candidates: [],
+    rejected_candidates: [],
+    scan_summary: {
+      mode,
+      archives_scanned: archiveId ? 1 : Math.min(sessionArchivesStore.length, 5),
+      events_scanned: archiveId ? 3 : sessionArchivesStore.reduce((total, archive) => total + archive.event_count, 0),
+      created_count: 1,
+      skipped_count: 0,
+      rejected_count: 0
+    }
+  };
+};
+
 const sessionArchiveResponse = (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/session-archives/archive-current") && init?.method === "POST") {
     const payload = JSON.parse(String(init.body ?? "{}")) as { events?: Array<{ safe_summary?: string | null; summary?: string | null }> };
@@ -1556,6 +1618,13 @@ const sessionArchiveResponse = (url: string, init?: RequestInit) => {
     return Response.json({ status: "cleared", deleted_count: deletedCount });
   }
   const parsedUrl = new URL(url);
+  if (parsedUrl.pathname === "/api/session-archives/memory-candidates/scan-recent" && init?.method === "POST") {
+    return Response.json(sessionArchiveMemoryCandidateResponse(null, "recent_archives"));
+  }
+  const scanMatch = parsedUrl.pathname.match(/^\/api\/session-archives\/([^/]+)\/memory-candidates$/);
+  if (scanMatch && init?.method === "POST") {
+    return Response.json(sessionArchiveMemoryCandidateResponse(decodeURIComponent(scanMatch[1]), "single_archive"));
+  }
   if (parsedUrl.pathname === "/api/session-archives/search") {
     const limit = Math.max(1, Number(parsedUrl.searchParams.get("limit") ?? 20));
     const allResults = sessionArchivesStore
@@ -1658,6 +1727,8 @@ describe("App", () => {
     let uuid = 0;
     resetSettingsResponse();
     chatResponseStore = { ...chatResponse };
+    pendingMemoriesStore = [{ ...pendingMemoryFixture, evidence: { ...pendingMemoryFixture.evidence } }];
+    sessionArchiveScanMode = "created";
     sessionArchivesStore = [{ ...sessionArchiveFixture, events: [...sessionArchiveFixture.events] }];
     eventBus.clear();
     scrollToMock = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
@@ -5193,7 +5264,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url.endsWith("/api/memory/pending")) {
-          return Response.json(chatCompleted ? pendingMemories : []);
+          return Response.json(chatCompleted ? pendingMemoriesStore : []);
         }
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           chatCompleted = true;
@@ -6346,8 +6417,66 @@ describe("App", () => {
     expect(within(searchForm).getByRole("button", { name: "搜索" })).toBeDisabled();
     expect(within(archivePanel).getByRole("button", { name: "归档当前会话" })).toBeVisible();
     expect(within(archivePanel).getByRole("button", { name: "刷新" })).toBeVisible();
+    expect(within(archivePanel).getByRole("button", { name: "从最近归档检查候选" })).toBeVisible();
     expect(within(archivePanel).getByRole("button", { name: "清空归档" })).toBeVisible();
     expect(screen.getByLabelText("聊天输入")).toBeVisible();
+  });
+
+  it("generates a pending memory candidate from a session archive scan", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    await waitFor(() => expect(within(archivePanel).getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+    await userEvent.click(within(archivePanel).getAllByRole("button", { name: "检查可保存偏好" })[0]);
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/archive-1/memory-candidates"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("生成 1 条待确认记忆")).toBeInTheDocument();
+    expect(within(archivePanel).getByRole("button", { name: "查看待确认记忆" })).toBeVisible();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "archive_memory_scan_started", archive_id: "archive-1" }),
+        expect.objectContaining({ type: "archive_memory_scan_completed", created_count: 1 }),
+        expect.objectContaining({ type: "archive_memory_candidate_created", memory_type: "gameplay_preference" })
+      ])
+    );
+
+    await userEvent.click(within(archivePanel).getByRole("button", { name: "查看待确认记忆" }));
+    expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
+    expect(screen.getByText("用户打 Boss 前偏好先探索地图，不喜欢直接硬打。")).toBeInTheDocument();
+    expect(screen.getByText("session_archive")).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toBeVisible();
+    expect(screen.queryByText(/sk-test-secret|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+  });
+
+  it("shows safe skipped feedback when archive scan finds no stable preference", async () => {
+    sessionArchiveScanMode = "empty";
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    await userEvent.click(within(archivePanel).getByRole("button", { name: "从最近归档检查候选" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/memory-candidates/scan-recent"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("没有发现值得保存的偏好：只是一局里的单次事件")).toBeInTheDocument();
+    expect(screen.queryByText("用户打 Boss 前偏好先探索地图，不喜欢直接硬打。")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toBeVisible();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "archive_memory_scan_started", mode: "recent_archives" }),
+        expect.objectContaining({ type: "archive_memory_candidate_skipped", guard_reason: "single_session_event_only" })
+      ])
+    );
   });
 
   it("searches session archives and displays safe summaries", async () => {

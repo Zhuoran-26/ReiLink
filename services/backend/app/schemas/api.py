@@ -204,6 +204,7 @@ class PendingMemoryItem(BaseModel):
         "semantic_extraction",
         "voice_confirmed",
         "voice_direct",
+        "session_archive",
         "assistant",
         "proactive",
     ]
@@ -423,6 +424,38 @@ class SessionArchiveSearchResponse(BaseModel):
     total: int = 0
     omitted_count: int = 0
     safe_result_summaries: list[str] = Field(default_factory=list)
+
+
+class SessionArchiveMemoryCandidateScanRequest(BaseModel):
+    limit: int = Field(default=5, ge=1, le=20)
+    date_from: str | None = None
+    date_to: str | None = None
+
+
+class SessionArchiveMemoryCandidateScanItem(BaseModel):
+    archive_id: str | None = None
+    archive_event_ids: list[str] = Field(default_factory=list)
+    candidate_id: str | None = None
+    candidate_type: str | None = None
+    guard_reason: str
+    safe_summary: str
+    evidence_summary: str | None = None
+
+
+class SessionArchiveMemoryCandidateScanSummary(BaseModel):
+    mode: Literal["single_archive", "recent_archives"]
+    archives_scanned: int = 0
+    events_scanned: int = 0
+    created_count: int = 0
+    skipped_count: int = 0
+    rejected_count: int = 0
+
+
+class SessionArchiveMemoryCandidateScanResponse(BaseModel):
+    created_candidates: list[PendingMemoryItem] = Field(default_factory=list)
+    skipped_candidates: list[SessionArchiveMemoryCandidateScanItem] = Field(default_factory=list)
+    rejected_candidates: list[SessionArchiveMemoryCandidateScanItem] = Field(default_factory=list)
+    scan_summary: SessionArchiveMemoryCandidateScanSummary
 
 
 class SessionArchiveCreateResponse(BaseModel):

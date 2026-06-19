@@ -12,6 +12,7 @@ SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_
 SESSION_ARCHIVE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_scenarios.json"
 SESSION_ARCHIVE_RUNTIME_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_runtime_scenarios.json"
 SESSION_ARCHIVE_SEARCH_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_search_scenarios.json"
+ARCHIVE_TO_MEMORY_CANDIDATE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "archive_to_memory_candidate_scenarios.json"
 PERSONA_PACK_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_pack_scenarios.json"
 PERSONA_REGRESSION_CASES_PATH = REPO_ROOT / "docs" / "qa" / "persona_regression_cases.json"
 PERSONA_MEMORY_REGRESSION_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_memory_regression_scenarios.json"
@@ -175,6 +176,41 @@ ALLOWED_SESSION_ARCHIVE_SEARCH_LAYERS = {
     "ranking",
     "renderer_ui",
     "search_filter",
+}
+ALLOWED_ARCHIVE_MEMORY_CANDIDATE_STATUSES = {
+    "accepted",
+    "deduplicated",
+    "ignored",
+    "memory_unchanged",
+    "no_candidate",
+    "packaged_smoke",
+    "pending",
+    "rejected_by_guard",
+    "ui_rendered",
+}
+ALLOWED_ARCHIVE_MEMORY_CANDIDATE_LAYERS = {
+    "backend_api",
+    "detector",
+    "guard",
+    "memory_accept_ignore",
+    "packaged_smoke",
+    "pending_memory_store",
+    "prompt_boundary",
+    "renderer_ui",
+    "search_boundary",
+}
+ALLOWED_ARCHIVE_MEMORY_CANDIDATE_GUARD_REASONS = {
+    "already_remembered",
+    "assistant_source_blocked",
+    "duplicate_candidate",
+    "no_recent_archives",
+    "none",
+    "persona_drift_blocked",
+    "proactive_source_blocked",
+    "requires_confirmation",
+    "sensitive_secret_blocked",
+    "single_emotional_state_only",
+    "single_session_event_only",
 }
 ALLOWED_PERSONA_PACK_STATUSES = {
     "persona_pack_loaded",
@@ -389,6 +425,14 @@ def _load_session_archive_search_scenarios() -> list[dict]:
     return data
 
 
+def _load_archive_to_memory_candidate_scenarios() -> list[dict]:
+    data = json.loads(ARCHIVE_TO_MEMORY_CANDIDATE_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def _load_persona_pack_scenarios() -> list[dict]:
     data = json.loads(PERSONA_PACK_SCENARIOS_PATH.read_text(encoding="utf-8"))
     assert isinstance(data, list)
@@ -501,6 +545,12 @@ def test_session_archive_search_scenarios_file_is_valid_json():
     assert 20 <= len(scenarios) <= 30
 
 
+def test_archive_to_memory_candidate_scenarios_file_is_valid_json():
+    scenarios = _load_archive_to_memory_candidate_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+
+
 def test_persona_pack_scenarios_file_is_valid_json():
     scenarios = _load_persona_pack_scenarios()
 
@@ -571,6 +621,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_session_archive_scenarios(),
         *_load_session_archive_runtime_scenarios(),
         *_load_session_archive_search_scenarios(),
+        *_load_archive_to_memory_candidate_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
         *_load_persona_memory_regression_scenarios(),
@@ -620,6 +671,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_session_archive_scenarios(),
         *_load_session_archive_runtime_scenarios(),
         *_load_session_archive_search_scenarios(),
+        *_load_archive_to_memory_candidate_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
         *_load_persona_memory_regression_scenarios(),
@@ -1224,6 +1276,57 @@ def test_session_archive_search_scenarios_have_required_fields():
         assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
 
 
+def test_archive_to_memory_candidate_scenarios_have_required_fields():
+    scenarios = _load_archive_to_memory_candidate_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "archive-memory-single-explicit-gameplay-pending",
+        "archive-memory-repeated-gameplay-recent-pending",
+        "archive-memory-single-death-no-candidate",
+        "archive-memory-single-emotion-no-candidate",
+        "archive-memory-assistant-source-blocked",
+        "archive-memory-secret-blocked",
+        "archive-memory-duplicate-pending-deduped",
+        "archive-memory-accept-writes-long-term",
+        "archive-memory-ignore-no-long-term",
+        "archive-memory-search-no-auto-candidate",
+        "archive-memory-renderer-scan-button-visible",
+        "archive-memory-packaged-smoke",
+    } <= ids
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "API key",
+        "raw prompt",
+        "raw JSON",
+        "raw model response",
+        "full transcript",
+        "raw chat transcript",
+        "full local path",
+        "stdout",
+        "stderr",
+        "secret",
+    }
+    for item in scenarios:
+        assert item.get("category") == "archive_to_memory_candidate"
+        assert item.get("layer") in ALLOWED_ARCHIVE_MEMORY_CANDIDATE_LAYERS
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert isinstance(item.get("action"), str) and item["action"]
+        assert item.get("expected_status") in ALLOWED_ARCHIVE_MEMORY_CANDIDATE_STATUSES
+        assert item.get("expected_type") in ALLOWED_CANDIDATE_MEMORY_TYPES
+        assert item.get("guard_reason") in ALLOWED_ARCHIVE_MEMORY_CANDIDATE_GUARD_REASONS
+        assert isinstance(item.get("requires_confirmation"), bool)
+        assert isinstance(item.get("should_create_pending_candidate"), bool)
+        assert isinstance(item.get("should_write_long_term_memory"), bool)
+        assert item.get("should_enter_prompt") is False
+        assert item.get("should_use_raw_archive_content") is False
+        assert item.get("should_auto_create_from_search") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
 def test_persona_pack_scenarios_have_required_fields():
     scenarios = _load_persona_pack_scenarios()
 
@@ -1429,6 +1532,7 @@ def test_readme_qa_links_point_to_existing_files():
     readme_en = README_EN_PATH.read_text(encoding="utf-8")
     qa_doc = QA_DOC_PATH.read_text(encoding="utf-8")
     session_archive_architecture = SESSION_ARCHIVE_ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    memory_architecture = (REPO_ROOT / "docs" / "memory_architecture_v0.md").read_text(encoding="utf-8")
     project_status = PROJECT_STATUS_PATH.read_text(encoding="utf-8")
     local_asr_manual_setup = LOCAL_ASR_MANUAL_SETUP_PATH.read_text(encoding="utf-8")
     voice_mvp_release_notes = VOICE_MVP_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
@@ -1460,15 +1564,19 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/qa/session_archive_scenarios.json" in qa_doc
     assert "docs/qa/session_archive_runtime_scenarios.json" in qa_doc
     assert "docs/qa/session_archive_search_scenarios.json" in qa_doc
+    assert "docs/qa/archive_to_memory_candidate_scenarios.json" in qa_doc
     assert "docs/qa/persona_pack_scenarios.json" in qa_doc
     assert "docs/qa/persona_memory_regression_scenarios.json" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
     assert "Voice Interaction MVP" in project_status
     assert "Persona-Memory Eval v0.1" in project_status
     assert "Session Archive v1 Runtime" in project_status
+    assert "Archive-to-Memory Candidate Bridge v0" in project_status
     assert "Archive -> Memory Candidate" in session_archive_architecture
     assert "docs/qa/session_archive_runtime_scenarios.json" in session_archive_architecture
     assert "docs/qa/session_archive_search_scenarios.json" in session_archive_architecture
+    assert "docs/qa/archive_to_memory_candidate_scenarios.json" in session_archive_architecture
+    assert "docs/qa/archive_to_memory_candidate_scenarios.json" in memory_architecture
     assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup
     assert "REILINK_LOCAL_ASR_MODEL" in local_asr_manual_setup
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup

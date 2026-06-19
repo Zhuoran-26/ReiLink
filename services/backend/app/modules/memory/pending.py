@@ -37,6 +37,7 @@ PENDING_SOURCES = {
     "game_session",
     "voice_confirmed",
     "voice_direct",
+    "session_archive",
     "assistant",
     "proactive",
 }
@@ -695,6 +696,10 @@ def _safe_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
         "memory_check_source",
         "memory_check_reason",
         "memory_check_status",
+        "source_archive_id",
+        "source_archive_event_ids",
+        "archive_evidence_count",
+        "archive_scan_mode",
     )
     safe: dict[str, Any] = {}
     for key in allowed_keys:
