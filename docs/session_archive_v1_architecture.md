@@ -1,6 +1,6 @@
 # Session Archive v1 Architecture
 
-Status: Session Archive runtime v1 is implemented for manual safe-summary archive, local persistence, recent-session UI, list / read / delete / clear, and privacy-boundary tests. This document still does not implement archive search runtime, vector search, Archive-to-Memory Candidate runtime, prompt retrieval, Voice changes, Overlay changes, or packaging changes.
+Status: Session Archive runtime v1 is implemented for manual safe-summary archive, local persistence, recent-session UI, list / read / delete / clear, safe keyword / filter search, and privacy-boundary tests. This document still does not implement vector search, Archive-to-Memory Candidate runtime, prompt retrieval, Voice changes, Overlay changes, or new external memory providers.
 
 ## Product Positioning
 
@@ -109,17 +109,17 @@ Runtime v1 implements:
 
 - Local file persistence at the backend session data path: `data/session/session_archives.json` in dev, or the packaged user data session directory.
 - `GET /session-archives`
+- `GET /session-archives/search`
 - `GET /session-archives/{archive_id}`
 - `POST /session-archives/archive-current`
 - `DELETE /session-archives/{archive_id}`
 - `POST /session-archives/clear`
-- Memory workspace `最近会话` tab with archive current, refresh, read detail, delete, and clear controls.
-- Safe event stream summaries: `session_archive_created`, `session_archive_deleted`, `session_archive_cleared`, and `session_archive_skipped`.
+- Memory workspace `最近会话` tab with archive current, refresh, keyword / filter search, read detail, delete, and clear controls.
+- Safe event stream summaries: `session_archive_created`, `session_archive_deleted`, `session_archive_cleared`, `session_archive_skipped`, `session_archive_search_started`, `session_archive_search_completed`, and `session_archive_search_cleared`.
 
 Runtime v1 deliberately does not implement:
 
 - auto archive on lifecycle events
-- local keyword archive search
 - semantic / vector search
 - Archive-to-Memory Candidate runtime
 - prompt archive retrieval
@@ -181,8 +181,12 @@ relevance_score
 reason
 safe_summary
 matched_tags
-related_game
-related_entity
+game
+boss
+event_type
+created_at
+started_at
+ended_at
 ```
 
 ### ArchiveToMemoryCandidateBridge
@@ -235,7 +239,7 @@ The bridge should produce evidence summaries, not raw evidence. It should set `r
 
 ## Session Search
 
-Session Search v1 should be local, safe-summary-only, and non-vector by default.
+Session Search v1 is local, safe-summary-only, and non-vector.
 
 Supported filters:
 
@@ -249,8 +253,8 @@ Result requirements:
 
 - Show only `safe_summary`.
 - Hide raw transcript, raw prompt, raw provider JSON, secrets, and local paths.
-- Include why a result matched, using safe labels such as game, boss, event type, or matched tag.
-- Support future delete for the related archive entry.
+- Include why a result matched, using safe labels such as game, boss, event type, time range, or matched tag.
+- Support opening the related archive detail and deleting the related archive entry.
 
 Future semantic search can be explored later, but v1 must not require vector database or external retrieval services.
 
@@ -327,14 +331,22 @@ Machine-readable runtime scenarios live in:
 docs/qa/session_archive_runtime_scenarios.json
 ```
 
+Machine-readable search scenarios live in:
+
+```text
+docs/qa/session_archive_search_scenarios.json
+```
+
 Architecture scenarios cover safe archive input, forbidden raw content, voice transcript boundaries, memory bridge requirements, search safe summaries, user delete / disable controls, retention, export placeholder, prompt exclusion, current-input priority, Persona Core priority, and privacy-level retrieval blocking.
 
 Runtime scenarios cover manual archive-current, safe summary generation, local persistence, list / read / delete / clear, UI rendering, empty timeline skipping, repeated archive idempotency, Event Stream safety, and prompt / memory privacy boundaries.
 
+Search scenarios cover keyword search, game / boss / event type / date filters, limit and omitted_count, deleted archive exclusion, empty results, privacy redaction, prompt / memory boundaries, renderer controls, delete / clear behavior, Event Stream safety, and packaged smoke.
+
 ## Implementation Roadmap
 
 1. Session Archive v1 runtime: local safe-summary persistence, latest-20 retention, delete / clear, and Memory workspace recent sessions tab. Implemented.
-2. Archive Search v1: local keyword and structured filters over safe summaries.
+2. Archive Search v1: local keyword and structured filters over safe summaries. Implemented.
 3. Archive-to-Memory Candidate v1: repeated-pattern detector plus Memory Candidate guard and user confirmation.
 4. Session Archive UI expansion: search, filters, retention controls, and future export.
 5. Optional semantic search later: only after safe-summary storage, privacy filters, and user controls are stable.

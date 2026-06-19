@@ -20,6 +20,17 @@ export type ReiLinkEvent =
   | { type: "session_archive_deleted"; timestamp: string; archive_id: string }
   | { type: "session_archive_cleared"; timestamp: string; deleted_count: number }
   | { type: "session_archive_skipped"; timestamp: string; reason: string; event_count?: number }
+  | { type: "session_archive_search_started"; timestamp: string; query_summary?: string; filters?: Record<string, string> }
+  | {
+      type: "session_archive_search_completed";
+      timestamp: string;
+      query_summary?: string;
+      filters?: Record<string, string>;
+      result_count: number;
+      omitted_count: number;
+      safe_result_summaries?: string[];
+    }
+  | { type: "session_archive_search_cleared"; timestamp: string; query_summary?: string; filters?: Record<string, string> }
   | { type: "game_context_changed"; timestamp: string; game?: string; source?: string }
   | {
       type: "semantic_extraction_traced";

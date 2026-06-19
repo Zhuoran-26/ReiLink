@@ -11,6 +11,7 @@ OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
 SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_scenarios.json"
 SESSION_ARCHIVE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_scenarios.json"
 SESSION_ARCHIVE_RUNTIME_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_runtime_scenarios.json"
+SESSION_ARCHIVE_SEARCH_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_search_scenarios.json"
 PERSONA_PACK_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_pack_scenarios.json"
 PERSONA_REGRESSION_CASES_PATH = REPO_ROOT / "docs" / "qa" / "persona_regression_cases.json"
 PERSONA_MEMORY_REGRESSION_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_memory_regression_scenarios.json"
@@ -149,6 +150,31 @@ ALLOWED_SESSION_ARCHIVE_RUNTIME_LAYERS = {
     "source_boundary",
     "summary_builder",
     "voice_boundary",
+}
+ALLOWED_SESSION_ARCHIVE_SEARCH_STATUSES = {
+    "candidate_blocked",
+    "deleted",
+    "deleted_excluded",
+    "empty_result",
+    "limited",
+    "memory_unchanged",
+    "prompt_excluded",
+    "recent_listed",
+    "sanitized",
+    "search_result",
+    "ui_cleared",
+    "ui_rendered",
+}
+ALLOWED_SESSION_ARCHIVE_SEARCH_LAYERS = {
+    "backend_api",
+    "debug_event",
+    "memory_boundary",
+    "packaged_smoke",
+    "privacy_guard",
+    "prompt_boundary",
+    "ranking",
+    "renderer_ui",
+    "search_filter",
 }
 ALLOWED_PERSONA_PACK_STATUSES = {
     "persona_pack_loaded",
@@ -355,6 +381,14 @@ def _load_session_archive_runtime_scenarios() -> list[dict]:
     return data
 
 
+def _load_session_archive_search_scenarios() -> list[dict]:
+    data = json.loads(SESSION_ARCHIVE_SEARCH_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def _load_persona_pack_scenarios() -> list[dict]:
     data = json.loads(PERSONA_PACK_SCENARIOS_PATH.read_text(encoding="utf-8"))
     assert isinstance(data, list)
@@ -461,6 +495,12 @@ def test_session_archive_runtime_scenarios_file_is_valid_json():
     assert 20 <= len(scenarios) <= 30
 
 
+def test_session_archive_search_scenarios_file_is_valid_json():
+    scenarios = _load_session_archive_search_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+
+
 def test_persona_pack_scenarios_file_is_valid_json():
     scenarios = _load_persona_pack_scenarios()
 
@@ -530,6 +570,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_session_timeline_scenarios(),
         *_load_session_archive_scenarios(),
         *_load_session_archive_runtime_scenarios(),
+        *_load_session_archive_search_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
         *_load_persona_memory_regression_scenarios(),
@@ -578,6 +619,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_session_timeline_scenarios(),
         *_load_session_archive_scenarios(),
         *_load_session_archive_runtime_scenarios(),
+        *_load_session_archive_search_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
         *_load_persona_memory_regression_scenarios(),
@@ -1131,6 +1173,57 @@ def test_session_archive_runtime_scenarios_have_required_fields():
         assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
 
 
+def test_session_archive_search_scenarios_have_required_fields():
+    scenarios = _load_session_archive_search_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "session-archive-search-keyword-safe-summary",
+        "session-archive-search-chinese-contains",
+        "session-archive-search-game-filter",
+        "session-archive-search-boss-filter",
+        "session-archive-search-event-type-filter",
+        "session-archive-search-combined-filters",
+        "session-archive-search-limit-omitted-count",
+        "session-archive-search-deleted-excluded",
+        "session-archive-search-empty-result",
+        "session-archive-search-raw-prompt-excluded",
+        "session-archive-search-secret-query-redacted",
+        "session-archive-search-not-prompt-memory-block",
+        "session-archive-search-no-memory-candidate",
+        "session-archive-search-ui-input-visible",
+        "session-archive-search-ui-delete-updates-results",
+        "session-archive-search-packaged-smoke",
+    } <= ids
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "API key",
+        "raw prompt",
+        "raw JSON",
+        "raw model response",
+        "full transcript",
+        "raw chat transcript",
+        "full local path",
+        "stdout",
+        "stderr",
+        "secret",
+    }
+    for item in scenarios:
+        assert item.get("category") == "session_archive_search"
+        assert item.get("layer") in ALLOWED_SESSION_ARCHIVE_SEARCH_LAYERS
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert isinstance(item.get("action"), str) and item["action"]
+        assert item.get("expected_status") in ALLOWED_SESSION_ARCHIVE_SEARCH_STATUSES
+        assert item.get("should_return_raw_content") is False
+        assert item.get("should_enter_prompt") is False
+        assert item.get("should_write_long_term_memory") is False
+        assert item.get("should_generate_memory_candidate") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
 def test_persona_pack_scenarios_have_required_fields():
     scenarios = _load_persona_pack_scenarios()
 
@@ -1366,6 +1459,7 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/session_archive_v1_architecture.md" in qa_doc
     assert "docs/qa/session_archive_scenarios.json" in qa_doc
     assert "docs/qa/session_archive_runtime_scenarios.json" in qa_doc
+    assert "docs/qa/session_archive_search_scenarios.json" in qa_doc
     assert "docs/qa/persona_pack_scenarios.json" in qa_doc
     assert "docs/qa/persona_memory_regression_scenarios.json" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
@@ -1374,6 +1468,7 @@ def test_readme_qa_links_point_to_existing_files():
     assert "Session Archive v1 Runtime" in project_status
     assert "Archive -> Memory Candidate" in session_archive_architecture
     assert "docs/qa/session_archive_runtime_scenarios.json" in session_archive_architecture
+    assert "docs/qa/session_archive_search_scenarios.json" in session_archive_architecture
     assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup
     assert "REILINK_LOCAL_ASR_MODEL" in local_asr_manual_setup
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup

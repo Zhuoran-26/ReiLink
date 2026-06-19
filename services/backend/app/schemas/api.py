@@ -402,6 +402,29 @@ class SessionArchiveDetail(SessionArchiveSummary):
     events: list[SessionArchiveEvent] = Field(default_factory=list)
 
 
+class SessionArchiveSearchResult(BaseModel):
+    archive_id: str
+    event_id: str | None = None
+    relevance_score: int = 0
+    reason: str
+    safe_summary: str
+    matched_tags: list[str] = Field(default_factory=list)
+    game: str | None = None
+    boss: str | None = None
+    event_type: str | None = None
+    created_at: str
+    started_at: str
+    ended_at: str
+    event_count: int = 0
+
+
+class SessionArchiveSearchResponse(BaseModel):
+    results: list[SessionArchiveSearchResult] = Field(default_factory=list)
+    total: int = 0
+    omitted_count: int = 0
+    safe_result_summaries: list[str] = Field(default_factory=list)
+
+
 class SessionArchiveCreateResponse(BaseModel):
     status: Literal["created", "existing", "skipped"]
     archive: SessionArchiveDetail | None = None

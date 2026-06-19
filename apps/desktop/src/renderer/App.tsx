@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Mic,
   RefreshCw,
+  Search,
   Send,
   Settings,
   Sparkles,
@@ -50,6 +51,7 @@ import {
   SemanticShadowEvent,
   SessionArchiveDetail,
   SessionArchiveEventInput,
+  SessionArchiveSearchResult,
   SessionArchiveSummary,
   SetupStatus,
   UserProfileMemory
@@ -1342,6 +1344,24 @@ const eventSummary = (event: ReiLinkEvent) => {
         sanitizeSessionTimelineText(event.reason, 64),
         typeof event.event_count === "number" ? `输入事件 ${event.event_count}` : ""
       ].filter(Boolean).join(" / ");
+    case "session_archive_search_started":
+      return [
+        event.query_summary ? sanitizeSessionTimelineText(event.query_summary, 64) : "最近会话",
+        ...Object.entries(event.filters ?? {}).map(([key, value]) => `${key}=${sanitizeSessionTimelineText(value, 36)}`)
+      ].filter(Boolean).join(" / ");
+    case "session_archive_search_completed":
+      return [
+        `结果 ${event.result_count}`,
+        event.omitted_count ? `省略 ${event.omitted_count}` : "",
+        event.query_summary ? sanitizeSessionTimelineText(event.query_summary, 64) : "",
+        ...Object.entries(event.filters ?? {}).map(([key, value]) => `${key}=${sanitizeSessionTimelineText(value, 36)}`),
+        ...(event.safe_result_summaries ?? []).slice(0, 2).map((summary) => sanitizeSessionTimelineText(summary, 48))
+      ].filter(Boolean).join(" / ");
+    case "session_archive_search_cleared":
+      return [
+        event.query_summary ? sanitizeSessionTimelineText(event.query_summary, 64) : "已清除",
+        ...Object.entries(event.filters ?? {}).map(([key, value]) => `${key}=${sanitizeSessionTimelineText(value, 36)}`)
+      ].filter(Boolean).join(" / ");
     case "game_context_changed":
       return [debugText(event.game), debugText(event.source)].join(" / ");
     case "semantic_extraction_traced":
@@ -1540,6 +1560,9 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     session_archive_deleted: "会话归档已删除",
     session_archive_cleared: "会话归档已清空",
     session_archive_skipped: "会话归档已跳过",
+    session_archive_search_started: "会话归档搜索开始",
+    session_archive_search_completed: "会话归档搜索完成",
+    session_archive_search_cleared: "会话归档搜索已清除",
     game_context_changed: "游戏上下文变化",
     semantic_extraction_traced: "语义识别来源",
     game_session_changed: "游戏状态变化",
@@ -2181,6 +2204,14 @@ export function App() {
   const [sessionArchiveDetail, setSessionArchiveDetail] = useState<SessionArchiveDetail | null>(null);
   const [sessionArchiveBusy, setSessionArchiveBusy] = useState("");
   const [sessionArchiveFeedback, setSessionArchiveFeedback] = useState("");
+  const [sessionArchiveSearchQuery, setSessionArchiveSearchQuery] = useState("");
+  const [sessionArchiveSearchGame, setSessionArchiveSearchGame] = useState("");
+  const [sessionArchiveSearchBoss, setSessionArchiveSearchBoss] = useState("");
+  const [sessionArchiveSearchEventType, setSessionArchiveSearchEventType] = useState("");
+  const [sessionArchiveSearchActive, setSessionArchiveSearchActive] = useState(false);
+  const [sessionArchiveSearchResults, setSessionArchiveSearchResults] = useState<SessionArchiveSearchResult[]>([]);
+  const [sessionArchiveSearchTotal, setSessionArchiveSearchTotal] = useState(0);
+  const [sessionArchiveSearchOmitted, setSessionArchiveSearchOmitted] = useState(0);
   const [recentEvents, setRecentEvents] = useState<ReiLinkEvent[]>(() => eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
   const [setupHelpOpen, setSetupHelpOpen] = useState(false);
   const [demoDocHintOpen, setDemoDocHintOpen] = useState(false);
@@ -2609,6 +2640,30 @@ export function App() {
     setPendingMemories(memories);
   }, []);
 
+  const sessionArchiveSearchCriteria = useMemo(() => ({
+    q: sessionArchiveSearchQuery.trim(),
+    game: sessionArchiveSearchGame.trim(),
+    boss: sessionArchiveSearchBoss.trim(),
+    event_type: sessionArchiveSearchEventType.trim()
+  }), [sessionArchiveSearchBoss, sessionArchiveSearchEventType, sessionArchiveSearchGame, sessionArchiveSearchQuery]);
+  const sessionArchiveSearchFilters = useMemo(() => {
+    const filters: Record<string, string> = {};
+    if (sessionArchiveSearchCriteria.game) filters.game = sessionArchiveSearchCriteria.game;
+    if (sessionArchiveSearchCriteria.boss) filters.boss = sessionArchiveSearchCriteria.boss;
+    if (sessionArchiveSearchCriteria.event_type) filters.event_type = sessionArchiveSearchCriteria.event_type;
+    return filters;
+  }, [sessionArchiveSearchCriteria]);
+  const sessionArchiveSearchQuerySummary = useMemo(
+    () => sanitizeSessionTimelineText(sessionArchiveSearchCriteria.q, 64),
+    [sessionArchiveSearchCriteria.q]
+  );
+  const hasSessionArchiveSearchCriteria = Boolean(
+    sessionArchiveSearchCriteria.q ||
+    sessionArchiveSearchCriteria.game ||
+    sessionArchiveSearchCriteria.boss ||
+    sessionArchiveSearchCriteria.event_type
+  );
+
   const refreshSessionArchives = useCallback(async (preferredArchiveId?: string | null) => {
     try {
       const archives = await api.sessionArchives();
@@ -2642,6 +2697,73 @@ export function App() {
     }
   }, []);
 
+  const runSessionArchiveSearch = useCallback(async (options?: { preserveFeedback?: boolean }) => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy("search");
+    try {
+      setLastError("");
+      setLastRawError("");
+      eventBus.emit({
+        type: "session_archive_search_started",
+        timestamp: eventTimestamp(),
+        query_summary: sessionArchiveSearchQuerySummary || undefined,
+        filters: sessionArchiveSearchFilters
+      });
+      const response = await api.searchSessionArchives({ ...sessionArchiveSearchCriteria, limit: 20 });
+      setSessionArchiveSearchActive(true);
+      setSessionArchiveSearchResults(response.results);
+      setSessionArchiveSearchTotal(response.total);
+      setSessionArchiveSearchOmitted(response.omitted_count);
+      eventBus.emit({
+        type: "session_archive_search_completed",
+        timestamp: eventTimestamp(),
+        query_summary: sessionArchiveSearchQuerySummary || undefined,
+        filters: sessionArchiveSearchFilters,
+        result_count: response.total,
+        omitted_count: response.omitted_count,
+        safe_result_summaries: response.safe_result_summaries
+      });
+      if (!options?.preserveFeedback) {
+        setSessionArchiveFeedback(
+          response.total > 0
+            ? `找到 ${response.total} 条会话归档${response.omitted_count > 0 ? `，已省略 ${response.omitted_count} 条` : ""}`
+            : "没有找到匹配的会话归档。"
+        );
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "搜索会话归档失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  }, [
+    sessionArchiveSearchCriteria,
+    sessionArchiveSearchFilters,
+    sessionArchiveSearchQuerySummary,
+    suppressProactiveAfterSystemAction
+  ]);
+
+  const clearSessionArchiveSearch = useCallback(async () => {
+    const previousQuerySummary = sessionArchiveSearchQuerySummary;
+    const previousFilters = sessionArchiveSearchFilters;
+    setSessionArchiveSearchQuery("");
+    setSessionArchiveSearchGame("");
+    setSessionArchiveSearchBoss("");
+    setSessionArchiveSearchEventType("");
+    setSessionArchiveSearchActive(false);
+    setSessionArchiveSearchResults([]);
+    setSessionArchiveSearchTotal(0);
+    setSessionArchiveSearchOmitted(0);
+    setSessionArchiveFeedback("");
+    eventBus.emit({
+      type: "session_archive_search_cleared",
+      timestamp: eventTimestamp(),
+      query_summary: previousQuerySummary || undefined,
+      filters: previousFilters
+    });
+    await refreshSessionArchives();
+  }, [refreshSessionArchives, sessionArchiveSearchFilters, sessionArchiveSearchQuerySummary]);
+
   const deleteSessionArchive = useCallback(async (archiveId: string) => {
     suppressProactiveAfterSystemAction();
     setSessionArchiveBusy(`delete-${archiveId}`);
@@ -2651,14 +2773,18 @@ export function App() {
       await api.deleteSessionArchive(archiveId);
       eventBus.emit({ type: "session_archive_deleted", timestamp: eventTimestamp(), archive_id: archiveId });
       setSessionArchiveFeedback("已删除这条会话归档");
-      await refreshSessionArchives(null);
+      if (sessionArchiveSearchActive) {
+        await runSessionArchiveSearch({ preserveFeedback: true });
+      } else {
+        await refreshSessionArchives(null);
+      }
     } catch (error) {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "删除会话归档失败"));
     } finally {
       setSessionArchiveBusy("");
     }
-  }, [refreshSessionArchives, suppressProactiveAfterSystemAction]);
+  }, [refreshSessionArchives, runSessionArchiveSearch, sessionArchiveSearchActive, suppressProactiveAfterSystemAction]);
 
   const clearSessionArchives = useCallback(async () => {
     suppressProactiveAfterSystemAction();
@@ -2669,6 +2795,10 @@ export function App() {
       const result = await api.clearSessionArchives();
       eventBus.emit({ type: "session_archive_cleared", timestamp: eventTimestamp(), deleted_count: result.deleted_count });
       setSessionArchiveFeedback(result.deleted_count > 0 ? `已清空 ${result.deleted_count} 条会话归档` : "没有需要清空的会话归档");
+      setSessionArchiveSearchActive(false);
+      setSessionArchiveSearchResults([]);
+      setSessionArchiveSearchTotal(0);
+      setSessionArchiveSearchOmitted(0);
       await refreshSessionArchives(null);
     } catch (error) {
       setLastRawError(errorRawText(error));
@@ -3896,7 +4026,12 @@ export function App() {
           boss: response.archive.boss ?? undefined,
           status: response.status === "existing" ? "existing" : "created"
         });
-        await refreshSessionArchives(response.archive.id);
+        if (sessionArchiveSearchActive) {
+          await runSessionArchiveSearch({ preserveFeedback: true });
+          await loadSessionArchiveDetail(response.archive.id);
+        } else {
+          await refreshSessionArchives(response.archive.id);
+        }
       } else {
         eventBus.emit({
           type: "session_archive_skipped",
@@ -3904,7 +4039,11 @@ export function App() {
           reason: response.message,
           event_count: archiveEvents.length
         });
-        await refreshSessionArchives();
+        if (sessionArchiveSearchActive) {
+          await runSessionArchiveSearch({ preserveFeedback: true });
+        } else {
+          await refreshSessionArchives();
+        }
       }
     } catch (error) {
       setLastRawError(errorRawText(error));
@@ -4576,7 +4715,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               <div className="cardHeader">
                 <Archive size={17} />
                 <h2>最近会话</h2>
-                <span className="countPill">{sessionArchives.length}</span>
+                <span className="countPill">{sessionArchiveSearchActive ? sessionArchiveSearchTotal : sessionArchives.length}</span>
               </div>
               <p className="settingHint">
                 会话归档只保存本局时间线的安全摘要；它不是长期记忆，不进入 PromptMemoryBlock，也不会保存原始聊天、Prompt、JSON、密钥、完整路径或语音全文。
@@ -4595,7 +4734,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   className="smallButton quiet"
                   type="button"
                   disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
-                  onClick={() => void refreshSessionArchives()}
+                  onClick={() => void (sessionArchiveSearchActive ? runSessionArchiveSearch() : refreshSessionArchives())}
                 >
                   <RefreshCw size={14} />
                   刷新
@@ -4610,53 +4749,166 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   清空归档
                 </button>
               </div>
-              {sessionArchiveFeedback && <p className="demoResetFeedback" role="status">{sessionArchiveFeedback}</p>}
-              <div className="pendingMemoryList">
-                {sessionArchives.map((archive) => (
-                  <article
-                    className={`pendingMemoryItem ${sessionArchiveDetail?.id === archive.id ? "selected" : ""}`}
-                    key={archive.id}
+              <form
+                aria-label="搜索会话归档"
+                className="archiveSearchPanel"
+                role="search"
+                onSubmit={(event: FormEvent<HTMLFormElement>) => {
+                  event.preventDefault();
+                  if (backendStatus !== "connected" || sessionArchiveBusy !== "" || !hasSessionArchiveSearchCriteria) return;
+                  void runSessionArchiveSearch();
+                }}
+              >
+                <label className="archiveSearchField archiveSearchFieldWide">
+                  <span>搜索归档</span>
+                  <span className="archiveSearchInputRow">
+                    <Search size={14} />
+                    <input
+                      aria-label="搜索会话归档关键词"
+                      placeholder="搜索会话、游戏、Boss 或事件…"
+                      value={sessionArchiveSearchQuery}
+                      onChange={(event) => setSessionArchiveSearchQuery(event.target.value)}
+                    />
+                  </span>
+                </label>
+                <div className="archiveSearchFilters" aria-label="会话归档搜索过滤">
+                  <label className="archiveSearchField">
+                    <span>游戏</span>
+                    <input
+                      aria-label="按游戏过滤会话归档"
+                      value={sessionArchiveSearchGame}
+                      onChange={(event) => setSessionArchiveSearchGame(event.target.value)}
+                    />
+                  </label>
+                  <label className="archiveSearchField">
+                    <span>Boss / 实体</span>
+                    <input
+                      aria-label="按 Boss 或实体过滤会话归档"
+                      value={sessionArchiveSearchBoss}
+                      onChange={(event) => setSessionArchiveSearchBoss(event.target.value)}
+                    />
+                  </label>
+                  <label className="archiveSearchField">
+                    <span>事件类型</span>
+                    <input
+                      aria-label="按事件类型过滤会话归档"
+                      value={sessionArchiveSearchEventType}
+                      onChange={(event) => setSessionArchiveSearchEventType(event.target.value)}
+                    />
+                  </label>
+                </div>
+                <div className="debugActions">
+                  <button
+                    className="smallButton"
+                    type="submit"
+                    disabled={sessionArchiveBusy !== "" || backendStatus !== "connected" || !hasSessionArchiveSearchCriteria}
                   >
-                    <p>{archive.title}</p>
-                    <p className="settingHint">{archive.summary}</p>
-                    <div className="pendingMemoryMeta">
-                      <span>{debugText(archive.game, "未记录游戏")}</span>
-                      <span>Boss：{debugText(archive.boss, "未记录")}</span>
-                      <span>{archive.event_count} 个事件</span>
-                      <span>{formatMessageTime(archive.started_at)} - {formatMessageTime(archive.ended_at)}</span>
-                      <span>{archive.privacy_level === "sensitive" ? "已脱敏" : "普通"}</span>
-                    </div>
-                    {archive.safe_event_summaries.length > 0 && (
-                      <ul className="sessionTimelineList compact" aria-label={`${archive.title} 安全事件摘要`}>
-                        {archive.safe_event_summaries.slice(0, 3).map((summary, index) => (
-                          <li key={`${archive.id}-summary-${index}`}>{summary}</li>
-                        ))}
-                      </ul>
-                    )}
-                    <div className="pendingMemoryActions">
-                      <button
-                        className="smallButton quiet"
-                        type="button"
-                        disabled={sessionArchiveBusy !== ""}
-                        onClick={() => void loadSessionArchiveDetail(archive.id)}
-                      >
-                        查看
-                      </button>
-                      <button
-                        aria-label={`删除会话归档 ${archive.title}`}
-                        className="smallButton quiet"
-                        type="button"
-                        disabled={sessionArchiveBusy !== ""}
-                        onClick={() => void deleteSessionArchive(archive.id)}
-                      >
-                        <Trash2 size={14} />
-                        删除
-                      </button>
-                    </div>
-                  </article>
-                ))}
-                {sessionArchives.length === 0 && <p className="emptyDebugText">暂无会话归档</p>}
-              </div>
+                    <Search size={14} />
+                    搜索
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    disabled={sessionArchiveBusy !== "" || (!sessionArchiveSearchActive && !hasSessionArchiveSearchCriteria)}
+                    onClick={() => void clearSessionArchiveSearch()}
+                  >
+                    清除搜索
+                  </button>
+                </div>
+              </form>
+              {sessionArchiveFeedback && <p className="demoResetFeedback" role="status">{sessionArchiveFeedback}</p>}
+              {sessionArchiveSearchActive ? (
+                <div className="pendingMemoryList" aria-label="会话归档搜索结果">
+                  {sessionArchiveSearchResults.map((result) => (
+                    <article
+                      className={`pendingMemoryItem ${sessionArchiveDetail?.id === result.archive_id ? "selected" : ""}`}
+                      key={`${result.archive_id}-${result.event_id ?? "archive"}`}
+                    >
+                      <p>{result.safe_summary}</p>
+                      <p className="settingHint">{result.reason}</p>
+                      <div className="pendingMemoryMeta">
+                        <span>{debugText(result.game, "未记录游戏")}</span>
+                        <span>Boss：{debugText(result.boss, "未记录")}</span>
+                        <span>{result.event_count} 个事件</span>
+                        <span>{formatMessageTime(result.started_at)} - {formatMessageTime(result.ended_at)}</span>
+                        <span>{result.matched_tags.length} 个命中</span>
+                        <span>事件：{debugText(result.event_type, "归档")}</span>
+                      </div>
+                      <div className="pendingMemoryActions">
+                        <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== ""}
+                          onClick={() => void loadSessionArchiveDetail(result.archive_id)}
+                        >
+                          查看
+                        </button>
+                        <button
+                          aria-label={`删除会话归档搜索结果 ${result.safe_summary}`}
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== ""}
+                          onClick={() => void deleteSessionArchive(result.archive_id)}
+                        >
+                          <Trash2 size={14} />
+                          删除
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  {sessionArchiveSearchResults.length === 0 && <p className="emptyDebugText">没有找到匹配的会话归档。</p>}
+                  {sessionArchiveSearchOmitted > 0 && (
+                    <p className="emptyDebugText">还有 {sessionArchiveSearchOmitted} 条安全结果未显示。</p>
+                  )}
+                </div>
+              ) : (
+                <div className="pendingMemoryList">
+                  {sessionArchives.map((archive) => (
+                    <article
+                      className={`pendingMemoryItem ${sessionArchiveDetail?.id === archive.id ? "selected" : ""}`}
+                      key={archive.id}
+                    >
+                      <p>{archive.title}</p>
+                      <p className="settingHint">{archive.summary}</p>
+                      <div className="pendingMemoryMeta">
+                        <span>{debugText(archive.game, "未记录游戏")}</span>
+                        <span>Boss：{debugText(archive.boss, "未记录")}</span>
+                        <span>{archive.event_count} 个事件</span>
+                        <span>{formatMessageTime(archive.started_at)} - {formatMessageTime(archive.ended_at)}</span>
+                        <span>{archive.privacy_level === "sensitive" ? "已脱敏" : "普通"}</span>
+                      </div>
+                      {archive.safe_event_summaries.length > 0 && (
+                        <ul className="sessionTimelineList compact" aria-label={`${archive.title} 安全事件摘要`}>
+                          {archive.safe_event_summaries.slice(0, 3).map((summary, index) => (
+                            <li key={`${archive.id}-summary-${index}`}>{summary}</li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="pendingMemoryActions">
+                        <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== ""}
+                          onClick={() => void loadSessionArchiveDetail(archive.id)}
+                        >
+                          查看
+                        </button>
+                        <button
+                          aria-label={`删除会话归档 ${archive.title}`}
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== ""}
+                          onClick={() => void deleteSessionArchive(archive.id)}
+                        >
+                          <Trash2 size={14} />
+                          删除
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  {sessionArchives.length === 0 && <p className="emptyDebugText">暂无会话归档</p>}
+                </div>
+              )}
               {sessionArchiveDetail && (
                 <div className="debugSection archiveDetail" aria-label="会话归档详情">
                   <h3>{sessionArchiveDetail.title}</h3>

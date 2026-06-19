@@ -189,6 +189,39 @@ export type SessionArchiveDetail = SessionArchiveSummary & {
   events: SessionArchiveEvent[];
 };
 
+export type SessionArchiveSearchParams = {
+  q?: string;
+  game?: string;
+  boss?: string;
+  event_type?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+};
+
+export type SessionArchiveSearchResult = {
+  archive_id: string;
+  event_id: string | null;
+  relevance_score: number;
+  reason: string;
+  safe_summary: string;
+  matched_tags: string[];
+  game: string | null;
+  boss: string | null;
+  event_type: string | null;
+  created_at: string;
+  started_at: string;
+  ended_at: string;
+  event_count: number;
+};
+
+export type SessionArchiveSearchResponse = {
+  results: SessionArchiveSearchResult[];
+  total: number;
+  omitted_count: number;
+  safe_result_summaries: string[];
+};
+
 export type SessionArchiveCreateResponse = {
   status: "created" | "existing" | "skipped";
   archive: SessionArchiveDetail | null;
@@ -859,6 +892,15 @@ export const api = {
   memoryEpisodes: () => request<EpisodeMemory[]>("/api/memory/episodes"),
   sessionArchives: () => request<SessionArchiveSummary[]>("/api/session-archives"),
   sessionArchive: (archiveId: string) => request<SessionArchiveDetail>(`/api/session-archives/${encodeURIComponent(archiveId)}`),
+  searchSessionArchives: (params: SessionArchiveSearchParams) => {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      search.set(key, String(value));
+    });
+    const query = search.toString();
+    return request<SessionArchiveSearchResponse>(`/api/session-archives/search${query ? `?${query}` : ""}`);
+  },
   archiveCurrentSession: (payload: SessionArchiveCurrentRequest) =>
     request<SessionArchiveCreateResponse>("/api/session-archives/archive-current", {
       method: "POST",

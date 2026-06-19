@@ -54,6 +54,25 @@ def _events() -> list[dict]:
     ]
 
 
+def _safe_event(
+    event_type: str,
+    summary: str,
+    *,
+    game: str,
+    entity: str | None = None,
+    source: str = "game_session",
+) -> dict:
+    return {
+        "id": f"event-{event_type}-{game}",
+        "timestamp": _now(),
+        "event_type": event_type,
+        "safe_summary": summary,
+        "source": source,
+        "related_game": game,
+        "related_entity": entity,
+    }
+
+
 def test_session_archive_store_create_list_read_delete_clear():
     store = SessionArchiveStore()
 
@@ -106,6 +125,180 @@ def test_session_archive_api_create_list_read_delete_clear():
     assert cleared.status_code == 200
     assert cleared.json()["deleted_count"] == 1
     assert client.get("/api/session-archives").json() == []
+
+
+def test_session_archive_search_filters_keywords_and_safe_metadata():
+    store = SessionArchiveStore()
+    elden = store.archive_current(
+        session_id="search-elden",
+        events=_events(),
+        game="艾尔登法环",
+        boss="恶兆妖鬼 Margit",
+    )["archive"]
+    hollow = store.archive_current(
+        session_id="search-hollow",
+        events=[
+            _safe_event("game_selected", "游戏：空洞骑士", game="空洞骑士", source="game_context"),
+            _safe_event("boss_detected", "Boss：Hornet", game="空洞骑士", entity="Hornet"),
+            _safe_event("boss_cleared", "已击败 Boss：Hornet", game="空洞骑士", entity="Hornet"),
+        ],
+        game="空洞骑士",
+        boss="Hornet",
+    )["archive"]
+
+    by_keyword = store.search_archives(q="死亡")
+    assert by_keyword["total"] == 1
+    assert by_keyword["results"][0]["archive_id"] == elden["id"]
+    assert by_keyword["results"][0]["event_id"] == "event-deaths"
+    assert by_keyword["results"][0]["reason"] == "关键词命中安全事件摘要"
+    assert "死亡次数更新：3" in by_keyword["safe_result_summaries"]
+
+    by_game = store.search_archives(game="空洞")
+    assert by_game["total"] == 1
+    assert by_game["results"][0]["archive_id"] == hollow["id"]
+    assert by_game["results"][0]["matched_tags"] == ["game"]
+
+    by_boss = store.search_archives(boss="margit")
+    assert by_boss["total"] == 1
+    assert by_boss["results"][0]["archive_id"] == elden["id"]
+
+    by_type = store.search_archives(event_type="boss_cleared")
+    assert by_type["total"] == 1
+    assert by_type["results"][0]["archive_id"] == hollow["id"]
+    assert by_type["results"][0]["event_type"] == "boss_cleared"
+
+    combined = store.search_archives(q="Boss", game="空洞骑士", boss="Hornet", event_type="boss_detected")
+    assert combined["total"] == 1
+    assert combined["results"][0]["archive_id"] == hollow["id"]
+
+    limited = store.search_archives(limit=1)
+    assert limited["total"] == 2
+    assert limited["omitted_count"] == 1
+    assert len(limited["results"]) == 1
+
+
+def test_session_archive_search_covers_stored_safe_event_summaries():
+    store = SessionArchiveStore()
+    now = _now()
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    store.path.write_text(
+        json.dumps(
+            {
+                "archives": [
+                    {
+                        "id": "archive-safe-summaries-only",
+                        "session_id": "legacy-safe-summary",
+                        "title": "旧归档",
+                        "created_at": now,
+                        "updated_at": now,
+                        "started_at": now,
+                        "ended_at": now,
+                        "source": "manual",
+                        "game": "空洞骑士",
+                        "boss": "Hornet",
+                        "summary": "本局保存了安全摘要。",
+                        "event_count": 1,
+                        "safe_event_summaries": ["安全事件：发现隐藏道路"],
+                        "events": [],
+                        "is_deleted": False,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = store.search_archives(q="隐藏道路")
+
+    assert result["total"] == 1
+    assert result["results"][0]["archive_id"] == "archive-safe-summaries-only"
+    assert result["results"][0]["safe_summary"] == "安全事件：发现隐藏道路"
+    assert result["results"][0]["reason"] == "关键词命中安全事件摘要"
+
+
+def test_session_archive_search_excludes_deleted_and_handles_empty_results():
+    store = SessionArchiveStore()
+    archive = store.archive_current(session_id="deleted-search", events=_events())["archive"]
+
+    store.delete_archive(archive["id"])
+
+    deleted_search = store.search_archives(q="艾尔登法环")
+    assert deleted_search == {"results": [], "total": 0, "omitted_count": 0, "safe_result_summaries": []}
+    assert store.search_archives(q="不存在的 Boss")["results"] == []
+
+
+def test_session_archive_search_api_returns_safe_result_shape():
+    created = client.post(
+        "/api/session-archives/archive-current",
+        json={"session_id": "api-search", "events": _events(), "game": "艾尔登法环", "boss": "恶兆妖鬼 Margit"},
+    )
+    archive_id = created.json()["archive"]["id"]
+
+    response = client.get(
+        "/api/session-archives/search",
+        params={"q": "玛尔基特", "game": "艾尔登", "boss": "Margit", "event_type": "knowledge_used", "limit": 5},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["omitted_count"] == 0
+    assert payload["results"][0]["archive_id"] == archive_id
+    assert payload["results"][0]["event_type"] == "knowledge_used"
+    assert payload["results"][0]["safe_summary"] == "使用知识摘要：玛尔基特二阶段"
+    assert payload["safe_result_summaries"] == ["使用知识摘要：玛尔基特二阶段"]
+
+
+def test_session_archive_search_redacts_raw_secret_and_does_not_mutate_memory_or_prompt():
+    store = SessionArchiveStore()
+    result = store.archive_current(
+        session_id="search-secret-boundary",
+        events=[
+            {
+                "id": "unsafe-event",
+                "timestamp": _now(),
+                "event_type": "session_note",
+                "safe_summary": (
+                    "raw prompt raw JSON Authorization bearer token secret sk-test-secret-1234567890 "
+                    "/Users/example/project/services/backend/.env stdout stderr"
+                ),
+                "source": "manual",
+            },
+            _safe_event("boss_detected", "Boss：恶兆妖鬼 Margit", game="艾尔登法环", entity="恶兆妖鬼 Margit"),
+        ],
+        game="艾尔登法环",
+        boss="恶兆妖鬼 Margit",
+    )
+
+    assert result["status"] == "created"
+    search = store.search_archives(q="sk-test-secret-1234567890")
+    serialized = json.dumps(search, ensure_ascii=False).lower()
+    for forbidden in (
+        ".env",
+        "authorization",
+        "api_key",
+        "api key",
+        "raw prompt",
+        "raw json",
+        "raw model response",
+        "raw chat transcript",
+        "full voice transcript",
+        "full transcript",
+        "stdout",
+        "stderr",
+        "secret",
+        "/users/example",
+        "sk-test-secret",
+    ):
+        assert forbidden not in serialized
+
+    profile = PlayerMemory().load_profile()
+    prompt_text = PlayerMemory().build_prompt_context()
+    retrieved = PlayerMemory().retrieve_prompt_memory(user_message="找一下归档", current_game="艾尔登法环")
+    assert profile.long_term_memories == []
+    assert "恶兆妖鬼" not in prompt_text
+    assert retrieved.memories == []
 
 
 def test_session_archive_redacts_raw_prompt_secrets_paths_and_voice_transcript():

@@ -15,6 +15,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/session_timeline_scenarios.json`
 - `docs/qa/session_archive_scenarios.json`
 - `docs/qa/session_archive_runtime_scenarios.json`
+- `docs/qa/session_archive_search_scenarios.json`
 - `docs/qa/persona_pack_scenarios.json`
 - `docs/qa/persona_regression_cases.json`
 - `docs/qa/persona_memory_regression_scenarios.json`
@@ -279,7 +280,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.13 Hermes-style Memory Architecture v0 人工验收
 
-设计文档见 `docs/memory_architecture_v0.md`，机器可读场景见 `docs/qa/memory_architecture_scenarios.json`。本节验收 architecture / docs / QA surface；Candidate Memory v1、Memory Retrieval v1 和 Session Archive runtime v1 已作为最小 runtime slice 接入，但本节仍不表示 Archive Search、Archive-to-Memory Candidate runtime、向量数据库、复杂 ranking、跨会话全文搜索或外部 memory provider 已实现。
+设计文档见 `docs/memory_architecture_v0.md`，机器可读场景见 `docs/qa/memory_architecture_scenarios.json`。本节验收 architecture / docs / QA surface；Candidate Memory v1、Memory Retrieval v1、Session Archive runtime v1 和 Archive Search v1 已作为最小 runtime slice 接入，但本节仍不表示 Archive-to-Memory Candidate runtime、向量数据库、复杂 ranking、prompt archive retrieval 或外部 memory provider 已实现。
 
 1. 文档应包含 Hermes-style memory 的轻量 research 摘要，并说明只吸收 bounded / curated / approval / retrieval budget 等架构思想，不复制 Hermes 代码、prompt、人格或 provider 实现。
 2. 文档应明确区分 Working Context、Game Session State、Session Timeline、Memory Candidate、Long-term Memory、Retrieved Memory、Prompt Memory Block、Persona Core 和 Candidate Game Understanding。
@@ -325,7 +326,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 
 ### 1.15 Memory Retrieval v1 人工验收
 
-机器可读场景见 `docs/qa/memory_retrieval_scenarios.json`。本节验收 accepted memory prompt assembly；Session Archive runtime v1 不参与 Memory Retrieval。不表示向量数据库、prompt archive retrieval、Archive Search、外部 memory provider、复杂语义检索服务、跨会话全文搜索或 Persona 自动学习已实现。
+机器可读场景见 `docs/qa/memory_retrieval_scenarios.json`。本节验收 accepted memory prompt assembly；Session Archive runtime v1 和 Archive Search v1 不参与 Memory Retrieval。不表示向量数据库、prompt archive retrieval、外部 memory provider、复杂语义检索服务、Archive-to-Memory Candidate runtime 或 Persona 自动学习已实现。
 
 1. 已 accepted 且 active 的 `gameplay_preference` 在相关 Boss / 攻略输入中可被检索，并以 safe summary 进入 PromptMemoryBlock。
 2. 已 accepted 且 active 的 `interaction_preference` 可跨 game 影响回复长度或细节密度，但不应让 Rei 机械说“我记得你”。
@@ -359,7 +360,7 @@ python scripts/run_persona_memory_eval.py --provider mock
 python scripts/run_persona_memory_eval.py --provider live --allow-failures
 ```
 
-本节验收 accepted long-term memory 进入 prompt 后的回复表层质量；Session Archive runtime v1 不进入 prompt，不表示 Persona 自动学习、向量检索、prompt archive retrieval、Archive Search、外部 memory provider 或新 persona prompt 大改已实现。v0.1 场景数量保持在 20-30 条，先用 deterministic prompt checks + mock output checks 建立稳定回归底座。
+本节验收 accepted long-term memory 进入 prompt 后的回复表层质量；Session Archive runtime v1 和 Archive Search v1 不进入 prompt，不表示 Persona 自动学习、向量检索、prompt archive retrieval、Archive-to-Memory Candidate runtime、外部 memory provider 或新 persona prompt 大改已实现。v0.1 场景数量保持在 20-30 条，先用 deterministic prompt checks + mock output checks 建立稳定回归底座。
 
 1. Eval 必须 mock-first，可在无 live provider 的 CI / 本地测试中稳定通过。
 2. v0.1 将 mock 与 live scoring 分开：mock eval 仍使用严格固定断言做 deterministic regression；live eval 只用于人工 drift review，不因缺少某个建议词就等同于安全失败。
@@ -378,7 +379,7 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 
 ### 1.17 Session Archive v1 Architecture 人工验收
 
-设计文档见 `docs/session_archive_v1_architecture.md`，机器可读架构场景见 `docs/qa/session_archive_scenarios.json`，runtime 场景见 `docs/qa/session_archive_runtime_scenarios.json`。Session Archive runtime v1 当前只实现本地 safe-summary 归档、最近会话 UI、list / read / delete / clear 和手动 archive-current；不表示 Archive Search runtime、Archive -> Memory Candidate runtime、向量数据库、prompt archive retrieval、Voice / Overlay 新能力或外部 memory provider 已实现。
+设计文档见 `docs/session_archive_v1_architecture.md`，机器可读架构场景见 `docs/qa/session_archive_scenarios.json`，runtime 场景见 `docs/qa/session_archive_runtime_scenarios.json`，search 场景见 `docs/qa/session_archive_search_scenarios.json`。Session Archive runtime v1 当前实现本地 safe-summary 归档、最近会话 UI、list / read / delete / clear、手动 archive-current 和安全关键词 / 过滤搜索；不表示 Archive -> Memory Candidate runtime、向量数据库、prompt archive retrieval、Voice / Overlay 新能力或外部 memory provider 已实现。
 
 1. Session Archive 定位必须是安全、用户可控的 session 历史摘要与回顾层；不是完整聊天记录永久保存、自动长期记忆、向量数据库、prompt 全量历史注入或监控日志。
 2. 文档必须区分 Working Context、Game Session State、Session Timeline v1、Session Archive、Memory Candidate、Long-term Memory 和 PromptMemoryBlock。
@@ -391,16 +392,16 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 9. 数据模型草案应覆盖 `SessionArchiveEntry`、`SessionArchiveEvent`、`SessionArchiveSearchResult` 和 `ArchiveToMemoryCandidateBridge`。
 10. Archive 不能直接变 Long-term Memory；正确路径是 archive safe event summary -> archive-to-memory candidate detector -> memory guard -> pending Memory Candidate -> 用户 accept / ignore -> Long-term Memory。
 11. 适合 bridge 的信号包括跨 session 重复偏好、重复交互偏好、稳定 gameplay habit、显式保存请求和用户修正；单次死亡、单次情绪波动、assistant / proactive 内容、低置信猜测、secret、game knowledge 本身不应产生 candidate。
-12. Session Search v1 规划应支持按 game、boss / area、event type、时间范围和 safe summary keyword 搜索，但 v1 不实现向量数据库。
+12. Session Search v1 支持按 game、boss / area、event type、时间范围和 safe summary keyword 搜索，但 v1 不实现向量数据库。
 13. Search result 只能显示 safe summary、matched tags、related game / entity 和 safe reason，不显示 raw transcript、raw prompt、secret 或 raw JSON。
 14. Session Archive 默认不进入 prompt；未来 Session Retrieval 必须有 recency gate、relevance gate、token budget、safe-summary-only、privacy-level filter 和 user control。
 15. Prompt 优先级必须保持 Persona Core 和当前用户输入高于 Long-term Memory；Long-term Memory 又高于任何 future gated Session Archive summary。
-16. Memory workspace 已包含 `最近会话` tab；后续 UI 可继续扩展搜索、筛选、retention、export 和隐私设置。从 archive 生成 candidate 时必须另行实现 guard 与用户确认。
+16. Memory workspace 已包含 `最近会话` tab 与安全搜索入口；后续 UI 可继续扩展 retention、export 和隐私设置。从 archive 生成 candidate 时必须另行实现 guard 与用户确认。
 17. QA scenarios 应覆盖 20-30 条，包括 raw content 阻断、safe summary 归档、bridge confirmation、search privacy、删除 / 关闭、voice transcript 边界、overlay sensitive hidden、debug safe summary、retention、export placeholder、current input priority 和 Persona Core priority。
 
 ### 1.18 Session Archive v1 Runtime 人工验收
 
-机器可读 runtime 场景见 `docs/qa/session_archive_runtime_scenarios.json`。本节验收最小运行时，不验收搜索、向量库、Archive -> Memory Candidate bridge 或 prompt 注入。
+机器可读 runtime 场景见 `docs/qa/session_archive_runtime_scenarios.json`。本节验收最小归档运行时；搜索另见 1.19，不验收向量库、Archive -> Memory Candidate bridge 或 prompt 注入。
 
 1. Memory workspace 中可见 `最近会话` tab。
 2. `最近会话` tab 可显示 archive list、title、summary、game / boss、started_at / ended_at、event_count 和 safe_event_summaries。
@@ -417,6 +418,31 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 13. `已保存` 与 `最近会话` tab 必须清楚区分：已保存是长期记忆，最近会话是可删除的 safe session summary。
 14. 打开、删除、清空 archive 不应阻塞主聊天输入框。
 15. 若本次改动触达 renderer，应运行 desktop lint / test / build，并做一次视觉 smoke：主聊天区、输入框、Memory workspace、最近会话 tab、设置区和右侧面板不是黑屏且可正常显示。
+
+### 1.19 Session Archive Search v1 人工验收
+
+机器可读 search 场景见 `docs/qa/session_archive_search_scenarios.json`。本节验收安全关键词 / 过滤搜索，不验收向量库、semantic search、Archive -> Memory Candidate bridge、prompt archive retrieval 或自动记忆化。
+
+1. Memory workspace 中 `最近会话` tab 与 `待确认`、`已保存`、`本地数据`、`候选记忆` 同级可见。
+2. `最近会话` tab 中可见搜索输入框，placeholder 为 `搜索会话、游戏、Boss 或事件…`。
+3. 搜索区可见 game、Boss / entity、event type 过滤入口，以及 `搜索` / `清除搜索` 控制。
+4. `归档当前会话`、`刷新`、`删除`、`清空归档` 入口仍可见，搜索控件不得遮挡聊天输入框。
+5. 未搜索时显示最近 archive list 或 `暂无会话归档` 空态。
+6. 搜索无结果时显示 `没有找到匹配的会话归档。`，不报错。
+7. 搜索结果只显示 safe_summary、game、Boss、时间、event_count、命中数量和安全 reason。
+8. 搜索结果可打开对应 archive detail；detail 仍只显示 safe event summaries。
+9. 搜索结果中的 delete 会删除对应 archive，并刷新当前搜索结果。
+10. `清除搜索` 会恢复最近 archive list，不清空长期记忆，不丢聊天输入。
+11. Backend `GET /session-archives/search` 支持 q、game、boss、event_type、date_from、date_to 和 limit。
+12. Search response 应包含 results、total、omitted_count 和 safe_result_summaries。
+13. Search 只搜索 active / non-deleted archive。
+14. Search 只基于 archive summary、safe event summaries、game、boss、event_type 和 related_entity 等安全字段。
+15. Search 不返回 raw transcript、raw prompt、raw JSON、API key、`.env`、Authorization、完整本地路径、stdout / stderr、完整 voice transcript 或 raw audio。
+16. Search 不进入 PromptMemoryBlock、Memory Retrieval、Prompt Preview injected memory 或 Persona prompt。
+17. Search 不创建 pending memory、不写 long-term memory、不触发 Archive-to-Memory Candidate。
+18. Event Stream 中 search started / completed / cleared 只记录 query_summary、filters、result_count、omitted_count 和 safe_result_summaries。
+19. packaged `.app` smoke 应确认 app 非黑屏、backend connected、Memory workspace 可打开、`最近会话` tab 与搜索输入可见、搜索空态 / 结果态正常、退出后 backend 无残留。
+20. Archive Search v1 不使用 vector database，不做 semantic search，不跨越 safe-summary-only 边界。
 
 ### 2. Voice Output 回归检查
 

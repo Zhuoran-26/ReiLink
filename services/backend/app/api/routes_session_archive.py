@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.modules.session_archive.store import SessionArchiveStore
 from app.schemas.api import (
@@ -7,6 +7,7 @@ from app.schemas.api import (
     SessionArchiveCurrentRequest,
     SessionArchiveDeleteResponse,
     SessionArchiveDetail,
+    SessionArchiveSearchResponse,
     SessionArchiveSummary,
 )
 
@@ -16,6 +17,27 @@ router = APIRouter(tags=["session-archive"])
 @router.get("/session-archives", response_model=list[SessionArchiveSummary])
 def list_session_archives() -> list[dict]:
     return [_public_summary(item) for item in SessionArchiveStore().list_archives()]
+
+
+@router.get("/session-archives/search", response_model=SessionArchiveSearchResponse)
+def search_session_archives(
+    q: str | None = Query(default=None, max_length=120),
+    game: str | None = Query(default=None, max_length=80),
+    boss: str | None = Query(default=None, max_length=80),
+    event_type: str | None = Query(default=None, max_length=80),
+    date_from: str | None = Query(default=None, max_length=40),
+    date_to: str | None = Query(default=None, max_length=40),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> dict:
+    return SessionArchiveStore().search_archives(
+        q=q,
+        game=game,
+        boss=boss,
+        event_type=event_type,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
 
 
 @router.get("/session-archives/{archive_id}", response_model=SessionArchiveDetail)
@@ -96,4 +118,3 @@ def _public_summary(entry: dict) -> dict:
 
 def _public_detail(entry: dict) -> dict:
     return {**_public_summary(entry), "events": entry.get("events", [])}
-

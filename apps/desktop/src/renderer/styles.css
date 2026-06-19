@@ -1062,6 +1062,70 @@ button {
   gap: 10px;
 }
 
+.archiveSearchPanel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(145, 164, 213, 0.14);
+  border-radius: 13px;
+  padding: 11px;
+  background: rgba(10, 14, 26, 0.46);
+}
+
+.archiveSearchFilters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.archiveSearchField {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #aeb9d2;
+  font-size: 12px;
+}
+
+.archiveSearchFieldWide {
+  width: 100%;
+}
+
+.archiveSearchInputRow {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(150, 169, 218, 0.18);
+  border-radius: 10px;
+  padding: 0 10px;
+  color: #8ea0c6;
+  background: rgba(7, 10, 20, 0.46);
+}
+
+.archiveSearchField input,
+.archiveSearchInputRow input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(150, 169, 218, 0.18);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #edf2fb;
+  background: rgba(7, 10, 20, 0.46);
+  outline: none;
+}
+
+.archiveSearchInputRow input {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.archiveSearchField input:focus,
+.archiveSearchInputRow:focus-within {
+  border-color: rgba(142, 169, 238, 0.54);
+  box-shadow: 0 0 0 3px rgba(99, 132, 212, 0.14);
+}
+
 .gameContextControl,
 .voiceOutputPanel {
   display: grid;
@@ -1856,6 +1920,10 @@ button {
   }
 
   .sessionTimelineActions {
+    grid-template-columns: 1fr;
+  }
+
+  .archiveSearchFilters {
     grid-template-columns: 1fr;
   }
 }

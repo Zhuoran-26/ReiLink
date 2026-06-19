@@ -16,6 +16,10 @@ MAX_ARCHIVES = 20
 MAX_EVENTS_PER_ARCHIVE = 80
 MAX_EVENT_SUMMARY_CHARS = 180
 MAX_ARCHIVE_SUMMARY_CHARS = 240
+DEFAULT_SEARCH_LIMIT = 20
+MAX_SEARCH_LIMIT = 50
+MAX_SEARCH_QUERY_CHARS = 80
+MAX_SEARCH_FILTER_CHARS = 64
 
 SAFE_EVENT_TYPES = {
     "game_selected",
@@ -99,6 +103,56 @@ class SessionArchiveStore:
             if entry["id"] == archive_id and not entry["is_deleted"]:
                 return entry
         raise KeyError(archive_id)
+
+    def search_archives(
+        self,
+        *,
+        q: str | None = None,
+        game: str | None = None,
+        boss: str | None = None,
+        event_type: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int = DEFAULT_SEARCH_LIMIT,
+    ) -> dict[str, Any]:
+        query = sanitize_archive_text(q, max_chars=MAX_SEARCH_QUERY_CHARS)
+        game_filter = sanitize_archive_text(game, max_chars=MAX_SEARCH_FILTER_CHARS)
+        boss_filter = sanitize_archive_text(boss, max_chars=MAX_SEARCH_FILTER_CHARS)
+        event_type_filter = _safe_search_token(event_type, max_chars=MAX_SEARCH_FILTER_CHARS)
+        start = _timestamp_value(date_from)
+        end = _timestamp_value(date_to)
+        safe_limit = _safe_search_limit(limit)
+
+        results = [
+            result
+            for result in (
+                _score_archive_search_result(
+                    archive,
+                    query=query,
+                    game_filter=game_filter,
+                    boss_filter=boss_filter,
+                    event_type_filter=event_type_filter,
+                    has_date_filter=bool(start or end),
+                )
+                for archive in self.list_archives()
+                if _archive_in_date_range(archive, start=start, end=end)
+            )
+            if result is not None
+        ]
+        results.sort(
+            key=lambda result: (
+                result["relevance_score"],
+                result.get("ended_at") or result.get("started_at") or result.get("created_at") or "",
+            ),
+            reverse=True,
+        )
+        limited = results[:safe_limit]
+        return {
+            "results": limited,
+            "total": len(results),
+            "omitted_count": max(len(results) - len(limited), 0),
+            "safe_result_summaries": [result["safe_summary"] for result in limited],
+        }
 
     def archive_current(
         self,
@@ -423,6 +477,239 @@ def _content_hash(payload: dict[str, Any]) -> str:
 def _contains_sensitive_text(text: str) -> bool:
     lowered = text.lower()
     return any(term in lowered for term in FORBIDDEN_ARCHIVE_TERMS) or bool(SECRET_VALUE_RE.search(text))
+
+
+def _score_archive_search_result(
+    archive: dict[str, Any],
+    *,
+    query: str,
+    game_filter: str,
+    boss_filter: str,
+    event_type_filter: str,
+    has_date_filter: bool,
+) -> dict[str, Any] | None:
+    events = [event for event in archive.get("events", []) if isinstance(event, dict)]
+    score = 0
+    matched_tags: list[str] = []
+    best_event: dict[str, Any] | None = None
+    query_hit = False
+
+    if query:
+        query_score, query_tags, best_event = _query_score(archive, events, query)
+        if query_score <= 0:
+            return None
+        score += query_score
+        query_hit = True
+        matched_tags.extend(query_tags)
+
+    if game_filter:
+        if not _filter_matches(game_filter, _archive_game_values(archive, events)):
+            return None
+        score += 24
+        _append_tag(matched_tags, "game")
+
+    if boss_filter:
+        if not _filter_matches(boss_filter, _archive_boss_values(archive, events)):
+            return None
+        score += 24
+        _append_tag(matched_tags, "boss")
+
+    event_type_match: dict[str, Any] | None = None
+    if event_type_filter:
+        event_type_match = _matching_event_type(events, event_type_filter)
+        if event_type_match is None:
+            return None
+        score += 24
+        _append_tag(matched_tags, "event_type")
+        best_event = best_event or event_type_match
+
+    if has_date_filter:
+        score += 6
+        _append_tag(matched_tags, "date_range")
+
+    if not (query_hit or game_filter or boss_filter or event_type_filter or has_date_filter):
+        score = 1
+        _append_tag(matched_tags, "recent")
+
+    safe_summary = sanitize_archive_text(
+        (best_event or {}).get("safe_summary") or archive.get("summary"),
+        max_chars=MAX_ARCHIVE_SUMMARY_CHARS,
+    )
+    if not safe_summary:
+        return None
+
+    return {
+        "archive_id": archive["id"],
+        "event_id": (best_event or {}).get("id"),
+        "relevance_score": score,
+        "reason": _search_reason(matched_tags),
+        "safe_summary": safe_summary,
+        "matched_tags": matched_tags,
+        "game": sanitize_archive_text(archive.get("game"), max_chars=MAX_SEARCH_FILTER_CHARS) or None,
+        "boss": sanitize_archive_text(archive.get("boss") or archive.get("area"), max_chars=MAX_SEARCH_FILTER_CHARS)
+        or None,
+        "event_type": (best_event or event_type_match or {}).get("event_type"),
+        "created_at": archive["created_at"],
+        "started_at": archive["started_at"],
+        "ended_at": archive["ended_at"],
+        "event_count": int(archive.get("event_count") or len(events)),
+    }
+
+
+def _query_score(
+    archive: dict[str, Any],
+    events: list[dict[str, Any]],
+    query: str,
+) -> tuple[int, list[str], dict[str, Any] | None]:
+    score = 0
+    tags: list[str] = []
+    best_event: dict[str, Any] | None = None
+    archive_fields = (
+        ("archive_title", archive.get("title"), 48),
+        ("archive_summary", archive.get("summary"), 80),
+        ("game", archive.get("game"), 30),
+        ("boss", archive.get("boss"), 30),
+        ("area", archive.get("area"), 18),
+    )
+    for tag, value, weight in archive_fields:
+        if _text_contains(value, query):
+            score += weight
+            _append_tag(tags, tag)
+
+    for event in events:
+        event_score = 0
+        if _text_contains(event.get("safe_summary"), query):
+            event_score += 64
+            _append_tag(tags, "event_summary")
+        if _text_contains(event.get("related_game"), query):
+            event_score += 20
+            _append_tag(tags, "game")
+        if _text_contains(event.get("related_entity"), query):
+            event_score += 24
+            _append_tag(tags, "boss")
+        if _text_contains(event.get("event_type"), query):
+            event_score += 18
+            _append_tag(tags, "event_type")
+        if event_score > 0 and best_event is None:
+            best_event = event
+        score += event_score
+    if best_event is None:
+        for summary in archive.get("safe_event_summaries", []):
+            safe_summary = sanitize_archive_text(summary, max_chars=MAX_EVENT_SUMMARY_CHARS)
+            if _text_contains(safe_summary, query):
+                score += 56
+                _append_tag(tags, "event_summary")
+                best_event = {"safe_summary": safe_summary}
+                break
+    return score, tags, best_event
+
+
+def _archive_game_values(archive: dict[str, Any], events: list[dict[str, Any]]) -> list[Any]:
+    return [
+        archive.get("game"),
+        archive.get("title"),
+        archive.get("summary"),
+        *archive.get("safe_event_summaries", []),
+        *(event.get("related_game") for event in events),
+        *(event.get("safe_summary") for event in events),
+    ]
+
+
+def _archive_boss_values(archive: dict[str, Any], events: list[dict[str, Any]]) -> list[Any]:
+    return [
+        archive.get("boss"),
+        archive.get("area"),
+        archive.get("title"),
+        archive.get("summary"),
+        *archive.get("safe_event_summaries", []),
+        *(event.get("related_entity") for event in events),
+        *(event.get("safe_summary") for event in events),
+    ]
+
+
+def _filter_matches(needle: str, values: list[Any]) -> bool:
+    if not needle:
+        return True
+    folded = needle.casefold()
+    return any(folded in str(value or "").casefold() for value in values)
+
+
+def _matching_event_type(events: list[dict[str, Any]], event_type_filter: str) -> dict[str, Any] | None:
+    if not event_type_filter:
+        return None
+    for event in events:
+        event_type = _safe_search_token(event.get("event_type"), max_chars=MAX_SEARCH_FILTER_CHARS)
+        if event_type_filter == event_type or event_type_filter in event_type or event_type in event_type_filter:
+            return event
+    return None
+
+
+def _archive_in_date_range(archive: dict[str, Any], *, start: datetime | None, end: datetime | None) -> bool:
+    if start is None and end is None:
+        return True
+    archive_start = _timestamp_value(archive.get("started_at")) or _timestamp_value(archive.get("created_at"))
+    archive_end = _timestamp_value(archive.get("ended_at")) or _timestamp_value(archive.get("updated_at")) or archive_start
+    if archive_start is None or archive_end is None:
+        return False
+    if start is not None and archive_end < start:
+        return False
+    if end is not None and archive_start > end:
+        return False
+    return True
+
+
+def _timestamp_value(value: Any) -> datetime | None:
+    safe = _safe_timestamp(value)
+    if not safe:
+        return None
+    return datetime.fromisoformat(safe)
+
+
+def _text_contains(value: Any, query: str) -> bool:
+    return bool(query) and query.casefold() in str(value or "").casefold()
+
+
+def _safe_search_token(value: Any, *, max_chars: int) -> str:
+    text = sanitize_archive_text(value, max_chars=max_chars)
+    if not text:
+        return ""
+    return re.sub(r"[^A-Za-z0-9_.:-]+", "_", text.strip().casefold()).strip("_")[:max_chars]
+
+
+def _safe_search_limit(value: Any) -> int:
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_SEARCH_LIMIT
+    return max(1, min(MAX_SEARCH_LIMIT, limit))
+
+
+def _append_tag(tags: list[str], tag: str) -> None:
+    allowed = {
+        "archive_title",
+        "archive_summary",
+        "event_summary",
+        "game",
+        "boss",
+        "area",
+        "event_type",
+        "date_range",
+        "recent",
+    }
+    if tag in allowed and tag not in tags:
+        tags.append(tag)
+
+
+def _search_reason(tags: list[str]) -> str:
+    if "event_summary" in tags:
+        return "关键词命中安全事件摘要"
+    if "archive_summary" in tags or "archive_title" in tags:
+        return "关键词命中归档摘要"
+    if any(tag in tags for tag in ("game", "boss", "event_type")):
+        return "匹配筛选条件"
+    if "date_range" in tags:
+        return "匹配时间范围"
+    return "最近会话归档"
 
 
 def _safe_event_type(value: Any) -> str:

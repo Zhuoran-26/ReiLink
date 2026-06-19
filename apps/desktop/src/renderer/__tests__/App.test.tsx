@@ -21,6 +21,7 @@ import type {
   ProactiveCheckResponse,
   ProactiveStatusResponse,
   SessionArchiveDetail,
+  SessionArchiveSearchResult,
   SetupStatus
 } from "../../shared/api";
 import type { BackendRuntimeStatus, ReilinkRuntimeBridge } from "../../shared/runtime";
@@ -1476,6 +1477,45 @@ const sessionArchiveSummary = (archive: SessionArchiveDetail) => {
   return summary;
 };
 
+const sessionArchiveSearchResult = (archive: SessionArchiveDetail, params: URLSearchParams): SessionArchiveSearchResult | null => {
+  const query = (params.get("q") ?? "").trim().toLowerCase();
+  const game = (params.get("game") ?? "").trim().toLowerCase();
+  const boss = (params.get("boss") ?? "").trim().toLowerCase();
+  const eventType = (params.get("event_type") ?? "").trim().toLowerCase();
+  const textMatches = (value: string | null | undefined, needle: string) => !needle || (value ?? "").toLowerCase().includes(needle);
+  const eventHit = archive.events.find((event) =>
+    textMatches(event.safe_summary, query) ||
+    textMatches(event.related_game, query) ||
+    textMatches(event.related_entity, query) ||
+    textMatches(event.event_type, query)
+  );
+  const archiveHit = textMatches(archive.title, query) ||
+    textMatches(archive.summary, query) ||
+    textMatches(archive.game, query) ||
+    textMatches(archive.boss, query);
+  if (query && !archiveHit && !eventHit) return null;
+  if (game && !textMatches(archive.game, game) && !archive.events.some((event) => textMatches(event.related_game, game))) return null;
+  if (boss && !textMatches(archive.boss, boss) && !archive.events.some((event) => textMatches(event.related_entity, boss))) return null;
+  const eventTypeHit = archive.events.find((event) => textMatches(event.event_type, eventType));
+  if (eventType && !eventTypeHit) return null;
+  const bestEvent = eventHit ?? eventTypeHit ?? null;
+  return {
+    archive_id: archive.id,
+    event_id: bestEvent?.id ?? null,
+    relevance_score: eventHit ? 96 : archiveHit ? 80 : 24,
+    reason: eventHit ? "关键词命中安全事件摘要" : archiveHit ? "关键词命中归档摘要" : "匹配筛选条件",
+    safe_summary: bestEvent?.safe_summary ?? archive.summary,
+    matched_tags: [eventHit ? "event_summary" : archiveHit ? "archive_summary" : "game"],
+    game: archive.game,
+    boss: archive.boss,
+    event_type: bestEvent?.event_type ?? null,
+    created_at: archive.created_at,
+    started_at: archive.started_at,
+    ended_at: archive.ended_at,
+    event_count: archive.event_count
+  };
+};
+
 const sessionArchiveResponse = (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/session-archives/archive-current") && init?.method === "POST") {
     const payload = JSON.parse(String(init.body ?? "{}")) as { events?: Array<{ safe_summary?: string | null; summary?: string | null }> };
@@ -1514,6 +1554,20 @@ const sessionArchiveResponse = (url: string, init?: RequestInit) => {
     const deletedCount = sessionArchivesStore.length;
     sessionArchivesStore = [];
     return Response.json({ status: "cleared", deleted_count: deletedCount });
+  }
+  const parsedUrl = new URL(url);
+  if (parsedUrl.pathname === "/api/session-archives/search") {
+    const limit = Math.max(1, Number(parsedUrl.searchParams.get("limit") ?? 20));
+    const allResults = sessionArchivesStore
+      .map((archive) => sessionArchiveSearchResult(archive, parsedUrl.searchParams))
+      .filter((result): result is SessionArchiveSearchResult => result !== null);
+    const results = allResults.slice(0, limit);
+    return Response.json({
+      results,
+      total: allResults.length,
+      omitted_count: Math.max(0, allResults.length - results.length),
+      safe_result_summaries: results.map((result) => result.safe_summary)
+    });
   }
   if (url.endsWith("/api/session-archives")) {
     return Response.json(sessionArchivesStore.map(sessionArchiveSummary));
@@ -6277,6 +6331,109 @@ describe("App", () => {
     const chatInput = screen.getByLabelText("聊天输入");
     await userEvent.type(chatInput, "归档不影响输入");
     expect(chatInput).toHaveValue("归档不影响输入");
+  });
+
+  it("shows archive search controls without hiding archive actions", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    const searchForm = within(archivePanel).getByRole("search", { name: "搜索会话归档" });
+    expect(within(searchForm).getByLabelText("搜索会话归档关键词")).toHaveAttribute("placeholder", "搜索会话、游戏、Boss 或事件…");
+    expect(within(searchForm).getByLabelText("按游戏过滤会话归档")).toBeInTheDocument();
+    expect(within(searchForm).getByLabelText("按 Boss 或实体过滤会话归档")).toBeInTheDocument();
+    expect(within(searchForm).getByLabelText("按事件类型过滤会话归档")).toBeInTheDocument();
+    expect(within(searchForm).getByRole("button", { name: "搜索" })).toBeDisabled();
+    expect(within(archivePanel).getByRole("button", { name: "归档当前会话" })).toBeVisible();
+    expect(within(archivePanel).getByRole("button", { name: "刷新" })).toBeVisible();
+    expect(within(archivePanel).getByRole("button", { name: "清空归档" })).toBeVisible();
+    expect(screen.getByLabelText("聊天输入")).toBeVisible();
+  });
+
+  it("searches session archives and displays safe summaries", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    const searchForm = within(archivePanel).getByRole("search", { name: "搜索会话归档" });
+    await userEvent.type(within(searchForm).getByLabelText("搜索会话归档关键词"), "死亡");
+    await userEvent.click(within(searchForm).getByRole("button", { name: "搜索" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/search?q=%E6%AD%BB%E4%BA%A1"),
+        expect.any(Object)
+      )
+    );
+    const results = await screen.findByLabelText("会话归档搜索结果");
+    expect(within(results).getByText("死亡次数更新：3")).toBeInTheDocument();
+    expect(within(results).getByText("关键词命中安全事件摘要")).toBeInTheDocument();
+    expect(within(results).getByText("1 个命中")).toBeInTheDocument();
+    expect(within(archivePanel).getByRole("button", { name: "归档当前会话" })).toBeVisible();
+    expect(within(archivePanel).getByRole("button", { name: "刷新" })).toBeVisible();
+    expect(screen.queryByText(/sk-test-secret|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "session_archive_search_started" }),
+        expect.objectContaining({ type: "session_archive_search_completed", result_count: 1 })
+      ])
+    );
+  });
+
+  it("shows empty archive search state and clears back to recent sessions", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    const searchForm = within(archivePanel).getByRole("search", { name: "搜索会话归档" });
+    await userEvent.type(within(searchForm).getByLabelText("搜索会话归档关键词"), "不存在的会话");
+    await userEvent.click(within(searchForm).getByRole("button", { name: "搜索" }));
+
+    const results = await screen.findByLabelText("会话归档搜索结果");
+    expect(within(results).getByText("没有找到匹配的会话归档。")).toBeInTheDocument();
+    await userEvent.click(within(searchForm).getByRole("button", { name: "清除搜索" }));
+
+    await waitFor(() => expect(screen.getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+    expect(screen.queryByLabelText("会话归档搜索结果")).not.toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "session_archive_search_cleared" })])
+    );
+  });
+
+  it("refreshes archive search results after deleting a result", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    const searchForm = within(archivePanel).getByRole("search", { name: "搜索会话归档" });
+    await userEvent.type(within(searchForm).getByLabelText("搜索会话归档关键词"), "死亡");
+    await userEvent.click(within(searchForm).getByRole("button", { name: "搜索" }));
+
+    const results = await screen.findByLabelText("会话归档搜索结果");
+    expect(within(results).getByText("死亡次数更新：3")).toBeInTheDocument();
+    await userEvent.click(within(results).getByRole("button", { name: /删除会话归档搜索结果/ }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/archive-1"),
+        expect.objectContaining({ method: "DELETE" })
+      )
+    );
+    await waitFor(() => expect(within(results).getByText("没有找到匹配的会话归档。")).toBeInTheDocument());
+    expect(within(results).queryByText("死亡次数更新：3")).not.toBeInTheDocument();
+  });
+
+  it("keeps the archive tab visible in a narrow memory workspace", async () => {
+    window.innerWidth = 520;
+    window.dispatchEvent(new Event("resize"));
+    render(<App />);
+    await openMemoryWorkspace();
+
+    const panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    const archiveTab = within(panel).getByRole("tab", { name: "最近会话" });
+    expect(archiveTab).toBeVisible();
+    await userEvent.click(archiveTab);
+    expect(await screen.findByRole("search", { name: "搜索会话归档" })).toBeInTheDocument();
   });
 
   it("calls archive current session and shows skipped feedback for an empty timeline", async () => {
