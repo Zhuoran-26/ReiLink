@@ -2,9 +2,10 @@
 
 ## 中文
 
-这份 QA Pack 用于在继续开发 Voice Input 后续能力、Live2D、Overlay、embedding RAG 之前，快速回归 ReiLink 当前已经稳定的交互底座。它覆盖手动检查、packaged app smoke、Knowledge Retrieval、Voice Output、Voice Input、Event Stream / Debug 隐私，以及 release 前 runtime sanity。
+这份 QA Pack 用于在继续开发 Voice Input 后续能力、Live2D、Overlay、embedding RAG 之前，快速回归 ReiLink 当前已经稳定的交互底座。它覆盖手动检查、packaged app smoke、Knowledge Retrieval、Voice Output、Voice Input、Context & Memory、Event Stream / Debug 隐私，以及 release 前 runtime sanity。
 
 Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voice-mvp.md`。
+Context & Memory release hardening checklist 见 `docs/release_context_memory_hardening_checklist.md`，v0.2-pre.4 release notes 草稿见 `docs/releases/reilink-v0.2-pre.4-context-memory.md`。
 
 配套机器可读场景文件：
 
@@ -16,6 +17,7 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - `docs/qa/session_archive_scenarios.json`
 - `docs/qa/session_archive_runtime_scenarios.json`
 - `docs/qa/session_archive_search_scenarios.json`
+- `docs/qa/archive_to_memory_candidate_scenarios.json`
 - `docs/qa/persona_pack_scenarios.json`
 - `docs/qa/persona_regression_cases.json`
 - `docs/qa/persona_memory_regression_scenarios.json`
@@ -60,6 +62,14 @@ Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voi
 - Developer / Debug 中 Event Stream 可见。
 - `.env`、API key、memory、session 和用户数据不复制进 `.app`。
 - app 退出后，由 app 自启动的 backend 没有残留进程。
+
+#### Release Verification Policy
+
+- Docs-only / QA JSON-only / parser-test-only changes can skip packaged `.app` smoke when no backend API, shared API, renderer UI, Electron main, packaged runtime, local storage, bundled backend, or bundled resource behavior changed. Run `git diff --check`; if QA parser or scenario JSON changed, also run backend QA scenario tests.
+- Backend API, API schema, shared API contract, renderer UI, Electron main, packaged runtime, local storage, bundled backend behavior, knowledge loading, persona resources, or user-visible packaged behavior changes require desktop lint / test / build, packaged build, and packaged smoke.
+- If backend API, schema, binary behavior, knowledge loading, or bundled backend resources changed, run `make package-backend` before `make package-desktop`.
+- Dev renderer smoke is useful but does not replace packaged `.app` smoke for packaged behavior, local user-data routing, bundled backend, or Electron lifecycle changes.
+- Packaged smoke for Context & Memory must confirm Memory workspace opens, `最近会话` / `会话归档` is visible, archive empty/list state renders, `归档当前会话` and `刷新` are visible, and archive/search/bridge surfaces do not expose raw prompt, raw JSON, secret, full transcript, or full local path.
 
 ### 1.5 Voice / Local ASR / Overlay Safe Mode 阶段冻结人工验收
 
@@ -1028,16 +1038,28 @@ packaged `.app` 手动 smoke 最低步骤：
 
 ## English
 
-This QA Pack is a reusable manual regression checklist for ReiLink before future Voice / Local ASR expansion, Live2D, Overlay, and embedding RAG work. It focuses on the current foundations: local runtime, Voice Output, Voice Input fallback, Local ASR staged foundation, Knowledge Retrieval, Event Stream, Debug privacy, and packaged app smoke testing.
+This QA Pack is a reusable manual regression checklist for ReiLink before future Voice / Local ASR expansion, Live2D, Overlay, semantic archive search, and embedding RAG work. It focuses on the current foundations: local runtime, Voice Output, Voice Input fallback, Local ASR staged foundation, Knowledge Retrieval, Context & Memory, Event Stream, Debug privacy, and packaged app smoke testing.
 
 Machine-readable scenarios live at:
 
 - `docs/qa/retrieval_scenarios.json`
 - `docs/qa/voice_input_scenarios.json`
 - `docs/qa/voice_input_local_asr_scenarios.json`
+- `docs/qa/llm_primary_guarded_extraction_scenarios.json`
+- `docs/qa/extraction_eval_scenarios.json`
+- `docs/qa/memory_architecture_scenarios.json`
+- `docs/qa/candidate_memory_scenarios.json`
+- `docs/qa/memory_ux_v1_1_scenarios.json`
+- `docs/qa/memory_retrieval_scenarios.json`
+- `docs/qa/persona_memory_regression_scenarios.json`
+- `docs/qa/session_archive_scenarios.json`
+- `docs/qa/session_archive_runtime_scenarios.json`
+- `docs/qa/session_archive_search_scenarios.json`
+- `docs/qa/archive_to_memory_candidate_scenarios.json`
 - `docs/qa/persona_pack_scenarios.json`
 - `docs/qa/ui_ux_information_architecture_scenarios.json`
 
 Real Local ASR manual setup and optional smoke guidance lives at `docs/local-asr-manual-setup.md`.
+Context & Memory release hardening guidance lives at `docs/release_context_memory_hardening_checklist.md`.
 
 Use the Chinese checklist above as the source of truth for manual runs. Keep results short and concrete: pass/fail, exact app mode, exact commit, and any visible privacy issue.

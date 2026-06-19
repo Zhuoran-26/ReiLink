@@ -49,9 +49,9 @@ ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona +
 
 ## 当前状态
 
-- 当前开发里程碑：**Voice Interaction MVP / Local ASR v1 packaged configurable MVP**。
-- `dev/codex-reilink` 分支包含最新 Voice / Local ASR / Knowledge Retrieval 进展。
-- 当前开发线已完成：Voice Output、Local ASR 语音输入、主聊天语音按钮、Local ASR Settings 持久化、Knowledge Retrieval 与 QA 回归清单。
+- 当前开发里程碑：**v0.2-pre.4 Context & Memory release hardening**。
+- `dev/codex-reilink` 分支包含最新 Voice / Local ASR / Knowledge Retrieval / Context & Memory 进展。
+- 当前开发线已完成：Voice Output、Local ASR 语音输入、主聊天语音按钮、Local ASR Settings 持久化、Knowledge Retrieval、Candidate Memory、Memory Retrieval、Session Archive Runtime、Archive Search 与 Archive-to-Memory Candidate Bridge。
 - 公开 release tag 可能滞后于当前 dev 分支；GitHub 更新、release tag、push、merge 仍需要人工 review 后进行。
 - macOS packaged app 已做多轮 smoke，但项目仍处于 pre-release。
 
@@ -62,6 +62,7 @@ ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona +
 - 中文优先的 AI companion chat，原创 minimal persona。
 - [DeepSeek](https://api-docs.deepseek.com/) compatible provider 与 `fast` / `pro` / `auto` 模型路由。
 - Confirmable Memory：长期记忆只在用户接受后写入。
+- Context & Memory System：Candidate Memory、已确认记忆检索、Persona-Memory Eval、Session Archive safe summaries、Archive Search 和显式 Archive-to-Memory Candidate Bridge。
 - Game Context：当前游戏、Boss、进度、挫败状态和手动当前游戏覆盖。
 - 本地知识包：包含 [Elden Ring sample knowledge](data/knowledge/games/elden_ring) 与 [Hollow Knight sample knowledge](data/knowledge/games/hollow_knight)。
 - Knowledge Retrieval v1：本地 keyword retrieval、top-k snippets、grounding / gating、显式游戏名切换和闲聊隔离。
@@ -76,14 +77,15 @@ ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona +
 | --- | --- | --- | --- |
 | Persona | 原创 minimal companion | MVP | 原创 Rei-like persona，不使用官方 IP。 |
 | Dialogue | LLM-first 回复生成 | 已完成 | Game context / memory / knowledge 只提供上下文。 |
-| Memory | 待确认记忆写入 | 已完成 | 只有用户接受后的记忆会进入长期记忆。 |
+| Memory | Candidate / Retrieval / Archive | 已完成 | 只有 accepted / active 长期记忆会进入 prompt；archive 不直接进入 prompt。 |
 | Game Context | Boss / deaths / frustration / session | MVP | Rule-first，必要时结合 LLM semantic fallback。 |
 | Knowledge Retrieval | 本地 keyword retrieval | MVP | 暂无 embeddings / vector DB / hybrid retrieval。 |
+| Session Archive | 最近会话 safe summary | MVP | 手动归档、搜索、删除、清空和显式候选扫描；不保存 raw prompt / transcript。 |
 | Voice Output | 系统 TTS | MVP | 可选开启，不是角色级配音。 |
 | Voice Input | Local ASR | MVP | 需要用户手动配置 binary / model / converter。 |
 | Event Stream | 安全生命周期事件 | 已完成 | 不显示 raw prompt、API key、完整路径、完整 transcript。 |
 | Packaging | macOS `.app` | MVP | 用户数据写在 `.app` 外部；当前为未签名本地构建。 |
-| Overlay | 游戏内 overlay | 计划中 | 尚未实现。 |
+| Overlay | macOS safe mode | MVP / 冻结 | Foundation 已有；auto-show 故意 fail-closed。 |
 | Live2D | Avatar layer | 计划中 | 尚未实现。 |
 | Embedding / Hybrid RAG | Vector / hybrid retrieval | 计划中 | 当前 retrieval 是 keyword-based。 |
 
@@ -239,6 +241,7 @@ sequenceDiagram
 - Local ASR settings 示例路径：`~/Library/Application Support/ReiLink/data/local_asr_settings.json`。
 - API keys 和本地环境文件不会打包进 `.app`。
 - Pending memory 必须由用户确认。
+- Session Archive 只保存 safe summaries；Archive Search 不进 prompt，Archive-to-Memory Bridge 只创建待确认候选。
 - Local ASR 音频是短时临时文件，处理后清理。
 - Event Stream / Debug / Raw JSON 不展示 raw prompt、完整 transcript、raw subprocess output、API key、完整本地路径、audio content 或 base64 audio。
 - Local-first 指本地数据、本地设置、本地知识包和本地 ASR 优先留在本机；不代表当前所有 LLM 推理都离线。
@@ -322,6 +325,10 @@ packaged resources 是只读资源。memory、session、settings、logs 和 Loca
 | --- | --- |
 | [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) | 当前项目状态与范围。 |
 | [`docs/QA.md`](docs/QA.md) | 手动 QA 与 release regression checklist。 |
+| [`docs/release_context_memory_hardening_checklist.md`](docs/release_context_memory_hardening_checklist.md) | Context & Memory release hardening checklist。 |
+| [`docs/releases/reilink-v0.2-pre.4-context-memory.md`](docs/releases/reilink-v0.2-pre.4-context-memory.md) | Context & Memory v0.2-pre.4 release notes 草稿。 |
+| [`docs/memory_architecture_v0.md`](docs/memory_architecture_v0.md) | Memory 分层、Candidate Memory、Retrieval 和 archive bridge 边界。 |
+| [`docs/session_archive_v1_architecture.md`](docs/session_archive_v1_architecture.md) | Session Archive / Search / Archive-to-Memory Bridge 架构。 |
 | [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) | 真实 Local ASR 配置与 smoke flow。 |
 | [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Local ASR 设计背景与实现说明。 |
 | [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Voice Interaction MVP release notes 草稿。 |
@@ -339,14 +346,16 @@ packaged resources 是只读资源。memory、session、settings、logs 和 Loca
 - Voice Output MVP。
 - Local ASR Voice Input MVP。
 - Knowledge Retrieval v1。
+- Candidate Memory v1 / Memory Retrieval v1。
+- Session Archive Runtime / Search / Archive-to-Memory Candidate Bridge。
 - Event Stream / Debug privacy guardrails。
 - Packaged app runtime foundation。
 
 ### v0.2.x Stabilization
 
-- Local ASR native file picker。
-- Local ASR setup helper。
-- ASR accuracy / timeout tuning。
+- Context & Memory release hardening。
+- Packaged app smoke coverage for user-visible runtime changes。
+- Local ASR setup helper and accuracy / timeout tuning。
 - More robust QA regression flows。
 
 ### v0.3 Gameplay Presence
@@ -377,9 +386,9 @@ packaged resources 是只读资源。memory、session、settings、logs 和 Loca
 - 系统 TTS 可能不够自然，也不是角色级配音。
 - Local ASR 准确率取决于模型大小、麦克风、环境噪音和硬件性能。
 - 不做 wake word / continuous listening。
-- 还没有 Overlay。
+- Overlay auto-show 仍处于 macOS fail-closed safe mode。
 - 还没有 Live2D。
-- 还没有 embedding / vector DB / hybrid retrieval。
+- 还没有 embedding / vector DB / hybrid retrieval、semantic archive search、prompt archive retrieval 或外部 memory provider。
 - 知识包仍是 samples，不是完整攻略库。
 - 当前 packaged app 是本地未签名开发构建。
 

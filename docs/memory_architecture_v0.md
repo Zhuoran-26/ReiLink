@@ -2,7 +2,7 @@
 
 Updated: 2026-06-18
 
-Status: architecture baseline plus Candidate Memory v1, Memory Retrieval v1 runtime slice, Persona-Memory Eval v0.1, and Session Archive v1 Architecture / Runtime v1. This document still does not implement Archive Search, Archive-to-Memory Candidate runtime, vector database, external memory provider, UI popup, or packaging change.
+Status: architecture baseline plus Candidate Memory v1, Memory Retrieval v1 runtime slice, Persona-Memory Eval v0.1, Session Archive v1 Architecture / Runtime / Search v1, and Archive-to-Memory Candidate Bridge v0. This document still does not implement vector database, semantic archive search, search auto-candidate generation, prompt archive retrieval, external memory provider, advanced archive UI, or packaging change.
 
 ## Purpose
 
@@ -660,6 +660,9 @@ Status: implemented as a local safe-summary archive, search layer, and explicit 
 ## Non-goals For v0
 
 - No vector database.
+- No semantic archive search.
+- No search auto-candidate generation.
+- No prompt archive retrieval.
 - No external memory framework.
 - No Hermes provider integration.
 - No automatic saving of all input.

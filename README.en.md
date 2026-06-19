@@ -49,9 +49,9 @@ The project is currently built for local demos, portfolio presentation, code rev
 
 ## Current Status
 
-- Current development milestone: **Voice Interaction MVP / Local ASR v1 packaged configurable MVP**.
-- The `dev/codex-reilink` branch contains the latest Voice, Local ASR, and Knowledge Retrieval work.
-- The current development line includes Voice Output, Local ASR voice input, the main chat voice button, persisted Local ASR Settings, Knowledge Retrieval, and QA regression scenarios.
+- Current development milestone: **v0.2-pre.4 Context & Memory release hardening**.
+- The `dev/codex-reilink` branch contains the latest Voice, Local ASR, Knowledge Retrieval, and Context & Memory work.
+- The current development line includes Voice Output, Local ASR voice input, the main chat voice button, persisted Local ASR Settings, Knowledge Retrieval, Candidate Memory, Memory Retrieval, Session Archive Runtime, Archive Search, and Archive-to-Memory Candidate Bridge.
 - Public release tags may lag behind the dev branch. GitHub updates, release tags, push, and merge still require manual review.
 - The macOS packaged app has been smoke-tested repeatedly, but ReiLink remains pre-release.
 
@@ -62,6 +62,7 @@ See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for detailed project stat
 - Chinese-first AI companion chat with an original minimal persona.
 - [DeepSeek](https://api-docs.deepseek.com/) compatible provider and `fast` / `pro` / `auto` model routing.
 - Confirmable Memory: long-term memory is written only after user acceptance.
+- Context & Memory System: Candidate Memory, accepted-memory retrieval, Persona-Memory Eval, Session Archive safe summaries, Archive Search, and explicit Archive-to-Memory Candidate Bridge.
 - Game Context: current game, boss, progression, frustration state, and manual current-game override.
 - Local sample knowledge packs for [Elden Ring](data/knowledge/games/elden_ring) and [Hollow Knight](data/knowledge/games/hollow_knight).
 - Knowledge Retrieval v1: local keyword retrieval, top-k snippets, grounding/gating, explicit game-name switching, and casual-chat isolation.
@@ -76,14 +77,15 @@ See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for detailed project stat
 | --- | --- | --- | --- |
 | Persona | Original Rei-like minimal companion | MVP | Original persona, no official IP elements. |
 | Dialogue | LLM-first reply generation | Done | Game context / memory / knowledge provide context only. |
-| Memory | Pending memory confirmation | Done | Accepted memories only. |
+| Memory | Candidate / Retrieval / Archive | Done | Only accepted / active long-term memory can enter prompt; archive does not enter prompt directly. |
 | Game Context | Boss / deaths / frustration / session | MVP | Rule-first with limited LLM semantic fallback. |
 | Knowledge Retrieval | Local keyword retrieval | MVP | No embeddings, vector DB, or hybrid retrieval yet. |
+| Session Archive | Recent session safe summaries | MVP | Manual archive, search, delete, clear, and explicit candidate scan; no raw prompt or transcript storage. |
 | Voice Output | System TTS | MVP | Optional, not character-grade voice acting. |
 | Voice Input | Local ASR | MVP | User-managed binary, model, and converter required. |
 | Event Stream | Safe lifecycle events | Done | No raw prompt, API key, full path, or full transcript. |
 | Packaging | macOS `.app` | MVP | User data stays outside the `.app`; unsigned local build. |
-| Overlay | In-game overlay | Planned | Not implemented. |
+| Overlay | macOS safe mode | MVP / frozen | Foundation exists; auto-show intentionally fails closed. |
 | Live2D | Avatar layer | Planned | Not implemented. |
 | Embedding / Hybrid RAG | Vector / hybrid retrieval | Planned | Current retrieval is keyword-based. |
 
@@ -241,6 +243,7 @@ Local-first means local user data, memory, settings, knowledge packs, audio hand
 - Local ASR settings example path: `~/Library/Application Support/ReiLink/data/local_asr_settings.json`.
 - API keys and local environment files are not bundled into the `.app`.
 - Pending memory requires user confirmation.
+- Session Archive stores safe summaries only; Archive Search does not enter prompt, and Archive-to-Memory Bridge only creates pending candidates.
 - Local ASR audio is short-lived temporary data and is cleaned after processing.
 - Event Stream / Debug / Raw JSON avoids raw prompts, full transcripts, raw subprocess output, API keys, full local paths, audio content, and base64 audio.
 
@@ -323,6 +326,10 @@ Packaged resources are read-only. Memory, session, settings, logs, and Local ASR
 | --- | --- |
 | [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) | Current project state and scope. |
 | [`docs/QA.md`](docs/QA.md) | Manual QA and release regression checklist. |
+| [`docs/release_context_memory_hardening_checklist.md`](docs/release_context_memory_hardening_checklist.md) | Context & Memory release hardening checklist. |
+| [`docs/releases/reilink-v0.2-pre.4-context-memory.md`](docs/releases/reilink-v0.2-pre.4-context-memory.md) | Context & Memory v0.2-pre.4 release notes draft. |
+| [`docs/memory_architecture_v0.md`](docs/memory_architecture_v0.md) | Memory layers, Candidate Memory, Retrieval, and archive bridge boundaries. |
+| [`docs/session_archive_v1_architecture.md`](docs/session_archive_v1_architecture.md) | Session Archive / Search / Archive-to-Memory Bridge architecture. |
 | [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) | Real Local ASR setup and smoke flow. |
 | [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Local ASR design background and implementation notes. |
 | [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Voice Interaction MVP release notes draft. |
@@ -340,14 +347,16 @@ The current development line has largely completed this MVP foundation.
 - Voice Output MVP.
 - Local ASR Voice Input MVP.
 - Knowledge Retrieval v1.
+- Candidate Memory v1 / Memory Retrieval v1.
+- Session Archive Runtime / Search / Archive-to-Memory Candidate Bridge.
 - Event Stream / Debug privacy guardrails.
 - Packaged app runtime foundation.
 
 ### v0.2.x Stabilization
 
-- Local ASR native file picker.
-- Local ASR setup helper.
-- ASR accuracy / timeout tuning.
+- Context & Memory release hardening.
+- Packaged app smoke coverage for user-visible runtime changes.
+- Local ASR setup helper and accuracy / timeout tuning.
 - More robust QA regression flows.
 
 ### v0.3 Gameplay Presence
@@ -378,9 +387,9 @@ The current development line has largely completed this MVP foundation.
 - System TTS may sound unnatural and is not character-grade voice acting.
 - Local ASR accuracy depends on model size, microphone quality, noise, and hardware.
 - No wake word or continuous listening.
-- No Overlay yet.
+- Overlay auto-show remains in macOS fail-closed safe mode.
 - No Live2D yet.
-- No embedding, vector DB, or hybrid retrieval yet.
+- No embedding, vector DB, hybrid retrieval, semantic archive search, prompt archive retrieval, or external memory provider yet.
 - Knowledge packs are samples, not complete guide libraries.
 - Current packaged app is a local unsigned development build.
 

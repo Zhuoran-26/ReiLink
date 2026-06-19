@@ -1,6 +1,6 @@
 # Session Archive v1 Architecture
 
-Status: Session Archive runtime v1 is implemented for manual safe-summary archive, local persistence, recent-session UI, list / read / delete / clear, safe keyword / filter search, and privacy-boundary tests. This document still does not implement vector search, Archive-to-Memory Candidate runtime, prompt retrieval, Voice changes, Overlay changes, or new external memory providers.
+Status: Session Archive runtime v1 is implemented for manual safe-summary archive, local persistence, recent-session UI, list / read / delete / clear, safe keyword / filter search, explicit Archive-to-Memory Candidate Bridge v0 scanning, and privacy-boundary tests. This document still does not implement vector / semantic archive search, search auto-candidate generation, prompt retrieval, advanced archive UI, Voice changes, Overlay changes, or new external memory providers.
 
 ## Product Positioning
 

@@ -7,6 +7,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "retrieval_scenarios.json"
 VOICE_INPUT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_scenarios.json"
 VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_local_asr_scenarios.json"
+LLM_PRIMARY_GUARDED_EXTRACTION_SCENARIOS_PATH = (
+    REPO_ROOT / "docs" / "qa" / "llm_primary_guarded_extraction_scenarios.json"
+)
 OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
 SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_scenarios.json"
 SESSION_ARCHIVE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_scenarios.json"
@@ -28,6 +31,12 @@ README_EN_PATH = REPO_ROOT / "README.en.md"
 PROJECT_STATUS_PATH = REPO_ROOT / "docs" / "PROJECT_STATUS.md"
 LOCAL_ASR_MANUAL_SETUP_PATH = REPO_ROOT / "docs" / "local-asr-manual-setup.md"
 VOICE_MVP_RELEASE_NOTES_PATH = REPO_ROOT / "docs" / "release-notes" / "reilink-voice-mvp.md"
+CONTEXT_MEMORY_RELEASE_CHECKLIST_PATH = (
+    REPO_ROOT / "docs" / "release_context_memory_hardening_checklist.md"
+)
+CONTEXT_MEMORY_RELEASE_NOTES_PATH = (
+    REPO_ROOT / "docs" / "releases" / "reilink-v0.2-pre.4-context-memory.md"
+)
 ALLOWED_RETRIEVAL_STATUSES = {
     "used",
     "not_found",
@@ -232,6 +241,17 @@ ALLOWED_EXTRACTION_EVAL_DECISIONS = {
     "no_state_change",
 }
 ALLOWED_EXTRACTION_EVAL_INPUT_SOURCES = {"text", "voice_confirmed", "voice_direct"}
+ALLOWED_LLM_PRIMARY_DECISIONS = {
+    "apply",
+    "apply_if_grounding_high",
+    "ask_clarification",
+    "candidate_only",
+    "fallback_to_rule",
+    "no_op",
+    "ready_to_send",
+    "source_calibrated",
+}
+ALLOWED_LLM_PRIMARY_INPUT_SOURCES = {"text", "voice_confirmed", "voice_direct", "mixed"}
 ALLOWED_MEMORY_ARCHITECTURE_STATUSES = {
     "accepted",
     "auto_saved",
@@ -385,6 +405,16 @@ def _load_voice_input_local_asr_scenarios() -> list[dict]:
     return data
 
 
+def _load_llm_primary_guarded_extraction_scenarios() -> list[dict]:
+    data = json.loads(
+        LLM_PRIMARY_GUARDED_EXTRACTION_SCENARIOS_PATH.read_text(encoding="utf-8")
+    )
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def _load_overlay_scenarios() -> list[dict]:
     data = json.loads(OVERLAY_SCENARIOS_PATH.read_text(encoding="utf-8"))
     assert isinstance(data, list)
@@ -515,6 +545,12 @@ def test_voice_input_local_asr_scenarios_file_is_valid_json():
     assert len(scenarios) >= 12
 
 
+def test_llm_primary_guarded_extraction_scenarios_file_is_valid_json():
+    scenarios = _load_llm_primary_guarded_extraction_scenarios()
+
+    assert len(scenarios) >= 30
+
+
 def test_overlay_scenarios_file_is_valid_json():
     scenarios = _load_overlay_scenarios()
 
@@ -616,6 +652,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_scenarios(),
         *_load_voice_input_scenarios(),
         *_load_voice_input_local_asr_scenarios(),
+        *_load_llm_primary_guarded_extraction_scenarios(),
         *_load_overlay_scenarios(),
         *_load_session_timeline_scenarios(),
         *_load_session_archive_scenarios(),
@@ -666,6 +703,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_scenarios(),
         *_load_voice_input_scenarios(),
         *_load_voice_input_local_asr_scenarios(),
+        *_load_llm_primary_guarded_extraction_scenarios(),
         *_load_overlay_scenarios(),
         *_load_session_timeline_scenarios(),
         *_load_session_archive_scenarios(),
@@ -684,6 +722,68 @@ def test_forbidden_terms_are_arrays_when_present():
         forbidden_terms = item.get("forbidden_terms", [])
         assert isinstance(forbidden_terms, list)
         assert all(isinstance(term, str) and term for term in forbidden_terms)
+
+
+def test_llm_primary_guarded_extraction_scenarios_have_required_fields():
+    scenarios = _load_llm_primary_guarded_extraction_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "llm-primary-typed-current-boss-margit",
+        "llm-primary-v101-switch-negation-malenia-to-margit",
+        "llm-primary-v101-guide-only-margit-no-switch",
+        "llm-primary-voice-direct-asr-near-miss-margit",
+        "llm-primary-memory-candidate-hint-safe",
+        "llm-primary-proactive-not-triggered",
+        "llm-primary-trace-privacy",
+        "llm-primary-event-stream-safe-summary",
+        "llm-primary-v1-0-2-json-recovery",
+        "llm-primary-v1-0-2-fallback-trace-explicit",
+    } <= ids
+    assert {"text", "voice_confirmed", "voice_direct", "mixed"} <= {
+        item.get("input_source") for item in scenarios
+    }
+    for item in scenarios:
+        assert item.get("category") in {
+            "llm_primary_guarded_extraction",
+            "llm_primary_guarded_extraction_v1_0_1",
+            "voice_direct_partial_guard",
+            "llm_primary_guarded_extraction_memory_boundary",
+            "llm_primary_guarded_extraction_proactive_boundary",
+            "llm_primary_guarded_extraction_trace",
+            "llm_primary_guarded_extraction_source",
+            "llm_primary_guarded_extraction_confidence",
+            "llm_primary_guarded_extraction_shadow_boundary",
+            "llm_primary_guarded_extraction_game_workspace",
+            "llm_primary_guarded_extraction_regression",
+            "llm_primary_guarded_extraction_schema",
+            "llm_primary_guarded_extraction_json_recovery",
+        }
+        assert item.get("input_source") in ALLOWED_LLM_PRIMARY_INPUT_SOURCES
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert isinstance(item.get("must_not_do", []), list)
+        assert all(isinstance(term, str) and term for term in item.get("must_not_do", []))
+        assert isinstance(item.get("forbidden_trace_content", []), list)
+        assert all(
+            isinstance(term, str) and term for term in item.get("forbidden_trace_content", [])
+        )
+        if "expected_decision" in item:
+            assert item["expected_decision"] in ALLOWED_LLM_PRIMARY_DECISIONS
+        else:
+            assert isinstance(item.get("expected_trace_fields"), list) and item["expected_trace_fields"]
+        assert all(
+            decision in ALLOWED_LLM_PRIMARY_DECISIONS
+            for decision in item.get("acceptable_decisions", [])
+        )
+        if "expected_candidate" in item:
+            assert isinstance(item["expected_candidate"], dict)
+        if "expected_trace_fields" in item:
+            assert isinstance(item["expected_trace_fields"], list)
+            assert all(
+                isinstance(field, str) and field for field in item["expected_trace_fields"]
+            )
 
 
 def test_extraction_eval_scenarios_have_required_fields():
@@ -1536,8 +1636,12 @@ def test_readme_qa_links_point_to_existing_files():
     project_status = PROJECT_STATUS_PATH.read_text(encoding="utf-8")
     local_asr_manual_setup = LOCAL_ASR_MANUAL_SETUP_PATH.read_text(encoding="utf-8")
     voice_mvp_release_notes = VOICE_MVP_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
+    context_memory_release_checklist = CONTEXT_MEMORY_RELEASE_CHECKLIST_PATH.read_text(
+        encoding="utf-8"
+    )
+    context_memory_release_notes = CONTEXT_MEMORY_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
     links = re.findall(
-        r"\((docs/(?:PROJECT_STATUS\.md|QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|release-notes/reilink-voice-mvp\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
+        r"\((docs/(?:PROJECT_STATUS\.md|QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|release-notes/reilink-voice-mvp\.md|release_context_memory_hardening_checklist\.md|releases/reilink-v0\.2-pre\.4-context-memory\.md|memory_architecture_v0\.md|session_archive_v1_architecture\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
         f"{readme}\n{readme_en}",
     )
 
@@ -1549,6 +1653,10 @@ def test_readme_qa_links_point_to_existing_files():
         "docs/voice-input-local-asr-spike.md",
         "docs/local-asr-manual-setup.md",
         "docs/release-notes/reilink-voice-mvp.md",
+        "docs/release_context_memory_hardening_checklist.md",
+        "docs/releases/reilink-v0.2-pre.4-context-memory.md",
+        "docs/memory_architecture_v0.md",
+        "docs/session_archive_v1_architecture.md",
         "docs/qa/retrieval_scenarios.json",
         "docs/qa/voice_input_scenarios.json",
         "docs/qa/voice_input_local_asr_scenarios.json",
@@ -1567,11 +1675,15 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/qa/archive_to_memory_candidate_scenarios.json" in qa_doc
     assert "docs/qa/persona_pack_scenarios.json" in qa_doc
     assert "docs/qa/persona_memory_regression_scenarios.json" in qa_doc
+    assert "docs/qa/llm_primary_guarded_extraction_scenarios.json" in qa_doc
+    assert "docs/release_context_memory_hardening_checklist.md" in qa_doc
+    assert "docs/releases/reilink-v0.2-pre.4-context-memory.md" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
     assert "Voice Interaction MVP" in project_status
     assert "Persona-Memory Eval v0.1" in project_status
     assert "Session Archive v1 Runtime" in project_status
     assert "Archive-to-Memory Candidate Bridge v0" in project_status
+    assert "Context & Memory release hardening" in project_status
     assert "Archive -> Memory Candidate" in session_archive_architecture
     assert "docs/qa/session_archive_runtime_scenarios.json" in session_archive_architecture
     assert "docs/qa/session_archive_search_scenarios.json" in session_archive_architecture
@@ -1582,6 +1694,16 @@ def test_readme_qa_links_point_to_existing_files():
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup
     assert "Voice Interaction MVP" in voice_mvp_release_notes
     assert "No cloud ASR" in voice_mvp_release_notes
+    assert "Context & Memory Release Hardening Checklist" in context_memory_release_checklist
+    assert "make package-backend" in context_memory_release_checklist
+    assert "Only accepted / active Long-term Memory can enter PromptMemoryBlock" in (
+        context_memory_release_checklist
+    )
+    assert "ReiLink v0.2-pre.4 - Context & Memory System" in context_memory_release_notes
+    assert "Archive-to-Memory Candidate Bridge v0" in context_memory_release_notes
+    assert "Session Archive and Archive Search do not enter PromptMemoryBlock" in (
+        context_memory_release_notes
+    )
 
 
 def test_regression_freeze_docs_cover_voice_asr_overlay_safe_mode():
