@@ -2,7 +2,7 @@
 
 Updated: 2026-06-18
 
-Status: architecture baseline plus Candidate Memory v1, Memory Retrieval v1 runtime slice, Persona-Memory Eval v0.1, and Session Archive v1 architecture docs. This document still does not implement Session Archive runtime, vector database, external memory provider, UI popup, or packaging change.
+Status: architecture baseline plus Candidate Memory v1, Memory Retrieval v1 runtime slice, Persona-Memory Eval v0.1, and Session Archive v1 Architecture / Runtime v1. This document still does not implement Archive Search, Archive-to-Memory Candidate runtime, vector database, external memory provider, UI popup, or packaging change.
 
 ## Purpose
 

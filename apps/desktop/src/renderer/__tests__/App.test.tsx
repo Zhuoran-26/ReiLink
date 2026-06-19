@@ -20,6 +20,7 @@ import type {
   LocalAsrTranscriptionResponse,
   ProactiveCheckResponse,
   ProactiveStatusResponse,
+  SessionArchiveDetail,
   SetupStatus
 } from "../../shared/api";
 import type { BackendRuntimeStatus, ReilinkRuntimeBridge } from "../../shared/runtime";
@@ -776,6 +777,75 @@ const pendingMemories = [
   }
 ];
 
+const sessionArchiveFixture: SessionArchiveDetail = {
+  id: "archive-1",
+  session_id: "default",
+  title: "艾尔登法环 / 恶兆妖鬼 Margit",
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  started_at: new Date().toISOString(),
+  ended_at: new Date().toISOString(),
+  source: "manual",
+  game: "艾尔登法环",
+  area: null,
+  boss: "恶兆妖鬼 Margit",
+  summary: "游戏：艾尔登法环；Boss：恶兆妖鬼 Margit；死亡次数更新：3",
+  event_count: 3,
+  safe_event_summaries: ["游戏：艾尔登法环", "Boss：恶兆妖鬼 Margit", "死亡次数更新：3"],
+  memory_candidate_count: 0,
+  accepted_memory_count: 0,
+  privacy_level: "normal",
+  retention_policy: "manual_latest_20",
+  is_deleted: false,
+  deletion_status: "active",
+  events: [
+    {
+      id: "archive-event-1",
+      session_id: "default",
+      timestamp: new Date().toISOString(),
+      event_type: "game_selected",
+      safe_summary: "游戏：艾尔登法环",
+      source: "game_context",
+      input_source: null,
+      related_game: "艾尔登法环",
+      related_entity: null,
+      risk_flags: [],
+      privacy_level: "normal",
+      can_generate_memory_candidate: false
+    },
+    {
+      id: "archive-event-2",
+      session_id: "default",
+      timestamp: new Date().toISOString(),
+      event_type: "boss_detected",
+      safe_summary: "Boss：恶兆妖鬼 Margit",
+      source: "game_session",
+      input_source: null,
+      related_game: "艾尔登法环",
+      related_entity: "恶兆妖鬼 Margit",
+      risk_flags: [],
+      privacy_level: "normal",
+      can_generate_memory_candidate: false
+    },
+    {
+      id: "archive-event-3",
+      session_id: "default",
+      timestamp: new Date().toISOString(),
+      event_type: "death_count_changed",
+      safe_summary: "死亡次数更新：3",
+      source: "game_session",
+      input_source: null,
+      related_game: "艾尔登法环",
+      related_entity: "恶兆妖鬼 Margit",
+      risk_flags: [],
+      privacy_level: "normal",
+      can_generate_memory_candidate: false
+    }
+  ]
+};
+
+let sessionArchivesStore: SessionArchiveDetail[] = [{ ...sessionArchiveFixture, events: [...sessionArchiveFixture.events] }];
+
 const appSettings: AppSettings = {
   persona_mode: "minimal",
   debug_panel: "show",
@@ -1400,6 +1470,68 @@ const pendingMemoryResponse = (url: string, init?: RequestInit) => {
   return null;
 };
 
+const sessionArchiveSummary = (archive: SessionArchiveDetail) => {
+  const { events, ...summary } = archive;
+  void events;
+  return summary;
+};
+
+const sessionArchiveResponse = (url: string, init?: RequestInit) => {
+  if (url.endsWith("/api/session-archives/archive-current") && init?.method === "POST") {
+    const payload = JSON.parse(String(init.body ?? "{}")) as { events?: Array<{ safe_summary?: string | null; summary?: string | null }> };
+    if (!payload.events?.length) {
+      return Response.json({ status: "skipped", archive: null, message: "本局还没有可归档的关键变化。" });
+    }
+    const safeSummaries = payload.events
+      .map((event) => event.safe_summary ?? event.summary ?? "")
+      .filter((summary): summary is string => Boolean(summary));
+    const archive: SessionArchiveDetail = {
+      ...sessionArchiveFixture,
+      id: `archive-${sessionArchivesStore.length + 1}`,
+      title: "当前会话",
+      summary: safeSummaries.slice(0, 2).join("；") || "本局保存了安全摘要。",
+      event_count: payload.events.length,
+      safe_event_summaries: safeSummaries,
+      events: payload.events.map((event, index) => ({
+        id: `archive-new-event-${index}`,
+        session_id: "default",
+        timestamp: new Date().toISOString(),
+        event_type: "session_note",
+        safe_summary: event.safe_summary ?? event.summary ?? "安全事件",
+        source: "session_timeline",
+        input_source: null,
+        related_game: "艾尔登法环",
+        related_entity: "恶兆妖鬼 Margit",
+        risk_flags: [],
+        privacy_level: "normal",
+        can_generate_memory_candidate: false
+      }))
+    };
+    sessionArchivesStore = [archive, ...sessionArchivesStore];
+    return Response.json({ status: "created", archive, message: "会话已归档。" });
+  }
+  if (url.endsWith("/api/session-archives/clear") && init?.method === "POST") {
+    const deletedCount = sessionArchivesStore.length;
+    sessionArchivesStore = [];
+    return Response.json({ status: "cleared", deleted_count: deletedCount });
+  }
+  if (url.endsWith("/api/session-archives")) {
+    return Response.json(sessionArchivesStore.map(sessionArchiveSummary));
+  }
+  const archiveMatch = url.match(/\/api\/session-archives\/([^/?]+)$/);
+  if (archiveMatch && init?.method === "DELETE") {
+    const archiveId = decodeURIComponent(archiveMatch[1]);
+    sessionArchivesStore = sessionArchivesStore.filter((archive) => archive.id !== archiveId);
+    return Response.json({ status: "deleted", archive_id: archiveId });
+  }
+  if (archiveMatch) {
+    const archiveId = decodeURIComponent(archiveMatch[1]);
+    const archive = sessionArchivesStore.find((item) => item.id === archiveId);
+    return archive ? Response.json(archive) : new Response("missing", { status: 404 });
+  }
+  return null;
+};
+
 const debugActionResponse = (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/debug/game-session/reset") && init?.method === "POST") {
     return Response.json({ status: "reset" });
@@ -1424,6 +1556,8 @@ let chatResponseStore = { ...chatResponse };
 const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   const debugAction = debugActionResponse(url, init);
   if (debugAction) return debugAction;
+  const sessionArchive = sessionArchiveResponse(url, init);
+  if (sessionArchive) return sessionArchive;
   const pendingResponse = pendingMemoryResponse(url, init);
   if (pendingResponse) return pendingResponse;
   const settings = settingsResponse(url, init);
@@ -1470,6 +1604,7 @@ describe("App", () => {
     let uuid = 0;
     resetSettingsResponse();
     chatResponseStore = { ...chatResponse };
+    sessionArchivesStore = [{ ...sessionArchiveFixture, events: [...sessionArchiveFixture.events] }];
     eventBus.clear();
     scrollToMock = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
       const top = typeof options === "number" ? options : options?.top;
@@ -1644,7 +1779,7 @@ describe("App", () => {
 
     await openMemoryWorkspace();
     panel = await screen.findByRole("complementary", { name: "工作区面板" });
-    for (const tabName of ["待确认", "已保存", "本地数据", "候选记忆"]) {
+    for (const tabName of ["待确认", "已保存", "最近会话", "本地数据", "候选记忆"]) {
       await clickPanelTab(tabName);
     }
 
@@ -6089,6 +6224,80 @@ describe("App", () => {
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "pending_memory_ignored", memory_id: "pending-1" })])
     );
+  });
+
+  it("renders session archive tab separately from saved memories without raw secrets", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    expect(within(archivePanel).getByRole("heading", { name: "最近会话" })).toBeInTheDocument();
+    await waitFor(() => expect(within(archivePanel).getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+    await waitFor(() => expect(within(archivePanel).getAllByText(/死亡次数更新：3/).length).toBeGreaterThan(0));
+    expect(within(archivePanel).getByText(/不是长期记忆/)).toBeInTheDocument();
+    expect(screen.queryByText(/sk-test-secret|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+
+    await openWorkspaceTab("已保存");
+    expect(await screen.findByRole("heading", { name: "已保存记忆" })).toBeInTheDocument();
+    expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "最近会话归档" })).not.toBeInTheDocument();
+
+    const chatInput = screen.getByLabelText("聊天输入");
+    await userEvent.type(chatInput, "归档不影响输入");
+    expect(chatInput).toHaveValue("归档不影响输入");
+  });
+
+  it("calls archive current session and shows skipped feedback for an empty timeline", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    await userEvent.click(await screen.findByRole("button", { name: "归档当前会话" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/archive-current"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("本局还没有可归档的关键变化。")).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "session_archive_skipped" })])
+    );
+  });
+
+  it("deletes session archive entries from the archive tab", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    await waitFor(() => expect(within(archivePanel).getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+    await userEvent.click(within(archivePanel).getByRole("button", { name: /删除会话归档/ }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/archive-1"),
+        expect.objectContaining({ method: "DELETE" })
+      )
+    );
+    await waitFor(() => expect(screen.queryByText("艾尔登法环 / 恶兆妖鬼 Margit")).not.toBeInTheDocument());
+    expect(screen.getByText("暂无会话归档")).toBeInTheDocument();
+  });
+
+  it("clears session archive entries from the archive tab", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+    await waitFor(() => expect(screen.getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+
+    await userEvent.click(await screen.findByRole("button", { name: "清空归档" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/clear"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("已清空 1 条会话归档")).toBeInTheDocument();
+    expect(screen.getByText("暂无会话归档")).toBeInTheDocument();
   });
 
   it("shows empty pending memory state", async () => {

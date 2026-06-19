@@ -10,6 +10,7 @@ VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_
 OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
 SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_scenarios.json"
 SESSION_ARCHIVE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_scenarios.json"
+SESSION_ARCHIVE_RUNTIME_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_runtime_scenarios.json"
 PERSONA_PACK_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_pack_scenarios.json"
 PERSONA_REGRESSION_CASES_PATH = REPO_ROOT / "docs" / "qa" / "persona_regression_cases.json"
 PERSONA_MEMORY_REGRESSION_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_memory_regression_scenarios.json"
@@ -123,6 +124,31 @@ ALLOWED_SESSION_ARCHIVE_LAYERS = {
     "session_timeline",
     "user_control",
     "voice",
+}
+ALLOWED_SESSION_ARCHIVE_RUNTIME_STATUSES = {
+    "cleared",
+    "created",
+    "deleted",
+    "existing",
+    "listed",
+    "prompt_excluded",
+    "read",
+    "safe_event",
+    "skipped",
+    "skipped_or_sanitized",
+    "ui_rendered",
+}
+ALLOWED_SESSION_ARCHIVE_RUNTIME_LAYERS = {
+    "backend_api",
+    "debug_event",
+    "knowledge_boundary",
+    "memory_boundary",
+    "privacy_guard",
+    "prompt_boundary",
+    "renderer_ui",
+    "source_boundary",
+    "summary_builder",
+    "voice_boundary",
 }
 ALLOWED_PERSONA_PACK_STATUSES = {
     "persona_pack_loaded",
@@ -321,6 +347,14 @@ def _load_session_archive_scenarios() -> list[dict]:
     return data
 
 
+def _load_session_archive_runtime_scenarios() -> list[dict]:
+    data = json.loads(SESSION_ARCHIVE_RUNTIME_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def _load_persona_pack_scenarios() -> list[dict]:
     data = json.loads(PERSONA_PACK_SCENARIOS_PATH.read_text(encoding="utf-8"))
     assert isinstance(data, list)
@@ -421,6 +455,12 @@ def test_session_archive_scenarios_file_is_valid_json():
     assert 20 <= len(scenarios) <= 30
 
 
+def test_session_archive_runtime_scenarios_file_is_valid_json():
+    scenarios = _load_session_archive_runtime_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+
+
 def test_persona_pack_scenarios_file_is_valid_json():
     scenarios = _load_persona_pack_scenarios()
 
@@ -489,6 +529,7 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_overlay_scenarios(),
         *_load_session_timeline_scenarios(),
         *_load_session_archive_scenarios(),
+        *_load_session_archive_runtime_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
         *_load_persona_memory_regression_scenarios(),
@@ -536,6 +577,7 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_overlay_scenarios(),
         *_load_session_timeline_scenarios(),
         *_load_session_archive_scenarios(),
+        *_load_session_archive_runtime_scenarios(),
         *_load_persona_pack_scenarios(),
         *_load_persona_regression_cases(),
         *_load_persona_memory_regression_scenarios(),
@@ -1054,6 +1096,41 @@ def test_session_archive_scenarios_have_required_fields():
         assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
 
 
+def test_session_archive_runtime_scenarios_have_required_fields():
+    scenarios = _load_session_archive_runtime_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "session-archive-runtime-manual-archive-current",
+        "session-archive-runtime-game-boss-death-summary",
+        "session-archive-runtime-memory-accepted-summary",
+        "session-archive-runtime-raw-prompt-excluded",
+        "session-archive-runtime-voice-transcript-excluded",
+        "session-archive-runtime-list-archives",
+        "session-archive-runtime-read-detail",
+        "session-archive-runtime-delete-one",
+        "session-archive-runtime-clear-all",
+        "session-archive-runtime-clear-does-not-delete-memory",
+        "session-archive-runtime-not-prompt-memory-block",
+        "session-archive-runtime-no-archive-to-memory-candidate",
+        "session-archive-runtime-repeated-archive-idempotent",
+        "session-archive-runtime-empty-timeline-skipped",
+        "session-archive-runtime-ui-tab-renders",
+        "session-archive-runtime-ui-saved-memory-distinct",
+    } <= ids
+    for item in scenarios:
+        assert item.get("category") == "session_archive_runtime"
+        assert item.get("layer") in ALLOWED_SESSION_ARCHIVE_RUNTIME_LAYERS
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert isinstance(item.get("action"), str) and item["action"]
+        assert item.get("expected_status") in ALLOWED_SESSION_ARCHIVE_RUNTIME_STATUSES
+        assert isinstance(item.get("should_persist_archive"), bool)
+        assert item.get("should_store_raw_content") is False
+        assert item.get("should_enter_prompt") is False
+        assert item.get("should_write_long_term_memory") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+
+
 def test_persona_pack_scenarios_have_required_fields():
     scenarios = _load_persona_pack_scenarios()
 
@@ -1288,13 +1365,15 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/qa/session_timeline_scenarios.json" in qa_doc
     assert "docs/session_archive_v1_architecture.md" in qa_doc
     assert "docs/qa/session_archive_scenarios.json" in qa_doc
+    assert "docs/qa/session_archive_runtime_scenarios.json" in qa_doc
     assert "docs/qa/persona_pack_scenarios.json" in qa_doc
     assert "docs/qa/persona_memory_regression_scenarios.json" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
     assert "Voice Interaction MVP" in project_status
     assert "Persona-Memory Eval v0.1" in project_status
-    assert "Session Archive v1 Architecture" in project_status
+    assert "Session Archive v1 Runtime" in project_status
     assert "Archive -> Memory Candidate" in session_archive_architecture
+    assert "docs/qa/session_archive_runtime_scenarios.json" in session_archive_architecture
     assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup
     assert "REILINK_LOCAL_ASR_MODEL" in local_asr_manual_setup
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup

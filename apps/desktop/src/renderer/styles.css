@@ -1447,6 +1447,11 @@ button {
   background: rgba(12, 16, 30, 0.54);
 }
 
+.pendingMemoryItem.selected {
+  border-color: rgba(134, 164, 238, 0.34);
+  background: rgba(18, 25, 45, 0.66);
+}
+
 .pendingMemoryItem p {
   margin: 0;
   line-height: 1.5;
@@ -1709,6 +1714,10 @@ button {
   list-style: none;
 }
 
+.sessionTimelineList.compact {
+  gap: 5px;
+}
+
 .sessionTimelineList li {
   min-width: 0;
   display: grid;
@@ -1716,6 +1725,13 @@ button {
   gap: 8px;
   align-items: baseline;
   color: #b8c2d8;
+}
+
+.sessionTimelineList.compact li {
+  display: block;
+  border-left: 2px solid rgba(145, 164, 213, 0.18);
+  padding-left: 8px;
+  overflow-wrap: anywhere;
 }
 
 .sessionTimelineSummary {

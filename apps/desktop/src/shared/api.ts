@@ -120,6 +120,91 @@ export type LocalDataStatus = {
   writable: boolean;
 };
 
+export type SessionArchiveEventInput = {
+  id?: string | null;
+  timestamp?: string | null;
+  event_type?: string | null;
+  type?: string | null;
+  safe_summary?: string | null;
+  summary?: string | null;
+  source?: string | null;
+  input_source?: ChatInputSource | null;
+  related_game?: string | null;
+  related_entity?: string | null;
+  risk_flags?: string[];
+  privacy_level?: "normal" | "sensitive" | "secret";
+  can_generate_memory_candidate?: boolean;
+};
+
+export type SessionArchiveCurrentRequest = {
+  session_id?: string;
+  events: SessionArchiveEventInput[];
+  started_at?: string | null;
+  ended_at?: string | null;
+  game?: string | null;
+  area?: string | null;
+  boss?: string | null;
+  source?: "manual" | "renderer" | "session_timeline";
+};
+
+export type SessionArchiveEvent = {
+  id: string;
+  session_id: string;
+  timestamp: string;
+  event_type: string;
+  safe_summary: string;
+  source: string;
+  input_source: ChatInputSource | null;
+  related_game: string | null;
+  related_entity: string | null;
+  risk_flags: string[];
+  privacy_level: "normal" | "sensitive";
+  can_generate_memory_candidate: boolean;
+};
+
+export type SessionArchiveSummary = {
+  id: string;
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string;
+  ended_at: string;
+  source: string;
+  game: string | null;
+  area: string | null;
+  boss: string | null;
+  summary: string;
+  event_count: number;
+  safe_event_summaries: string[];
+  memory_candidate_count: number;
+  accepted_memory_count: number;
+  privacy_level: "normal" | "sensitive";
+  retention_policy: string;
+  is_deleted: boolean;
+  deletion_status: string;
+};
+
+export type SessionArchiveDetail = SessionArchiveSummary & {
+  events: SessionArchiveEvent[];
+};
+
+export type SessionArchiveCreateResponse = {
+  status: "created" | "existing" | "skipped";
+  archive: SessionArchiveDetail | null;
+  message: string;
+};
+
+export type SessionArchiveDeleteResponse = {
+  status: "deleted";
+  archive_id: string;
+};
+
+export type SessionArchiveClearResponse = {
+  status: "cleared";
+  deleted_count: number;
+};
+
 export type LocalAsrStatusValue =
   | "local_asr_not_configured"
   | "local_asr_binary_missing"
@@ -772,6 +857,16 @@ export const api = {
     }),
   memoryProfile: () => request<UserProfileMemory>("/api/memory/profile"),
   memoryEpisodes: () => request<EpisodeMemory[]>("/api/memory/episodes"),
+  sessionArchives: () => request<SessionArchiveSummary[]>("/api/session-archives"),
+  sessionArchive: (archiveId: string) => request<SessionArchiveDetail>(`/api/session-archives/${encodeURIComponent(archiveId)}`),
+  archiveCurrentSession: (payload: SessionArchiveCurrentRequest) =>
+    request<SessionArchiveCreateResponse>("/api/session-archives/archive-current", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  deleteSessionArchive: (archiveId: string) =>
+    request<SessionArchiveDeleteResponse>(`/api/session-archives/${encodeURIComponent(archiveId)}`, { method: "DELETE" }),
+  clearSessionArchives: () => request<SessionArchiveClearResponse>("/api/session-archives/clear", { method: "POST" }),
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),
   chatDebug: () => request<ChatDebugResponse>("/api/debug/chat"),
   providerDebug: () => request<ProviderDebugResponse>("/api/debug/provider"),

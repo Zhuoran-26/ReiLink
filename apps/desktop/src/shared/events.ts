@@ -16,6 +16,10 @@ export type ReiLinkEvent =
   | { type: "memory_auto_saved"; timestamp: string; memory_type?: string; summary?: string | null; guard_reason?: string; candidate_id?: string | null; memory_id?: string | null; source?: string }
   | { type: "memory_auto_save_undo"; timestamp: string; memory_id: string; summary?: string }
   | { type: "memory_candidate_rejected"; timestamp: string; memory_type?: string; summary?: string | null; guard_reason?: string; source?: string }
+  | { type: "session_archive_created"; timestamp: string; archive_id: string; event_count: number; game?: string; boss?: string; status?: "created" | "existing" }
+  | { type: "session_archive_deleted"; timestamp: string; archive_id: string }
+  | { type: "session_archive_cleared"; timestamp: string; deleted_count: number }
+  | { type: "session_archive_skipped"; timestamp: string; reason: string; event_count?: number }
   | { type: "game_context_changed"; timestamp: string; game?: string; source?: string }
   | {
       type: "semantic_extraction_traced";

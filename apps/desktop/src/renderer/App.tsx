@@ -1,4 +1,5 @@
 import {
+  Archive,
   Bot,
   Brain,
   Bug,
@@ -15,6 +16,7 @@ import {
   Send,
   Settings,
   Sparkles,
+  Trash2,
   Volume2,
   VolumeX,
   X
@@ -46,6 +48,9 @@ import {
   ProviderDebugResponse,
   SemanticExtractionDebugResponse,
   SemanticShadowEvent,
+  SessionArchiveDetail,
+  SessionArchiveEventInput,
+  SessionArchiveSummary,
   SetupStatus,
   UserProfileMemory
 } from "../shared/api";
@@ -155,7 +160,7 @@ const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
 };
 const WORKSPACE_SUBTITLES: Record<WorkspaceId, string> = {
   home: "主聊天",
-  memory: "待确认记忆、长期记忆占位和本地数据边界",
+  memory: "待确认记忆、长期记忆、最近会话归档和本地数据边界",
   game: "当前游戏上下文、本局状态和知识摘要",
   voice: "现有 Local ASR 与语音输出入口，保留未来直接语音对话位置",
   overlay: "当前为 macOS Safe Mode，不恢复 auto-show",
@@ -168,6 +173,7 @@ const WORKSPACE_TABS: Record<WorkspaceId, WorkspaceTab[]> = {
   memory: [
     { id: "pending", label: "待确认" },
     { id: "confirmed", label: "已保存" },
+    { id: "archive", label: "最近会话" },
     { id: "local", label: "本地数据" },
     { id: "future", label: "候选记忆" }
   ],
@@ -1319,6 +1325,23 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.guard_reason ? `guard=${debugText(event.guard_reason)}` : "",
         event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
       ].filter(Boolean).join(" / ");
+    case "session_archive_created":
+      return [
+        event.status === "existing" ? "已存在" : "已创建",
+        `事件 ${event.event_count}`,
+        event.game ? sanitizeSessionTimelineText(event.game, 36) : "",
+        event.boss ? sanitizeSessionTimelineText(event.boss, 36) : "",
+        event.archive_id
+      ].filter(Boolean).join(" / ");
+    case "session_archive_deleted":
+      return event.archive_id;
+    case "session_archive_cleared":
+      return `清空 ${event.deleted_count} 条`;
+    case "session_archive_skipped":
+      return [
+        sanitizeSessionTimelineText(event.reason, 64),
+        typeof event.event_count === "number" ? `输入事件 ${event.event_count}` : ""
+      ].filter(Boolean).join(" / ");
     case "game_context_changed":
       return [debugText(event.game), debugText(event.source)].join(" / ");
     case "semantic_extraction_traced":
@@ -1513,6 +1536,10 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     memory_auto_saved: "记忆已自动保存",
     memory_auto_save_undo: "自动保存记忆已撤销",
     memory_candidate_rejected: "记忆候选已拒绝",
+    session_archive_created: "会话归档已保存",
+    session_archive_deleted: "会话归档已删除",
+    session_archive_cleared: "会话归档已清空",
+    session_archive_skipped: "会话归档已跳过",
     game_context_changed: "游戏上下文变化",
     semantic_extraction_traced: "语义识别来源",
     game_session_changed: "游戏状态变化",
@@ -2150,6 +2177,10 @@ export function App() {
   const [eventStreamOpen, setEventStreamOpen] = useState(false);
   const [sessionTimelineOpen, setSessionTimelineOpen] = useState(false);
   const [sessionTimeline, setSessionTimeline] = useState<SessionTimelineItem[]>([]);
+  const [sessionArchives, setSessionArchives] = useState<SessionArchiveSummary[]>([]);
+  const [sessionArchiveDetail, setSessionArchiveDetail] = useState<SessionArchiveDetail | null>(null);
+  const [sessionArchiveBusy, setSessionArchiveBusy] = useState("");
+  const [sessionArchiveFeedback, setSessionArchiveFeedback] = useState("");
   const [recentEvents, setRecentEvents] = useState<ReiLinkEvent[]>(() => eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
   const [setupHelpOpen, setSetupHelpOpen] = useState(false);
   const [demoDocHintOpen, setDemoDocHintOpen] = useState(false);
@@ -2577,6 +2608,75 @@ export function App() {
     knownPendingMemoryIdsRef.current = new Set(memories.map((memory) => memory.id));
     setPendingMemories(memories);
   }, []);
+
+  const refreshSessionArchives = useCallback(async (preferredArchiveId?: string | null) => {
+    try {
+      const archives = await api.sessionArchives();
+      setSessionArchives(archives);
+      const nextArchiveId = preferredArchiveId ??
+        (sessionArchiveDetail && archives.some((archive) => archive.id === sessionArchiveDetail.id)
+          ? sessionArchiveDetail.id
+          : archives[0]?.id ?? null);
+      if (!nextArchiveId) {
+        setSessionArchiveDetail(null);
+        return;
+      }
+      setSessionArchiveDetail(await api.sessionArchive(nextArchiveId));
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "读取会话归档失败"));
+    }
+  }, [sessionArchiveDetail]);
+
+  const loadSessionArchiveDetail = useCallback(async (archiveId: string) => {
+    setSessionArchiveBusy(`read-${archiveId}`);
+    try {
+      setLastError("");
+      setLastRawError("");
+      setSessionArchiveDetail(await api.sessionArchive(archiveId));
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "读取会话归档失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  }, []);
+
+  const deleteSessionArchive = useCallback(async (archiveId: string) => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy(`delete-${archiveId}`);
+    try {
+      setLastError("");
+      setLastRawError("");
+      await api.deleteSessionArchive(archiveId);
+      eventBus.emit({ type: "session_archive_deleted", timestamp: eventTimestamp(), archive_id: archiveId });
+      setSessionArchiveFeedback("已删除这条会话归档");
+      await refreshSessionArchives(null);
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "删除会话归档失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  }, [refreshSessionArchives, suppressProactiveAfterSystemAction]);
+
+  const clearSessionArchives = useCallback(async () => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy("clear");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const result = await api.clearSessionArchives();
+      eventBus.emit({ type: "session_archive_cleared", timestamp: eventTimestamp(), deleted_count: result.deleted_count });
+      setSessionArchiveFeedback(result.deleted_count > 0 ? `已清空 ${result.deleted_count} 条会话归档` : "没有需要清空的会话归档");
+      await refreshSessionArchives(null);
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "清空会话归档失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  }, [refreshSessionArchives, suppressProactiveAfterSystemAction]);
 
   const noticeFromMemoryUpdate = useCallback((update?: ChatMemoryUpdate): MemoryNotice | null => {
     if (!update || update.status === "none" || update.status === "blocked" || update.status === "failed") return null;
@@ -3759,6 +3859,60 @@ export function App() {
   const debugPanelVisible = appSettings.debug_panel === "show";
   const displayGame = gameContext.active_game_display_name ?? gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
   const displayBoss = gameSessionDebug.current_boss?.name ?? null;
+  const archiveCurrentSession = async () => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy("archive-current");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const archiveEvents: SessionArchiveEventInput[] = sessionTimeline.map((item) => ({
+        id: item.id,
+        timestamp: item.timestamp,
+        event_type: item.type,
+        safe_summary: sanitizeSessionTimelineText(item.summary, 160),
+        source: item.source,
+        related_game: displayGame !== "idle" ? displayGame : null,
+        related_entity: displayBoss,
+        privacy_level: "normal",
+        can_generate_memory_candidate: false
+      }));
+      const response = await api.archiveCurrentSession({
+        session_id: "default",
+        events: archiveEvents,
+        started_at: sessionTimeline[0]?.timestamp ?? null,
+        ended_at: sessionTimeline[sessionTimeline.length - 1]?.timestamp ?? null,
+        game: displayGame !== "idle" ? displayGame : null,
+        boss: displayBoss,
+        source: "session_timeline"
+      });
+      setSessionArchiveFeedback(response.message);
+      if (response.archive) {
+        eventBus.emit({
+          type: "session_archive_created",
+          timestamp: eventTimestamp(),
+          archive_id: response.archive.id,
+          event_count: response.archive.event_count,
+          game: response.archive.game ?? undefined,
+          boss: response.archive.boss ?? undefined,
+          status: response.status === "existing" ? "existing" : "created"
+        });
+        await refreshSessionArchives(response.archive.id);
+      } else {
+        eventBus.emit({
+          type: "session_archive_skipped",
+          timestamp: eventTimestamp(),
+          reason: response.message,
+          event_count: archiveEvents.length
+        });
+        await refreshSessionArchives();
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "归档当前会话失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  };
   const localAsrConfigReady = localAsrStatus.status === "local_asr_ready";
   const localAsrTranscriptionBusy = localAsrTranscriptionPhase !== "idle";
   const localAsrTranscriptionButtonDisabled = !localAsrConfigReady ||
@@ -3959,7 +4113,10 @@ export function App() {
 
   const switchWorkspaceTab = useCallback((tabId: string) => {
     setWorkspaceTabs((current) => ({ ...current, [activeWorkspace]: tabId }));
-  }, [activeWorkspace]);
+    if (activeWorkspace === "memory" && tabId === "archive") {
+      void refreshSessionArchives();
+    }
+  }, [activeWorkspace, refreshSessionArchives]);
 
   useEffect(() => {
     if (activeWorkspace === "home") return undefined;
@@ -4411,6 +4568,137 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <dd>{skippedMemory.length}</dd>
                 </div>
               </dl>
+            </section>
+          )}
+
+          {activeWorkspace === "memory" && activeWorkspaceTab === "archive" && (
+            <section className="infoCard" aria-label="最近会话归档">
+              <div className="cardHeader">
+                <Archive size={17} />
+                <h2>最近会话</h2>
+                <span className="countPill">{sessionArchives.length}</span>
+              </div>
+              <p className="settingHint">
+                会话归档只保存本局时间线的安全摘要；它不是长期记忆，不进入 PromptMemoryBlock，也不会保存原始聊天、Prompt、JSON、密钥、完整路径或语音全文。
+              </p>
+              <div className="debugActions">
+                <button
+                  className="smallButton"
+                  type="button"
+                  disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                  onClick={() => void archiveCurrentSession()}
+                >
+                  <Archive size={14} />
+                  归档当前会话
+                </button>
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                  onClick={() => void refreshSessionArchives()}
+                >
+                  <RefreshCw size={14} />
+                  刷新
+                </button>
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  disabled={sessionArchiveBusy !== "" || sessionArchives.length === 0 || backendStatus !== "connected"}
+                  onClick={() => void clearSessionArchives()}
+                >
+                  <Trash2 size={14} />
+                  清空归档
+                </button>
+              </div>
+              {sessionArchiveFeedback && <p className="demoResetFeedback" role="status">{sessionArchiveFeedback}</p>}
+              <div className="pendingMemoryList">
+                {sessionArchives.map((archive) => (
+                  <article
+                    className={`pendingMemoryItem ${sessionArchiveDetail?.id === archive.id ? "selected" : ""}`}
+                    key={archive.id}
+                  >
+                    <p>{archive.title}</p>
+                    <p className="settingHint">{archive.summary}</p>
+                    <div className="pendingMemoryMeta">
+                      <span>{debugText(archive.game, "未记录游戏")}</span>
+                      <span>Boss：{debugText(archive.boss, "未记录")}</span>
+                      <span>{archive.event_count} 个事件</span>
+                      <span>{formatMessageTime(archive.started_at)} - {formatMessageTime(archive.ended_at)}</span>
+                      <span>{archive.privacy_level === "sensitive" ? "已脱敏" : "普通"}</span>
+                    </div>
+                    {archive.safe_event_summaries.length > 0 && (
+                      <ul className="sessionTimelineList compact" aria-label={`${archive.title} 安全事件摘要`}>
+                        {archive.safe_event_summaries.slice(0, 3).map((summary, index) => (
+                          <li key={`${archive.id}-summary-${index}`}>{summary}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="pendingMemoryActions">
+                      <button
+                        className="smallButton quiet"
+                        type="button"
+                        disabled={sessionArchiveBusy !== ""}
+                        onClick={() => void loadSessionArchiveDetail(archive.id)}
+                      >
+                        查看
+                      </button>
+                      <button
+                        aria-label={`删除会话归档 ${archive.title}`}
+                        className="smallButton quiet"
+                        type="button"
+                        disabled={sessionArchiveBusy !== ""}
+                        onClick={() => void deleteSessionArchive(archive.id)}
+                      >
+                        <Trash2 size={14} />
+                        删除
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {sessionArchives.length === 0 && <p className="emptyDebugText">暂无会话归档</p>}
+              </div>
+              {sessionArchiveDetail && (
+                <div className="debugSection archiveDetail" aria-label="会话归档详情">
+                  <h3>{sessionArchiveDetail.title}</h3>
+                  <p className="settingHint">{sessionArchiveDetail.summary}</p>
+                  <dl className="debugFacts">
+                    <div>
+                      <dt>游戏</dt>
+                      <dd>{debugText(sessionArchiveDetail.game, "未记录")}</dd>
+                    </div>
+                    <div>
+                      <dt>Boss / 区域</dt>
+                      <dd>{debugText(sessionArchiveDetail.boss ?? sessionArchiveDetail.area, "未记录")}</dd>
+                    </div>
+                    <div>
+                      <dt>事件数</dt>
+                      <dd>{sessionArchiveDetail.event_count}</dd>
+                    </div>
+                    <div>
+                      <dt>已确认记忆事件</dt>
+                      <dd>{sessionArchiveDetail.accepted_memory_count}</dd>
+                    </div>
+                    <div>
+                      <dt>隐私级别</dt>
+                      <dd>{sessionArchiveDetail.privacy_level === "sensitive" ? "已脱敏" : "普通"}</dd>
+                    </div>
+                    <div>
+                      <dt>保留策略</dt>
+                      <dd>{debugText(sessionArchiveDetail.retention_policy)}</dd>
+                    </div>
+                  </dl>
+                  <ol className="eventStreamList" aria-label="会话归档安全事件">
+                    {sessionArchiveDetail.events.map((event) => (
+                      <li key={event.id}>
+                        <span className="eventStreamTime">{eventStreamTime(event.timestamp)}</span>
+                        <span className="eventStreamType" title={event.event_type}>{event.event_type}</span>
+                        <span className="eventStreamSummary">{event.safe_summary}</span>
+                      </li>
+                    ))}
+                    {sessionArchiveDetail.events.length === 0 && <li className="emptyDebugText eventStreamEmpty">没有可显示的安全事件</li>}
+                  </ol>
+                </div>
+              )}
             </section>
           )}
 

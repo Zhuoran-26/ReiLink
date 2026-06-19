@@ -333,6 +333,91 @@ class LocalDataStatusResponse(BaseModel):
     writable: bool = False
 
 
+class SessionArchiveEventInput(BaseModel):
+    id: str | None = None
+    timestamp: str | None = None
+    event_type: str | None = None
+    type: str | None = None
+    safe_summary: StrictStr | None = None
+    summary: StrictStr | None = None
+    source: str | None = None
+    input_source: Literal["text", "voice_confirmed", "voice_direct"] | None = None
+    related_game: str | None = None
+    related_entity: str | None = None
+    risk_flags: list[str] = Field(default_factory=list)
+    privacy_level: Literal["normal", "sensitive", "secret"] = "normal"
+    can_generate_memory_candidate: bool = False
+
+
+class SessionArchiveCurrentRequest(BaseModel):
+    session_id: str = Field(default="default", min_length=1, max_length=80)
+    events: list[SessionArchiveEventInput] = Field(default_factory=list)
+    started_at: str | None = None
+    ended_at: str | None = None
+    game: str | None = None
+    area: str | None = None
+    boss: str | None = None
+    source: Literal["manual", "renderer", "session_timeline"] = "manual"
+
+
+class SessionArchiveEvent(BaseModel):
+    id: str
+    session_id: str
+    timestamp: str
+    event_type: str
+    safe_summary: str
+    source: str
+    input_source: Literal["text", "voice_confirmed", "voice_direct"] | None = None
+    related_game: str | None = None
+    related_entity: str | None = None
+    risk_flags: list[str] = Field(default_factory=list)
+    privacy_level: Literal["normal", "sensitive"] = "normal"
+    can_generate_memory_candidate: bool = False
+
+
+class SessionArchiveSummary(BaseModel):
+    id: str
+    session_id: str
+    title: str
+    created_at: str
+    updated_at: str
+    started_at: str
+    ended_at: str
+    source: str
+    game: str | None = None
+    area: str | None = None
+    boss: str | None = None
+    summary: str
+    event_count: int = 0
+    safe_event_summaries: list[str] = Field(default_factory=list)
+    memory_candidate_count: int = 0
+    accepted_memory_count: int = 0
+    privacy_level: Literal["normal", "sensitive"] = "normal"
+    retention_policy: str = "manual_latest_20"
+    is_deleted: bool = False
+    deletion_status: str = "active"
+
+
+class SessionArchiveDetail(SessionArchiveSummary):
+    events: list[SessionArchiveEvent] = Field(default_factory=list)
+
+
+class SessionArchiveCreateResponse(BaseModel):
+    status: Literal["created", "existing", "skipped"]
+    archive: SessionArchiveDetail | None = None
+    message: str
+
+
+class SessionArchiveDeleteResponse(BaseModel):
+    status: Literal["deleted"]
+    archive_id: str
+
+
+class SessionArchiveClearResponse(BaseModel):
+    status: Literal["cleared"]
+    deleted_count: int
+
+
 LocalAsrStatus = Literal[
     "local_asr_not_configured",
     "local_asr_binary_missing",

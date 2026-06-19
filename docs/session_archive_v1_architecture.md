@@ -1,6 +1,6 @@
 # Session Archive v1 Architecture
 
-Status: architecture / docs / QA baseline only. This document does not implement Session Archive runtime, persistence, search runtime, vector search, archive UI, prompt retrieval, Voice changes, Overlay changes, or packaging changes.
+Status: Session Archive runtime v1 is implemented for manual safe-summary archive, local persistence, recent-session UI, list / read / delete / clear, and privacy-boundary tests. This document still does not implement archive search runtime, vector search, Archive-to-Memory Candidate runtime, prompt retrieval, Voice changes, Overlay changes, or packaging changes.
 
 ## Product Positioning
 
@@ -90,18 +90,44 @@ Forbidden archive content:
 
 ## Default Policy
 
-Recommended v1 default:
+Runtime v1 default:
 
-- Persistent Session Archive should be off by default.
-- Current-session notes may remain short-lived local safe summaries, as Session Timeline already does.
-- If the user enables persistent archive, store safe summaries only.
+- Persistent Session Archive is user-controlled through a manual `归档当前会话` action.
+- Current-session notes remain short-lived local safe summaries until the user explicitly archives them.
+- Manual archive stores safe summaries only.
 - Suggested retention: latest 20 sessions or 30 days, whichever is smaller. A stricter privacy mode can use 7 days.
-- User controls should include disable archive, clear archive, delete one session archive entry, and future export.
+- User controls should include clear archive, delete one session archive entry, and future disable / export.
 - Direct Conversation / Voice should not save full transcript or raw audio by default.
 - Overlay should not show sensitive archive content.
 - Debug / Prompt Preview may show archive safe event summaries, counts, and skip reasons only.
 
-This default is conservative because Session Archive sits between transient session state and durable memory. Turning it on should be a user choice, not an invisible expansion of memory.
+This default is conservative because Session Archive sits between transient session state and durable memory. Runtime v1 is a manual local archive action, not an invisible expansion of memory.
+
+## Runtime v1 Scope
+
+Runtime v1 implements:
+
+- Local file persistence at the backend session data path: `data/session/session_archives.json` in dev, or the packaged user data session directory.
+- `GET /session-archives`
+- `GET /session-archives/{archive_id}`
+- `POST /session-archives/archive-current`
+- `DELETE /session-archives/{archive_id}`
+- `POST /session-archives/clear`
+- Memory workspace `最近会话` tab with archive current, refresh, read detail, delete, and clear controls.
+- Safe event stream summaries: `session_archive_created`, `session_archive_deleted`, `session_archive_cleared`, and `session_archive_skipped`.
+
+Runtime v1 deliberately does not implement:
+
+- auto archive on lifecycle events
+- local keyword archive search
+- semantic / vector search
+- Archive-to-Memory Candidate runtime
+- prompt archive retrieval
+- raw transcript, raw prompt, raw JSON, audio, secrets, or full local path storage
+- Memory Retrieval changes
+- Persona, Direct Conversation, Overlay, Live2D, or Vision changes
+
+Archive entries are soft-deleted for local auditability and hidden from list / read responses after delete or clear.
 
 ## Data Model Draft
 
@@ -295,12 +321,20 @@ Machine-readable architecture scenarios live in:
 docs/qa/session_archive_scenarios.json
 ```
 
-They cover safe archive input, forbidden raw content, voice transcript boundaries, memory bridge requirements, search safe summaries, user delete / disable controls, retention, export placeholder, prompt exclusion, current-input priority, Persona Core priority, and privacy-level retrieval blocking.
+Machine-readable runtime scenarios live in:
+
+```text
+docs/qa/session_archive_runtime_scenarios.json
+```
+
+Architecture scenarios cover safe archive input, forbidden raw content, voice transcript boundaries, memory bridge requirements, search safe summaries, user delete / disable controls, retention, export placeholder, prompt exclusion, current-input priority, Persona Core priority, and privacy-level retrieval blocking.
+
+Runtime scenarios cover manual archive-current, safe summary generation, local persistence, list / read / delete / clear, UI rendering, empty timeline skipping, repeated archive idempotency, Event Stream safety, and prompt / memory privacy boundaries.
 
 ## Implementation Roadmap
 
-1. Session Archive v1 runtime: local safe-summary persistence, retention, delete / clear, disabled state.
+1. Session Archive v1 runtime: local safe-summary persistence, latest-20 retention, delete / clear, and Memory workspace recent sessions tab. Implemented.
 2. Archive Search v1: local keyword and structured filters over safe summaries.
 3. Archive-to-Memory Candidate v1: repeated-pattern detector plus Memory Candidate guard and user confirmation.
-4. Session Archive UI: Memory workspace tab for recent sessions and archive search.
+4. Session Archive UI expansion: search, filters, retention controls, and future export.
 5. Optional semantic search later: only after safe-summary storage, privacy filters, and user controls are stable.
