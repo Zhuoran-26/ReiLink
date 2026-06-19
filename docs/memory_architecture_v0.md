@@ -2,7 +2,7 @@
 
 Updated: 2026-06-18
 
-Status: architecture baseline plus Candidate Memory v1, Memory Retrieval v1 runtime slice, and Persona-Memory Eval v0.1. This document still does not implement Session Archive, vector database, external memory provider, UI popup, or packaging change.
+Status: architecture baseline plus Candidate Memory v1, Memory Retrieval v1 runtime slice, Persona-Memory Eval v0.1, and Session Archive v1 architecture docs. This document still does not implement Session Archive runtime, vector database, external memory provider, UI popup, or packaging change.
 
 ## Purpose
 
@@ -572,9 +572,10 @@ docs/qa/candidate_memory_scenarios.json
 docs/qa/memory_ux_v1_1_scenarios.json
 docs/qa/memory_retrieval_scenarios.json
 docs/qa/persona_memory_regression_scenarios.json
+docs/qa/session_archive_scenarios.json
 ```
 
-The scenarios cover explicit memory requests, auto-save hints, undo, negative memory requests, one-off session events, spoiler and reply-length preferences, LLM-primary candidate checks, rule prefilter boundaries, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, accepted-memory retrieval, inactive / pending / rejected exclusion, use-count updates, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, Debug safe trace, and Persona-Memory regression behavior after retrieval.
+The scenarios cover explicit memory requests, auto-save hints, undo, negative memory requests, one-off session events, spoiler and reply-length preferences, LLM-primary candidate checks, rule prefilter boundaries, persona drift rejection, accept / ignore / delete / revise flows, weak confirmation, voice and proactive boundaries, knowledge / memory separation, prompt budget, game-context conflict priority, sensitive data rejection, duplicate handling, accepted-memory retrieval, inactive / pending / rejected exclusion, use-count updates, Memory workspace visibility, Direct Conversation interruption policy, Overlay privacy, Debug safe trace, Persona-Memory regression behavior after retrieval, and Session Archive architecture boundaries.
 
 ## Roadmap
 
@@ -617,9 +618,16 @@ Status: implemented as a mock-first eval / tests / docs surface with live scorin
 
 ### Session Archive v1
 
-- Summarize Session Timeline into safe session archive candidates.
-- Keep archive separate from Long-term Memory.
-- Promote only repeated user patterns through candidate flow.
+Status: architecture / docs / QA baseline only. Runtime is not implemented.
+
+- Dedicated architecture: `docs/session_archive_v1_architecture.md`.
+- Machine-readable scenarios: `docs/qa/session_archive_scenarios.json`.
+- Positions archive as a safe, user-controlled session history summary and review layer.
+- Keeps archive separate from Session Timeline, Game Session State, Memory Candidate, Long-term Memory, and PromptMemoryBlock.
+- Defines safe-summary-only content boundaries and forbids raw prompt, raw model response, raw JSON, API keys, `.env`, full paths, stdout/stderr, raw voice audio, full voice transcript, and unredacted raw chat transcript.
+- Recommends persistent archive default off, with future retention such as latest 20 sessions or 30 days if enabled.
+- Defines the bridge path: archive safe event summary -> archive-to-memory candidate detector -> memory guard -> pending Memory Candidate -> user accept / ignore -> Long-term Memory.
+- Keeps Session Archive out of prompt by default; any future Session Retrieval must pass recency, relevance, privacy, token budget, and user-control gates.
 
 ### Memory Workspace Polish
 
