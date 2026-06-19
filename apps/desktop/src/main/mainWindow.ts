@@ -1,5 +1,8 @@
 import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
 
+const PACKAGED_RENDERER_BASE_URL = "app://./index.html";
+const PACKAGED_RENDERER_CACHE_PARAM = "renderer_cache_key";
+
 export const createMainWindowOptions = (preloadPath: string): BrowserWindowConstructorOptions => ({
   width: 1120,
   height: 780,
@@ -12,6 +15,12 @@ export const createMainWindowOptions = (preloadPath: string): BrowserWindowConst
     nodeIntegration: false
   }
 });
+
+export const createPackagedRendererUrl = (cacheKey: string | number = Date.now()) => {
+  const url = new URL(PACKAGED_RENDERER_BASE_URL);
+  url.searchParams.set(PACKAGED_RENDERER_CACHE_PARAM, String(cacheKey));
+  return url.toString();
+};
 
 export const restoreMainWindowForActivation = (
   window: Pick<BrowserWindow, "isDestroyed" | "isMinimized" | "isVisible" | "restore" | "showInactive">

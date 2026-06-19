@@ -935,18 +935,16 @@ button {
   min-width: 0;
   max-width: 100%;
   display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 6px;
-  overflow-x: auto;
+  overflow: visible;
   padding: 4px 0 6px;
-  scrollbar-width: none;
-}
-
-.workspaceTabs::-webkit-scrollbar {
-  display: none;
 }
 
 .workspaceTab {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
   min-height: 32px;
   border: 1px solid rgba(145, 164, 213, 0.16);
   border-radius: 999px;
@@ -955,6 +953,8 @@ button {
   background: rgba(13, 17, 31, 0.48);
   cursor: pointer;
   font-size: 12px;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 .workspaceTab:hover,

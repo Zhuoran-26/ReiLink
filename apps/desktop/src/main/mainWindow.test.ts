@@ -1,4 +1,4 @@
-import { createMainWindowOptions, restoreMainWindowForActivation } from "./mainWindow";
+import { createMainWindowOptions, createPackagedRendererUrl, restoreMainWindowForActivation } from "./mainWindow";
 
 describe("main window", () => {
   it("keeps the ReiLink main window as a normal desktop app window", () => {
@@ -15,6 +15,12 @@ describe("main window", () => {
       nodeIntegration: false,
       preload: "/tmp/preload.cjs"
     });
+  });
+
+  it("cache-busts packaged renderer URLs so overwritten local builds do not show stale tabs", () => {
+    expect(createPackagedRendererUrl("session-archive-tab")).toBe(
+      "app://./index.html?renderer_cache_key=session-archive-tab"
+    );
   });
 
   it("restores minimized windows without forcing focus when the app is activated", () => {

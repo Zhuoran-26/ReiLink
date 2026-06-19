@@ -6226,6 +6226,38 @@ describe("App", () => {
     );
   });
 
+  it("shows the session archive tab in the Memory workspace header with empty-state controls", async () => {
+    sessionArchivesStore = [];
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.type(screen.getByLabelText("聊天输入"), "归档入口可见性草稿");
+
+    await openMemoryWorkspace();
+    const panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    const tabList = within(panel).getByRole("tablist", { name: "记忆 tabs" });
+    expect(within(tabList).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "待确认",
+      "已保存",
+      "最近会话",
+      "本地数据",
+      "候选记忆"
+    ]);
+
+    const archiveTab = within(tabList).getByRole("tab", { name: "最近会话" });
+    expect(archiveTab).toBeVisible();
+    await userEvent.click(archiveTab);
+    expect(archiveTab).toHaveAttribute("aria-selected", "true");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    expect(within(archivePanel).getByRole("heading", { name: "最近会话" })).toBeInTheDocument();
+    expect(within(archivePanel).getByText("暂无会话归档")).toBeInTheDocument();
+    expect(within(archivePanel).getByText(/不是长期记忆/)).toBeInTheDocument();
+    expect(within(archivePanel).getByRole("button", { name: "归档当前会话" })).toBeInTheDocument();
+    expect(within(archivePanel).getByRole("button", { name: "刷新" })).toBeInTheDocument();
+    expect(screen.queryByText(/sk-test-secret|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("归档入口可见性草稿");
+  });
+
   it("renders session archive tab separately from saved memories without raw secrets", async () => {
     render(<App />);
     await openMemoryWorkspace("最近会话");
