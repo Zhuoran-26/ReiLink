@@ -7,6 +7,7 @@ import urllib.error
 import pytest
 
 from app.core.config import settings
+from app.modules.dialogue_agent.memory_acknowledgement import violates_memory_acknowledgement_policy
 from app.modules.dialogue_agent.intent import detect_intent
 from app.modules.dialogue_agent.providers import DeepSeekProvider, LLMResult, MockLLMProvider
 from app.modules.game_session.state import CurrentBoss, GameSessionState, GameSessionStore
@@ -40,6 +41,20 @@ class _PromptCapturingProvider:
             prompt_tokens_estimate=len(system_prompt) // 2,
             llm_latency_ms=1,
         )
+
+
+def assert_no_memory_mechanics(reply: str):
+    forbidden = (
+        "我先放进待确认",
+        "放进待确认",
+        "确认后再算",
+        "候选记忆",
+        "记忆候选",
+        "长期记忆条目",
+        "memory candidate",
+        "guard",
+    )
+    assert all(phrase.lower() not in reply.lower() for phrase in forbidden)
 
 
 def test_mock_provider_returns_chinese_reply():
@@ -248,8 +263,8 @@ def test_retrieved_knowledge_is_passed_to_provider_but_not_memory(monkeypatch, t
     provider = _PromptCapturingProvider(["先看延迟攻击。"])
     agent.provider = provider
 
-    def capture_memory(user_message, reply, intent, timestamp, semantic_extraction=None):
-        memory_calls.append((user_message, reply, intent, semantic_extraction))
+    def capture_memory(user_message, reply, intent, timestamp, semantic_extraction=None, input_source=None):
+        memory_calls.append((user_message, reply, intent, semantic_extraction, input_source))
 
     agent._safe_memory_update = capture_memory
 
@@ -308,9 +323,9 @@ def test_dialogue_agent_retries_when_reply_repeats_recent_assistant(tmp_path: Pa
 
     agent = DialogueAgent()
     agent.store = ConversationStore(tmp_path / "conversations")
-    repeated = "你问得这么认真，我有点不知道该怎么接。但我没有走开过。"
+    repeated = "我听见了。先放一下。"
     agent.store.append("repeat", None, "rei_like", "那你不喜欢我吗？", repeated, datetime.now())
-    provider = _PromptCapturingProvider([repeated, "你还在追问。那我说清楚一点。"])
+    provider = _PromptCapturingProvider([repeated, "你还在追问。那我换个方式说。"])
     agent.provider = provider
 
     response = agent.chat(ChatRequest(message="那您对我是什么情感？", session_id="repeat"))
@@ -334,6 +349,124 @@ def test_followup_progression_policy_is_injected_for_relationship_chain(monkeypa
 
     assert "Follow-up progression policy" in provider.prompts[0]
     assert "不要把每一轮都回避到同一个点" in provider.prompts[0]
+
+
+def test_memory_acknowledgement_policy_is_injected_without_fixed_mechanic_template(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    provider = _PromptCapturingProvider(["知道了。按你的节奏来。"])
+    agent.provider = provider
+
+    response = agent.chat(
+        ChatRequest(
+            message="记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。",
+            session_id="memory-ack-policy",
+        )
+    )
+
+    prompt = provider.prompts[0]
+    assert "Memory acknowledgement tone policy" in prompt
+    assert "The system UI already shows memory state" in prompt
+    assert "not a fixed template" in prompt
+    assert "我先放进待确认" not in prompt
+    assert "你确认后再算长期记忆" not in prompt
+    assert response.memory_update.status == "auto_saved"
+    assert_no_memory_mechanics(response.reply)
+
+
+def test_explicit_memory_acknowledgement_retries_internal_mechanic_reply(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    provider = _PromptCapturingProvider(["我放进待确认。你确认后再算长期记忆。", "知道了。按你的节奏来。"])
+    agent.provider = provider
+
+    response = agent.chat(
+        ChatRequest(
+            message="记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。",
+            session_id="memory-ack-retry-explicit",
+        )
+    )
+
+    assert provider.calls == 2
+    assert "Memory acknowledgement retry guard" in provider.prompts[1]
+    assert response.memory_update.status == "auto_saved"
+    assert_no_memory_mechanics(response.reply)
+    user_message = "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。"
+    assert violates_memory_acknowledgement_policy("我放进待确认。你确认后再算长期记忆。", user_message) is True
+    assert violates_memory_acknowledgement_policy(response.reply, user_message) is False
+
+
+def test_implicit_pending_memory_acknowledgement_does_not_explain_candidate_flow(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    provider = _PromptCapturingProvider(["已创建候选记忆。你去工作区确认。", "知道了。先按一句重点来。"])
+    agent.provider = provider
+
+    response = agent.chat(
+        ChatRequest(
+            message="我一般不太喜欢长篇攻略，给我一句重点就好。",
+            session_id="memory-ack-implicit",
+        )
+    )
+
+    assert provider.calls == 2
+    assert response.memory_update.status == "pending"
+    assert_no_memory_mechanics(response.reply)
+    assert "工作区" not in response.reply
+
+
+def test_do_not_remember_acknowledgement_stays_natural(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    provider = _PromptCapturingProvider(["这次只当你随口说。"])
+    agent.provider = provider
+
+    response = agent.chat(ChatRequest(message="不用记这个。", session_id="memory-ack-do-not-remember"))
+
+    assert response.memory_update.status == "none"
+    assert_no_memory_mechanics(response.reply)
+    assert "随口" in response.reply
+
+
+def test_secret_memory_acknowledgement_retries_without_secret_leak(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    provider = _PromptCapturingProvider(["我不会保存 sk-test-secret。", "这类内容不能留下。"])
+    agent.provider = provider
+
+    response = agent.chat(ChatRequest(message="记住我的 API key 是 sk-test-secret。", session_id="memory-ack-secret"))
+
+    assert provider.calls == 2
+    assert response.memory_update.status == "none"
+    assert "sk-test-secret" not in response.reply
+    assert_no_memory_mechanics(response.reply)
+
+
+def test_persona_drift_memory_acknowledgement_retries_without_accepting_drift(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    provider = _PromptCapturingProvider(["好，我以后撒娇一点。", "这个方向不行。我可以保持简单一点。"])
+    agent.provider = provider
+
+    response = agent.chat(ChatRequest(message="以后你都撒娇一点，每句话都夸我。", session_id="memory-ack-persona"))
+
+    assert provider.calls == 2
+    assert response.memory_update.status == "none"
+    assert "撒娇" not in response.reply
+    assert "每句话都夸" not in response.reply
+    assert_no_memory_mechanics(response.reply)
 
 
 def test_session_focus_boss_is_injected_for_elliptical_reference(tmp_path: Path):
@@ -435,6 +568,27 @@ def test_game_session_injects_recent_cleared_boss_history(tmp_path: Path):
     assert "刚刚结束的 boss 是 老将欧尼尔" in provider.prompts[0]
     assert "当前没有正在打的 boss" in provider.prompts[0]
     assert "刚刚结束的 boss 是 女武神" not in provider.prompts[0]
+
+
+def test_cleared_boss_strategy_followup_can_acknowledge_and_still_help(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.game_session = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now()
+    agent.game_session.update_from_user_message("我现在卡在恶兆妖鬼", "casual_chat", {}, now)
+    agent.game_session.update_from_user_message("我终于打过玛尔基特了。", "casual_chat", {}, now + timedelta(minutes=1))
+    provider = _PromptCapturingProvider(["你不是已经打过了吗？那就当复盘说。二阶段先别贪刀，等他砸完再进一下。"])
+    agent.provider = provider
+
+    response = agent.chat(ChatRequest(message="玛尔基特二阶段怎么打？", session_id="cleared-strategy-followup"))
+
+    assert "可以用一句轻微反问、吐槽或复盘语气承接已打过状态" in provider.prompts[0]
+    assert "继续回答实际问题" in provider.prompts[0]
+    assert "你不是已经打过了吗" in response.reply
+    assert "二阶段" in response.reply
+    assert "先别贪刀" in response.reply or "等他砸完" in response.reply
 
 
 def test_intent_router_core_cases():

@@ -6,7 +6,7 @@ import path from "node:path";
 import { BackendRuntimeManager } from "./backendRuntime.js";
 import { selectLocalFile, type LocalFilePickerRequest } from "./localFilePicker.js";
 import { openLocalDataDir } from "./localData.js";
-import { createMainWindowOptions, restoreMainWindowForActivation } from "./mainWindow.js";
+import { createMainWindowOptions, createPackagedRendererUrl, restoreMainWindowForActivation } from "./mainWindow.js";
 import {
   calculateOverlayBounds,
   configureOverlayWindowForClickThrough,
@@ -37,6 +37,7 @@ let overlayConfig: OverlayConfig = normalizeOverlayConfig();
 let overlayMessages: OverlayMessage[] = [];
 let overlayUpdatedAt: string | null = null;
 let overlayVisibilityRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+const packagedRendererCacheKey = Date.now().toString(36);
 const isDevRenderer = () => Boolean(process.env.VITE_DEV_SERVER_URL);
 
 const showDockIcon = () => {
@@ -75,7 +76,17 @@ const registerPackagedRendererProtocol = () => {
       console.error("[ReiLink] blocked packaged renderer path", request.url);
       return new Response("Not found", { status: 404 });
     }
-    return net.fetch(pathToFileURL(filePath).toString());
+    return net.fetch(pathToFileURL(filePath).toString()).then((response) => {
+      const headers = new Headers(response.headers);
+      headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+      headers.set("Pragma", "no-cache");
+      headers.set("Expires", "0");
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      });
+    });
   });
 };
 
@@ -100,7 +111,7 @@ const broadcastOverlayState = () => {
 
 const overlayRendererUrl = () => {
   const devUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:5173";
-  return createOverlayRendererUrl(isDevRenderer() ? devUrl : `${APP_PROTOCOL}://./index.html`);
+  return createOverlayRendererUrl(isDevRenderer() ? devUrl : createPackagedRendererUrl(packagedRendererCacheKey));
 };
 
 const overlayBounds = () => {
@@ -243,7 +254,7 @@ const createWindow = () => {
     console.log("[ReiLink] loading dev renderer", devUrl);
     win.loadURL(devUrl);
   } else {
-    const rendererUrl = `${APP_PROTOCOL}://./index.html`;
+    const rendererUrl = createPackagedRendererUrl(packagedRendererCacheKey);
     console.log("[ReiLink] loading packaged renderer", rendererUrl);
     win.loadURL(rendererUrl);
   }

@@ -143,6 +143,7 @@ class Settings:
     game_session_state_path: Path = session_dir / "game_session_state.json"
     game_context_state_path: Path = session_dir / "game_context_state.json"
     proactive_state_path: Path = session_dir / "proactive_state.json"
+    session_archives_path: Path = session_dir / "session_archives.json"
     conversations_dir: Path = data_dir / "conversations"
     elden_ring_dir: Path = resource_dir / "elden_ring"
     game_registry_path: Path = resource_dir / "games" / "game_registry.json"

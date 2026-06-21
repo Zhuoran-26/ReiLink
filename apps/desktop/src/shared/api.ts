@@ -74,6 +74,18 @@ export type ChatResponse = {
   provider_latency_ms?: number;
   model_used?: string | null;
   route_reason?: string | null;
+  memory_update?: ChatMemoryUpdate;
+};
+
+export type ChatInputSource = "text" | "voice_confirmed" | "voice_direct";
+
+export type ChatMemoryUpdate = {
+  status: "none" | "auto_saved" | "pending" | "blocked" | "failed";
+  summary: string | null;
+  pending_memory_id: string | null;
+  long_term_memory_id: string | null;
+  pending_count: number;
+  undo_available: boolean;
 };
 
 export type SetupStatus = {
@@ -106,6 +118,156 @@ export type LocalDataStatus = {
   pending_memory_count: number;
   using_bundled_knowledge: boolean;
   writable: boolean;
+};
+
+export type SessionArchiveEventInput = {
+  id?: string | null;
+  timestamp?: string | null;
+  event_type?: string | null;
+  type?: string | null;
+  safe_summary?: string | null;
+  summary?: string | null;
+  source?: string | null;
+  input_source?: ChatInputSource | null;
+  related_game?: string | null;
+  related_entity?: string | null;
+  risk_flags?: string[];
+  privacy_level?: "normal" | "sensitive" | "secret";
+  can_generate_memory_candidate?: boolean;
+};
+
+export type SessionArchiveCurrentRequest = {
+  session_id?: string;
+  events: SessionArchiveEventInput[];
+  started_at?: string | null;
+  ended_at?: string | null;
+  game?: string | null;
+  area?: string | null;
+  boss?: string | null;
+  source?: "manual" | "renderer" | "session_timeline";
+};
+
+export type SessionArchiveEvent = {
+  id: string;
+  session_id: string;
+  timestamp: string;
+  event_type: string;
+  safe_summary: string;
+  source: string;
+  input_source: ChatInputSource | null;
+  related_game: string | null;
+  related_entity: string | null;
+  risk_flags: string[];
+  privacy_level: "normal" | "sensitive";
+  can_generate_memory_candidate: boolean;
+};
+
+export type SessionArchiveSummary = {
+  id: string;
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string;
+  ended_at: string;
+  source: string;
+  game: string | null;
+  area: string | null;
+  boss: string | null;
+  summary: string;
+  event_count: number;
+  safe_event_summaries: string[];
+  memory_candidate_count: number;
+  accepted_memory_count: number;
+  privacy_level: "normal" | "sensitive";
+  retention_policy: string;
+  is_deleted: boolean;
+  deletion_status: string;
+};
+
+export type SessionArchiveDetail = SessionArchiveSummary & {
+  events: SessionArchiveEvent[];
+};
+
+export type SessionArchiveSearchParams = {
+  q?: string;
+  game?: string;
+  boss?: string;
+  event_type?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+};
+
+export type SessionArchiveSearchResult = {
+  archive_id: string;
+  event_id: string | null;
+  relevance_score: number;
+  reason: string;
+  safe_summary: string;
+  matched_tags: string[];
+  game: string | null;
+  boss: string | null;
+  event_type: string | null;
+  created_at: string;
+  started_at: string;
+  ended_at: string;
+  event_count: number;
+};
+
+export type SessionArchiveSearchResponse = {
+  results: SessionArchiveSearchResult[];
+  total: number;
+  omitted_count: number;
+  safe_result_summaries: string[];
+};
+
+export type SessionArchiveMemoryCandidateScanParams = {
+  limit?: number;
+  date_from?: string;
+  date_to?: string;
+};
+
+export type SessionArchiveMemoryCandidateScanItem = {
+  archive_id: string | null;
+  archive_event_ids: string[];
+  candidate_id: string | null;
+  candidate_type: string | null;
+  guard_reason: string;
+  safe_summary: string;
+  evidence_summary: string | null;
+};
+
+export type SessionArchiveMemoryCandidateScanSummary = {
+  mode: "single_archive" | "recent_archives";
+  archives_scanned: number;
+  events_scanned: number;
+  created_count: number;
+  skipped_count: number;
+  rejected_count: number;
+};
+
+export type SessionArchiveMemoryCandidateScanResponse = {
+  created_candidates: PendingMemory[];
+  skipped_candidates: SessionArchiveMemoryCandidateScanItem[];
+  rejected_candidates: SessionArchiveMemoryCandidateScanItem[];
+  scan_summary: SessionArchiveMemoryCandidateScanSummary;
+};
+
+export type SessionArchiveCreateResponse = {
+  status: "created" | "existing" | "skipped";
+  archive: SessionArchiveDetail | null;
+  message: string;
+};
+
+export type SessionArchiveDeleteResponse = {
+  status: "deleted";
+  archive_id: string;
+};
+
+export type SessionArchiveClearResponse = {
+  status: "cleared";
+  deleted_count: number;
 };
 
 export type LocalAsrStatusValue =
@@ -272,6 +434,23 @@ export type ProactiveCheckResponse = {
   active_candidate_triggers: string[];
 };
 
+export type LongTermMemory = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  type: "gameplay_preference" | "interaction_preference" | "emotional_pattern" | "accessibility_preference" | "do_not_remember" | "unknown";
+  summary: string;
+  user_visible_text: string;
+  source_candidate_id: string;
+  is_active: boolean;
+  related_game: string | null;
+  related_entity: string | null;
+  last_used_at?: string | null;
+  use_count?: number;
+  retrieval_tags?: string[];
+  deletion_status?: string;
+};
+
 export type UserProfileMemory = {
   user_name: string | null;
   favorite_game: string | null;
@@ -281,6 +460,7 @@ export type UserProfileMemory = {
   current_boss: string | null;
   repeated_struggles: string[];
   emotional_notes: string[];
+  long_term_memories: LongTermMemory[];
   last_seen_at: string | null;
   memory_updated_at: Record<string, string>;
 };
@@ -417,6 +597,7 @@ export type PromptPreviewResponse = {
   game_context_summary: Record<string, unknown>;
   session_focus_summary: Record<string, unknown>;
   game_state_summary: Record<string, unknown>;
+  persona_pack_summary: Record<string, unknown>;
   knowledge_summary: Record<string, unknown>;
   memory_summary: Record<string, unknown>;
   final_context_summary: Record<string, unknown>;
@@ -425,17 +606,116 @@ export type PromptPreviewResponse = {
 
 export type SemanticExtractionDebugResponse = {
   latest_user_message: string | null;
+  input_source?: ChatInputSource;
   rule_result: Record<string, unknown> | null;
   rule_confidence: number;
+  raw_rule_confidence?: number;
+  ambiguity_detected?: boolean;
+  fallback_reason?: string | null;
+  source?: "rule" | "llm_primary" | "llm_fallback" | "mixed" | "none";
+  primary_extractor?: string | null;
+  primary_status?: string | null;
+  fallback_extractor?: string | null;
+  guard_final_decision?: string | null;
+  applied_by?: string | null;
+  confidence?: "high" | "medium" | "low";
+  applied_updates?: string[];
+  extraction_trace?: {
+    primary_extractor?: string | null;
+    primary_status?: string | null;
+    fallback_extractor?: string | null;
+    final_decision?: string | null;
+    applied_by?: string | null;
+    source: "rule" | "llm_primary" | "llm_fallback" | "mixed" | "none";
+    confidence: "high" | "medium" | "low";
+    fallback_reason: string | null;
+    skip_reason?: string | null;
+    parse_error?: string | null;
+    applied_updates: string[];
+    llm_shadow_status?: "skipped" | "succeeded" | "failed";
+    llm_shadow_confidence?: "high" | "medium" | "low";
+    llm_shadow_summary?: string | null;
+    llm_shadow_diff?: string | null;
+    llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
+    llm_guard_reason?: string | null;
+    llm_guard_summary?: string | null;
+  };
   llm_called: boolean;
   semantic_extraction_model: string | null;
   semantic_extraction_latency_ms: number;
   provider_latency_ms: number;
+  llm_primary_status?: "not_run" | "skipped" | "succeeded" | "failed" | string;
+  llm_provider_status?: string | null;
+  llm_schema_valid?: boolean | null;
+  rule_grounding?: Record<string, unknown>;
+  first_attempt_failed?: string | null;
+  compat_retry_used?: boolean;
+  compat_retry_succeeded?: boolean | null;
+  ultra_compact_used?: boolean;
+  json_recovery_stage?: string | null;
   llm_result: Record<string, unknown> | null;
+  llm_shadow?: Record<string, unknown> | null;
+  llm_primary?: Record<string, unknown> | null;
+  llm_guard?: Record<string, unknown> | null;
+  llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
+  llm_guard_reason?: string | null;
+  llm_guard_summary?: string | null;
+  llm_shadow_status?: "skipped" | "succeeded" | "failed";
+  llm_shadow_confidence?: "high" | "medium" | "low";
+  llm_shadow_summary?: string | null;
+  llm_shadow_diff?: string | null;
   final_decision: Record<string, unknown> | null;
   skip_reason: string | null;
   latency_ms: number;
   parse_error: string | null;
+};
+
+export type SemanticShadowEvent = {
+  id: number;
+  trace_id: string;
+  timestamp: string;
+  phase: "scheduled" | "final";
+  status:
+    | "shadow_deferred"
+    | "shadow_succeeded"
+    | "shadow_timeout"
+    | "shadow_invalid_json"
+    | "shadow_auth_failed"
+    | "shadow_provider_unavailable"
+    | "shadow_provider_error"
+    | "shadow_cancelled"
+    | "shadow_expired";
+  source?: "rule" | "llm_primary" | "llm_fallback" | "mixed" | "none";
+  primary_extractor?: string | null;
+  primary_status?: string | null;
+  fallback_extractor?: string | null;
+  guard_final_decision?: string | null;
+  applied_by?: string | null;
+  confidence?: "high" | "medium" | "low";
+  fallback_reason?: string | null;
+  skip_reason?: string | null;
+  parse_error?: string | null;
+  applied_updates?: string[];
+  llm_shadow_status?: "skipped" | "succeeded" | "failed";
+  llm_shadow_confidence?: "high" | "medium" | "low";
+  llm_shadow_summary?: string | null;
+  llm_shadow_diff?: string | null;
+  input_source?: ChatInputSource;
+  llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
+  llm_guard_reason?: string | null;
+  llm_guard_summary?: string | null;
+  first_attempt_failed?: string | null;
+  compat_retry_used?: boolean;
+  compat_retry_succeeded?: boolean | null;
+  ultra_compact_used?: boolean;
+  json_recovery_stage?: string | null;
+  semantic_extraction_model?: string | null;
+  semantic_extraction_latency_ms?: number;
+};
+
+export type SemanticShadowEventsResponse = {
+  events: SemanticShadowEvent[];
+  latest_id: number;
 };
 
 export type ProviderDebugResponse = {
@@ -463,13 +743,27 @@ export type ProviderDebugResponse = {
 
 export type PendingMemory = {
   id: string;
-  type: "game_progress" | "user_preference" | "emotional_pattern" | "relationship_preference" | "playstyle";
+  type: "gameplay_preference" | "interaction_preference" | "emotional_pattern" | "accessibility_preference" | "do_not_remember" | "unknown";
+  summary: string;
   text: string;
-  source: "game_session" | "conversation" | "explicit_user_statement";
+  source: "game_session" | "conversation" | "explicit_user_statement" | "semantic_extraction" | "voice_confirmed" | "voice_direct" | "session_archive" | "assistant" | "proactive";
+  source_event_id: string | null;
+  long_term_memory_id: string | null;
   confidence: number;
-  status: "pending" | "accepted" | "ignored";
+  requires_confirmation: boolean;
+  status: "pending" | "accepted" | "ignored" | "expired" | "rejected_by_guard";
   created_at: string;
+  expires_at: string;
   updated_at: string;
+  guard_reason: "allow_candidate" | "reject_candidate" | "ignore_no_memory_intent" | "requires_confirmation" | "explicit_user_memory_request" | "session_event_only" | "persona_drift_blocked" | "sensitive_secret_blocked" | "assistant_source_blocked" | "duplicate_candidate" | "do_not_remember";
+  privacy_level: "normal" | "sensitive" | "secret";
+  related_game: string | null;
+  related_entity: string | null;
+  from_voice: boolean;
+  from_proactive: boolean;
+  from_assistant: boolean;
+  confirmation_intent: "explicit" | "implicit" | "voice_confirmed" | "voice_direct" | "none";
+  evidence_summary: string;
   evidence: Record<string, unknown>;
 };
 
@@ -487,6 +781,14 @@ export type AppSettings = {
   overlay_position: "top-right" | "middle-right" | "bottom-right" | "top-left" | "middle-left" | "bottom-left";
   overlay_opacity: number;
   overlay_message_count: number;
+  voice_interaction_mode: "confirm_send" | "direct_conversation";
+  voice_profile_id: "rei_calm";
+  voice_spoken_reply_mode: "full" | "brief" | "silent";
+  voice_direct_spoken_reply_mode: "full" | "brief" | "silent";
+  voice_speak_proactive: boolean;
+  voice_speak_memory_prompts: boolean;
+  voice_max_spoken_chars: number;
+  voice_max_spoken_sentences: number;
   voice_output: "on" | "off";
   voice_rate: number;
   voice_volume: number;
@@ -620,6 +922,34 @@ export const api = {
     }),
   memoryProfile: () => request<UserProfileMemory>("/api/memory/profile"),
   memoryEpisodes: () => request<EpisodeMemory[]>("/api/memory/episodes"),
+  sessionArchives: () => request<SessionArchiveSummary[]>("/api/session-archives"),
+  sessionArchive: (archiveId: string) => request<SessionArchiveDetail>(`/api/session-archives/${encodeURIComponent(archiveId)}`),
+  searchSessionArchives: (params: SessionArchiveSearchParams) => {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === "") return;
+      search.set(key, String(value));
+    });
+    const query = search.toString();
+    return request<SessionArchiveSearchResponse>(`/api/session-archives/search${query ? `?${query}` : ""}`);
+  },
+  archiveCurrentSession: (payload: SessionArchiveCurrentRequest) =>
+    request<SessionArchiveCreateResponse>("/api/session-archives/archive-current", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  scanSessionArchiveMemoryCandidates: (archiveId: string) =>
+    request<SessionArchiveMemoryCandidateScanResponse>(`/api/session-archives/${encodeURIComponent(archiveId)}/memory-candidates`, {
+      method: "POST"
+    }),
+  scanRecentSessionArchiveMemoryCandidates: (payload: SessionArchiveMemoryCandidateScanParams = {}) =>
+    request<SessionArchiveMemoryCandidateScanResponse>("/api/session-archives/memory-candidates/scan-recent", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  deleteSessionArchive: (archiveId: string) =>
+    request<SessionArchiveDeleteResponse>(`/api/session-archives/${encodeURIComponent(archiveId)}`, { method: "DELETE" }),
+  clearSessionArchives: () => request<SessionArchiveClearResponse>("/api/session-archives/clear", { method: "POST" }),
   memoryDebug: (sessionId = "default") => request<MemoryDebugResponse>(`/api/debug/memory?session_id=${encodeURIComponent(sessionId)}`),
   chatDebug: () => request<ChatDebugResponse>("/api/debug/chat"),
   providerDebug: () => request<ProviderDebugResponse>("/api/debug/provider"),
@@ -637,16 +967,23 @@ export const api = {
   resetProactive: () => request<ProactiveResetResponse>("/api/proactive/reset", { method: "POST" }),
   gameSessionDebug: () => request<GameSessionDebugResponse>("/api/debug/game-session"),
   semanticExtractionDebug: () => request<SemanticExtractionDebugResponse>("/api/debug/semantic-extraction/latest"),
+  semanticShadowEvents: (sinceId = 0) =>
+    request<SemanticShadowEventsResponse>(`/api/debug/semantic-shadow/events?since_id=${Math.max(0, Math.floor(sinceId))}`),
   promptPreview: (sessionId = "default") => request<PromptPreviewResponse>(`/api/debug/prompt-preview?session_id=${encodeURIComponent(sessionId)}`),
   pendingMemories: () => request<PendingMemory[]>("/api/memory/pending"),
   acceptPendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/accept`, { method: "POST" }),
   ignorePendingMemory: (id: string) => request<PendingMemory>(`/api/memory/pending/${encodeURIComponent(id)}/ignore`, { method: "POST" }),
+  undoLongTermMemory: (id: string) => request<LongTermMemory>(`/api/memory/long-term/${encodeURIComponent(id)}/undo`, { method: "POST" }),
   clearPendingMemories: () => request<{ status: "cleared" }>("/api/memory/pending/clear", { method: "POST" }),
   resetGameSession: () => request<{ status: string }>("/api/debug/game-session/reset", { method: "POST" }),
   resetMemory: () => request<{ status: "reset" }>("/api/memory/reset", { method: "POST" }),
-  chat: (message: string, sessionId = "default") =>
-    request<ChatResponse>("/api/chat", {
+  chat: (message: string, sessionId = "default", inputSource: ChatInputSource = "text") => {
+    const payload = inputSource === "text"
+      ? { message, session_id: sessionId, mode: "chat" }
+      : { message, session_id: sessionId, mode: "chat", input_source: inputSource };
+    return request<ChatResponse>("/api/chat", {
       method: "POST",
-      body: JSON.stringify({ message, session_id: sessionId, mode: "chat" })
-    })
+      body: JSON.stringify(payload)
+    });
+  }
 };

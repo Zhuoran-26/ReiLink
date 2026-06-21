@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -54,7 +55,7 @@ class _FastProvider:
         )
 
 
-def test_memory_update_is_scheduled_without_blocking_chat_response(monkeypatch, tmp_path: Path):
+def test_memory_update_returns_inline_status_without_blocking_normal_chat(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("app.modules.dialogue_agent.agent.get_provider", lambda: _FastProvider())
     agent = DialogueAgent()
     agent.store = ConversationStore(tmp_path / "conversations")
@@ -66,8 +67,9 @@ def test_memory_update_is_scheduled_without_blocking_chat_response(monkeypatch, 
     elapsed = time.perf_counter() - start
 
     assert response.reply
+    assert response.memory_update.status == "none"
     assert elapsed < 0.1
-    assert len(background_tasks.tasks) == 1
+    assert background_tasks.tasks == []
 
 
 def test_timeout_returns_clear_error(monkeypatch):
@@ -77,7 +79,12 @@ def test_timeout_returns_clear_error(monkeypatch):
     response = client.post("/api/chat", json={"message": "你好", "session_id": "timeout"})
 
     assert response.status_code == 504
-    assert "timed out" in response.json()["detail"]
+    assert response.json()["detail"] == "这次没有接上。你可以再发一遍。"
+    serialized = json.dumps(response.json(), ensure_ascii=False).lower()
+    assert "timed out" not in serialized
+    assert "deepseek" not in serialized
+    assert "api_key" not in serialized
+    assert "/users/" not in serialized
 
 
 def test_latency_log_fields_exist(monkeypatch, caplog, tmp_path: Path):

@@ -59,6 +59,7 @@ class ChatLatencyMetrics:
     knowledge_retrieval_status: str = "not_found"
     knowledge_not_used_reason: str | None = None
     knowledge_retrieval_min_score: float = 8.0
+    memory_summary: dict | None = None
 
     def as_dict(self) -> dict:
         data = asdict(self)
@@ -68,6 +69,7 @@ class ChatLatencyMetrics:
         data["matched_terms"] = data.get("matched_terms") or []
         data["result_scores"] = data.get("result_scores") or []
         data["coverage"] = data.get("coverage") or []
+        data["memory_summary"] = data.get("memory_summary") or {}
         return data
 
 

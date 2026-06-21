@@ -47,7 +47,9 @@ def test_local_asr_probe_succeeds_with_help(monkeypatch, tmp_path):
     monkeypatch.setenv(BINARY_ENV, str(binary))
     monkeypatch.setenv(MODEL_ENV, str(model))
 
-    response = probe_local_asr_binary()
+    # Keep the product default covered elsewhere; this success path only needs
+    # enough room for occasional macOS process-start jitter in full-suite runs.
+    response = probe_local_asr_binary(timeout_seconds=10)
 
     assert response.status == "local_asr_probe_succeeded"
     assert response.available is True

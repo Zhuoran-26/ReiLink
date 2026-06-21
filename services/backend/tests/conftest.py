@@ -22,6 +22,7 @@ def isolate_player_memory(tmp_path, monkeypatch):
     monkeypatch.setattr("app.modules.game_session.state.settings.game_session_state_path", tmp_path / "game_session_state.json")
     monkeypatch.setattr("app.modules.game_context.context.settings.game_context_state_path", tmp_path / "game_context_state.json")
     monkeypatch.setattr("app.modules.proactive.trigger.settings.proactive_state_path", tmp_path / "proactive_state.json")
+    monkeypatch.setattr("app.modules.session_archive.store.settings.session_archives_path", tmp_path / "session_archives.json")
     monkeypatch.setattr("app.core.config.settings.settings_path", tmp_path / "settings.json")
     monkeypatch.setattr("app.core.config.settings.game_registry_path", tmp_path / "game_registry.json")
 

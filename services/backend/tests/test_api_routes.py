@@ -3,6 +3,7 @@ import json
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.modules.dialogue_agent import semantic_extraction as sem
 
 client = TestClient(app)
 
@@ -374,7 +375,9 @@ def test_memory_profile_and_episodes_routes():
     assert pending.status_code == 200
     pending_items = pending.json()
     assert pending_items
-    assert pending_items[0]["type"] == "user_preference"
+    assert pending_items[0]["type"] == "interaction_preference"
+    assert pending_items[0]["requires_confirmation"] is True
+    assert pending_items[0]["evidence"].get("user_message") is None
     assert "payload" not in pending_items[0]
 
     profile = client.get("/api/memory/profile")
@@ -388,10 +391,29 @@ def test_memory_profile_and_episodes_routes():
     profile = client.get("/api/memory/profile")
     assert profile.status_code == 200
     assert profile.json()["preferred_tone"] == "不喜欢长篇攻略"
+    assert profile.json()["long_term_memories"][0]["source_candidate_id"] == pending_items[0]["id"]
 
     episodes = client.get("/api/memory/episodes")
     assert episodes.status_code == 200
     assert episodes.json()[0]["summary"] == "玩家不喜欢长篇攻略"
+
+
+def test_long_term_memory_undo_route_deactivates_memory():
+    client.post("/api/memory/reset")
+    response = client.post(
+        "/api/chat",
+        json={"message": "记住我不喜欢长篇攻略", "session_id": "api-memory-undo"},
+    )
+    memory_id = response.json()["memory_update"]["long_term_memory_id"]
+
+    undone = client.post(f"/api/memory/long-term/{memory_id}/undo")
+    profile = client.get("/api/memory/profile").json()
+
+    assert undone.status_code == 200
+    assert undone.json()["id"] == memory_id
+    assert undone.json()["is_active"] is False
+    assert profile["long_term_memories"][0]["is_active"] is False
+    assert profile["preferred_tone"] is None
 
 
 def test_debug_memory_returns_provenance_items():
@@ -401,18 +423,18 @@ def test_debug_memory_returns_provenance_items():
     client.post("/api/chat", json={"message": "我不喜欢长篇攻略", "session_id": session_id})
     pending_items = client.get("/api/memory/pending").json()
     assert pending_items
-    preference_item = next(item for item in pending_items if item["type"] == "user_preference")
+    preference_item = next(item for item in pending_items if item["type"] == "interaction_preference")
     client.post(f"/api/memory/pending/{preference_item['id']}/accept")
 
     response = client.get(f"/api/debug/memory?session_id={session_id}")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["prompt_order"] == ["current_user_message", "current_session", "memory", "persona"]
+    assert data["prompt_order"] == ["persona", "memory", "current_session", "game_state", "current_user_message"]
     assert data["memory_written"] is True
     assert data["recent_episode_count"] >= 1
     sources = {item["source"] for item in data["items"]}
-    assert {"current_session", "episode"} <= sources
+    assert {"current_session", "profile"} <= sources
     assert all(item["text"] for item in data["items"])
 
     game_data = client.get("/api/debug/game-session").json()
@@ -466,6 +488,7 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
         "game_context_summary",
         "session_focus_summary",
         "game_state_summary",
+        "persona_pack_summary",
         "knowledge_summary",
         "memory_summary",
         "final_context_summary",
@@ -479,6 +502,29 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert {"support_status", "knowledge_available", "fallback_reason"} <= data["game_context_summary"].keys()
     assert data["game_state_summary"]["current_boss"]["name"] == "女武神"
     assert data["game_state_summary"]["freshness"] == "fresh"
+    assert data["persona_pack_summary"]["id"] == "rei"
+    assert data["persona_pack_summary"]["enabled"] is True
+    assert data["persona_pack_summary"]["status"] == "loaded"
+    assert data["persona_pack_summary"]["version"] == "1.1.2"
+    assert data["persona_pack_summary"]["raw_content_omitted"] is True
+    assert data["persona_pack_summary"]["path_omitted"] is True
+    assert data["persona_pack_summary"]["fallback_used"] is False
+    assert data["persona_pack_summary"]["persona_section_truncated"] in {True, False}
+    assert "persona" in data["persona_pack_summary"]["injected_sections"]
+    assert "style_calibration" in data["persona_pack_summary"]["injected_sections"]
+    assert "response_patterns" in data["persona_pack_summary"]["injected_sections"]
+    assert data["persona_pack_summary"]["prompt_char_count"] <= data["persona_pack_summary"]["prompt_char_budget"]
+    assert "persona_pack" in data["prompt_order"]
+    persona_block = next(
+        block for block in data["final_context_summary"]["blocks"] if block["name"] == "persona_pack"
+    )
+    assert persona_block["raw_content_omitted"] is True
+    assert persona_block["path_omitted"] is True
+    assert "persona" in persona_block["loaded_sections"]
+    assert "persona" in persona_block["injected_sections"]
+    assert "style_calibration" in persona_block["injected_sections"]
+    assert "response_patterns" in persona_block["injected_sections"]
+    assert "persona_section_truncated" in persona_block
     assert isinstance(data["memory_summary"]["injected"], list)
     assert isinstance(data["memory_summary"]["skipped"], list)
     assert data["final_context_summary"]["raw_prompt_omitted"] is True
@@ -486,6 +532,63 @@ def test_prompt_preview_endpoint_returns_structured_context_without_secrets():
     assert "api_key" not in serialized
     assert "deepseek_api_key" not in serialized
     assert "authorization" not in serialized
+    assert "local-first game companion agent" not in serialized
+    assert "rei 是 reilink 的原创游戏陪伴角色" not in serialized
+    assert "话多程度：1/5" not in serialized
+    assert "/Users/" not in serialized
+
+
+def test_prompt_preview_sanitizes_sensitive_preview_strings():
+    session_id = "api-prompt-preview-sensitive"
+    client.post(
+        "/api/chat",
+        json={
+            "message": "不要显示 /Users/aragoto/private/.env raw JSON raw stdout DEEPSEEK_API_KEY=secret",
+            "session_id": session_id,
+        },
+    )
+
+    response = client.get(f"/api/debug/prompt-preview?session_id={session_id}")
+
+    assert response.status_code == 200
+    serialized = json.dumps(response.json(), ensure_ascii=False).lower()
+    assert "/users/aragoto" not in serialized
+    assert ".env" not in serialized
+    assert "raw json" not in serialized
+    assert "raw stdout" not in serialized
+    assert "api_key" not in serialized
+    assert "deepseek_api_key" not in serialized
+    assert "secret" not in serialized
+
+
+def test_persona_pack_does_not_bypass_pending_memory_confirmation():
+    client.post("/api/memory/reset")
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。",
+            "session_id": "api-persona-pack-memory-boundary",
+        },
+    )
+
+    pending_items = client.get("/api/memory/pending").json()
+    profile = client.get("/api/memory/profile").json()
+
+    assert response.json()["memory_update"]["status"] == "auto_saved"
+    assert pending_items == []
+    assert any(memory["type"] == "gameplay_preference" and "探索地图" in memory["summary"] for memory in profile["long_term_memories"])
+    assert profile["preferred_tone"] is None
+
+    client.post("/api/memory/pending/clear")
+    client.post(
+        "/api/chat",
+        json={
+            "message": "以后不用记住这个，只是我这次随便说一下。",
+            "session_id": "api-persona-pack-memory-negative",
+        },
+    )
+
+    assert client.get("/api/memory/pending").json() == []
 
 
 def test_prompt_preview_shows_knowledge_summary():
@@ -598,14 +701,27 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
         "semantic_extraction_latency_ms",
         "provider_latency_ms",
         "llm_result",
-        "final_decision",
-        "fallback_reason",
-        "skip_reason",
-        "why_pending_created",
-        "latency_ms",
-        "parse_error",
-    } <= data.keys()
-    assert data["latest_user_message"] == "我喜欢简短的游戏攻略"
+            "final_decision",
+            "fallback_reason",
+            "source",
+            "confidence",
+            "applied_updates",
+            "extraction_trace",
+            "skip_reason",
+            "why_pending_created",
+            "latency_ms",
+            "parse_error",
+            "llm_shadow",
+            "llm_shadow_status",
+            "llm_shadow_confidence",
+            "llm_shadow_summary",
+            "llm_shadow_diff",
+        } <= data.keys()
+    assert data["latest_user_message"].startswith("游戏状态表达 /")
+    assert "我喜欢简短的游戏攻略" not in data["latest_user_message"]
+    assert data["source"] == "rule"
+    assert data["confidence"] == "high"
+    assert "memory_candidate_created" in data["applied_updates"]
     assert data["llm_called"] is False
     assert data["final_decision"]["memory_candidate"]["should_create_pending"] is True
     serialized = json.dumps(data, ensure_ascii=False).lower()
@@ -614,6 +730,78 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
     assert "authorization" not in serialized
     assert "bearer" not in serialized
     assert "sk-" not in serialized
+
+
+def test_chat_accepts_voice_direct_input_source_in_semantic_debug():
+    client.post(
+        "/api/chat",
+        json={"message": "我换去打玛尔基特了", "session_id": "api-voice-direct-source", "input_source": "voice_direct"},
+    )
+
+    response = client.get("/api/debug/semantic-extraction/latest")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["input_source"] == "voice_direct"
+    assert {"llm_primary_status", "llm_provider_status", "llm_schema_valid", "rule_grounding"} <= data.keys()
+
+
+def test_semantic_shadow_events_endpoint_returns_final_events_without_secrets(monkeypatch):
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(
+        sem,
+        "_call_deepseek_flash",
+        lambda *args, **kwargs: json.dumps(
+            {
+                "is_game_related": True,
+                "confidence": "medium",
+                "game": {"operation": "unknown", "value": "unknown", "confidence": "low"},
+                "boss": {"operation": "set", "value": "tree_sentinel", "surface_label": None, "confidence": "medium"},
+                "death_count": {"operation": "increment", "value": 1, "confidence": "medium"},
+                "frustration": {"operation": "none", "confidence": "low"},
+                "boss_cleared": {"operation": "none", "confidence": "low"},
+                "memory_candidate": {"should_create": False, "kind": "none", "safe_summary": None, "confidence": "low"},
+                "proactive_signal": {"type": "none", "confidence": "low", "reason": ""},
+                "reasoning_summary": "安全候选",
+            },
+            ensure_ascii=False,
+        ),
+    )
+    since_id = client.get("/api/debug/semantic-shadow/events").json()["latest_id"]
+    deferred = sem.extract_semantics(
+        "我在那个骑马金甲大哥那里又寄了几次。",
+        "casual_chat",
+        {"current_game": "Elden Ring"},
+        run_llm_shadow=False,
+    )
+    trace_id = sem.schedule_semantic_shadow_event(deferred)
+    sem.run_semantic_shadow_background(
+        "我在那个骑马金甲大哥那里又寄了几次。",
+        "casual_chat",
+        {"current_game": "Elden Ring"},
+        trace_id=trace_id,
+    )
+
+    response = client.get(f"/api/debug/semantic-shadow/events?since_id={since_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["latest_id"] >= since_id + 2
+    statuses = [event["status"] for event in data["events"]]
+    assert "shadow_deferred" in statuses
+    assert "shadow_succeeded" in statuses
+    final = [event for event in data["events"] if event["status"] == "shadow_succeeded"][-1]
+    assert final["applied_updates"] == []
+    assert "final_decision" not in final
+    assert "memory_candidate" not in final
+    assert "proactive_signal" not in final
+    serialized = json.dumps(data, ensure_ascii=False).lower()
+    assert "骑马金甲大哥" not in serialized
+    assert "api_key" not in serialized
+    assert "authorization" not in serialized
+    assert ".env" not in serialized
+    assert "raw prompt" not in serialized
 
 
 def test_memory_reset_route():

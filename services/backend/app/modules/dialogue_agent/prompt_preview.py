@@ -14,15 +14,17 @@ from app.modules.game_session.state import GameSessionStore, _fails_current_boss
 from app.modules.knowledge.retriever import GameKnowledgeRetriever, KnowledgeRetrievalResult
 from app.modules.memory.profile import BOSS_FRESHNESS, PlayerMemory
 from app.modules.memory.store import ConversationStore
+from app.modules.persona_engine.engine import PersonaEngine
 
 PROMPT_ORDER = [
-    "current_user_message",
+    "base_system_safety",
+    "persona_pack",
+    "memory",
     "current_session_context",
     "session_focus",
     "game_state",
     "knowledge",
-    "memory",
-    "persona",
+    "current_user_message",
 ]
 
 
@@ -48,14 +50,23 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
     )
     game_prompt_summary = game_session.build_prompt_summary(now=now, session_focus_boss=session_focus.boss)
     knowledge_result = _knowledge_summary_result(current_user_message, session_focus.boss, game_debug, game_context)
-    memory_context = memory.build_prompt_context_with_provenance(now=now)
-    memory_debug_items = memory_context.as_debug_items()
+    prompt_memory_block = memory.retrieve_prompt_memory(
+        user_message=current_user_message or "",
+        current_game=game_context.active_game_display_name or game_debug.get("current_game"),
+        current_boss=session_focus.boss or ((game_debug.get("current_boss") or {}).get("name")),
+        input_source="text",
+        update_usage=False,
+        now=now,
+    )
+    memory_debug_items = prompt_memory_block.as_debug_items()
     skipped_memory, memory_warnings = _skipped_memory_items(memory, memory_debug_items, game_debug, now)
     session_items = store.recent_context(session_id)
+    persona_pack_summary = PersonaEngine().persona_pack_summary()
 
     warnings = [
         *(game_context.warnings or []),
         *memory_warnings,
+        *_persona_pack_warnings(persona_pack_summary),
         *_game_state_warnings(game_debug),
         *_message_warnings(current_user_message),
     ]
@@ -84,11 +95,13 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
                 "boss_history": _brief_boss_history(game_debug.get("boss_history") or []),
                 "injected_summary": game_prompt_summary,
             },
+            "persona_pack_summary": persona_pack_summary,
             "knowledge_summary": knowledge_result.as_debug_dict(),
             "memory_summary": {
                 "injected": memory_debug_items,
                 "skipped": skipped_memory,
                 "active_state": memory.active_memory_state(now=now),
+                "retrieval": prompt_memory_block.as_debug_dict(),
             },
             "final_context_summary": _final_context_summary(
                 current_user_message=current_user_message,
@@ -97,6 +110,8 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
                 game_prompt_summary=game_prompt_summary,
                 knowledge_result=knowledge_result,
                 memory_items=memory_debug_items,
+                prompt_memory_block=prompt_memory_block.as_debug_dict(),
+                persona_pack_summary=persona_pack_summary,
             ),
             "warnings": _dedupe(warnings),
         }
@@ -110,8 +125,35 @@ def _final_context_summary(
     game_prompt_summary: str,
     knowledge_result: KnowledgeRetrievalResult,
     memory_items: list[dict[str, str]],
+    prompt_memory_block: dict[str, Any],
+    persona_pack_summary: dict[str, Any],
 ) -> dict[str, Any]:
     blocks = [
+        {
+            "name": "base_system_safety",
+            "present": True,
+            "summary": "ReiLink identity, safety, privacy, memory, knowledge, and proactive boundaries enabled.",
+        },
+        {
+            "name": "persona_pack",
+            "present": bool(persona_pack_summary.get("enabled")),
+            "summary": (
+                f"{persona_pack_summary.get('name') or 'Rei'} "
+                f"v{persona_pack_summary.get('version') or 'unknown'} / "
+                f"{persona_pack_summary.get('status') or 'unknown'}"
+            ),
+            "loaded_sections": persona_pack_summary.get("loaded_sections") or [],
+            "injected_sections": persona_pack_summary.get("injected_sections") or [],
+            "missing_sections": persona_pack_summary.get("missing_sections") or [],
+            "omitted_sections": persona_pack_summary.get("omitted_sections") or [],
+            "fallback_used": bool(persona_pack_summary.get("fallback_used")),
+            "persona_section_truncated": bool(persona_pack_summary.get("persona_section_truncated")),
+            "truncated_sections": persona_pack_summary.get("truncated_sections") or [],
+            "prompt_char_count": persona_pack_summary.get("prompt_char_count"),
+            "prompt_char_budget": persona_pack_summary.get("prompt_char_budget"),
+            "raw_content_omitted": True,
+            "path_omitted": True,
+        },
         {
             "name": "current_user_message",
             "present": bool(current_user_message),
@@ -141,11 +183,10 @@ def _final_context_summary(
             "name": "memory",
             "present": bool(memory_items),
             "items": [_truncate(item["text"]) for item in memory_items],
-        },
-        {
-            "name": "persona",
-            "present": True,
-            "summary": f"mode={active_persona_mode()}",
+            "retrieved_count": prompt_memory_block.get("retrieved_count", 0),
+            "omitted_count": prompt_memory_block.get("omitted_count", 0),
+            "token_estimate": prompt_memory_block.get("token_estimate", 0),
+            "safety_notes": prompt_memory_block.get("safety_notes") or [],
         },
     ]
     return {
@@ -302,6 +343,18 @@ def _message_warnings(message: str | None) -> list[str]:
     return []
 
 
+def _persona_pack_warnings(summary: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    status = summary.get("status")
+    if status and status != "loaded":
+        warnings.append(f"persona_pack_{status}")
+    if summary.get("persona_section_truncated"):
+        warnings.append("persona_section_truncated")
+    for error in summary.get("errors") or []:
+        warnings.append(str(error))
+    return warnings
+
+
 def _age_exceeds(timestamp: str | None, now: datetime, ttl: timedelta) -> bool:
     parsed = _parse_timestamp(timestamp)
     return bool(parsed and now - parsed > ttl)
@@ -345,8 +398,14 @@ def _sanitize_preview(value: Any) -> Any:
     if isinstance(value, str):
         sanitized = re.sub(
             r"(?i)(api[_-]?key|deepseek[_-]?api[_-]?key|authorization)\s*[:=]\s*\S+",
-            r"\1=<redacted>",
+            "credential=<redacted>",
             value,
         )
+        sanitized = re.sub(r"/Users/[^\s`'\"\]\),]+", "<local-path>", sanitized)
+        sanitized = re.sub(r"[A-Za-z]:\\[^\s`'\"\]\),]+", "<local-path>", sanitized)
+        sanitized = sanitized.replace("`.env`", "environment files")
+        sanitized = sanitized.replace(".env", "environment files")
+        sanitized = re.sub(r"(?i)\braw\s+json\b", "raw diagnostics", sanitized)
+        sanitized = re.sub(r"(?i)\braw\s+std(out|err)\b", "runtime logs", sanitized)
         return sanitized
     return value

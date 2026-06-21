@@ -11,14 +11,18 @@ import { voiceOutput } from "../voiceOutput";
 import type {
   AppSettings,
   AudioProbeResponse,
+  ChatResponse,
   GameContextResponse,
   GameDetectionResponse,
   LocalAsrProbeResponse,
   LocalAsrSettings,
   LocalAsrStatus,
   LocalAsrTranscriptionResponse,
+  PendingMemory,
   ProactiveCheckResponse,
   ProactiveStatusResponse,
+  SessionArchiveDetail,
+  SessionArchiveSearchResult,
   SetupStatus
 } from "../../shared/api";
 import type { BackendRuntimeStatus, ReilinkRuntimeBridge } from "../../shared/runtime";
@@ -198,12 +202,26 @@ const memoryProfile = {
   current_boss: "恶兆妖鬼 Margit",
   repeated_struggles: ["恶兆妖鬼 Margit死亡循环"],
   emotional_notes: ["玩家在死亡循环里有点急"],
+  long_term_memories: [
+    {
+      id: "ltm-1",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      type: "interaction_preference",
+      summary: "玩家不喜欢长篇攻略",
+      user_visible_text: "玩家不喜欢长篇攻略",
+      source_candidate_id: "pending-accepted",
+      is_active: true,
+      related_game: null,
+      related_entity: null
+    }
+  ],
   last_seen_at: new Date().toISOString(),
   memory_updated_at: {}
 };
 
 const memoryDebug = {
-  prompt_order: ["current_user_message", "current_session", "memory", "persona"],
+  prompt_order: ["persona", "memory", "current_session", "game_state", "current_user_message"],
   memory_written: true,
   current_boss: "恶兆妖鬼 Margit",
   emotional_note: "frustrated",
@@ -389,7 +407,16 @@ const gameSessionDebug = {
 const promptPreview = {
   persona_mode: "minimal",
   current_user_message: "Margit 怎么打？",
-  prompt_order: ["current_user_message", "current_session_context", "session_focus", "game_state", "knowledge", "memory", "persona"],
+  prompt_order: [
+    "base_system_safety",
+    "persona_pack",
+    "memory",
+    "current_session_context",
+    "session_focus",
+    "game_state",
+    "knowledge",
+    "current_user_message"
+  ],
   model_route_summary: {
     selected_model: "deepseek-v4-flash",
     model_route_mode: "auto",
@@ -412,6 +439,26 @@ const promptPreview = {
     last_attempted_boss: "恶兆妖鬼 Margit",
     last_cleared_boss: null,
     boss_history: gameSessionDebug.boss_history
+  },
+  persona_pack_summary: {
+    id: "rei",
+    name: "Rei",
+    version: "1.1.2",
+    language: "zh-CN",
+    enabled: true,
+    status: "loaded",
+    loaded_sections: ["persona", "style_calibration", "voice", "response_patterns", "boundaries"],
+    injected_sections: ["persona", "style_calibration", "voice", "response_patterns", "boundaries"],
+    missing_sections: [],
+    omitted_sections: [],
+    errors: [],
+    fallback_used: false,
+    persona_section_truncated: false,
+    truncated_sections: [],
+    prompt_char_count: 2200,
+    prompt_char_budget: 6000,
+    raw_content_omitted: true,
+    path_omitted: true
   },
   knowledge_summary: {
     knowledge_matched: true,
@@ -445,7 +492,18 @@ const promptPreview = {
   },
   memory_summary: {
     injected: memoryDebug.items,
-    skipped: [{ source: "profile", field: "current_boss", reason: "conflict_with_fresh_game_state", text: "玩家当前卡点：大树守卫" }]
+    skipped: [{ source: "profile", field: "current_boss", reason: "conflict_with_fresh_game_state", text: "玩家当前卡点：大树守卫" }],
+    retrieval: {
+      retrieved_count: 1,
+      omitted_count: 1,
+      token_estimate: 18,
+      memory_types: ["interaction_preference"],
+      memory_ids: ["ltm-1"],
+      safe_summaries: ["玩家不喜欢长篇攻略"],
+      safety_notes: ["safe_summary_only", "current_user_input_priority", "persona_core_priority"],
+      skip_reason: null,
+      raw_prompt_omitted: true
+    }
   },
   final_context_summary: { raw_prompt_omitted: true, memory_injected_count: 2 },
   warnings: ["memory boss conflicts with fresh game state"]
@@ -546,17 +604,65 @@ const unknownPromptPreview = {
 };
 
 const semanticExtractionDebug = {
-  latest_user_message: "我喜欢简短的游戏攻略",
+  latest_user_message: "记忆偏好表达 / 10 字",
+  input_source: "text",
   rule_result: { game_event: { type: "none" }, memory_candidate: { type: "guide_preference" } },
   rule_confidence: 0.65,
-  llm_called: true,
-  semantic_extraction_model: "deepseek-v4-flash",
-  semantic_extraction_latency_ms: 42,
-  provider_latency_ms: 42,
-  llm_result: {
-    game_event: { type: "none" },
-    memory_candidate: { type: "guide_preference" }
+  raw_rule_confidence: 0.65,
+  ambiguity_detected: false,
+  fallback_reason: null,
+  source: "rule",
+  confidence: "medium",
+  applied_updates: ["memory_candidate_created"],
+  extraction_trace: {
+    source: "rule",
+    confidence: "medium",
+    fallback_reason: null,
+    skip_reason: null,
+    parse_error: null,
+    applied_updates: ["memory_candidate_created"],
+    llm_shadow_status: "skipped",
+    llm_shadow_confidence: "low",
+    llm_shadow_summary: "跳过：no_semantic_signal",
+    llm_shadow_diff: "LLM 影子识别未运行",
+    llm_guard_decision: "fallback_to_rule",
+    llm_guard_reason: "rule_grounding",
+    llm_guard_summary: "规则 fallback 已应用"
   },
+  llm_called: false,
+  semantic_extraction_model: null,
+  semantic_extraction_latency_ms: 0,
+  provider_latency_ms: 0,
+  llm_primary_status: "not_run",
+  llm_provider_status: "not_run",
+  llm_schema_valid: null,
+  rule_grounding: {
+    event_type: "none",
+    boss_name: "",
+    confidence: 0.65,
+    applied_updates: ["memory_candidate_created"]
+  },
+  llm_result: null,
+  llm_shadow: {
+    status: "skipped",
+    confidence: "low",
+    candidate_summary: "跳过：no_semantic_signal",
+    diff_summary: "LLM 影子识别未运行"
+  },
+  llm_primary: null,
+  llm_guard: {
+    input_source: "text",
+    decision: "fallback_to_rule",
+    reason: "rule_grounding",
+    summary: "规则 fallback 已应用"
+  },
+  llm_guard_decision: "fallback_to_rule",
+  llm_guard_reason: "rule_grounding",
+  llm_guard_summary: "规则 fallback 已应用",
+  llm_shadow_status: "skipped",
+  llm_shadow_confidence: "low",
+  llm_shadow_summary: "跳过：no_semantic_signal",
+  llm_shadow_diff: "LLM 影子识别未运行",
   final_decision: {
     game_event: { type: "none" },
     memory_candidate: { type: "guide_preference" }
@@ -642,22 +748,105 @@ let proactiveCheckStore: ProactiveCheckResponse = {
   active_candidate_triggers: [] as string[]
 };
 
-const pendingMemories = [
-  {
-    id: "pending-1",
-    type: "user_preference",
-    text: "玩家不喜欢长篇攻略",
-    source: "explicit_user_statement",
-    confidence: 0.95,
-    status: "pending",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    evidence: {
-      user_message: "我不喜欢长篇攻略",
-      game_state_summary: "current_boss=none"
-    }
+const pendingMemoryFixture: PendingMemory = {
+  id: "pending-1",
+  type: "interaction_preference",
+  summary: "玩家不喜欢长篇攻略",
+  text: "玩家不喜欢长篇攻略",
+  source: "explicit_user_statement",
+  source_event_id: null,
+  long_term_memory_id: null,
+  confidence: 0.95,
+  requires_confirmation: true,
+  status: "pending",
+  created_at: new Date().toISOString(),
+  expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+  updated_at: new Date().toISOString(),
+  guard_reason: "requires_confirmation",
+  privacy_level: "normal",
+  related_game: null,
+  related_entity: null,
+  from_voice: false,
+  from_proactive: false,
+  from_assistant: false,
+  confirmation_intent: "implicit",
+  evidence_summary: "用户表达了攻略呈现偏好：避免长篇攻略",
+  evidence: {
+    input_summary: "用户表达了攻略呈现偏好",
+    game_state_summary: "current_boss=none"
   }
-];
+};
+let pendingMemoriesStore: PendingMemory[] = [{ ...pendingMemoryFixture, evidence: { ...pendingMemoryFixture.evidence } }];
+let sessionArchiveScanMode: "created" | "empty" = "created";
+
+const sessionArchiveFixture: SessionArchiveDetail = {
+  id: "archive-1",
+  session_id: "default",
+  title: "艾尔登法环 / 恶兆妖鬼 Margit",
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  started_at: new Date().toISOString(),
+  ended_at: new Date().toISOString(),
+  source: "manual",
+  game: "艾尔登法环",
+  area: null,
+  boss: "恶兆妖鬼 Margit",
+  summary: "游戏：艾尔登法环；Boss：恶兆妖鬼 Margit；死亡次数更新：3",
+  event_count: 3,
+  safe_event_summaries: ["游戏：艾尔登法环", "Boss：恶兆妖鬼 Margit", "死亡次数更新：3"],
+  memory_candidate_count: 0,
+  accepted_memory_count: 0,
+  privacy_level: "normal",
+  retention_policy: "manual_latest_20",
+  is_deleted: false,
+  deletion_status: "active",
+  events: [
+    {
+      id: "archive-event-1",
+      session_id: "default",
+      timestamp: new Date().toISOString(),
+      event_type: "game_selected",
+      safe_summary: "游戏：艾尔登法环",
+      source: "game_context",
+      input_source: null,
+      related_game: "艾尔登法环",
+      related_entity: null,
+      risk_flags: [],
+      privacy_level: "normal",
+      can_generate_memory_candidate: false
+    },
+    {
+      id: "archive-event-2",
+      session_id: "default",
+      timestamp: new Date().toISOString(),
+      event_type: "boss_detected",
+      safe_summary: "Boss：恶兆妖鬼 Margit",
+      source: "game_session",
+      input_source: null,
+      related_game: "艾尔登法环",
+      related_entity: "恶兆妖鬼 Margit",
+      risk_flags: [],
+      privacy_level: "normal",
+      can_generate_memory_candidate: false
+    },
+    {
+      id: "archive-event-3",
+      session_id: "default",
+      timestamp: new Date().toISOString(),
+      event_type: "death_count_changed",
+      safe_summary: "死亡次数更新：3",
+      source: "game_session",
+      input_source: null,
+      related_game: "艾尔登法环",
+      related_entity: "恶兆妖鬼 Margit",
+      risk_flags: [],
+      privacy_level: "normal",
+      can_generate_memory_candidate: false
+    }
+  ]
+};
+
+let sessionArchivesStore: SessionArchiveDetail[] = [{ ...sessionArchiveFixture, events: [...sessionArchiveFixture.events] }];
 
 const appSettings: AppSettings = {
   persona_mode: "minimal",
@@ -673,6 +862,14 @@ const appSettings: AppSettings = {
   overlay_position: "middle-right",
   overlay_opacity: 0.72,
   overlay_message_count: 2,
+  voice_interaction_mode: "confirm_send",
+  voice_profile_id: "rei_calm",
+  voice_spoken_reply_mode: "full",
+  voice_direct_spoken_reply_mode: "brief",
+  voice_speak_proactive: false,
+  voice_speak_memory_prompts: false,
+  voice_max_spoken_chars: 120,
+  voice_max_spoken_sentences: 2,
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -1163,6 +1360,14 @@ const settingsResponse = (url: string, init?: RequestInit) => {
     if (!omitVoiceOutputFromSettings) return appSettingsStore;
     const legacySettings = { ...appSettingsStore } as Partial<AppSettings>;
     delete legacySettings.voice_output;
+    delete legacySettings.voice_interaction_mode;
+    delete legacySettings.voice_profile_id;
+    delete legacySettings.voice_spoken_reply_mode;
+    delete legacySettings.voice_direct_spoken_reply_mode;
+    delete legacySettings.voice_speak_proactive;
+    delete legacySettings.voice_speak_memory_prompts;
+    delete legacySettings.voice_max_spoken_chars;
+    delete legacySettings.voice_max_spoken_sentences;
     delete legacySettings.voice_rate;
     delete legacySettings.voice_volume;
     return legacySettings;
@@ -1251,15 +1456,201 @@ const proactiveResponse = (url: string, init?: RequestInit) => {
 };
 
 const pendingMemoryResponse = (url: string, init?: RequestInit) => {
-  if (url.endsWith("/api/memory/pending")) return Response.json(pendingMemories);
+  if (url.endsWith("/api/memory/pending")) return Response.json(pendingMemoriesStore);
   if (url.endsWith("/api/memory/pending/clear") && init?.method === "POST") {
     return Response.json({ status: "cleared" });
   }
   if (url.includes("/api/memory/pending/pending-1/accept") && init?.method === "POST") {
-    return Response.json({ ...pendingMemories[0], status: "accepted" });
+    return Response.json({ ...pendingMemoriesStore[0], status: "accepted" });
   }
   if (url.includes("/api/memory/pending/pending-1/ignore") && init?.method === "POST") {
-    return Response.json({ ...pendingMemories[0], status: "ignored" });
+    return Response.json({ ...pendingMemoriesStore[0], status: "ignored" });
+  }
+  if (url.includes("/api/memory/long-term/ltm-1/undo") && init?.method === "POST") {
+    return Response.json({ ...memoryProfile.long_term_memories[0], is_active: false });
+  }
+  return null;
+};
+
+const sessionArchiveSummary = (archive: SessionArchiveDetail) => {
+  const { events, ...summary } = archive;
+  void events;
+  return summary;
+};
+
+const sessionArchiveSearchResult = (archive: SessionArchiveDetail, params: URLSearchParams): SessionArchiveSearchResult | null => {
+  const query = (params.get("q") ?? "").trim().toLowerCase();
+  const game = (params.get("game") ?? "").trim().toLowerCase();
+  const boss = (params.get("boss") ?? "").trim().toLowerCase();
+  const eventType = (params.get("event_type") ?? "").trim().toLowerCase();
+  const textMatches = (value: string | null | undefined, needle: string) => !needle || (value ?? "").toLowerCase().includes(needle);
+  const eventHit = archive.events.find((event) =>
+    textMatches(event.safe_summary, query) ||
+    textMatches(event.related_game, query) ||
+    textMatches(event.related_entity, query) ||
+    textMatches(event.event_type, query)
+  );
+  const archiveHit = textMatches(archive.title, query) ||
+    textMatches(archive.summary, query) ||
+    textMatches(archive.game, query) ||
+    textMatches(archive.boss, query);
+  if (query && !archiveHit && !eventHit) return null;
+  if (game && !textMatches(archive.game, game) && !archive.events.some((event) => textMatches(event.related_game, game))) return null;
+  if (boss && !textMatches(archive.boss, boss) && !archive.events.some((event) => textMatches(event.related_entity, boss))) return null;
+  const eventTypeHit = archive.events.find((event) => textMatches(event.event_type, eventType));
+  if (eventType && !eventTypeHit) return null;
+  const bestEvent = eventHit ?? eventTypeHit ?? null;
+  return {
+    archive_id: archive.id,
+    event_id: bestEvent?.id ?? null,
+    relevance_score: eventHit ? 96 : archiveHit ? 80 : 24,
+    reason: eventHit ? "关键词命中安全事件摘要" : archiveHit ? "关键词命中归档摘要" : "匹配筛选条件",
+    safe_summary: bestEvent?.safe_summary ?? archive.summary,
+    matched_tags: [eventHit ? "event_summary" : archiveHit ? "archive_summary" : "game"],
+    game: archive.game,
+    boss: archive.boss,
+    event_type: bestEvent?.event_type ?? null,
+    created_at: archive.created_at,
+    started_at: archive.started_at,
+    ended_at: archive.ended_at,
+    event_count: archive.event_count
+  };
+};
+
+const sessionArchiveMemoryCandidateResponse = (archiveId: string | null, mode: "single_archive" | "recent_archives") => {
+  if (sessionArchiveScanMode === "empty") {
+    return {
+      created_candidates: [],
+      skipped_candidates: [
+        {
+          archive_id: archiveId,
+          archive_event_ids: archiveId ? ["archive-event-3"] : [],
+          candidate_id: null,
+          candidate_type: null,
+          guard_reason: "single_session_event_only",
+          safe_summary: "死亡次数更新：3",
+          evidence_summary: "艾尔登法环 / 恶兆妖鬼 Margit"
+        }
+      ],
+      rejected_candidates: [],
+      scan_summary: {
+        mode,
+        archives_scanned: archiveId ? 1 : sessionArchivesStore.length,
+        events_scanned: archiveId ? 3 : sessionArchivesStore.reduce((total, archive) => total + archive.event_count, 0),
+        created_count: 0,
+        skipped_count: 1,
+        rejected_count: 0
+      }
+    };
+  }
+  const candidate: PendingMemory = {
+    ...pendingMemoryFixture,
+    id: `archive-pending-${pendingMemoriesStore.length + 1}`,
+    type: "gameplay_preference",
+    summary: "用户打 Boss 前偏好先探索地图，不喜欢直接硬打。",
+    text: "用户打 Boss 前偏好先探索地图，不喜欢直接硬打。",
+    source: "session_archive",
+    source_event_id: `${archiveId ?? "recent"}:archive-event-preference`,
+    confidence: 0.9,
+    related_game: "艾尔登法环",
+    related_entity: "恶兆妖鬼 Margit",
+    evidence_summary: "来自 1 条会话归档安全摘要：用户偏好先探索地图",
+    evidence: {
+      source_channel: "session_archive",
+      input_summary: "来自会话归档安全摘要",
+      source_archive_id: archiveId ?? "recent",
+      archive_evidence_count: "1"
+    }
+  };
+  pendingMemoriesStore = [...pendingMemoriesStore, candidate];
+  return {
+    created_candidates: [candidate],
+    skipped_candidates: [],
+    rejected_candidates: [],
+    scan_summary: {
+      mode,
+      archives_scanned: archiveId ? 1 : Math.min(sessionArchivesStore.length, 5),
+      events_scanned: archiveId ? 3 : sessionArchivesStore.reduce((total, archive) => total + archive.event_count, 0),
+      created_count: 1,
+      skipped_count: 0,
+      rejected_count: 0
+    }
+  };
+};
+
+const sessionArchiveResponse = (url: string, init?: RequestInit) => {
+  if (url.endsWith("/api/session-archives/archive-current") && init?.method === "POST") {
+    const payload = JSON.parse(String(init.body ?? "{}")) as { events?: Array<{ safe_summary?: string | null; summary?: string | null }> };
+    if (!payload.events?.length) {
+      return Response.json({ status: "skipped", archive: null, message: "本局还没有可归档的关键变化。" });
+    }
+    const safeSummaries = payload.events
+      .map((event) => event.safe_summary ?? event.summary ?? "")
+      .filter((summary): summary is string => Boolean(summary));
+    const archive: SessionArchiveDetail = {
+      ...sessionArchiveFixture,
+      id: `archive-${sessionArchivesStore.length + 1}`,
+      title: "当前会话",
+      summary: safeSummaries.slice(0, 2).join("；") || "本局保存了安全摘要。",
+      event_count: payload.events.length,
+      safe_event_summaries: safeSummaries,
+      events: payload.events.map((event, index) => ({
+        id: `archive-new-event-${index}`,
+        session_id: "default",
+        timestamp: new Date().toISOString(),
+        event_type: "session_note",
+        safe_summary: event.safe_summary ?? event.summary ?? "安全事件",
+        source: "session_timeline",
+        input_source: null,
+        related_game: "艾尔登法环",
+        related_entity: "恶兆妖鬼 Margit",
+        risk_flags: [],
+        privacy_level: "normal",
+        can_generate_memory_candidate: false
+      }))
+    };
+    sessionArchivesStore = [archive, ...sessionArchivesStore];
+    return Response.json({ status: "created", archive, message: "会话已归档。" });
+  }
+  if (url.endsWith("/api/session-archives/clear") && init?.method === "POST") {
+    const deletedCount = sessionArchivesStore.length;
+    sessionArchivesStore = [];
+    return Response.json({ status: "cleared", deleted_count: deletedCount });
+  }
+  const parsedUrl = new URL(url);
+  if (parsedUrl.pathname === "/api/session-archives/memory-candidates/scan-recent" && init?.method === "POST") {
+    return Response.json(sessionArchiveMemoryCandidateResponse(null, "recent_archives"));
+  }
+  const scanMatch = parsedUrl.pathname.match(/^\/api\/session-archives\/([^/]+)\/memory-candidates$/);
+  if (scanMatch && init?.method === "POST") {
+    return Response.json(sessionArchiveMemoryCandidateResponse(decodeURIComponent(scanMatch[1]), "single_archive"));
+  }
+  if (parsedUrl.pathname === "/api/session-archives/search") {
+    const limit = Math.max(1, Number(parsedUrl.searchParams.get("limit") ?? 20));
+    const allResults = sessionArchivesStore
+      .map((archive) => sessionArchiveSearchResult(archive, parsedUrl.searchParams))
+      .filter((result): result is SessionArchiveSearchResult => result !== null);
+    const results = allResults.slice(0, limit);
+    return Response.json({
+      results,
+      total: allResults.length,
+      omitted_count: Math.max(0, allResults.length - results.length),
+      safe_result_summaries: results.map((result) => result.safe_summary)
+    });
+  }
+  if (url.endsWith("/api/session-archives")) {
+    return Response.json(sessionArchivesStore.map(sessionArchiveSummary));
+  }
+  const archiveMatch = url.match(/\/api\/session-archives\/([^/?]+)$/);
+  if (archiveMatch && init?.method === "DELETE") {
+    const archiveId = decodeURIComponent(archiveMatch[1]);
+    sessionArchivesStore = sessionArchivesStore.filter((archive) => archive.id !== archiveId);
+    return Response.json({ status: "deleted", archive_id: archiveId });
+  }
+  if (archiveMatch) {
+    const archiveId = decodeURIComponent(archiveMatch[1]);
+    const archive = sessionArchivesStore.find((item) => item.id === archiveId);
+    return archive ? Response.json(archive) : new Response("missing", { status: 404 });
   }
   return null;
 };
@@ -1274,7 +1665,7 @@ const debugActionResponse = (url: string, init?: RequestInit) => {
   return null;
 };
 
-const chatResponse = {
+const chatResponse: ChatResponse = {
   reply: "别急着翻滚。先看动作。再试一次。",
   reply_segments: ["别急着翻滚。先看动作。再试一次。"],
   segmenter_mode: "compact",
@@ -1288,6 +1679,8 @@ let chatResponseStore = { ...chatResponse };
 const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   const debugAction = debugActionResponse(url, init);
   if (debugAction) return debugAction;
+  const sessionArchive = sessionArchiveResponse(url, init);
+  if (sessionArchive) return sessionArchive;
   const pendingResponse = pendingMemoryResponse(url, init);
   if (pendingResponse) return pendingResponse;
   const settings = settingsResponse(url, init);
@@ -1320,6 +1713,7 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
   if (url.endsWith("/api/debug/provider")) return Response.json(providerDebug);
   if (url.endsWith("/api/debug/game-session")) return Response.json(gameSessionDebug);
   if (url.endsWith("/api/debug/semantic-extraction/latest")) return Response.json(semanticExtractionDebug);
+  if (url.includes("/api/debug/semantic-shadow/events")) return Response.json({ events: [], latest_id: 0 });
   if (url.includes("/api/debug/prompt-preview")) return Response.json(promptPreview);
   if (url.endsWith("/api/chat") && init?.method === "POST") {
     if (chatFailureResponse) return chatFailureResponse();
@@ -1333,6 +1727,9 @@ describe("App", () => {
     let uuid = 0;
     resetSettingsResponse();
     chatResponseStore = { ...chatResponse };
+    pendingMemoriesStore = [{ ...pendingMemoryFixture, evidence: { ...pendingMemoryFixture.evidence } }];
+    sessionArchiveScanMode = "created";
+    sessionArchivesStore = [{ ...sessionArchiveFixture, events: [...sessionArchiveFixture.events] }];
     eventBus.clear();
     scrollToMock = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
       const top = typeof options === "number" ? options : options?.top;
@@ -1365,6 +1762,54 @@ describe("App", () => {
     eventBus.clear();
   });
 
+  const openWorkspace = async (name: string | RegExp) => {
+    const navigation = await screen.findByRole("navigation", { name: "应用导航" });
+    await userEvent.click(within(navigation).getByRole("button", { name }));
+    return screen.findByRole("complementary", { name: "工作区面板" });
+  };
+
+  const openWorkspaceTab = async (name: string | RegExp) => {
+    const panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    await userEvent.click(within(panel).getByRole("tab", { name }));
+    return panel;
+  };
+
+  const openSettingsWorkspace = async (tab: string | RegExp = "高级") => {
+    const panel = await openWorkspace("设置");
+    await openWorkspaceTab(tab);
+    return panel;
+  };
+
+  const openVoiceInputWorkspace = async () => {
+    await openWorkspace("语音");
+    await openWorkspaceTab("输入 / ASR");
+  };
+
+  const openVoiceOutputWorkspace = async () => {
+    await openWorkspace("语音");
+    await openWorkspaceTab("输出");
+  };
+
+  const openOverlayWorkspace = async (tab: string | RegExp = "Safe Mode") => {
+    await openWorkspace("Overlay");
+    if (tab !== "Safe Mode") await openWorkspaceTab(tab);
+  };
+
+  const openDebugWorkspace = async (tab: string | RegExp = "Runtime") => {
+    await openWorkspace("调试");
+    if (tab !== "Event Stream") await openWorkspaceTab(tab);
+  };
+
+  const openMemoryWorkspace = async (tab: string | RegExp = "待确认") => {
+    await openWorkspace("记忆");
+    if (tab !== "待确认") await openWorkspaceTab(tab);
+  };
+
+  const openGameWorkspace = async (tab: string | RegExp = "当前上下文") => {
+    await openWorkspace("游戏");
+    if (tab !== "当前上下文") await openWorkspaceTab(tab);
+  };
+
   it("renders the app", async () => {
     render(<App />);
     expect(screen.getByText("ReiLink")).toBeInTheDocument();
@@ -1378,20 +1823,280 @@ describe("App", () => {
     const navigation = screen.getByRole("navigation", { name: "应用导航" });
     expect(navigation).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主聊天界面" })).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "信息侧栏" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument();
     expect(within(navigation).getByText("聊天")).toBeInTheDocument();
     expect(within(navigation).getByText("记忆")).toBeInTheDocument();
     expect(within(navigation).getByText("游戏")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "设置" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "游戏状态" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /调试面板/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
-    expect(screen.getByText("语义识别")).toBeInTheDocument();
+    expect(within(navigation).getByText("语音")).toBeInTheDocument();
+    expect(within(navigation).getByText("Overlay")).toBeInTheDocument();
+    expect(within(navigation).getByText("设置")).toBeInTheDocument();
+    expect(within(navigation).getByText("调试")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("聊天输入"), "切换前的草稿");
+    await openMemoryWorkspace();
+    expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("切换前的草稿");
+    await userEvent.click(screen.getByRole("button", { name: "关闭工作区" }));
+    expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("切换前的草稿");
+
+    await openVoiceInputWorkspace();
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toBeInTheDocument();
+    await openVoiceOutputWorkspace();
+    expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
+  });
+
+  it("keeps workspace shell controls outside the scroll body and clickable", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.type(screen.getByLabelText("聊天输入"), "布局回归草稿");
+
+    await openDebugWorkspace("Event Stream");
+    let panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    expect(panel).toHaveClass("workspacePanel");
+    expect(panel).not.toHaveClass("infoRail");
+
+    const header = panel.querySelector(".workspacePanelHeader");
+    const body = panel.querySelector(".workspacePanelBody");
+    const tabList = within(panel).getByRole("tablist", { name: "Developer / Debug tabs" });
+    const closeButton = within(panel).getByRole("button", { name: "关闭工作区" });
+    expect(header).toBeInTheDocument();
+    expect(body).toBeInTheDocument();
+    expect(body).not.toContainElement(tabList);
+    expect(body).not.toContainElement(closeButton);
+
+    const clickPanelTab = async (name: string | RegExp) => {
+      const tab = within(panel).getByRole("tab", { name });
+      await userEvent.click(tab);
+      expect(tab).toHaveAttribute("aria-selected", "true");
+    };
+
+    await clickPanelTab("Prompt Preview");
+    expect(within(panel).getByRole("button", { name: "回复上下文预览" })).toBeInTheDocument();
+    await clickPanelTab("Runtime");
+    expect(within(panel).getByRole("button", { name: "调试面板" })).toBeInTheDocument();
+    await clickPanelTab("Trace");
+    expect(within(panel).getByRole("heading", { name: "LLM Primary Extraction" })).toBeInTheDocument();
+    await clickPanelTab("Event Stream");
+    expect(within(panel).getByRole("heading", { name: "Event Stream" })).toBeInTheDocument();
+
+    await openSettingsWorkspace();
+    panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    for (const tabName of ["应用", "模型", "隐私 / 数据", "高级"]) {
+      await clickPanelTab(tabName);
+    }
+
+    panel = await openWorkspace("语音");
+    for (const tabName of ["对话", "输入 / ASR", "输出", "Voice Profile"]) {
+      await clickPanelTab(tabName);
+    }
+
+    panel = await openWorkspace("Overlay");
+    for (const tabName of ["Safe Mode", "位置", "内容", "Game Mode"]) {
+      await clickPanelTab(tabName);
+    }
+
+    await openGameWorkspace();
+    panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    for (const tabName of ["当前上下文", "本局时间线", "知识", "手动控制"]) {
+      await clickPanelTab(tabName);
+    }
+
+    await openMemoryWorkspace();
+    panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    for (const tabName of ["待确认", "已保存", "最近会话", "本地数据", "候选记忆"]) {
+      await clickPanelTab(tabName);
+    }
+
+    await userEvent.click(within(panel).getByRole("button", { name: "关闭工作区" }));
+    expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument();
+
+    panel = await openWorkspace("未来");
+    for (const tabName of ["Avatar", "Presentation Policy"]) {
+      await clickPanelTab(tabName);
+    }
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument());
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("布局回归草稿");
+  });
+
+  it("switches workspace tab state and renders matching tab content", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.type(screen.getByLabelText("聊天输入"), "tab 内容切换草稿");
+
+    let panel = await openSettingsWorkspace("应用");
+    expect(within(panel).getByRole("tab", { name: "应用" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("heading", { name: "应用设置" })).toBeInTheDocument();
+    expect(screen.getByLabelText("人格模式")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "模型服务状态" })).not.toBeInTheDocument();
+
+    await openWorkspaceTab("模型");
+    expect(within(panel).getByRole("tab", { name: "模型" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("heading", { name: "模型设置" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "模型服务状态" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("人格模式")).not.toBeInTheDocument();
+
+    await openWorkspaceTab("隐私 / 数据");
+    expect(await screen.findByRole("heading", { name: "隐私与本地数据" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "本地数据" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "模型服务状态" })).not.toBeInTheDocument();
+
+    await openWorkspaceTab("高级");
+    expect(await screen.findByRole("heading", { name: "高级设置" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Overlay / 游戏悬浮层" })).toBeInTheDocument();
+
+    await openDebugWorkspace("Event Stream");
+    panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    expect(await screen.findByRole("heading", { name: "Event Stream" })).toBeInTheDocument();
+    await openWorkspaceTab("Prompt Preview");
+    expect(await screen.findByRole("button", { name: "回复上下文预览" })).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent("raw prompt");
+    expect(panel).not.toHaveTextContent(".env");
+    await openWorkspaceTab("Runtime");
+    expect(await screen.findByRole("button", { name: "调试面板" })).toBeInTheDocument();
+    await openWorkspaceTab("Trace");
+    expect(await screen.findByRole("heading", { name: "LLM Primary Extraction" })).toBeInTheDocument();
+
+    panel = await openWorkspace("语音");
+    expect(await screen.findByRole("heading", { name: "Voice v2.1 对话状态" })).toBeInTheDocument();
+    expect(panel).toHaveTextContent("语音待机");
+    expect(panel).toHaveTextContent("确认后发送");
+    expect(panel).toHaveTextContent("直接对话");
+    expect(panel).toHaveTextContent("不是常驻监听");
+    expect(panel).toHaveTextContent("Auto-send");
+    expect(panel).toHaveTextContent("关闭");
+    expect(panel).toHaveTextContent("音频不上传");
+    expect(panel).toHaveTextContent("ASR 本地运行");
+    expect(panel).toHaveTextContent("transcript 未确认不写 memory");
+    await openWorkspaceTab("输入 / ASR");
+    expect(await screen.findByRole("heading", { name: "输入 / Local ASR" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" })).toBeInTheDocument();
+    await openWorkspaceTab("输出");
+    expect(await screen.findByRole("heading", { name: "语音输出" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
+    expect(panel).toHaveTextContent("默认短版播报");
+    await openWorkspaceTab("Voice Profile");
+    expect(await screen.findByRole("heading", { name: "Voice Profile" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("Rei Calm / Rei 冷静陪伴");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("不是角色音色");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("普通聊天");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("全文播报");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("直接对话");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("短版播报");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("永不播报");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("speechSynthesis");
+
+    panel = await openWorkspace("Overlay");
+    expect(await screen.findByRole("heading", { name: "Safe Mode" })).toBeInTheDocument();
+    expect(panel).toHaveTextContent("自动显示小气泡暂时关闭");
+    await openWorkspaceTab("位置");
+    expect(await screen.findByRole("heading", { name: "位置" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Overlay 位置预设")).toBeInTheDocument();
+    await openWorkspaceTab("内容");
+    expect(await screen.findByRole("heading", { name: "内容" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Overlay 显示消息数量")).toBeInTheDocument();
+    await openWorkspaceTab("Game Mode");
+    expect(await screen.findByRole("heading", { name: "Future Game Mode" })).toBeInTheDocument();
+    expect(screen.getByText(/本阶段不恢复 auto-show/)).toBeInTheDocument();
+
+    panel = await openWorkspace("未来");
+    expect(await screen.findByRole("heading", { name: "Future Presentation / Avatar" })).toBeInTheDocument();
+    await openWorkspaceTab("Presentation Policy");
+    expect(await screen.findByRole("heading", { name: "Presentation Policy" })).toBeInTheDocument();
+    expect(screen.getByText(/不加载 Live2D runtime/)).toBeInTheDocument();
+
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("tab 内容切换草稿");
+    await userEvent.click(within(panel).getByRole("button", { name: "关闭工作区" }));
+    expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument();
+  });
+
+  it("defaults Direct Conversation Mode off and persists explicit opt-in", async () => {
+    render(<App />);
+    const panel = await openWorkspace("语音");
+
+    const confirmButton = within(panel).getByRole("button", { name: "确认后发送" });
+    const directButton = within(panel).getByRole("button", { name: "直接对话" });
+    expect(confirmButton).toHaveAttribute("aria-pressed", "true");
+    expect(directButton).toHaveAttribute("aria-pressed", "false");
+    expect(panel).toHaveTextContent("默认仍是确认后发送");
+    expect(panel).toHaveTextContent("不是常驻监听");
+
+    await userEvent.click(directButton);
+
+    await waitFor(() => expect(appSettingsStore.voice_interaction_mode).toBe("direct_conversation"));
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/settings"),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_interaction_mode: "direct_conversation" }) })
+    );
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "voice_direct_mode_enabled" })])
+    );
+    expect(directButton).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/模式：直接对话/)).toBeInTheDocument();
+  });
+
+  it("shows and persists Voice Profile policy controls", async () => {
+    render(<App />);
+    let panel = await openWorkspace("语音");
+    await openWorkspaceTab("Voice Profile");
+    panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    const profilePanel = within(panel).getByRole("group", { name: "Voice Profile 策略" });
+
+    expect(profilePanel).toHaveTextContent("Rei Calm / Rei 冷静陪伴");
+    expect(profilePanel).toHaveTextContent("普通聊天");
+    expect(profilePanel).toHaveTextContent("全文播报");
+    expect(profilePanel).toHaveTextContent("直接对话");
+    expect(profilePanel).toHaveTextContent("短版播报");
+    expect(profilePanel).toHaveTextContent("主动陪伴播报");
+    expect(profilePanel).toHaveTextContent("记忆确认播报");
+    expect(profilePanel).toHaveTextContent("API key / .env / raw prompt");
+    expect(profilePanel).toHaveTextContent("speechSynthesis");
+
+    await userEvent.selectOptions(screen.getByLabelText("普通聊天播报模式"), "brief");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_spoken_reply_mode: "brief" }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("直接对话播报模式"), "silent");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_direct_spoken_reply_mode: "silent" }) })
+      )
+    );
+
+    fireEvent.change(screen.getByLabelText("最长播报字数"), { target: { value: "180" } });
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_max_spoken_chars: 180 }) })
+      )
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("最长播报句数"), "3");
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ voice_max_spoken_sentences: 3 }) })
+      )
+    );
+
+    await userEvent.click(screen.getByLabelText("播报主动陪伴"));
+    await userEvent.click(screen.getByLabelText("播报记忆确认"));
+
+    await waitFor(() => expect(appSettingsStore.voice_speak_proactive).toBe(true));
+    await waitFor(() => expect(appSettingsStore.voice_speak_memory_prompts).toBe(true));
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
   });
 
   it("shows running game status", async () => {
     render(<App />);
+    await openGameWorkspace();
     await waitFor(() => expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0));
     expect(screen.getAllByText("恶兆妖鬼 Margit").length).toBeGreaterThan(0);
     expect(screen.getAllByText("挑战中").length).toBeGreaterThan(0);
@@ -1402,32 +2107,12 @@ describe("App", () => {
 
   it("renders settings panel values", async () => {
     render(<App />);
+    await openSettingsWorkspace("应用");
 
+    expect(await screen.findByRole("heading", { name: "应用设置" })).toBeInTheDocument();
     expect(await screen.findByLabelText("人格模式")).toHaveValue("minimal");
     expect(screen.getByRole("combobox", { name: "调试面板" })).toHaveValue("show");
-    expect(screen.getByLabelText("记忆")).toHaveValue("enabled");
-    expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     expect(screen.getByLabelText("回复长度")).toHaveValue("normal");
-    expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
-    const overlayToggle = screen.getByRole("group", { name: "Overlay / 游戏悬浮层" });
-    expect(within(overlayToggle).getByRole("button", { name: "关闭 Overlay" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(overlayToggle).getByRole("button", { name: "开启 Overlay" })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByRole("button", { name: "强制关闭悬浮层" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("middle-right");
-    expect(screen.getByLabelText("Overlay 背景透明度")).toHaveValue("0.72");
-    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("2");
-    expect(screen.getByText("默认关闭。开启后只保存设置，ReiLink 前台时不显示，避免遮挡 Settings。")).toBeInTheDocument();
-    expect(screen.getByText("macOS 当前为安全模式：自动显示小气泡暂时关闭，以避免抢焦点或影响窗口切换。")).toBeInTheDocument();
-    expect(screen.getByText("强制关闭用于异常时立即关闭悬浮层；不显示调试信息、路径、密钥或完整回复。")).toBeInTheDocument();
-    expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
-    expect(screen.getByText(/当前状态：已关闭/)).toBeInTheDocument();
-    expect(screen.getByText(/本地语音：不可用/)).toBeInTheDocument();
-    expect(screen.getByText(/播放状态：当前环境不支持本地语音输出/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeDisabled();
-    expect(screen.getByLabelText("语速 / Rate")).toHaveValue("1");
-    expect(screen.getByLabelText("音量 / Volume")).toHaveValue("1");
-    expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("on");
-    expect(screen.getByLabelText("自动启动本地后端")).toBeDisabled();
     expect(screen.getByLabelText("自动游戏检测")).toHaveValue("on");
     expect(screen.getByLabelText("当前游戏")).toHaveValue("");
     expect(screen.getByRole("option", { name: "艾尔登法环（已支持）" })).toBeInTheDocument();
@@ -1438,6 +2123,17 @@ describe("App", () => {
     expect(screen.getByLabelText("已支持游戏")).toHaveTextContent("空洞骑士");
     expect(screen.getByLabelText("主动陪伴")).toHaveValue("off");
     expect(screen.getByLabelText("主动灵敏度")).toHaveValue("low");
+    const onboardingSettings = screen.getByRole("group", { name: "新手引导设置" });
+    expect(within(onboardingSettings).getByText("已完成")).toBeInTheDocument();
+    expect(within(onboardingSettings).getByRole("button", { name: "新手引导：重新查看" })).toBeInTheDocument();
+    expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "模型服务状态" })).not.toBeInTheDocument();
+
+    await openWorkspaceTab("模型");
+    expect(await screen.findByRole("heading", { name: "模型设置" })).toBeInTheDocument();
+    expect(screen.getByLabelText("模型偏好")).toHaveValue("auto");
+    expect(screen.getByLabelText("自动启动本地后端")).toHaveValue("on");
+    expect(screen.getByLabelText("自动启动本地后端")).toBeDisabled();
     const providerStatusPanel = screen.getByRole("group", { name: "模型服务状态" });
     expect(within(providerStatusPanel).getByText("模型服务")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("DeepSeek")).toBeInTheDocument();
@@ -1450,13 +2146,16 @@ describe("App", () => {
     expect(within(providerStatusPanel).getByText("auto")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("deepseek-v4-flash")).toBeInTheDocument();
     expect(within(providerStatusPanel).getByText("deepseek-v4-pro")).toBeInTheDocument();
-    const onboardingSettings = screen.getByRole("group", { name: "新手引导设置" });
-    expect(within(onboardingSettings).getByText("已完成")).toBeInTheDocument();
-    expect(within(onboardingSettings).getByRole("button", { name: "新手引导：重新查看" })).toBeInTheDocument();
+
+    await openWorkspaceTab("隐私 / 数据");
+    expect(await screen.findByRole("heading", { name: "隐私与本地数据" })).toBeInTheDocument();
+    expect(screen.getByLabelText("记忆")).toHaveValue("enabled");
+    expect(screen.getByLabelText("待确认记忆模式")).toHaveValue("manual");
     const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
     expect(within(demoResetPanel).getByText("Local Data")).toBeInTheDocument();
     expect(within(demoResetPanel).getByText("用户数据目录")).toBeInTheDocument();
-    expect(within(demoResetPanel).getAllByText("/Users/aragoto/Library/Application Support/ReiLink/data").length).toBeGreaterThan(0);
+    expect(within(demoResetPanel).getByText("…/ReiLink/data")).toBeInTheDocument();
+    expect(demoResetPanel).not.toHaveTextContent("/Users/aragoto/Library/Application Support/ReiLink/data");
     expect(within(demoResetPanel).getByText("记忆目录")).toBeInTheDocument();
     expect(within(demoResetPanel).getByText("会话目录")).toBeInTheDocument();
     expect(within(demoResetPanel).getByText("设置目录")).toBeInTheDocument();
@@ -1474,7 +2173,26 @@ describe("App", () => {
     expect(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" })).toBeInTheDocument();
     expect(within(demoResetPanel).getByRole("button", { name: "重置主动陪伴状态" })).toBeInTheDocument();
     expect(within(demoResetPanel).getByRole("button", { name: "重置演示状态" })).toBeInTheDocument();
-    expect(screen.getByText(/自动游戏检测当前为开启/)).toBeInTheDocument();
+
+    await openWorkspaceTab("高级");
+    expect(await screen.findByRole("heading", { name: "高级设置" })).toBeInTheDocument();
+    const overlayToggle = screen.getByRole("group", { name: "Overlay / 游戏悬浮层" });
+    expect(within(overlayToggle).getByRole("button", { name: "关闭 Overlay" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(overlayToggle).getByRole("button", { name: "开启 Overlay" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "强制关闭悬浮层" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("middle-right");
+    expect(screen.getByLabelText("Overlay 背景透明度")).toHaveValue("0.72");
+    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("2");
+    expect(screen.getByText("默认关闭。开启后只保存设置，ReiLink 前台时不显示，避免遮挡 Settings。")).toBeInTheDocument();
+    expect(screen.getByText("macOS 当前为安全模式：自动显示小气泡暂时关闭，以避免抢焦点或影响窗口切换。")).toBeInTheDocument();
+    expect(screen.getByText("强制关闭用于异常时立即关闭悬浮层；不显示调试信息、路径、密钥或完整回复。")).toBeInTheDocument();
+    expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("off");
+    expect(screen.getByText(/当前状态：已关闭/)).toBeInTheDocument();
+    expect(screen.getByText(/本地语音：不可用/)).toBeInTheDocument();
+    expect(screen.getByText(/播放状态：当前环境不支持本地语音输出/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeDisabled();
+    expect(screen.getByLabelText("语速 / Rate")).toHaveValue("1");
+    expect(screen.getByLabelText("音量 / Volume")).toHaveValue("1");
   });
 
   it("shows backend runtime startup status from Electron", async () => {
@@ -1510,6 +2228,7 @@ describe("App", () => {
   it("lets settings disable backend auto-start", async () => {
     const runtime = installRuntimeBridge(backendRuntimeStatus);
     render(<App />);
+    await openSettingsWorkspace("模型");
 
     const select = await screen.findByLabelText("自动启动本地后端");
     expect(select).toBeEnabled();
@@ -1522,6 +2241,7 @@ describe("App", () => {
   it("syncs the Overlay setting through the Electron runtime bridge", async () => {
     const runtime = installRuntimeBridge(backendRuntimeStatus);
     render(<App />);
+    await openOverlayWorkspace();
 
     await waitFor(() => expect(runtime.bridge.setOverlayEnabled).toHaveBeenCalledWith(false));
     vi.mocked(runtime.bridge.setOverlayEnabled).mockClear();
@@ -1551,6 +2271,7 @@ describe("App", () => {
     );
     vi.mocked(runtime.bridge.setOverlayConfig).mockClear();
 
+    await openOverlayWorkspace("位置");
     await userEvent.selectOptions(await screen.findByLabelText("Overlay 位置预设"), "bottom-left");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1581,6 +2302,7 @@ describe("App", () => {
       })
     );
 
+    await openWorkspaceTab("内容");
     await userEvent.selectOptions(screen.getByLabelText("Overlay 显示消息数量"), "1");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1594,10 +2316,11 @@ describe("App", () => {
         opacity: 0.85,
         max_messages: 1
       })
-    );
-    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("bottom-left");
-    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("1");
-    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_settings_changed")).toBe(true);
+	    );
+	    expect(screen.getByLabelText("Overlay 显示消息数量")).toHaveValue("1");
+	    await openWorkspaceTab("位置");
+	    expect(screen.getByLabelText("Overlay 位置预设")).toHaveValue("bottom-left");
+	    expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_settings_changed")).toBe(true);
     expect(eventBus.getRecentEvents().some((event) => event.type === "overlay_window_moved")).toBe(true);
   });
 
@@ -1634,6 +2357,7 @@ describe("App", () => {
   it("opens the local data directory through the runtime bridge", async () => {
     const runtime = installRuntimeBridge(backendRuntimeStatus);
     render(<App />);
+    await openSettingsWorkspace("隐私 / 数据");
 
     const localDataPanel = await screen.findByRole("group", { name: "本地数据" });
     const openButton = within(localDataPanel).getByRole("button", { name: "打开本地数据目录" });
@@ -1644,16 +2368,16 @@ describe("App", () => {
     expect(screen.getByText("已打开本地数据目录")).toBeInTheDocument();
   });
 
-  it("keeps the debug panel last in the right rail", async () => {
+  it("opens and closes workspaces from the launcher", async () => {
     render(<App />);
 
-    await screen.findByRole("complementary", { name: "信息侧栏" });
-    const orderOf = (id: string) => Number(window.getComputedStyle(document.getElementById(id) as HTMLElement).order);
-    expect(orderOf("settings-panel")).toBe(1);
-    expect(orderOf("pending-memory-panel")).toBe(2);
-    expect(orderOf("game-session-panel")).toBe(3);
-    expect(orderOf("prompt-preview-panel")).toBe(4);
-    expect(orderOf("debug-panel")).toBe(5);
+    await openGameWorkspace();
+    expect(await screen.findByRole("complementary", { name: "工作区面板" })).toHaveTextContent("游戏");
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument());
+
+    await openDebugWorkspace("Prompt Preview");
+    expect(await screen.findByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
   });
 
   it("shows onboarding card when onboarding is incomplete", async () => {
@@ -1665,7 +2389,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "快速开始 ReiLink" })).toBeInTheDocument();
     expect(screen.getByText("当前 DeepSeek API Key 已加载。")).toBeInTheDocument();
     expect(screen.getByText("可以让 ReiLink 自动检测，也可以手动选择当前游戏。")).toBeInTheDocument();
-    expect(screen.getByText("ReiLink 不会直接写入长期记忆，需要你手动保存。")).toBeInTheDocument();
+    expect(screen.getByText("显式记忆会给出可撤销提示；隐式候选仍需要你确认。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "开始使用" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开设置" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看 Demo 文档" })).toBeInTheDocument();
@@ -1704,6 +2428,7 @@ describe("App", () => {
 
   it("reopens onboarding from settings", async () => {
     render(<App />);
+    await openSettingsWorkspace("应用");
 
     await userEvent.click(await screen.findByRole("button", { name: "新手引导：重新查看" }));
 
@@ -1714,6 +2439,7 @@ describe("App", () => {
 
   it("resets onboarding from demo reset controls", async () => {
     render(<App />);
+    await openSettingsWorkspace("隐私 / 数据");
 
     const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置新手引导" }));
@@ -1734,6 +2460,7 @@ describe("App", () => {
   it("runs demo reset actions with confirmation where needed", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
+    await openSettingsWorkspace("隐私 / 数据");
 
     const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空会话状态" }));
@@ -1779,6 +2506,7 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     await screen.findByText("Margit 怎么打？");
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await openSettingsWorkspace("隐私 / 数据");
 
     const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "清空聊天记录" }));
@@ -1797,6 +2525,7 @@ describe("App", () => {
   it("cancels dangerous demo reset actions when confirmation is rejected", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
+    await openSettingsWorkspace("隐私 / 数据");
 
     const demoResetPanel = await screen.findByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置长期记忆" }));
@@ -1823,6 +2552,7 @@ describe("App", () => {
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     await screen.findByText("Margit 怎么打？");
+    await openSettingsWorkspace("隐私 / 数据");
 
     const demoResetPanel = screen.getByRole("group", { name: "本地数据" });
     await userEvent.click(within(demoResetPanel).getByRole("button", { name: "重置演示状态" }));
@@ -1872,7 +2602,8 @@ describe("App", () => {
     expect(screen.getByText("ReiLink 需要 DeepSeek API Key 才能生成回复。请在本地 .env 中配置，或进入设置查看配置状态。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开设置/i })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: /打开设置/i }));
-    expect(screen.getByLabelText("人格模式")).toHaveFocus();
+    expect(await screen.findByRole("heading", { name: "模型设置" })).toBeInTheDocument();
+    expect(screen.getByLabelText("模型偏好")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /查看配置说明/i }));
     expect(screen.getByText(/LLM_PROVIDER=deepseek/)).toBeInTheDocument();
     expect(screen.getByText(/DEEPSEEK_API_KEY=/)).toBeInTheDocument();
@@ -1901,6 +2632,7 @@ describe("App", () => {
   it("updates settings through the API", async () => {
     installSpeechSynthesisMock();
     render(<App />);
+    await openSettingsWorkspace("应用");
 
     await userEvent.selectOptions(await screen.findByLabelText("人格模式"), "guarded");
     await waitFor(() =>
@@ -1910,6 +2642,7 @@ describe("App", () => {
       )
     );
 
+    await openWorkspaceTab("隐私 / 数据");
     await userEvent.selectOptions(screen.getByLabelText("记忆"), "disabled");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1918,6 +2651,7 @@ describe("App", () => {
       )
     );
 
+    await openWorkspaceTab("模型");
     await userEvent.selectOptions(screen.getByLabelText("模型偏好"), "pro");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1926,6 +2660,7 @@ describe("App", () => {
       )
     );
 
+    await openWorkspaceTab("高级");
     await userEvent.click(
       within(screen.getByRole("group", { name: "Overlay / 游戏悬浮层" })).getByRole("button", { name: "开启 Overlay" })
     );
@@ -1960,6 +2695,7 @@ describe("App", () => {
       )
     );
 
+    await openWorkspaceTab("应用");
     await userEvent.selectOptions(screen.getByLabelText("自动游戏检测"), "off");
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1995,9 +2731,12 @@ describe("App", () => {
 
   it("hides debug panel through settings", async () => {
     render(<App />);
+    await openDebugWorkspace();
 
     await screen.findByRole("button", { name: /调试面板/i });
+    await openSettingsWorkspace("应用");
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "调试面板" }), "hide");
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.queryByRole("button", { name: /调试面板/i })).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /回复上下文预览/i })).not.toBeInTheDocument();
@@ -2006,14 +2745,17 @@ describe("App", () => {
   it("shows and expands debug panel when settings switch from hidden to visible", async () => {
     appSettingsStore = { ...appSettingsStore, debug_panel: "hide" };
     render(<App />);
+    await openSettingsWorkspace("应用");
 
     await screen.findByRole("combobox", { name: "调试面板" });
     expect(screen.queryByRole("button", { name: /调试面板/i })).not.toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "调试面板" }), "show");
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /调试面板/i })).toHaveAttribute("aria-expanded", "true"));
-    expect(screen.getByText("语义识别")).toBeInTheDocument();
+    expect(screen.getByText("LLM Primary Extraction")).toBeInTheDocument();
+    await openDebugWorkspace("Prompt Preview");
     expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
   });
 
@@ -2030,6 +2772,72 @@ describe("App", () => {
     );
   });
 
+  it("shows an undoable memory notice after explicit auto-save", async () => {
+    chatResponseStore = {
+      ...chatResponse,
+      memory_update: {
+        status: "auto_saved",
+        summary: "玩家打 Boss 前喜欢先探索地图，不喜欢直接硬打",
+        pending_memory_id: "pending-auto",
+        long_term_memory_id: "ltm-1",
+        pending_count: 0,
+        undo_available: true
+      }
+    };
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打。");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    expect(await screen.findByText("已记住：玩家打 Boss 前喜欢先探索地图，不喜欢直接硬打")).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "memory_candidate_checked", decision: "auto_saved" }),
+        expect.objectContaining({ type: "memory_auto_saved", memory_id: "ltm-1" })
+      ])
+    );
+    await userEvent.click(screen.getByRole("button", { name: "撤销" }));
+
+    await screen.findByText("已撤销这条记忆");
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "memory_auto_save_undo", memory_id: "ltm-1" })])
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/memory/long-term/ltm-1/undo"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("shows a pending memory hint that opens the Memory workspace", async () => {
+    chatResponseStore = {
+      ...chatResponse,
+      memory_update: {
+        status: "pending",
+        summary: "玩家不喜欢长篇攻略",
+        pending_memory_id: "pending-1",
+        long_term_memory_id: null,
+        pending_count: 1,
+        undo_available: false
+      }
+    };
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "我不喜欢长篇攻略");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+
+    expect(await screen.findByText("有新的记忆待确认")).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "memory_candidate_checked", decision: "pending" }),
+        expect.objectContaining({ type: "memory_candidate_pending", candidate_id: "pending-1" })
+      ])
+    );
+    await userEvent.click(screen.getByRole("button", { name: "查看" }));
+
+    expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
+    expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
+  });
+
   it("emits interaction events for sent messages and shown assistant segments", async () => {
     render(<App />);
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
@@ -2044,16 +2852,272 @@ describe("App", () => {
         expect.objectContaining({
           type: "assistant_reply_segment_shown",
           segment_index: 0,
-          text: "别急着翻滚。先看动作。再试一次。"
+          character_count: "别急着翻滚。先看动作。再试一次。".length
         }),
         expect.objectContaining({ type: "assistant_reply_completed" })
       ])
     );
+    expect(events.find((event) => event.type === "assistant_reply_segment_shown")).not.toHaveProperty("text");
+  });
+
+  it("emits observable semantic trace events for low-confidence no-op game hints", async () => {
+    const lowConfidenceTrace = {
+      ...semanticExtractionDebug,
+      latest_user_message: "低置信游戏语义 / 18 字",
+      rule_result: { game_event: { type: "none" } },
+      rule_confidence: 0,
+      raw_rule_confidence: 0,
+      ambiguity_detected: true,
+      fallback_reason: "unknown_boss_alias",
+      source: "none",
+      confidence: "low",
+      applied_updates: [],
+      extraction_trace: {
+        source: "none",
+        confidence: "low",
+        fallback_reason: "unknown_boss_alias",
+        skip_reason: "provider_unavailable",
+        parse_error: null,
+        applied_updates: [],
+        llm_shadow_status: "skipped",
+        llm_shadow_confidence: "low",
+        llm_shadow_summary: "跳过：provider_unavailable",
+        llm_shadow_diff: "LLM 影子识别未运行"
+      },
+      llm_called: false,
+      semantic_extraction_model: null,
+      semantic_extraction_latency_ms: 0,
+      provider_latency_ms: 0,
+      llm_result: null,
+      llm_shadow: {
+        status: "skipped",
+        confidence: "low",
+        candidate_summary: "跳过：provider_unavailable",
+        diff_summary: "LLM 影子识别未运行"
+      },
+      llm_shadow_status: "skipped",
+      llm_shadow_confidence: "low",
+      llm_shadow_summary: "跳过：provider_unavailable",
+      llm_shadow_diff: "LLM 影子识别未运行",
+      final_decision: { game_event: { type: "none" } },
+      skip_reason: "provider_unavailable",
+      parse_error: null
+    };
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(lowConfidenceTrace));
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "我在那个骑马金甲大哥那里又寄了几次。");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() =>
+      expect(eventBus.getRecentEvents(20)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "semantic_extraction_traced",
+            source: "none",
+            confidence: "low",
+            fallback_reason: "unknown_boss_alias",
+            skip_reason: "provider_unavailable",
+            applied_updates: [],
+            llm_shadow_status: "skipped",
+            llm_shadow_summary: "跳过：provider_unavailable"
+          })
+        ])
+      )
+    );
+    const semanticEvent = eventBus.getRecentEvents(20).find((event) => event.type === "semantic_extraction_traced");
+    expect(JSON.stringify(semanticEvent)).not.toContain("骑马金甲大哥");
+  });
+
+  it("emits safe LLM shadow semantic summaries without applying state", async () => {
+    const shadowTrace = {
+      ...semanticExtractionDebug,
+      latest_user_message: "低置信游戏语义 / 18 字",
+      rule_result: { game_event: { type: "none" } },
+      rule_confidence: 0,
+      raw_rule_confidence: 0,
+      ambiguity_detected: true,
+      fallback_reason: "unknown_boss_alias",
+      source: "none",
+      confidence: "low",
+      applied_updates: [],
+      extraction_trace: {
+        source: "none",
+        confidence: "low",
+        fallback_reason: "unknown_boss_alias",
+        skip_reason: null,
+        parse_error: null,
+        applied_updates: [],
+        llm_shadow_status: "succeeded",
+        llm_shadow_confidence: "medium",
+        llm_shadow_summary: "Boss 候选：大树守卫 / 失败次数候选：increment 2",
+        llm_shadow_diff: "规则未识别，LLM 认为可能是 大树守卫"
+      },
+      llm_called: true,
+      semantic_extraction_model: "deepseek-v4-flash",
+      semantic_extraction_latency_ms: 38,
+      provider_latency_ms: 38,
+      llm_result: null,
+      llm_shadow: {
+        status: "succeeded",
+        confidence: "medium",
+        candidate_summary: "Boss 候选：大树守卫 / 失败次数候选：increment 2",
+        diff_summary: "规则未识别，LLM 认为可能是 大树守卫"
+      },
+      llm_shadow_status: "succeeded",
+      llm_shadow_confidence: "medium",
+      llm_shadow_summary: "Boss 候选：大树守卫 / 失败次数候选：increment 2",
+      llm_shadow_diff: "规则未识别，LLM 认为可能是 大树守卫",
+      final_decision: { game_event: { type: "none" } },
+      skip_reason: null,
+      parse_error: null
+    };
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(shadowTrace));
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), "我在那个骑马金甲大哥那里又寄了几次。");
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await waitFor(() =>
+      expect(eventBus.getRecentEvents(20)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "semantic_extraction_traced",
+            source: "none",
+            llm_shadow_status: "succeeded",
+            llm_shadow_summary: "Boss 候选：大树守卫 / 失败次数候选：increment 2",
+            applied_updates: []
+          })
+        ])
+      )
+    );
+    const semanticEvent = eventBus.getRecentEvents(20).find((event) => event.type === "semantic_extraction_traced");
+    expect(JSON.stringify(semanticEvent)).toContain("大树守卫");
+    expect(JSON.stringify(semanticEvent)).not.toContain("骑马金甲大哥");
+  });
+
+  it("renders LLM primary guard traces in Event Stream without raw transcript text", async () => {
+    const privateTranscript = "我换去打玛尔基特了，这是私密转写";
+    const guardTrace = {
+      ...semanticExtractionDebug,
+      latest_user_message: "游戏状态表达 / 18 字",
+      input_source: "voice_direct",
+      source: "llm_primary",
+      confidence: "high",
+      applied_updates: ["boss_switched", "boss_detected"],
+      extraction_trace: {
+        ...semanticExtractionDebug.extraction_trace,
+        source: "llm_primary",
+        confidence: "high",
+        applied_updates: ["boss_switched", "boss_detected"],
+        llm_guard_decision: "apply",
+        llm_guard_reason: "high_confidence_grounded_candidate",
+        llm_guard_summary: "LLM 主识别候选通过 guard"
+      },
+      llm_called: true,
+      semantic_extraction_model: "deepseek-v4-flash",
+      llm_guard_decision: "apply",
+      llm_guard_reason: "high_confidence_grounded_candidate",
+      llm_guard_summary: "LLM 主识别候选通过 guard",
+      llm_shadow_summary: "Boss 候选：恶兆妖鬼 Margit",
+      final_decision: {
+        game_event: {
+          type: "boss_switch",
+          boss_name: "恶兆妖鬼 Margit",
+          guard_source: "llm_primary",
+          input_source: "voice_direct"
+        }
+      }
+    };
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/debug/semantic-extraction/latest")) return Promise.resolve(Response.json(guardTrace));
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText("聊天输入"), privateTranscript);
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+
+    await openDebugWorkspace("Event Stream");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    await waitFor(() => expect(eventStream).toHaveTextContent("Guard：已应用"));
+    expect(eventStream).toHaveTextContent("LLM 主识别候选通过 guard");
+    expect(eventStream).not.toHaveTextContent(privateTranscript);
+  });
+
+  it("polls background LLM shadow final events into Event Stream without raw text", async () => {
+    const finalShadowEvent = {
+      id: 1,
+      trace_id: "shadow#1",
+      timestamp: new Date().toISOString(),
+      phase: "final",
+      status: "shadow_timeout",
+      source: "none",
+      confidence: "low",
+      fallback_reason: "unknown_boss_alias",
+      skip_reason: null,
+      parse_error: "semantic_extraction_timeout",
+      applied_updates: [],
+      llm_shadow_status: "failed",
+      llm_shadow_confidence: "low",
+      llm_shadow_summary: "LLM 影子识别超时",
+      llm_shadow_diff: "LLM 影子识别失败，未应用状态",
+      semantic_extraction_model: "deepseek-v4-flash",
+      semantic_extraction_latency_ms: 12000
+    };
+    let servedShadowEvent = false;
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/api/debug/semantic-shadow/events")) {
+        const events = servedShadowEvent ? [] : [finalShadowEvent];
+        servedShadowEvent = true;
+        return Promise.resolve(Response.json({ events, latest_id: 1 }));
+      }
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(eventBus.getRecentEvents(20)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "semantic_extraction_traced",
+            source: "none",
+            shadow_event_status: "shadow_timeout",
+            llm_shadow_status: "failed",
+            applied_updates: []
+          })
+        ])
+      )
+    );
+    await openDebugWorkspace("Event Stream");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    await waitFor(() => expect(eventStream).toHaveTextContent("LLM 影子识别超时"));
+    const serialized = JSON.stringify(eventBus.getRecentEvents(20));
+    expect(serialized).not.toContain("骑马金甲大哥");
+    expect(serialized).not.toContain("raw prompt");
+    expect(serialized).not.toContain(".env");
   });
 
   it("does not speak assistant replies when Voice Output is disabled", async () => {
     const speech = installSpeechSynthesisMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await screen.findByLabelText("语音输出 / Voice Output");
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
@@ -2067,6 +3131,7 @@ describe("App", () => {
   it("does not crash and shows a readable status when local TTS is unavailable", async () => {
     appSettingsStore = { ...appSettingsStore, voice_output: "on" };
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/本地语音：不可用/)).toBeInTheDocument();
     expect(screen.getByText("当前环境不支持本地语音输出。")).toBeInTheDocument();
@@ -2084,6 +3149,7 @@ describe("App", () => {
   it("updates the Voice Output status when system voices load later", async () => {
     const speech = installSpeechSynthesisMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/等待系统语音列表/)).toBeInTheDocument();
 
@@ -2097,6 +3163,7 @@ describe("App", () => {
   it("plays a test voice from Settings without writing chat", async () => {
     const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
     const chatPanel = screen.getByRole("region", { name: "聊天面板" });
@@ -2127,6 +3194,7 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByRole("button", { name: "开始语音 / Start Voice" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语音输入 / Voice Input");
@@ -2138,6 +3206,7 @@ describe("App", () => {
 
   it("shows Local ASR not configured status in Voice Input settings", async () => {
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2154,6 +3223,7 @@ describe("App", () => {
 
   it("shows Local ASR setup controls with safe settings summary", async () => {
     render(<App />);
+    await openSettingsWorkspace();
 
     const setup = await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
 
@@ -2176,6 +3246,7 @@ describe("App", () => {
   it("fills only the selected Local ASR path field from the native file picker", async () => {
     const runtime = installRuntimeBridge(backendRuntimeStatus);
     render(<App />);
+    await openSettingsWorkspace();
 
     const binaryInput = await screen.findByLabelText("本地识别程序 / ASR Binary");
     const modelInput = screen.getByLabelText("模型文件 / Model File");
@@ -2244,6 +3315,7 @@ describe("App", () => {
     const modelPath = "/Users/aragoto/Library/Application Support/ReiLink/models/ggml-base.bin";
     const converterPath = "/Users/aragoto/tools/ffmpeg";
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.type(await screen.findByLabelText("本地识别程序 / ASR Binary"), binaryPath);
     await userEvent.type(screen.getByLabelText("模型文件 / Model File"), modelPath);
@@ -2271,6 +3343,7 @@ describe("App", () => {
       })
     );
 
+    await openDebugWorkspace();
     const rawJson = screen.getByText("原始 JSON").closest("details");
     expect(rawJson).not.toBeNull();
     expect(rawJson).toHaveTextContent("safe_converter_name");
@@ -2295,6 +3368,7 @@ describe("App", () => {
   it("clears Local ASR settings and refreshes local status", async () => {
     setLocalAsrReady();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "清除配置 / Clear" }));
 
@@ -2310,6 +3384,7 @@ describe("App", () => {
 
   it("refreshes Local ASR settings and status on demand", async () => {
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" });
     const initialSettingsCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
       String(url).includes("/api/voice-input/local-asr/settings")
@@ -2363,6 +3438,7 @@ describe("App", () => {
       safe_model_name: "ggml-base.bin"
     };
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2378,6 +3454,7 @@ describe("App", () => {
     setLocalAsrReady();
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2413,6 +3490,7 @@ describe("App", () => {
       duration_ms: 58
     };
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
 
@@ -2453,6 +3531,7 @@ describe("App", () => {
       })
     );
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("正在检查");
@@ -2483,6 +3562,7 @@ describe("App", () => {
       duration_ms: 3000
     };
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
     await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("启动超时"));
@@ -2514,6 +3594,7 @@ describe("App", () => {
       safe_model_name: "ggml-base.bin"
     };
     render(<App />);
+    await openSettingsWorkspace();
 
     const input = await screen.findByLabelText("聊天输入");
     await userEvent.click(screen.getByRole("button", { name: "检查本地 ASR / Check Local ASR" }));
@@ -2526,6 +3607,7 @@ describe("App", () => {
   it("shows Audio Capture Test unavailable when MediaRecorder is missing", async () => {
     installMediaDevicesMock("prompt");
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2537,6 +3619,7 @@ describe("App", () => {
   it("shows readable Audio Capture permission denied errors", async () => {
     installAudioCaptureMock({ permissionDenied: true });
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
 
@@ -2551,6 +3634,7 @@ describe("App", () => {
   it("records audio, stops tracks, uploads blob, and shows cleanup success", async () => {
     const audioMock = installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
     expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
@@ -2579,6 +3663,7 @@ describe("App", () => {
   it("Audio Capture probe does not fill chat input or auto send", async () => {
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     const input = await screen.findByLabelText("聊天输入");
     await userEvent.click(screen.getByRole("button", { name: "测试录音 / Test Recording" }));
@@ -2592,10 +3677,12 @@ describe("App", () => {
   it("Audio Capture Event Stream summaries do not expose audio content or paths", async () => {
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
     await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
     await waitFor(() => expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("录音测试完成"));
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
@@ -2613,6 +3700,7 @@ describe("App", () => {
   it("shows Local Transcribe disabled until Local ASR is ready", async () => {
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     const voiceInputSettings = await screen.findByRole("group", { name: "语音输入设置" });
 
@@ -2645,6 +3733,7 @@ describe("App", () => {
     };
     const audioMock = installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
     vi.mocked(fetch).mockClear();
 
@@ -2706,6 +3795,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
@@ -2748,6 +3838,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
     vi.mocked(fetch).mockClear();
 
@@ -2787,6 +3878,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     await userEvent.click(screen.getByRole("button", { name: "录音并转写 / Record & Transcribe" }));
@@ -2821,10 +3913,12 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "录音并转写 / Record & Transcribe" }));
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
     await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
@@ -2870,11 +3964,13 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "录音并转写 / Record & Transcribe" }));
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
     await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
 
+    await openDebugWorkspace();
     const rawJson = screen.getByText("原始 JSON").closest("details");
     expect(rawJson).not.toBeNull();
     expect(rawJson).toHaveTextContent("transcript_char_count");
@@ -2897,6 +3993,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试录音 / Test Recording" }));
     await userEvent.click(screen.getByRole("button", { name: "停止录音 / Stop Recording" }));
@@ -2928,6 +4025,7 @@ describe("App", () => {
     const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试语音 / Test Voice" }));
     await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
@@ -2950,10 +4048,12 @@ describe("App", () => {
     const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
     const audioMock = installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     const mainVoiceButton = await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" });
     expect(mainVoiceButton).toBeEnabled();
+    expect(screen.getByText(/Voice v2.1：语音待机/)).toBeInTheDocument();
     expect(screen.getByText("语音输入：本地语音识别可用")).toBeInTheDocument();
     expect(screen.queryByText("语音输入：语音识别服务不可用")).not.toBeInTheDocument();
 
@@ -2965,11 +4065,14 @@ describe("App", () => {
     expect(speech.cancel).toHaveBeenCalledTimes(1);
     expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
     expect(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" })).toBeEnabled();
+    expect(screen.getByText(/Voice v2.1：正在听/)).toBeInTheDocument();
     expect(screen.getByText("语音输入：正在录音")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
 
     await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
+    expect(screen.getByText(/Voice v2.1：已识别，等待发送/)).toBeInTheDocument();
+    expect(screen.getByText(`${privateTranscript.length} 字已在输入框，仍需点击发送。`)).toBeInTheDocument();
     expect(screen.getByText("语音输入：转写完成，请确认后发送")).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/voice-input/local-asr/transcribe"),
@@ -2982,6 +4085,7 @@ describe("App", () => {
     expect(fetchCalls.some(([url]) => String(url).includes("/api/game/context"))).toBe(false);
     expect(screen.queryByText(privateTranscript)).not.toBeInTheDocument();
 
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     expect(eventStream).not.toBeNull();
@@ -2993,6 +4097,7 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("raw stdout");
     expect(eventStream).not.toHaveTextContent("raw stderr");
 
+    await openDebugWorkspace();
     expect(screen.getByText("主输入提供方").closest("div")).toHaveTextContent("local_asr");
     expect(screen.getByText("主输入状态").closest("div")).toHaveTextContent("转写完成，请确认后发送");
     const rawJson = screen.getByText("原始 JSON").closest("details");
@@ -3003,12 +4108,352 @@ describe("App", () => {
     expect(rawJson).not.toHaveTextContent(privateTranscript);
   });
 
+  it("shows the Voice v2.1 transcribing state while Local ASR is pending", async () => {
+    setLocalAsrReady();
+    installAudioCaptureMock();
+    let resolveTranscribe: ((response: Response) => void) | null = null;
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/voice-input/local-asr/transcribe") && init?.method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveTranscribe = resolve;
+        });
+      }
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    expect(await screen.findByText(/Voice v2.1：正在识别/)).toBeInTheDocument();
+    expect(screen.getByText("语音输入：正在本地转写")).toBeInTheDocument();
+
+    act(() => {
+      resolveTranscribe?.(Response.json(localAsrTranscriptionResponseStore));
+    });
+
+    await waitFor(() => expect(screen.getByText(/Voice v2.1：已识别，等待发送/)).toBeInTheDocument());
+    expect(screen.getByLabelText("聊天输入")).toHaveValue(localAsrTranscriptionResponseStore.transcript);
+  });
+
+  it("auto sends a Web Speech transcript only after Direct Conversation Mode is enabled", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    let resolveChat: ((response: Response) => void) | null = null;
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/chat") && init?.method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveChat = resolve;
+        });
+      }
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await screen.findByText("已连接");
+    fireEvent.change(screen.getByLabelText("聊天输入"), { target: { value: "保留的手打草稿" } });
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("帮我看一下路线", true);
+    });
+
+    expect(await screen.findByText(/Voice v2.1：Rei 正在回应/)).toBeInTheDocument();
+    expect(screen.queryByText(/Voice v2.1：已识别，等待发送/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("保留的手打草稿");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ message: "帮我看一下路线", session_id: "default", mode: "chat", input_source: "voice_direct" })
+      })
+    );
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_transcription_auto_sent", character_count: "帮我看一下路线".length }),
+        expect.objectContaining({ type: "user_message_sent", source: "voice_direct", text: "", character_count: "帮我看一下路线".length })
+      ])
+    );
+
+    act(() => {
+      resolveChat?.(Response.json(chatResponse));
+    });
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(screen.getByText(/Voice v2.1：语音待机/)).toBeInTheDocument());
+  });
+
+  it("blocks short Web Speech transcripts from auto sending in Direct Conversation Mode", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    const chatCalls: RequestInit[] = [];
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/chat") && init?.method === "POST") {
+        chatCalls.push(init);
+        return Promise.resolve(Response.json(chatResponse));
+      }
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("我想", true);
+    });
+
+    expect(await screen.findByText(/Voice v2.1：已识别，等待发送/)).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("我想");
+    expect(screen.getByText("识别结果太短了。可以再说一次，或确认后发送。")).toBeInTheDocument();
+    expect(chatCalls).toHaveLength(0);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_transcription_auto_send_blocked", provider: "web_speech", reason: "short_transcript" })
+      ])
+    );
+    expect(eventBus.getRecentEvents(20)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "user_message_sent" }),
+        expect.objectContaining({ type: "pending_memory_created" }),
+        expect.objectContaining({ type: "proactive_message_shown" })
+      ])
+    );
+  });
+
+  it("auto sends a Local ASR transcript in Direct Conversation Mode without leaking the transcript to Event Stream", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+    setLocalAsrReady();
+    const privateTranscript = "直接对话的本地转写秘密";
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: privateTranscript,
+      transcript_char_count: privateTranscript.length
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    expect(await screen.findByText("别急着翻滚。先看动作。再试一次。")).toBeInTheDocument();
+    expect(screen.queryByText(/Voice v2.1：已识别，等待发送/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ message: privateTranscript, session_id: "default", mode: "chat", input_source: "voice_direct" })
+      })
+    );
+
+    await openDebugWorkspace("Event Stream");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("语音文本自动发送"));
+    expect(eventStream).toHaveTextContent(`${privateTranscript.length} 字`);
+    expect(eventStream).not.toHaveTextContent(privateTranscript);
+    expect(eventStream).not.toHaveTextContent("/Users/aragoto");
+    expect(eventStream).not.toHaveTextContent(".env");
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_transcription_auto_sent", provider: "local_asr" })
+      ])
+    );
+  });
+
+  it("blocks short Local ASR recordings from auto sending in Direct Conversation Mode", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+    setLocalAsrReady();
+    const privateTranscript = "直接对话短录音但文字较长";
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: privateTranscript,
+      transcript_char_count: privateTranscript.length,
+      duration_ms: 42
+    };
+    const chatCalls: RequestInit[] = [];
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/chat") && init?.method === "POST") {
+        chatCalls.push(init);
+        return Promise.resolve(Response.json(chatResponse));
+      }
+      return defaultFetchResponse(url, init);
+    });
+    installAudioCaptureMock();
+
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    expect(await screen.findByText(/Voice v2.1：已识别，等待发送/)).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript);
+    expect(screen.getByText("这句太短了。可以再说一次，或确认后发送。")).toBeInTheDocument();
+    expect(chatCalls).toHaveLength(0);
+
+    await openDebugWorkspace("Event Stream");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("语音文本等待确认"));
+    expect(eventStream).toHaveTextContent("录音过短，已改为确认发送");
+    expect(eventStream).not.toHaveTextContent(privateTranscript);
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_transcription_auto_send_blocked", provider: "local_asr", reason: "short_recording" })
+      ])
+    );
+    expect(eventBus.getRecentEvents(30)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "user_message_sent" }),
+        expect.objectContaining({ type: "pending_memory_created" }),
+        expect.objectContaining({ type: "proactive_message_shown" })
+      ])
+    );
+  });
+
+  it("auto speaks direct conversation replies when Voice Output is enabled and can stop playback", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation", voice_output: "on" };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("直接说给我听", true);
+    });
+
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0].text).toBe("别急着翻滚。先看动作。");
+    act(() => {
+      speech.speak.mock.calls[0][0].onstart?.({} as SpeechSynthesisEvent);
+    });
+    expect(screen.getByText(/Voice v2.1：Rei 正在说话/)).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_profile_applied", spoken_mode: "brief", source: "direct_conversation" }),
+        expect.objectContaining({ type: "voice_reply_spoken_excerpt_created", spoken_character_count: 11, original_character_count: 16 }),
+        expect.objectContaining({ type: "voice_reply_auto_speak_started", character_count: 11, spoken_mode: "brief", sentence_count: 2 }),
+        expect.objectContaining({ type: "tts_started", source: "assistant_reply" })
+      ])
+    );
+
+    await userEvent.click(screen.getAllByRole("button", { name: "停止语音 / Stop Voice" })[0]);
+
+    expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Voice v2.1：已停止播放/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Voice v2.1：语音待机/)).toBeInTheDocument(), { timeout: 2500 });
+    expect(screen.getByText("别急着翻滚。先看动作。再试一次。")).toBeInTheDocument();
+  });
+
+  it("keeps full direct conversation text visible while speaking only the brief excerpt", async () => {
+    const longReply = "第一句只给重点。第二句继续收束。第三句留在聊天里，不进入播报。";
+    chatResponseStore = { ...chatResponse, reply: longReply, reply_segments: [longReply] };
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation", voice_output: "on" };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("直接短一点说", true);
+    });
+
+    await screen.findByText(longReply);
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0].text).toBe("第一句只给重点。第二句继续收束。");
+
+    await openDebugWorkspace("Event Stream");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    expect(eventStream).not.toBeNull();
+    await waitFor(() => expect(eventStream).toHaveTextContent("语音短版已生成"));
+    expect(eventStream).not.toHaveTextContent(longReply);
+    expect(eventStream).not.toHaveTextContent("第一句只给重点。第二句继续收束。");
+    expect(JSON.stringify(eventBus.getRecentEvents(40))).not.toContain(longReply);
+    expect(JSON.stringify(eventBus.getRecentEvents(40))).not.toContain("第一句只给重点。第二句继续收束。");
+  });
+
+  it("honors full spoken mode for direct conversation", async () => {
+    const directReply = "第一句。第二句。第三句也要读。";
+    chatResponseStore = { ...chatResponse, reply: directReply, reply_segments: [directReply] };
+    appSettingsStore = {
+      ...appSettingsStore,
+      voice_interaction_mode: "direct_conversation",
+      voice_output: "on",
+      voice_direct_spoken_reply_mode: "full"
+    };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("全文读给我", true);
+    });
+
+    await screen.findByText(directReply);
+    await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(speech.speak.mock.calls[0][0].text).toBe(directReply);
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_profile_applied", spoken_mode: "full", source: "direct_conversation" })
+      ])
+    );
+  });
+
+  it("honors silent spoken mode for direct conversation", async () => {
+    const directReply = "这段仍然要显示，但不要播报。";
+    chatResponseStore = { ...chatResponse, reply: directReply, reply_segments: [directReply] };
+    appSettingsStore = {
+      ...appSettingsStore,
+      voice_interaction_mode: "direct_conversation",
+      voice_output: "on",
+      voice_direct_spoken_reply_mode: "silent"
+    };
+    const speech = installSpeechSynthesisMock([mockVoice("zh-CN")]);
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("只显示文字", true);
+    });
+
+    await screen.findByText(directReply);
+    expect(speech.speak).not.toHaveBeenCalled();
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "voice_profile_applied", spoken_mode: "silent", source: "direct_conversation" }),
+        expect.objectContaining({ type: "voice_reply_speak_skipped", reason: "silent_mode", spoken_mode: "silent" })
+      ])
+    );
+  });
+
   it("keeps the main chat voice button on Local ASR when Web Speech reports service unavailable", async () => {
     setLocalAsrReady();
     installAudioCaptureMock();
     installMediaDevicesMock("granted");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" });
     act(() => {
@@ -3072,6 +4517,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
@@ -3094,6 +4540,7 @@ describe("App", () => {
     };
     installAudioCaptureMock();
     render(<App />);
+    await openSettingsWorkspace();
     await screen.findByText("已连接");
 
     await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
@@ -3141,6 +4588,7 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock("webkit");
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
 
@@ -3151,6 +4599,7 @@ describe("App", () => {
 
   it("shows Voice Input unavailable fallback without crashing", async () => {
     render(<App />);
+    await openSettingsWorkspace();
 
     await waitFor(() =>
       expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("当前运行环境不支持本地语音识别")
@@ -3175,6 +4624,7 @@ describe("App", () => {
     const recognition = installSpeechRecognitionMock();
     recognition.startError = new Error("start failed");
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
 
@@ -3224,8 +4674,50 @@ describe("App", () => {
     expect(await screen.findByText("Hollow Knight 里的 Hornet 怎么打？")).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/chat"),
-      expect.objectContaining({ method: "POST" })
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          message: "Hollow Knight 里的 Hornet 怎么打？",
+          session_id: "default",
+          mode: "chat",
+          input_source: "voice_confirmed"
+        })
+      })
     );
+  });
+
+  it("enters assistant_thinking only after a ready voice transcript is confirmed", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    let resolveChat: ((response: Response) => void) | null = null;
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/chat") && init?.method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveChat = resolve;
+        });
+      }
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("帮我看一下路线", true);
+    });
+
+    expect(screen.getByText(/Voice v2.1：已识别，等待发送/)).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
+
+    await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    expect(await screen.findByText(/Voice v2.1：Rei 正在回应/)).toBeInTheDocument();
+
+    act(() => {
+      resolveChat?.(Response.json(chatResponse));
+    });
+    await screen.findByText("别急着翻滚。先看动作。再试一次。");
+    await waitFor(() => expect(screen.getByText(/Voice v2.1：语音待机/)).toBeInTheDocument());
   });
 
   it("keeps interim Voice Input transcript out of chat, memory, retrieval, and game context", async () => {
@@ -3253,6 +4745,7 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
     act(() => {
@@ -3288,6 +4781,7 @@ describe("App", () => {
     installMediaDevicesMock("granted");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
     act(() => {
@@ -3307,6 +4801,7 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "开始语音 / Start Voice" }));
     act(() => {
@@ -3340,12 +4835,15 @@ describe("App", () => {
     installMediaDevicesMock("prompt");
     installSpeechRecognitionMock();
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.click(await screen.findByRole("button", { name: "测试语音 / Test Voice" }));
     await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/Voice v2.1：Rei 正在说话/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
 
     expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Voice v2.1：正在听/)).toBeInTheDocument();
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "tts_stopped", reason: "user_stop" }),
@@ -3386,6 +4884,25 @@ describe("App", () => {
             reason: "not_supported",
             status: "当前运行环境不支持本地语音识别",
             language: "zh-CN"
+          },
+          { type: "voice_direct_mode_enabled", timestamp: new Date().toISOString() },
+          {
+            type: "voice_transcription_auto_sent",
+            timestamp: new Date().toISOString(),
+            character_count: 12,
+            provider: "local_asr"
+          },
+          {
+            type: "user_message_sent",
+            timestamp: new Date().toISOString(),
+            text: "",
+            source: "voice_direct",
+            character_count: 12
+          },
+          {
+            type: "voice_reply_auto_speak_started",
+            timestamp: new Date().toISOString(),
+            character_count: 16
           }
         ]}
         open
@@ -3400,6 +4917,10 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("语音输入已停止");
     expect(eventStream).toHaveTextContent("语音输入失败");
     expect(eventStream).toHaveTextContent("语音输入不可用");
+    expect(eventStream).toHaveTextContent("直接对话已开启");
+    expect(eventStream).toHaveTextContent("语音文本自动发送");
+    expect(eventStream).toHaveTextContent("语音自动发送 12 字");
+    expect(eventStream).toHaveTextContent("语音回复自动播报");
     expect(eventStream).not.toHaveTextContent("Hollow Knight 里的 Hornet 怎么打？");
     expect(eventStream).not.toHaveTextContent("user_stop");
     expect(eventStream).not.toHaveTextContent("no_speech");
@@ -3414,6 +4935,7 @@ describe("App", () => {
     const speech = installSpeechSynthesisMock([]);
     appSettingsStore = { ...appSettingsStore, voice_output: "on" };
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/等待系统语音列表/)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
@@ -3503,6 +5025,7 @@ describe("App", () => {
     ]);
     appSettingsStore = { ...appSettingsStore, voice_output: "on", voice_rate: 1.2, voice_volume: 0.6 };
     render(<App />);
+    await openSettingsWorkspace();
 
     expect(await screen.findByText(/优先使用中文语音/)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
@@ -3510,6 +5033,7 @@ describe("App", () => {
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
 
     await waitFor(() => expect(speech.speak).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/Voice v2.1：Rei 正在说话/)).toBeInTheDocument();
     expect(speech.speak.mock.calls[0][0]).toMatchObject({
       text: "别急着翻滚。先看动作。再试一次。",
       rate: 1.2,
@@ -3537,12 +5061,14 @@ describe("App", () => {
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "tts_completed", character_count: 16 })])
     );
+    await waitFor(() => expect(screen.getByText(/Voice v2.1：语音待机/)).toBeInTheDocument());
   });
 
   it("keeps Voice Output enabled when older settings responses omit the field", async () => {
     const speech = installSpeechSynthesisMock();
     omitVoiceOutputFromSettings = true;
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.selectOptions(await screen.findByLabelText("语音输出 / Voice Output"), "on");
     await waitFor(() => expect(screen.getByLabelText("语音输出 / Voice Output")).toHaveValue("on"));
@@ -3599,6 +5125,9 @@ describe("App", () => {
     await userEvent.click(screen.getAllByRole("button", { name: "停止语音 / Stop Voice" })[0]);
 
     expect(speech.cancel).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Voice v2.1：已停止播放/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Voice v2.1：语音待机/)).toBeInTheDocument(), { timeout: 2500 });
+    expect(screen.getByText("别急着翻滚。先看动作。再试一次。")).toBeInTheDocument();
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "tts_stopped", reason: "user_stop" })])
     );
@@ -3627,6 +5156,7 @@ describe("App", () => {
     const speech = installSpeechSynthesisMock();
     appSettingsStore = { ...appSettingsStore, voice_output: "on" };
     render(<App />);
+    await openSettingsWorkspace();
 
     await userEvent.type(screen.getByLabelText("聊天输入"), "Margit 怎么打？");
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
@@ -3656,6 +5186,39 @@ describe("App", () => {
             character_count: 16,
             reason: "unavailable",
             status: "当前环境不支持"
+          },
+          {
+            type: "voice_profile_applied",
+            timestamp: new Date().toISOString(),
+            profile_id: "rei_calm",
+            spoken_mode: "brief",
+            source: "direct_conversation",
+            max_spoken_chars: 120,
+            max_spoken_sentences: 2
+          },
+          {
+            type: "voice_reply_spoken_excerpt_created",
+            timestamp: new Date().toISOString(),
+            spoken_mode: "brief",
+            original_character_count: 64,
+            spoken_character_count: 24,
+            sentence_count: 2,
+            reason: "voice_profile"
+          },
+          {
+            type: "voice_reply_speak_skipped",
+            timestamp: new Date().toISOString(),
+            reason: "silent_mode",
+            spoken_mode: "silent",
+            source: "direct_conversation",
+            original_character_count: 64
+          },
+          {
+            type: "voice_reply_auto_speak_started",
+            timestamp: new Date().toISOString(),
+            character_count: 24,
+            spoken_mode: "brief",
+            sentence_count: 2
           }
         ]}
         open
@@ -3671,7 +5234,16 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("新消息打断");
     expect(eventStream).toHaveTextContent("已关闭");
     expect(eventStream).toHaveTextContent("语音播放失败");
+    expect(eventStream).toHaveTextContent("Voice Profile 已应用");
+    expect(eventStream).toHaveTextContent("Rei Calm / Rei 冷静陪伴");
+    expect(eventStream).toHaveTextContent("语音短版已生成");
+    expect(eventStream).toHaveTextContent("语音播报已跳过");
+    expect(eventStream).toHaveTextContent("语音回复自动播报");
+    expect(eventStream).toHaveTextContent("短版播报");
+    expect(eventStream).toHaveTextContent("静默模式");
     expect(eventStream).toHaveTextContent("16 字");
+    expect(eventStream).toHaveTextContent("24/64 字");
+    expect(eventStream).toHaveTextContent("上限 2 句 / 120 字");
     expect(eventStream).not.toHaveTextContent("user_stop");
     expect(eventStream).not.toHaveTextContent("new_message");
     expect(eventStream).not.toHaveTextContent("disabled");
@@ -3679,6 +5251,8 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent("test_voice");
     expect(eventStream).not.toHaveTextContent("你好，我是 Rei。语音输出测试。");
     expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
+    expect(eventStream).not.toHaveTextContent("完整助手回复");
+    expect(eventStream).not.toHaveTextContent("完整播报文本");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
     expect(eventStream).not.toHaveTextContent("services/backend/.env");
@@ -3690,7 +5264,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url.endsWith("/api/memory/pending")) {
-          return Response.json(chatCompleted ? pendingMemories : []);
+          return Response.json(chatCompleted ? pendingMemoriesStore : []);
         }
         if (url.endsWith("/api/chat") && init?.method === "POST") {
           chatCompleted = true;
@@ -3706,13 +5280,14 @@ describe("App", () => {
 
     await userEvent.type(screen.getByLabelText("聊天输入"), "我不喜欢长篇攻略");
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
+    await openMemoryWorkspace();
     await screen.findByText("玩家不喜欢长篇攻略");
 
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: "pending_memory_created",
-          memory_type: "user_preference",
+          memory_type: "interaction_preference",
           text: "玩家不喜欢长篇攻略"
         })
       ])
@@ -3725,10 +5300,10 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));
     await screen.findByText("别急着翻滚。先看动作。再试一次。");
 
+    await openDebugWorkspace("Event Stream");
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     expect(eventStream).not.toBeNull();
     expect(eventStream).not.toHaveAttribute("open");
-    expect(screen.getByText("原始 JSON")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
@@ -3740,10 +5315,11 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("Rei 显示回复片段");
     expect(eventStream).toHaveTextContent("使用游戏知识");
     expect(eventStream).toHaveTextContent("已使用本地知识");
+    expect(eventStream).toHaveTextContent(/用户消息 \d+ 字/);
     expect(eventStream).not.toHaveTextContent("user_message_sent");
     expect(eventStream).not.toHaveTextContent("assistant_reply_segment_shown");
     expect(eventStream).not.toHaveTextContent("bundled");
-    expect(eventStream).toHaveTextContent("Margit 怎么打？");
+    expect(eventStream).not.toHaveTextContent("Margit 怎么打？");
     expect(eventStream).not.toHaveTextContent("别急着翻滚。先看动作。再试一次。");
     expect(eventStream).not.toHaveTextContent("DEEPSEEK_API_KEY");
     expect(eventStream).not.toHaveTextContent("raw_prompt");
@@ -3837,9 +5413,100 @@ describe("App", () => {
     expect(screen.getByText("暂无事件")).toBeInTheDocument();
   });
 
+  it("shows, updates, sanitizes, and clears the Session Timeline", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+    await openGameWorkspace("本局时间线");
+
+    const timeline = screen.getByText("Session Timeline / 本局时间线").closest("details");
+    expect(timeline).not.toBeNull();
+    expect(timeline).not.toHaveAttribute("open");
+
+    fireEvent.click(screen.getByText("Session Timeline / 本局时间线"));
+    expect(timeline).toHaveAttribute("open");
+    await waitFor(() => expect(screen.getByText("本局还没有记录到关键变化。")).toBeInTheDocument());
+
+    act(() => {
+      eventBus.emit({
+        type: "user_message_sent",
+        timestamp: new Date().toISOString(),
+        text: "我在打 Margit"
+      });
+      eventBus.emit({
+        type: "game_context_changed",
+        timestamp: new Date().toISOString(),
+        game: "Elden Ring",
+        source: "detector"
+      });
+      eventBus.emit({
+        type: "game_session_changed",
+        timestamp: new Date().toISOString(),
+        game: "Elden Ring",
+        current_boss: "Margit",
+        activity: "boss_cleared",
+        death_count: 2,
+        frustration_count: 1,
+        last_cleared_boss: "Margit"
+      });
+      eventBus.emit({
+        type: "knowledge_used",
+        timestamp: new Date().toISOString(),
+        game: "艾尔登法环",
+        topics: ["已使用本地知识", "Margit phase 2 tips /Users/aragoto/Desktop/ReiLink/services/backend/.env raw prompt"]
+      });
+      eventBus.emit({
+        type: "proactive_message_shown",
+        timestamp: new Date().toISOString(),
+        trigger_type: "repeated_death",
+        text: "没关系吧？完整 proactive 文本不应该进入 timeline。"
+      });
+      eventBus.emit({
+        type: "pending_memory_accepted",
+        timestamp: new Date().toISOString(),
+        memory_id: "pending-1"
+      });
+      eventBus.emit({
+        type: "pending_memory_ignored",
+        timestamp: new Date().toISOString(),
+        memory_id: "pending-1"
+      });
+    });
+
+    await waitFor(() => expect(timeline).toHaveTextContent("切换游戏：Elden Ring"));
+    expect(timeline).toHaveTextContent("检测到 Boss：Margit");
+    expect(timeline).toHaveTextContent("死亡次数更新：2");
+    expect(timeline).toHaveTextContent("挫败状态升高：1");
+    expect(timeline).toHaveTextContent("击败 Boss：Margit");
+    expect(timeline).toHaveTextContent("使用知识：艾尔登法环 / Margit phase 2 tips");
+    expect(timeline).toHaveTextContent("主动陪伴已显示：反复死亡");
+    expect(timeline).toHaveTextContent("记忆已接受");
+    expect(timeline).toHaveTextContent("记忆已忽略");
+    expect(timeline).not.toHaveTextContent("/Users/aragoto");
+    expect(timeline).not.toHaveTextContent(".env");
+    expect(timeline).not.toHaveTextContent("raw prompt");
+    expect(timeline).not.toHaveTextContent("没关系吧");
+    expect(timeline).not.toHaveTextContent("pending-1");
+
+    await openDebugWorkspace("Event Stream");
+    fireEvent.click(screen.getByText("事件流 / Event Stream"));
+    const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
+    await waitFor(() => expect(eventStream).toHaveTextContent("游戏状态变化"));
+    expect(eventStream).toHaveTextContent("使用游戏知识");
+
+    await openGameWorkspace("本局时间线");
+    const reopenedTimeline = screen.getByText("Session Timeline / 本局时间线").closest("details");
+    expect(reopenedTimeline).not.toBeNull();
+    if (!reopenedTimeline?.hasAttribute("open")) {
+      fireEvent.click(screen.getByText("Session Timeline / 本局时间线"));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "清空时间线" }));
+    expect(reopenedTimeline).toHaveTextContent("本局还没有记录到关键变化。");
+  });
+
   it("updates Event Stream when interaction events are emitted", async () => {
     render(<App />);
     await screen.findByText("已连接");
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
     act(() => {
@@ -3852,7 +5519,7 @@ describe("App", () => {
         type: "assistant_reply_segment_shown",
         timestamp: new Date().toISOString(),
         segment_index: 0,
-        text: "先别贪刀。"
+        character_count: "先别贪刀。".length
       });
       eventBus.emit({
         type: "runtime_status_changed",
@@ -3877,7 +5544,8 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("后端状态变化");
     expect(eventStream).toHaveTextContent("正在启动");
     expect(eventStream).not.toHaveTextContent("starting");
-    expect(eventStream).toHaveTextContent("我现在卡在女武神");
+    expect(eventStream).toHaveTextContent(/用户消息 \d+ 字/);
+    expect(eventStream).not.toHaveTextContent("我现在卡在女武神");
     expect(eventStream).toHaveTextContent("第 1 段 / 5 字");
     expect(eventStream).not.toHaveTextContent("先别贪刀。");
   });
@@ -3896,6 +5564,7 @@ describe("App", () => {
       }
     });
 
+    await openDebugWorkspace("Event Stream");
     fireEvent.click(screen.getByText("事件流 / Event Stream"));
 
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
@@ -3906,8 +5575,10 @@ describe("App", () => {
     const rows = within(eventStream as HTMLElement).getAllByRole("listitem");
     expect(rows).toHaveLength(20);
     expect(eventStream).not.toHaveTextContent("event-4");
-    expect(eventStream).toHaveTextContent("event-5");
-    expect(eventStream).toHaveTextContent("event-24");
+    expect(eventStream).not.toHaveTextContent("event-5");
+    expect(eventStream).not.toHaveTextContent("event-24");
+    expect(rows[0]).toHaveTextContent("用户发送消息");
+    expect(rows[19]).toHaveTextContent("用户发送消息");
   });
 
   it("forces chat scroll to bottom when the user sends a message", async () => {
@@ -3936,7 +5607,7 @@ describe("App", () => {
     proactiveCheckStore = {
       should_send: true,
       trigger_type: "repeated_death",
-      message: "你开始急了。",
+      message: "没关系吧？",
       reason: "death_delta=2",
       cooldown_remaining_seconds: 0,
       idle_for_seconds: 120,
@@ -3962,7 +5633,7 @@ describe("App", () => {
       await vi.advanceTimersByTimeAsync(30000);
     });
 
-    expect(screen.getByText("你开始急了。")).toBeInTheDocument();
+    expect(screen.getByText("没关系吧？")).toBeInTheDocument();
     expect(scrollToMock).not.toHaveBeenCalled();
   });
 
@@ -3977,7 +5648,7 @@ describe("App", () => {
     proactiveCheckStore = {
       should_send: true,
       trigger_type: "repeated_death",
-      message: "你开始急了。",
+      message: "没关系吧？",
       reason: "death_delta=2",
       cooldown_remaining_seconds: 0,
       idle_for_seconds: 120,
@@ -4003,7 +5674,7 @@ describe("App", () => {
       await vi.advanceTimersByTimeAsync(30000);
     });
 
-    expect(screen.getByText("你开始急了。")).toBeInTheDocument();
+    expect(screen.getByText("没关系吧？")).toBeInTheDocument();
     expect(scrollToMock).toHaveBeenCalledWith(expect.objectContaining({ top: 1400, behavior: "smooth" }));
   });
 
@@ -4021,6 +5692,7 @@ describe("App", () => {
     const chatPanel = screen.getByRole("region", { name: "聊天面板" });
     await waitFor(() => expect(within(chatPanel).getAllByText("模型 API Key 未配置").length).toBeGreaterThan(0));
     expect(within(chatPanel).queryByText(/DeepSeek API key missing/)).not.toBeInTheDocument();
+    await openDebugWorkspace();
     expect(screen.getByText("原始 JSON").closest("details")).not.toHaveAttribute("open");
   });
 
@@ -4036,7 +5708,7 @@ describe("App", () => {
     proactiveCheckStore = {
       should_send: true,
       trigger_type: "repeated_death",
-      message: "你开始急了。",
+      message: "没关系吧？",
       reason: "death_delta=2",
       cooldown_remaining_seconds: 0,
       idle_for_seconds: 120,
@@ -4059,7 +5731,7 @@ describe("App", () => {
       await vi.advanceTimersByTimeAsync(30000);
     });
 
-    const proactiveMessage = screen.getByText("你开始急了。");
+    const proactiveMessage = screen.getByText("没关系吧？");
     const bubble = proactiveMessage.closest("article");
     expect(screen.getByText(/主动 · 反复死亡/)).toBeInTheDocument();
     expect(bubble).toHaveClass("messageBubble", "assistant", "proactive");
@@ -4069,7 +5741,7 @@ describe("App", () => {
         expect.objectContaining({
           type: "proactive_message_shown",
           trigger_type: "repeated_death",
-          text: "你开始急了。"
+          text: "没关系吧？"
         })
       ])
     );
@@ -4315,109 +5987,32 @@ describe("App", () => {
     expect(screen.getByRole("status", { name: "后端状态提示" })).toHaveTextContent("后端未连接");
   });
 
-  it("toggles debug panel", async () => {
+  it("opens Game, Debug, Prompt Preview, and Memory workspaces", async () => {
     render(<App />);
 
-    await screen.findByText("游戏状态");
+    await openGameWorkspace();
+    expect(await screen.findByRole("heading", { name: "游戏状态" })).toBeInTheDocument();
     expect(screen.getAllByText("当前游戏").length).toBeGreaterThan(0);
     expect(screen.getByText("当前 Boss")).toBeInTheDocument();
-    expect(screen.getByText("状态新鲜度")).toBeInTheDocument();
-    expect(screen.getByText("最近挑战")).toBeInTheDocument();
-    expect(screen.getByText("最近通过")).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText("语义识别")).toBeInTheDocument());
-    expect(screen.getByRole("heading", { name: "游戏上下文" })).toBeInTheDocument();
-    expect(screen.getAllByText("当前来源").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("上一个游戏").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("发生游戏切换").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("手动选择").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("自动检测结果").length).toBeGreaterThan(0);
-    expect(screen.getByText("对话识别结果")).toBeInTheDocument();
-    expect(screen.getAllByText("知识库状态").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("已支持").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("使用知识库").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument();
-    expect(screen.getAllByText("自动游戏检测").length).toBeGreaterThan(0);
-    expect(screen.getByText("检测状态")).toBeInTheDocument();
-    expect(screen.getByText("检测到的游戏")).toBeInTheDocument();
-    expect(screen.getByText("进程名")).toBeInTheDocument();
-    expect(screen.getByText("匹配置信度")).toBeInTheDocument();
-    expect(screen.getByText("知识库游戏 ID")).toBeInTheDocument();
-    expect(screen.getByText("检测时间")).toBeInTheDocument();
-    expect(screen.getAllByText("艾尔登法环").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "主动陪伴" })).toBeInTheDocument();
-    expect(screen.getAllByText("是否开启").length).toBeGreaterThan(0);
-    expect(screen.getByText("开启时间")).toBeInTheDocument();
-    expect(screen.getByText("最近用户活动")).toBeInTheDocument();
-    expect(screen.getByText("已空闲时间")).toBeInTheDocument();
-    expect(screen.getByText("空闲触发阈值")).toBeInTheDocument();
-    expect(screen.getByText("初始等待剩余")).toBeInTheDocument();
-    expect(screen.getByText("等待用户回应")).toBeInTheDocument();
-    expect(screen.getByText("下次可能触发")).toBeInTheDocument();
-    expect(screen.getByText("阻断原因")).toBeInTheDocument();
-    expect(screen.getByText("冷却剩余")).toBeInTheDocument();
-    expect(screen.getByText("上次触发类型")).toBeInTheDocument();
-    expect(screen.getByText("上次触发时间")).toBeInTheDocument();
-    expect(screen.getByText("候选触发器")).toBeInTheDocument();
-    expect(screen.getByText("上次触发原因")).toBeInTheDocument();
+    await openDebugWorkspace();
+    expect(await screen.findByRole("button", { name: /调试面板/i })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("LLM Primary Extraction")).toBeInTheDocument();
     expect(screen.getByText("模型路由")).toBeInTheDocument();
-    expect(screen.getAllByText("选用模型").length).toBeGreaterThan(0);
-    expect(screen.getByText("路由模式")).toBeInTheDocument();
-    expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
-    expect(screen.getByText("模型耗时")).toBeInTheDocument();
-    expect(screen.getByText("游戏知识")).toBeInTheDocument();
-    expect(screen.getAllByText("当前游戏 ID").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("当前来源").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识库状态").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("检索结果").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("未使用原因").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("已使用本地知识").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("相关主题").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("命中知识条数").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("命中的知识标题").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("已注入回复上下文").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("匹配来源").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识文件").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识包清单").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识包版本").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("语言").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("知识包状态").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("覆盖范围").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("最后更新").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("0.1.0").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("zh-CN").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("样例").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/恶兆妖鬼 Margit：延迟攻击/).length).toBeGreaterThan(0);
-    expect(screen.getByText("语义识别")).toBeInTheDocument();
-    expect(screen.getByText("是否调用 LLM")).toBeInTheDocument();
-    expect(screen.getAllByText(/攻略偏好/).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /回复上下文预览/i })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /回复上下文预览/i }));
-    await waitFor(() => expect(screen.getAllByText("人格模式").length).toBeGreaterThan(1));
-    expect(screen.getByText("上下文顺序")).toBeInTheDocument();
-    expect(screen.getAllByText("选用模型").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("路由原因").length).toBeGreaterThan(0);
-    expect(screen.getByText("当前用户消息")).toBeInTheDocument();
-    expect(screen.getByText("会话焦点")).toBeInTheDocument();
-    expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
-    expect(screen.getAllByText("知识命中").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("检索结果").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Boss 攻略").length).toBeGreaterThan(0);
-    expect(screen.getByText("记忆摘要")).toBeInTheDocument();
-    expect(screen.getByText("注入记忆")).toBeInTheDocument();
-    expect(screen.getByText("跳过记忆")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
-    expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "忽略" })).toBeInTheDocument();
-    expect(screen.getByText("警告")).toBeInTheDocument();
     expect(screen.getByText("原始 JSON")).toBeInTheDocument();
-    expect(screen.getByText("原始 JSON").closest("details")).not.toHaveAttribute("open");
-    await userEvent.click(screen.getByRole("button", { name: /调试面板/i }));
-    await waitFor(() => expect(screen.queryByText("语义识别")).not.toBeInTheDocument());
+
+    await openDebugWorkspace("Prompt Preview");
+    await userEvent.click(await screen.findByRole("button", { name: /回复上下文预览/i }));
+    expect(await screen.findByText("上下文顺序")).toBeInTheDocument();
+    expect(screen.getByText("游戏状态摘要")).toBeInTheDocument();
+    expect(screen.getByText("记忆摘要")).toBeInTheDocument();
+    expect(screen.getAllByText("记忆检索").length).toBeGreaterThan(0);
+    expect(screen.getByText(/已检索 1 .*省略 1/)).toBeInTheDocument();
+    expect(screen.getAllByText("玩家不喜欢长篇攻略").length).toBeGreaterThan(0);
+
+    await openMemoryWorkspace();
+    expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
+    expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
   });
 
   it("shows idle game detector state", async () => {
@@ -4458,6 +6053,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "游戏检测" })).toBeInTheDocument());
     expect(screen.getAllByText("未检测到游戏").length).toBeGreaterThan(0);
@@ -4504,11 +6100,13 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openSettingsWorkspace("应用");
 
     await waitFor(() => expect(screen.getAllByText("只狼").length).toBeGreaterThan(0));
     expect(screen.getAllByText("暂未支持").length).toBeGreaterThan(0);
     expect(screen.getByText("该游戏暂未接入本地知识库，Rei 会先根据通用模型回答。")).toBeInTheDocument();
     expect(screen.getAllByText("仅使用模型回答").length).toBeGreaterThan(0);
+    await openDebugWorkspace();
     expect(screen.getAllByText("未支持知识库").length).toBeGreaterThan(0);
     expect(screen.getAllByText("manifest 缺失").length).toBeGreaterThan(0);
     expect(screen.getAllByText("用户切换").length).toBeGreaterThan(0);
@@ -4555,6 +6153,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.getAllByText("空洞骑士").length).toBeGreaterThan(0));
     expect(screen.getAllByText("已支持").length).toBeGreaterThan(0);
@@ -4613,6 +6212,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace();
 
     await waitFor(() =>
       expect(screen.getAllByText("用户消息疑似切换游戏，但手动选择优先").length).toBeGreaterThan(0)
@@ -4660,6 +6260,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace();
 
     await waitFor(() => expect(screen.getAllByText("星之门遗迹").length).toBeGreaterThan(0));
     expect(screen.getAllByText("未接入知识库").length).toBeGreaterThan(0);
@@ -4710,6 +6311,7 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openDebugWorkspace("Prompt Preview");
     await userEvent.click(await screen.findByRole("button", { name: /回复上下文预览/i }));
 
     const gameStateSection = screen.getByText("游戏状态摘要").closest("section");
@@ -4724,6 +6326,7 @@ describe("App", () => {
 
   it("emits pending memory accept and ignore events from the memory panel", async () => {
     render(<App />);
+    await openMemoryWorkspace();
     await userEvent.click(await screen.findByRole("button", { name: "保存" }));
 
     await waitFor(() =>
@@ -4746,6 +6349,273 @@ describe("App", () => {
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "pending_memory_ignored", memory_id: "pending-1" })])
     );
+  });
+
+  it("shows the session archive tab in the Memory workspace header with empty-state controls", async () => {
+    sessionArchivesStore = [];
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.type(screen.getByLabelText("聊天输入"), "归档入口可见性草稿");
+
+    await openMemoryWorkspace();
+    const panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    const tabList = within(panel).getByRole("tablist", { name: "记忆 tabs" });
+    expect(within(tabList).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "待确认",
+      "已保存",
+      "最近会话",
+      "本地数据",
+      "候选记忆"
+    ]);
+
+    const archiveTab = within(tabList).getByRole("tab", { name: "最近会话" });
+    expect(archiveTab).toBeVisible();
+    await userEvent.click(archiveTab);
+    expect(archiveTab).toHaveAttribute("aria-selected", "true");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    expect(within(archivePanel).getByRole("heading", { name: "最近会话" })).toBeInTheDocument();
+    expect(within(archivePanel).getByText("暂无会话归档")).toBeInTheDocument();
+    expect(within(archivePanel).getByText(/不是长期记忆/)).toBeInTheDocument();
+    expect(within(archivePanel).getByRole("button", { name: "归档当前会话" })).toBeInTheDocument();
+    expect(within(archivePanel).getByRole("button", { name: "刷新" })).toBeInTheDocument();
+    expect(screen.queryByText(/sk-test-secret|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("归档入口可见性草稿");
+  });
+
+  it("renders session archive tab separately from saved memories without raw secrets", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    expect(within(archivePanel).getByRole("heading", { name: "最近会话" })).toBeInTheDocument();
+    await waitFor(() => expect(within(archivePanel).getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+    await waitFor(() => expect(within(archivePanel).getAllByText(/死亡次数更新：3/).length).toBeGreaterThan(0));
+    expect(within(archivePanel).getByText(/不是长期记忆/)).toBeInTheDocument();
+    expect(screen.queryByText(/sk-test-secret|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+
+    await openWorkspaceTab("已保存");
+    expect(await screen.findByRole("heading", { name: "已保存记忆" })).toBeInTheDocument();
+    expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "最近会话归档" })).not.toBeInTheDocument();
+
+    const chatInput = screen.getByLabelText("聊天输入");
+    await userEvent.type(chatInput, "归档不影响输入");
+    expect(chatInput).toHaveValue("归档不影响输入");
+  });
+
+  it("shows archive search controls without hiding archive actions", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    const searchForm = within(archivePanel).getByRole("search", { name: "搜索会话归档" });
+    expect(within(searchForm).getByLabelText("搜索会话归档关键词")).toHaveAttribute("placeholder", "搜索会话、游戏、Boss 或事件…");
+    expect(within(searchForm).getByLabelText("按游戏过滤会话归档")).toBeInTheDocument();
+    expect(within(searchForm).getByLabelText("按 Boss 或实体过滤会话归档")).toBeInTheDocument();
+    expect(within(searchForm).getByLabelText("按事件类型过滤会话归档")).toBeInTheDocument();
+    expect(within(searchForm).getByRole("button", { name: "搜索" })).toBeDisabled();
+    expect(within(archivePanel).getByRole("button", { name: "归档当前会话" })).toBeVisible();
+    expect(within(archivePanel).getByRole("button", { name: "刷新" })).toBeVisible();
+    expect(within(archivePanel).getByRole("button", { name: "从最近归档检查候选" })).toBeVisible();
+    expect(within(archivePanel).getByRole("button", { name: "清空归档" })).toBeVisible();
+    expect(screen.getByLabelText("聊天输入")).toBeVisible();
+  });
+
+  it("generates a pending memory candidate from a session archive scan", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    await waitFor(() => expect(within(archivePanel).getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+    await userEvent.click(within(archivePanel).getAllByRole("button", { name: "检查可保存偏好" })[0]);
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/archive-1/memory-candidates"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("生成 1 条待确认记忆")).toBeInTheDocument();
+    expect(within(archivePanel).getByRole("button", { name: "查看待确认记忆" })).toBeVisible();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "archive_memory_scan_started", archive_id: "archive-1" }),
+        expect.objectContaining({ type: "archive_memory_scan_completed", created_count: 1 }),
+        expect.objectContaining({ type: "archive_memory_candidate_created", memory_type: "gameplay_preference" })
+      ])
+    );
+
+    await userEvent.click(within(archivePanel).getByRole("button", { name: "查看待确认记忆" }));
+    expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
+    expect(screen.getByText("用户打 Boss 前偏好先探索地图，不喜欢直接硬打。")).toBeInTheDocument();
+    expect(screen.getByText("session_archive")).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toBeVisible();
+    expect(screen.queryByText(/sk-test-secret|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+  });
+
+  it("shows safe skipped feedback when archive scan finds no stable preference", async () => {
+    sessionArchiveScanMode = "empty";
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    await userEvent.click(within(archivePanel).getByRole("button", { name: "从最近归档检查候选" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/memory-candidates/scan-recent"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("没有发现值得保存的偏好：只是一局里的单次事件")).toBeInTheDocument();
+    expect(screen.queryByText("用户打 Boss 前偏好先探索地图，不喜欢直接硬打。")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toBeVisible();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "archive_memory_scan_started", mode: "recent_archives" }),
+        expect.objectContaining({ type: "archive_memory_candidate_skipped", guard_reason: "single_session_event_only" })
+      ])
+    );
+  });
+
+  it("searches session archives and displays safe summaries", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    const searchForm = within(archivePanel).getByRole("search", { name: "搜索会话归档" });
+    await userEvent.type(within(searchForm).getByLabelText("搜索会话归档关键词"), "死亡");
+    await userEvent.click(within(searchForm).getByRole("button", { name: "搜索" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/search?q=%E6%AD%BB%E4%BA%A1"),
+        expect.any(Object)
+      )
+    );
+    const results = await screen.findByLabelText("会话归档搜索结果");
+    expect(within(results).getByText("死亡次数更新：3")).toBeInTheDocument();
+    expect(within(results).getByText("关键词命中安全事件摘要")).toBeInTheDocument();
+    expect(within(results).getByText("1 个命中")).toBeInTheDocument();
+    expect(within(archivePanel).getByRole("button", { name: "归档当前会话" })).toBeVisible();
+    expect(within(archivePanel).getByRole("button", { name: "刷新" })).toBeVisible();
+    expect(screen.queryByText(/sk-test-secret|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "session_archive_search_started" }),
+        expect.objectContaining({ type: "session_archive_search_completed", result_count: 1 })
+      ])
+    );
+  });
+
+  it("shows empty archive search state and clears back to recent sessions", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    const searchForm = within(archivePanel).getByRole("search", { name: "搜索会话归档" });
+    await userEvent.type(within(searchForm).getByLabelText("搜索会话归档关键词"), "不存在的会话");
+    await userEvent.click(within(searchForm).getByRole("button", { name: "搜索" }));
+
+    const results = await screen.findByLabelText("会话归档搜索结果");
+    expect(within(results).getByText("没有找到匹配的会话归档。")).toBeInTheDocument();
+    await userEvent.click(within(searchForm).getByRole("button", { name: "清除搜索" }));
+
+    await waitFor(() => expect(screen.getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+    expect(screen.queryByLabelText("会话归档搜索结果")).not.toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "session_archive_search_cleared" })])
+    );
+  });
+
+  it("refreshes archive search results after deleting a result", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    const searchForm = within(archivePanel).getByRole("search", { name: "搜索会话归档" });
+    await userEvent.type(within(searchForm).getByLabelText("搜索会话归档关键词"), "死亡");
+    await userEvent.click(within(searchForm).getByRole("button", { name: "搜索" }));
+
+    const results = await screen.findByLabelText("会话归档搜索结果");
+    expect(within(results).getByText("死亡次数更新：3")).toBeInTheDocument();
+    await userEvent.click(within(results).getByRole("button", { name: /删除会话归档搜索结果/ }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/archive-1"),
+        expect.objectContaining({ method: "DELETE" })
+      )
+    );
+    await waitFor(() => expect(within(results).getByText("没有找到匹配的会话归档。")).toBeInTheDocument());
+    expect(within(results).queryByText("死亡次数更新：3")).not.toBeInTheDocument();
+  });
+
+  it("keeps the archive tab visible in a narrow memory workspace", async () => {
+    window.innerWidth = 520;
+    window.dispatchEvent(new Event("resize"));
+    render(<App />);
+    await openMemoryWorkspace();
+
+    const panel = await screen.findByRole("complementary", { name: "工作区面板" });
+    const archiveTab = within(panel).getByRole("tab", { name: "最近会话" });
+    expect(archiveTab).toBeVisible();
+    await userEvent.click(archiveTab);
+    expect(await screen.findByRole("search", { name: "搜索会话归档" })).toBeInTheDocument();
+  });
+
+  it("calls archive current session and shows skipped feedback for an empty timeline", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    await userEvent.click(await screen.findByRole("button", { name: "归档当前会话" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/archive-current"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("本局还没有可归档的关键变化。")).toBeInTheDocument();
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "session_archive_skipped" })])
+    );
+  });
+
+  it("deletes session archive entries from the archive tab", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+
+    const archivePanel = await screen.findByRole("region", { name: "最近会话归档" });
+    await waitFor(() => expect(within(archivePanel).getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+    await userEvent.click(within(archivePanel).getByRole("button", { name: /删除会话归档/ }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/archive-1"),
+        expect.objectContaining({ method: "DELETE" })
+      )
+    );
+    await waitFor(() => expect(screen.queryByText("艾尔登法环 / 恶兆妖鬼 Margit")).not.toBeInTheDocument());
+    expect(screen.getByText("暂无会话归档")).toBeInTheDocument();
+  });
+
+  it("clears session archive entries from the archive tab", async () => {
+    render(<App />);
+    await openMemoryWorkspace("最近会话");
+    await waitFor(() => expect(screen.getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
+
+    await userEvent.click(await screen.findByRole("button", { name: "清空归档" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/session-archives/clear"),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("已清空 1 条会话归档")).toBeInTheDocument();
+    expect(screen.getByText("暂无会话归档")).toBeInTheDocument();
   });
 
   it("shows empty pending memory state", async () => {
@@ -4784,12 +6654,14 @@ describe("App", () => {
     );
 
     render(<App />);
+    await openMemoryWorkspace();
     expect(await screen.findByText("暂无待确认记忆")).toBeInTheDocument();
   });
 
   it("calls debug reset and clear endpoints", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
+    await openDebugWorkspace();
     await screen.findByRole("button", { name: /调试面板/i });
     const debugActions = screen.getByRole("heading", { name: "调试操作" }).closest("section");
     expect(debugActions).not.toBeNull();

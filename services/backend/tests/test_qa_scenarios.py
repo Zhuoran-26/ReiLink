@@ -7,13 +7,36 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "retrieval_scenarios.json"
 VOICE_INPUT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_scenarios.json"
 VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_local_asr_scenarios.json"
+LLM_PRIMARY_GUARDED_EXTRACTION_SCENARIOS_PATH = (
+    REPO_ROOT / "docs" / "qa" / "llm_primary_guarded_extraction_scenarios.json"
+)
 OVERLAY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "overlay_scenarios.json"
+SESSION_TIMELINE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_timeline_scenarios.json"
+SESSION_ARCHIVE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_scenarios.json"
+SESSION_ARCHIVE_RUNTIME_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_runtime_scenarios.json"
+SESSION_ARCHIVE_SEARCH_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "session_archive_search_scenarios.json"
+ARCHIVE_TO_MEMORY_CANDIDATE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "archive_to_memory_candidate_scenarios.json"
+PERSONA_PACK_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_pack_scenarios.json"
+PERSONA_REGRESSION_CASES_PATH = REPO_ROOT / "docs" / "qa" / "persona_regression_cases.json"
+PERSONA_MEMORY_REGRESSION_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "persona_memory_regression_scenarios.json"
+EXTRACTION_EVAL_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "extraction_eval_scenarios.json"
+MEMORY_ARCHITECTURE_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "memory_architecture_scenarios.json"
+CANDIDATE_MEMORY_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "candidate_memory_scenarios.json"
+MEMORY_UX_V1_1_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "memory_ux_v1_1_scenarios.json"
+MEMORY_RETRIEVAL_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "memory_retrieval_scenarios.json"
 QA_DOC_PATH = REPO_ROOT / "docs" / "QA.md"
+SESSION_ARCHIVE_ARCHITECTURE_PATH = REPO_ROOT / "docs" / "session_archive_v1_architecture.md"
 README_PATH = REPO_ROOT / "README.md"
 README_EN_PATH = REPO_ROOT / "README.en.md"
 PROJECT_STATUS_PATH = REPO_ROOT / "docs" / "PROJECT_STATUS.md"
 LOCAL_ASR_MANUAL_SETUP_PATH = REPO_ROOT / "docs" / "local-asr-manual-setup.md"
 VOICE_MVP_RELEASE_NOTES_PATH = REPO_ROOT / "docs" / "release-notes" / "reilink-voice-mvp.md"
+CONTEXT_MEMORY_RELEASE_CHECKLIST_PATH = (
+    REPO_ROOT / "docs" / "release_context_memory_hardening_checklist.md"
+)
+CONTEXT_MEMORY_RELEASE_NOTES_PATH = (
+    REPO_ROOT / "docs" / "releases" / "reilink-v0.2-pre.4-context-memory.md"
+)
 ALLOWED_RETRIEVAL_STATUSES = {
     "used",
     "not_found",
@@ -75,6 +98,287 @@ ALLOWED_OVERLAY_STATUSES = {
     "overlay_visibility_suppressed",
     "overlay_events_safe",
 }
+ALLOWED_SESSION_TIMELINE_STATUSES = {
+    "timeline_empty",
+    "timeline_item_added",
+    "timeline_cleared",
+    "timeline_privacy_safe",
+    "timeline_limited",
+}
+ALLOWED_SESSION_ARCHIVE_STATUSES = {
+    "archive_deleted",
+    "archive_disabled",
+    "archived_safe_summary",
+    "blocked_raw_content",
+    "bridge_candidate_pending",
+    "bridge_no_candidate",
+    "export_placeholder",
+    "privacy_blocked",
+    "prompt_excluded",
+    "retention_expired",
+    "search_safe_result",
+}
+ALLOWED_SESSION_ARCHIVE_LAYERS = {
+    "assistant_source",
+    "bridge",
+    "debug",
+    "export",
+    "game_session_state",
+    "memory_event",
+    "overlay",
+    "persona_core",
+    "privacy_guard",
+    "proactive",
+    "prompt_assembly",
+    "retention",
+    "search",
+    "session_timeline",
+    "user_control",
+    "voice",
+}
+ALLOWED_SESSION_ARCHIVE_RUNTIME_STATUSES = {
+    "cleared",
+    "created",
+    "deleted",
+    "existing",
+    "listed",
+    "prompt_excluded",
+    "read",
+    "safe_event",
+    "skipped",
+    "skipped_or_sanitized",
+    "ui_rendered",
+}
+ALLOWED_SESSION_ARCHIVE_RUNTIME_LAYERS = {
+    "backend_api",
+    "debug_event",
+    "knowledge_boundary",
+    "memory_boundary",
+    "privacy_guard",
+    "prompt_boundary",
+    "renderer_ui",
+    "source_boundary",
+    "summary_builder",
+    "voice_boundary",
+}
+ALLOWED_SESSION_ARCHIVE_SEARCH_STATUSES = {
+    "candidate_blocked",
+    "deleted",
+    "deleted_excluded",
+    "empty_result",
+    "limited",
+    "memory_unchanged",
+    "prompt_excluded",
+    "recent_listed",
+    "sanitized",
+    "search_result",
+    "ui_cleared",
+    "ui_rendered",
+}
+ALLOWED_SESSION_ARCHIVE_SEARCH_LAYERS = {
+    "backend_api",
+    "debug_event",
+    "memory_boundary",
+    "packaged_smoke",
+    "privacy_guard",
+    "prompt_boundary",
+    "ranking",
+    "renderer_ui",
+    "search_filter",
+}
+ALLOWED_ARCHIVE_MEMORY_CANDIDATE_STATUSES = {
+    "accepted",
+    "deduplicated",
+    "ignored",
+    "memory_unchanged",
+    "no_candidate",
+    "packaged_smoke",
+    "pending",
+    "rejected_by_guard",
+    "ui_rendered",
+}
+ALLOWED_ARCHIVE_MEMORY_CANDIDATE_LAYERS = {
+    "backend_api",
+    "detector",
+    "guard",
+    "memory_accept_ignore",
+    "packaged_smoke",
+    "pending_memory_store",
+    "prompt_boundary",
+    "renderer_ui",
+    "search_boundary",
+}
+ALLOWED_ARCHIVE_MEMORY_CANDIDATE_GUARD_REASONS = {
+    "already_remembered",
+    "assistant_source_blocked",
+    "duplicate_candidate",
+    "no_recent_archives",
+    "none",
+    "persona_drift_blocked",
+    "proactive_source_blocked",
+    "requires_confirmation",
+    "sensitive_secret_blocked",
+    "single_emotional_state_only",
+    "single_session_event_only",
+}
+ALLOWED_PERSONA_PACK_STATUSES = {
+    "persona_pack_loaded",
+    "persona_pack_partial",
+    "persona_pack_fallback",
+    "persona_pack_privacy_safe",
+    "persona_pack_budgeted",
+    "persona_pack_original_ip_safe",
+    "persona_pack_chinese_first",
+    "persona_pack_cold_quiet",
+    "persona_pack_packaged",
+}
+ALLOWED_EXTRACTION_EVAL_DECISIONS = {
+    "apply",
+    "ask_clarification",
+    "candidate_only",
+    "no_op",
+    "fallback_to_rule",
+    "no_state_change",
+}
+ALLOWED_EXTRACTION_EVAL_INPUT_SOURCES = {"text", "voice_confirmed", "voice_direct"}
+ALLOWED_LLM_PRIMARY_DECISIONS = {
+    "apply",
+    "apply_if_grounding_high",
+    "ask_clarification",
+    "candidate_only",
+    "fallback_to_rule",
+    "no_op",
+    "ready_to_send",
+    "source_calibrated",
+}
+ALLOWED_LLM_PRIMARY_INPUT_SOURCES = {"text", "voice_confirmed", "voice_direct", "mixed"}
+ALLOWED_MEMORY_ARCHITECTURE_STATUSES = {
+    "accepted",
+    "auto_saved",
+    "candidate_pending",
+    "candidate_pending_silent",
+    "current_input_priority",
+    "debug_safe_summary",
+    "deduplicated",
+    "delete_requested",
+    "do_not_remember_recorded",
+    "expired",
+    "ignored",
+    "no_candidate",
+    "pending",
+    "rejected_by_guard",
+    "retrieved_bounded",
+    "retrieved_budgeted",
+    "session_state_only",
+    "workspace_visible",
+    "overlay_hidden",
+}
+ALLOWED_MEMORY_ARCHITECTURE_TYPES = {
+    "accessibility_preference",
+    "do_not_remember",
+    "emotional_pattern",
+    "gameplay_preference",
+    "interaction_preference",
+    "mixed",
+    "none",
+}
+ALLOWED_CANDIDATE_MEMORY_STATUSES = {
+    "auto_saved",
+    "pending",
+    "accepted",
+    "ignored",
+    "expired",
+    "rejected_by_guard",
+    "no_candidate",
+    "deduplicated",
+}
+ALLOWED_CANDIDATE_MEMORY_TYPES = {
+    "accessibility_preference",
+    "do_not_remember",
+    "emotional_pattern",
+    "gameplay_preference",
+    "interaction_preference",
+    "unknown",
+    "none",
+}
+ALLOWED_CANDIDATE_MEMORY_GUARD_REASONS = {
+    "allow_candidate",
+    "reject_candidate",
+    "ignore_no_memory_intent",
+    "requires_confirmation",
+    "explicit_user_memory_request",
+    "session_event_only",
+    "persona_drift_blocked",
+    "sensitive_secret_blocked",
+    "assistant_source_blocked",
+    "duplicate_candidate",
+    "do_not_remember",
+}
+ALLOWED_MEMORY_UX_V1_1_STATUSES = {
+    "accepted",
+    "auto_saved",
+    "deduplicated",
+    "expired",
+    "ignored",
+    "no_candidate",
+    "pending",
+    "rejected_by_guard",
+    "undone",
+}
+ALLOWED_MEMORY_UX_V1_1_TYPES = {
+    "accessibility_preference",
+    "do_not_remember",
+    "emotional_pattern",
+    "gameplay_preference",
+    "interaction_preference",
+    "mixed",
+    "none",
+    "unknown",
+}
+ALLOWED_MEMORY_RETRIEVAL_STATUSES = {
+    "retrieved",
+    "skipped",
+    "omitted",
+    "deduplicated",
+    "updated",
+    "no_active_memory",
+    "blocked",
+}
+ALLOWED_MEMORY_RETRIEVAL_TYPES = {
+    "accessibility_preference",
+    "do_not_remember",
+    "emotional_pattern",
+    "gameplay_preference",
+    "interaction_preference",
+    "mixed",
+    "none",
+    "unknown",
+}
+ALLOWED_PERSONA_MEMORY_STATUSES = {
+    "active",
+    "deleted",
+    "expired",
+    "ignored",
+    "pending",
+    "rejected",
+    "undone",
+}
+ALLOWED_PERSONA_MEMORY_TYPES = {
+    "accessibility_preference",
+    "emotional_pattern",
+    "gameplay_preference",
+    "interaction_preference",
+    "unknown",
+}
+ALLOWED_PERSONA_MEMORY_LIVE_SCORING_MODES = {
+    "semantic_relaxed",
+    "safety_boundary",
+}
+ALLOWED_PERSONA_MEMORY_HELPFULNESS_LEVELS = {
+    "low",
+    "medium",
+    "high",
+}
 
 
 def _load_scenarios() -> list[dict]:
@@ -101,8 +405,122 @@ def _load_voice_input_local_asr_scenarios() -> list[dict]:
     return data
 
 
+def _load_llm_primary_guarded_extraction_scenarios() -> list[dict]:
+    data = json.loads(
+        LLM_PRIMARY_GUARDED_EXTRACTION_SCENARIOS_PATH.read_text(encoding="utf-8")
+    )
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
 def _load_overlay_scenarios() -> list[dict]:
     data = json.loads(OVERLAY_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_session_timeline_scenarios() -> list[dict]:
+    data = json.loads(SESSION_TIMELINE_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_session_archive_scenarios() -> list[dict]:
+    data = json.loads(SESSION_ARCHIVE_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_session_archive_runtime_scenarios() -> list[dict]:
+    data = json.loads(SESSION_ARCHIVE_RUNTIME_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_session_archive_search_scenarios() -> list[dict]:
+    data = json.loads(SESSION_ARCHIVE_SEARCH_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_archive_to_memory_candidate_scenarios() -> list[dict]:
+    data = json.loads(ARCHIVE_TO_MEMORY_CANDIDATE_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_persona_pack_scenarios() -> list[dict]:
+    data = json.loads(PERSONA_PACK_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_persona_regression_cases() -> list[dict]:
+    data = json.loads(PERSONA_REGRESSION_CASES_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_persona_memory_regression_scenarios() -> list[dict]:
+    data = json.loads(PERSONA_MEMORY_REGRESSION_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_extraction_eval_scenarios() -> list[dict]:
+    data = json.loads(EXTRACTION_EVAL_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_memory_architecture_scenarios() -> list[dict]:
+    data = json.loads(MEMORY_ARCHITECTURE_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_candidate_memory_scenarios() -> list[dict]:
+    data = json.loads(CANDIDATE_MEMORY_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_memory_ux_v1_1_scenarios() -> list[dict]:
+    data = json.loads(MEMORY_UX_V1_1_SCENARIOS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(data, list)
+    assert data
+    assert all(isinstance(item, dict) for item in data)
+    return data
+
+
+def _load_memory_retrieval_scenarios() -> list[dict]:
+    data = json.loads(MEMORY_RETRIEVAL_SCENARIOS_PATH.read_text(encoding="utf-8"))
     assert isinstance(data, list)
     assert data
     assert all(isinstance(item, dict) for item in data)
@@ -127,10 +545,106 @@ def test_voice_input_local_asr_scenarios_file_is_valid_json():
     assert len(scenarios) >= 12
 
 
+def test_llm_primary_guarded_extraction_scenarios_file_is_valid_json():
+    scenarios = _load_llm_primary_guarded_extraction_scenarios()
+
+    assert len(scenarios) >= 30
+
+
 def test_overlay_scenarios_file_is_valid_json():
     scenarios = _load_overlay_scenarios()
 
     assert len(scenarios) >= 8
+
+
+def test_session_timeline_scenarios_file_is_valid_json():
+    scenarios = _load_session_timeline_scenarios()
+
+    assert len(scenarios) >= 8
+
+
+def test_session_archive_scenarios_file_is_valid_json():
+    scenarios = _load_session_archive_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+
+
+def test_session_archive_runtime_scenarios_file_is_valid_json():
+    scenarios = _load_session_archive_runtime_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+
+
+def test_session_archive_search_scenarios_file_is_valid_json():
+    scenarios = _load_session_archive_search_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+
+
+def test_archive_to_memory_candidate_scenarios_file_is_valid_json():
+    scenarios = _load_archive_to_memory_candidate_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+
+
+def test_persona_pack_scenarios_file_is_valid_json():
+    scenarios = _load_persona_pack_scenarios()
+
+    assert len(scenarios) >= 7
+
+
+def test_persona_regression_cases_file_is_valid_json():
+    cases = _load_persona_regression_cases()
+
+    assert len(cases) >= 5
+
+
+def test_persona_memory_regression_scenarios_file_is_valid_json():
+    scenarios = _load_persona_memory_regression_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+    for item in scenarios:
+        assert item.get("live_scoring_mode") in ALLOWED_PERSONA_MEMORY_LIVE_SCORING_MODES
+        assert item.get("min_helpfulness_level") in ALLOWED_PERSONA_MEMORY_HELPFULNESS_LEVELS
+        assert isinstance(item.get("semantic_expectations"), list)
+        assert all(
+            isinstance(expectation, str) and expectation
+            for expectation in item["semantic_expectations"]
+        )
+        assert isinstance(item.get("suggested_markers"), list)
+        assert all(isinstance(marker, str) and marker for marker in item["suggested_markers"])
+        assert isinstance(item.get("hard_required_terms"), list)
+        assert all(isinstance(term, str) and term for term in item["hard_required_terms"])
+
+
+def test_extraction_eval_scenarios_file_is_valid_json():
+    scenarios = _load_extraction_eval_scenarios()
+
+    assert 15 <= len(scenarios) <= 30
+
+
+def test_memory_architecture_scenarios_file_is_valid_json():
+    scenarios = _load_memory_architecture_scenarios()
+
+    assert 15 <= len(scenarios) <= 25
+
+
+def test_candidate_memory_scenarios_file_is_valid_json():
+    scenarios = _load_candidate_memory_scenarios()
+
+    assert 10 <= len(scenarios) <= 20
+
+
+def test_memory_ux_v1_1_scenarios_file_is_valid_json():
+    scenarios = _load_memory_ux_v1_1_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
+
+
+def test_memory_retrieval_scenarios_file_is_valid_json():
+    scenarios = _load_memory_retrieval_scenarios()
+
+    assert 20 <= len(scenarios) <= 30
 
 
 def test_qa_scenario_ids_are_unique_and_categories_are_present():
@@ -138,7 +652,21 @@ def test_qa_scenario_ids_are_unique_and_categories_are_present():
         *_load_scenarios(),
         *_load_voice_input_scenarios(),
         *_load_voice_input_local_asr_scenarios(),
+        *_load_llm_primary_guarded_extraction_scenarios(),
         *_load_overlay_scenarios(),
+        *_load_session_timeline_scenarios(),
+        *_load_session_archive_scenarios(),
+        *_load_session_archive_runtime_scenarios(),
+        *_load_session_archive_search_scenarios(),
+        *_load_archive_to_memory_candidate_scenarios(),
+        *_load_persona_pack_scenarios(),
+        *_load_persona_regression_cases(),
+        *_load_persona_memory_regression_scenarios(),
+        *_load_extraction_eval_scenarios(),
+        *_load_memory_architecture_scenarios(),
+        *_load_candidate_memory_scenarios(),
+        *_load_memory_ux_v1_1_scenarios(),
+        *_load_memory_retrieval_scenarios(),
     ]
     ids = [item.get("id") for item in scenarios]
 
@@ -175,11 +703,286 @@ def test_forbidden_terms_are_arrays_when_present():
         *_load_scenarios(),
         *_load_voice_input_scenarios(),
         *_load_voice_input_local_asr_scenarios(),
+        *_load_llm_primary_guarded_extraction_scenarios(),
         *_load_overlay_scenarios(),
+        *_load_session_timeline_scenarios(),
+        *_load_session_archive_scenarios(),
+        *_load_session_archive_runtime_scenarios(),
+        *_load_session_archive_search_scenarios(),
+        *_load_archive_to_memory_candidate_scenarios(),
+        *_load_persona_pack_scenarios(),
+        *_load_persona_regression_cases(),
+        *_load_persona_memory_regression_scenarios(),
+        *_load_extraction_eval_scenarios(),
+        *_load_memory_architecture_scenarios(),
+        *_load_candidate_memory_scenarios(),
+        *_load_memory_ux_v1_1_scenarios(),
+        *_load_memory_retrieval_scenarios(),
     ]:
         forbidden_terms = item.get("forbidden_terms", [])
         assert isinstance(forbidden_terms, list)
         assert all(isinstance(term, str) and term for term in forbidden_terms)
+
+
+def test_llm_primary_guarded_extraction_scenarios_have_required_fields():
+    scenarios = _load_llm_primary_guarded_extraction_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "llm-primary-typed-current-boss-margit",
+        "llm-primary-v101-switch-negation-malenia-to-margit",
+        "llm-primary-v101-guide-only-margit-no-switch",
+        "llm-primary-voice-direct-asr-near-miss-margit",
+        "llm-primary-memory-candidate-hint-safe",
+        "llm-primary-proactive-not-triggered",
+        "llm-primary-trace-privacy",
+        "llm-primary-event-stream-safe-summary",
+        "llm-primary-v1-0-2-json-recovery",
+        "llm-primary-v1-0-2-fallback-trace-explicit",
+    } <= ids
+    assert {"text", "voice_confirmed", "voice_direct", "mixed"} <= {
+        item.get("input_source") for item in scenarios
+    }
+    for item in scenarios:
+        assert item.get("category") in {
+            "llm_primary_guarded_extraction",
+            "llm_primary_guarded_extraction_v1_0_1",
+            "voice_direct_partial_guard",
+            "llm_primary_guarded_extraction_memory_boundary",
+            "llm_primary_guarded_extraction_proactive_boundary",
+            "llm_primary_guarded_extraction_trace",
+            "llm_primary_guarded_extraction_source",
+            "llm_primary_guarded_extraction_confidence",
+            "llm_primary_guarded_extraction_shadow_boundary",
+            "llm_primary_guarded_extraction_game_workspace",
+            "llm_primary_guarded_extraction_regression",
+            "llm_primary_guarded_extraction_schema",
+            "llm_primary_guarded_extraction_json_recovery",
+        }
+        assert item.get("input_source") in ALLOWED_LLM_PRIMARY_INPUT_SOURCES
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert isinstance(item.get("must_not_do", []), list)
+        assert all(isinstance(term, str) and term for term in item.get("must_not_do", []))
+        assert isinstance(item.get("forbidden_trace_content", []), list)
+        assert all(
+            isinstance(term, str) and term for term in item.get("forbidden_trace_content", [])
+        )
+        if "expected_decision" in item:
+            assert item["expected_decision"] in ALLOWED_LLM_PRIMARY_DECISIONS
+        else:
+            assert isinstance(item.get("expected_trace_fields"), list) and item["expected_trace_fields"]
+        assert all(
+            decision in ALLOWED_LLM_PRIMARY_DECISIONS
+            for decision in item.get("acceptable_decisions", [])
+        )
+        if "expected_candidate" in item:
+            assert isinstance(item["expected_candidate"], dict)
+        if "expected_trace_fields" in item:
+            assert isinstance(item["expected_trace_fields"], list)
+            assert all(
+                isinstance(field, str) and field for field in item["expected_trace_fields"]
+            )
+
+
+def test_extraction_eval_scenarios_have_required_fields():
+    scenarios = _load_extraction_eval_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "extraction-eval-text-boss-set-margit",
+        "extraction-eval-text-boss-switch-to-margit",
+        "extraction-eval-text-negation-switch-to-malenia",
+        "extraction-eval-text-guide-only-margit-no-switch",
+        "extraction-eval-text-death-absolute-three",
+        "extraction-eval-text-death-increment-two",
+        "extraction-eval-text-death-not-cleared-tree-sentinel",
+        "extraction-eval-text-boss-cleared-malenia",
+        "extraction-eval-memory-intent-boundary",
+        "extraction-eval-negative-memory-no-pending",
+        "extraction-eval-voice-confirmed-margit-asr-variant",
+        "extraction-eval-voice-direct-negation-switch-to-malenia",
+        "extraction-eval-voice-direct-uncertain-guide-candidate-only",
+        "extraction-eval-invalid-json-rule-fallback",
+        "extraction-eval-schema-invalid-no-op",
+        "extraction-eval-compat-retry-success",
+        "extraction-eval-ultra-compact-retry-success",
+        "extraction-eval-descriptive-failure-current-context-applies",
+        "extraction-eval-uncertain-confirmation-keeps-candidate",
+        "extraction-eval-weak-confirmation-keeps-candidate",
+        "extraction-eval-clear-confirm-trace-only",
+        "extraction-eval-correction-replaces-old-candidate",
+        "extraction-eval-harmless-game-context-not-risky",
+    } <= ids
+    assert {"text", "voice_confirmed", "voice_direct"} <= {item.get("input_source") for item in scenarios}
+    for item in scenarios:
+        assert item.get("category") == "extraction_eval"
+        assert item.get("input_source") in ALLOWED_EXTRACTION_EVAL_INPUT_SOURCES
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert isinstance(item.get("expected"), dict)
+        expected = item["expected"]
+        assert expected.get("decision") in ALLOWED_EXTRACTION_EVAL_DECISIONS
+        assert all(
+            decision in ALLOWED_EXTRACTION_EVAL_DECISIONS
+            for decision in expected.get("acceptable_decisions", [])
+        )
+        assert "mock_primary" in item or "mock_primary_sequence" in item
+
+
+def test_memory_architecture_scenarios_have_required_fields():
+    scenarios = _load_memory_architecture_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "memory-architecture-explicit-gameplay-preference",
+        "memory-architecture-explicit-do-not-remember",
+        "memory-architecture-one-off-death-not-long-term",
+        "memory-architecture-spoiler-preference",
+        "memory-architecture-short-reply-preference",
+        "memory-architecture-persona-drift-sajiao-rejected",
+        "memory-architecture-delete-memory-request",
+        "memory-architecture-accept-pending-memory",
+        "memory-architecture-ignore-pending-memory",
+        "memory-architecture-weak-confirmation-keeps-pending",
+        "memory-architecture-voice-memory-intent-candidate",
+        "memory-architecture-proactive-does-not-write-memory",
+        "memory-architecture-assistant-reply-not-memory-source",
+        "memory-architecture-game-knowledge-not-user-memory",
+        "memory-architecture-retrieved-memory-persona-core-priority",
+        "memory-architecture-retrieval-token-budget",
+        "memory-architecture-current-input-beats-stale-memory",
+        "memory-architecture-secret-rejected",
+        "memory-architecture-do-not-remember-suppresses-future",
+        "memory-architecture-candidate-expiry",
+        "memory-architecture-duplicate-candidate-merge",
+        "memory-architecture-memory-workspace-visible-delete",
+        "memory-architecture-direct-conversation-low-interruption",
+        "memory-architecture-overlay-hides-sensitive-memory",
+        "memory-architecture-debug-safe-summary-only",
+    } <= ids
+    for item in scenarios:
+        assert item.get("category") == "memory_architecture"
+        assert isinstance(item.get("layer"), str) and item["layer"]
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert item.get("expected_status") in ALLOWED_MEMORY_ARCHITECTURE_STATUSES
+        assert item.get("expected_type") in ALLOWED_MEMORY_ARCHITECTURE_TYPES
+        assert isinstance(item.get("requires_confirmation"), bool)
+        assert isinstance(item.get("should_write_long_term_memory"), bool)
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+
+
+def test_candidate_memory_scenarios_have_required_fields():
+    scenarios = _load_candidate_memory_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "candidate-memory-explicit-gameplay-auto-save",
+        "candidate-memory-do-not-remember-rejected",
+        "candidate-memory-session-death-no-candidate",
+        "candidate-memory-short-reply-pending",
+        "candidate-memory-spoiler-pending",
+        "candidate-memory-persona-drift-rejected",
+        "candidate-memory-secret-rejected-no-leak",
+        "candidate-memory-voice-direct-explicit-auto-save",
+        "candidate-memory-accept-long-term",
+        "candidate-memory-ignore-no-long-term",
+        "candidate-memory-duplicate-deduped",
+        "candidate-memory-assistant-source-blocked",
+    } <= ids
+    for item in scenarios:
+        assert item.get("category") == "candidate_memory"
+        assert item.get("input_source") in {"text", "voice_confirmed", "voice_direct", "assistant", "proactive"}
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert item.get("expected_status") in ALLOWED_CANDIDATE_MEMORY_STATUSES
+        assert item.get("expected_type") in ALLOWED_CANDIDATE_MEMORY_TYPES
+        assert item.get("guard_reason") in ALLOWED_CANDIDATE_MEMORY_GUARD_REASONS
+        assert isinstance(item.get("requires_confirmation"), bool)
+        assert isinstance(item.get("should_write_long_term_memory"), bool)
+        assert isinstance(item.get("should_show_pending_ui"), bool)
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+
+
+def test_memory_ux_v1_1_scenarios_have_required_fields():
+    scenarios = _load_memory_ux_v1_1_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "memory-ux-v1-1-explicit-remember-auto-save",
+        "memory-ux-v1-1-explicit-memory-updated-hint",
+        "memory-ux-v1-1-explicit-undo",
+        "memory-ux-v1-1-safe-rei-acknowledgement",
+        "memory-ux-v1-1-explicit-do-not-remember",
+        "memory-ux-v1-1-implicit-preference-pending",
+        "memory-ux-v1-1-implicit-pending-chat-hint",
+        "memory-ux-v1-1-pending-not-in-prompt",
+        "memory-ux-v1-1-weak-emotion-no-memory",
+        "memory-ux-v1-1-session-event-no-memory",
+        "memory-ux-v1-1-persona-drift-rejected",
+        "memory-ux-v1-1-sensitive-secret-rejected",
+        "memory-ux-v1-1-voice-direct-explicit",
+        "memory-ux-v1-1-voice-direct-implicit",
+        "memory-ux-v1-1-assistant-source-blocked",
+        "memory-ux-v1-1-proactive-source-blocked",
+        "memory-ux-v1-1-duplicate-explicit-deduped",
+        "memory-ux-v1-1-multiple-pending-count",
+        "memory-ux-v1-1-accept-pending-count-decreases",
+        "memory-ux-v1-1-ignore-pending-count-decreases",
+        "memory-ux-v1-1-expired-pending-hidden",
+        "memory-ux-v1-1-auto-saved-visible-in-saved-tab",
+        "memory-ux-v1-1-undone-memory-inactive",
+        "memory-ux-v1-1-persona-core-priority",
+        "memory-ux-v1-1-llm-check-implicit-no-explicit-rule",
+        "memory-ux-v1-1-rule-prefilter-not-overstrong",
+        "memory-ux-v1-1-short-unrelated-skips-llm",
+        "memory-ux-v1-1-safe-event-no-secret-leak",
+        "memory-ux-v1-1-direct-conversation-no-modal",
+        "memory-ux-v1-1-no-vector-or-external-provider",
+    } <= ids
+    for item in scenarios:
+        assert item.get("category") == "memory_ux_v1_1"
+        assert item.get("input_source") in {"text", "voice_confirmed", "voice_direct", "assistant", "proactive"}
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert item.get("expected_status") in ALLOWED_MEMORY_UX_V1_1_STATUSES
+        assert item.get("expected_type") in ALLOWED_MEMORY_UX_V1_1_TYPES
+        assert item.get("guard_reason") in ALLOWED_CANDIDATE_MEMORY_GUARD_REASONS
+        assert isinstance(item.get("explicit_user_request"), bool)
+        assert isinstance(item.get("should_write_long_term_memory"), bool)
+        assert isinstance(item.get("should_show_pending_ui"), bool)
+        assert isinstance(item.get("undo_available"), bool)
+        assert isinstance(item.get("should_inject_prompt"), bool)
+        assert item.get("safe_trace_only") is True
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+
+
+def test_memory_retrieval_scenarios_have_required_fields():
+    scenarios = _load_memory_retrieval_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "memory-retrieval-gameplay-boss-relevant",
+        "memory-retrieval-interaction-general-short",
+        "memory-retrieval-spoiler-guide-boundary",
+        "memory-retrieval-pending-not-injected",
+        "memory-retrieval-ignored-not-injected",
+        "memory-retrieval-rejected-not-injected",
+        "memory-retrieval-expired-not-injected",
+        "memory-retrieval-inactive-not-injected",
+        "memory-retrieval-secret-blocked",
+        "memory-retrieval-use-count-updated",
+        "memory-retrieval-prompt-preview-safe",
+        "memory-retrieval-natural-reply-no-remembered",
+    } <= ids
+    for item in scenarios:
+        assert item.get("category") == "memory_retrieval"
+        assert item.get("input_source") in {"text", "voice_confirmed", "voice_direct"}
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert item.get("expected_status") in ALLOWED_MEMORY_RETRIEVAL_STATUSES
+        assert item.get("expected_type") in ALLOWED_MEMORY_RETRIEVAL_TYPES
+        assert isinstance(item.get("should_inject_prompt"), bool)
+        assert isinstance(item.get("should_update_usage"), bool)
+        assert item.get("safe_trace_only") is True
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
 
 
 def test_voice_input_scenarios_have_required_fields():
@@ -363,6 +1166,426 @@ def test_overlay_scenarios_have_required_fields():
         assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
 
 
+def test_session_timeline_scenarios_have_required_fields():
+    scenarios = _load_session_timeline_scenarios()
+
+    assert {
+        "session-timeline-default-empty",
+        "session-timeline-game-context",
+        "session-timeline-game-session-deltas",
+        "session-timeline-manual-acceptance-death-counts",
+        "session-timeline-passive-death-not-cleared",
+        "session-timeline-game-switch-hollow-knight-false-knight",
+        "session-timeline-frustration-eased",
+        "session-timeline-explicit-memory-trigger",
+        "session-timeline-cleared-boss-strategy-followup",
+        "session-timeline-knowledge-used-safe",
+        "session-timeline-proactive-safe",
+        "session-timeline-proactive-safe-gating",
+        "session-timeline-semantic-trace-safe",
+        "session-timeline-semantic-low-confidence-observable",
+        "session-timeline-semantic-low-confidence-not-hardcoded",
+        "session-timeline-semantic-shadow-candidate-not-applied",
+        "session-timeline-semantic-shadow-provider-unavailable",
+        "session-timeline-semantic-shadow-real-provider-diagnostics",
+        "session-timeline-semantic-shadow-background-final-event",
+        "session-timeline-semantic-shadow-invalid-json-safe",
+        "session-timeline-memory-actions-safe",
+        "session-timeline-clear-current-session",
+        "session-timeline-limit-and-sanitize",
+        "session-timeline-packaged-smoke",
+    } <= {item.get("id") for item in scenarios}
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "raw prompt",
+        "raw JSON",
+        "full user message",
+        "full assistant reply",
+        "full transcript",
+        "raw stdout",
+        "raw stderr",
+        "full local path",
+    }
+    for item in scenarios:
+        assert item.get("category") in {
+            "session_timeline",
+            "session_timeline_privacy",
+            "session_timeline_packaged",
+        }
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert item.get("expected_status") in ALLOWED_SESSION_TIMELINE_STATUSES
+        assert item.get("should_store_full_text") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
+def test_session_archive_scenarios_have_required_fields():
+    scenarios = _load_session_archive_scenarios()
+
+    assert {
+        "session-archive-timeline-event-safe-summary",
+        "session-archive-raw-prompt-blocked",
+        "session-archive-raw-json-blocked",
+        "session-archive-secret-blocked",
+        "session-archive-full-voice-transcript-blocked",
+        "session-archive-game-context-summary",
+        "session-archive-boss-death-summary",
+        "session-archive-boss-cleared-summary",
+        "session-archive-memory-accepted-event",
+        "session-archive-memory-rejected-secret-blocked",
+        "session-archive-proactive-not-user-fact",
+        "session-archive-assistant-reply-not-user-fact",
+        "session-archive-default-excluded-from-prompt",
+        "session-archive-not-long-term-memory",
+        "session-archive-candidate-requires-confirmation",
+        "session-archive-repeated-preference-candidate",
+        "session-archive-single-death-no-candidate",
+        "session-archive-search-by-game-safe",
+        "session-archive-search-by-boss-safe",
+        "session-archive-search-result-no-raw-transcript",
+        "session-archive-user-delete-session",
+        "session-archive-user-disable",
+        "session-archive-direct-voice-no-full-transcript",
+        "session-archive-overlay-sensitive-hidden",
+        "session-archive-debug-safe-summary-only",
+        "session-archive-retention-expires-old",
+        "session-archive-export-placeholder",
+        "session-archive-current-input-priority-over-retrieval",
+        "session-archive-persona-core-priority",
+        "session-archive-privacy-level-blocks-retrieval",
+    } <= {item.get("id") for item in scenarios}
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "API key",
+        "raw prompt",
+        "raw JSON",
+        "raw model response",
+        "full transcript",
+        "raw chat transcript",
+        "full local path",
+        "stdout",
+        "stderr",
+        "secret",
+    }
+    for item in scenarios:
+        assert item.get("category") == "session_archive"
+        assert item.get("layer") in ALLOWED_SESSION_ARCHIVE_LAYERS
+        assert isinstance(item.get("source"), str) and item["source"]
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert item.get("expected_status") in ALLOWED_SESSION_ARCHIVE_STATUSES
+        assert isinstance(item.get("should_persist_archive"), bool)
+        assert item.get("should_store_raw_content") is False
+        assert item.get("should_enter_prompt") is False
+        assert item.get("should_write_long_term_memory") is False
+        assert isinstance(item.get("can_generate_memory_candidate"), bool)
+        assert isinstance(item.get("requires_user_confirmation"), bool)
+        if item["can_generate_memory_candidate"]:
+            assert item["requires_user_confirmation"] is True
+            assert item["expected_status"] == "bridge_candidate_pending"
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
+def test_session_archive_runtime_scenarios_have_required_fields():
+    scenarios = _load_session_archive_runtime_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "session-archive-runtime-manual-archive-current",
+        "session-archive-runtime-game-boss-death-summary",
+        "session-archive-runtime-memory-accepted-summary",
+        "session-archive-runtime-raw-prompt-excluded",
+        "session-archive-runtime-voice-transcript-excluded",
+        "session-archive-runtime-list-archives",
+        "session-archive-runtime-read-detail",
+        "session-archive-runtime-delete-one",
+        "session-archive-runtime-clear-all",
+        "session-archive-runtime-clear-does-not-delete-memory",
+        "session-archive-runtime-not-prompt-memory-block",
+        "session-archive-runtime-no-archive-to-memory-candidate",
+        "session-archive-runtime-repeated-archive-idempotent",
+        "session-archive-runtime-empty-timeline-skipped",
+        "session-archive-runtime-ui-tab-renders",
+        "session-archive-runtime-ui-saved-memory-distinct",
+    } <= ids
+    for item in scenarios:
+        assert item.get("category") == "session_archive_runtime"
+        assert item.get("layer") in ALLOWED_SESSION_ARCHIVE_RUNTIME_LAYERS
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert isinstance(item.get("action"), str) and item["action"]
+        assert item.get("expected_status") in ALLOWED_SESSION_ARCHIVE_RUNTIME_STATUSES
+        assert isinstance(item.get("should_persist_archive"), bool)
+        assert item.get("should_store_raw_content") is False
+        assert item.get("should_enter_prompt") is False
+        assert item.get("should_write_long_term_memory") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+
+
+def test_session_archive_search_scenarios_have_required_fields():
+    scenarios = _load_session_archive_search_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "session-archive-search-keyword-safe-summary",
+        "session-archive-search-chinese-contains",
+        "session-archive-search-game-filter",
+        "session-archive-search-boss-filter",
+        "session-archive-search-event-type-filter",
+        "session-archive-search-combined-filters",
+        "session-archive-search-limit-omitted-count",
+        "session-archive-search-deleted-excluded",
+        "session-archive-search-empty-result",
+        "session-archive-search-raw-prompt-excluded",
+        "session-archive-search-secret-query-redacted",
+        "session-archive-search-not-prompt-memory-block",
+        "session-archive-search-no-memory-candidate",
+        "session-archive-search-ui-input-visible",
+        "session-archive-search-ui-delete-updates-results",
+        "session-archive-search-packaged-smoke",
+    } <= ids
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "API key",
+        "raw prompt",
+        "raw JSON",
+        "raw model response",
+        "full transcript",
+        "raw chat transcript",
+        "full local path",
+        "stdout",
+        "stderr",
+        "secret",
+    }
+    for item in scenarios:
+        assert item.get("category") == "session_archive_search"
+        assert item.get("layer") in ALLOWED_SESSION_ARCHIVE_SEARCH_LAYERS
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert isinstance(item.get("action"), str) and item["action"]
+        assert item.get("expected_status") in ALLOWED_SESSION_ARCHIVE_SEARCH_STATUSES
+        assert item.get("should_return_raw_content") is False
+        assert item.get("should_enter_prompt") is False
+        assert item.get("should_write_long_term_memory") is False
+        assert item.get("should_generate_memory_candidate") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
+def test_archive_to_memory_candidate_scenarios_have_required_fields():
+    scenarios = _load_archive_to_memory_candidate_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "archive-memory-single-explicit-gameplay-pending",
+        "archive-memory-repeated-gameplay-recent-pending",
+        "archive-memory-single-death-no-candidate",
+        "archive-memory-single-emotion-no-candidate",
+        "archive-memory-assistant-source-blocked",
+        "archive-memory-secret-blocked",
+        "archive-memory-duplicate-pending-deduped",
+        "archive-memory-accept-writes-long-term",
+        "archive-memory-ignore-no-long-term",
+        "archive-memory-search-no-auto-candidate",
+        "archive-memory-renderer-scan-button-visible",
+        "archive-memory-packaged-smoke",
+    } <= ids
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "API key",
+        "raw prompt",
+        "raw JSON",
+        "raw model response",
+        "full transcript",
+        "raw chat transcript",
+        "full local path",
+        "stdout",
+        "stderr",
+        "secret",
+    }
+    for item in scenarios:
+        assert item.get("category") == "archive_to_memory_candidate"
+        assert item.get("layer") in ALLOWED_ARCHIVE_MEMORY_CANDIDATE_LAYERS
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert isinstance(item.get("action"), str) and item["action"]
+        assert item.get("expected_status") in ALLOWED_ARCHIVE_MEMORY_CANDIDATE_STATUSES
+        assert item.get("expected_type") in ALLOWED_CANDIDATE_MEMORY_TYPES
+        assert item.get("guard_reason") in ALLOWED_ARCHIVE_MEMORY_CANDIDATE_GUARD_REASONS
+        assert isinstance(item.get("requires_confirmation"), bool)
+        assert isinstance(item.get("should_create_pending_candidate"), bool)
+        assert isinstance(item.get("should_write_long_term_memory"), bool)
+        assert item.get("should_enter_prompt") is False
+        assert item.get("should_use_raw_archive_content") is False
+        assert item.get("should_auto_create_from_search") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
+def test_persona_pack_scenarios_have_required_fields():
+    scenarios = _load_persona_pack_scenarios()
+
+    assert {
+        "persona-pack-loads-complete",
+        "persona-pack-missing-file-fallback",
+        "persona-pack-invalid-version-json",
+        "persona-pack-chat-uses-structured-prompt",
+        "persona-pack-debug-preview-safe",
+        "persona-pack-prompt-budget",
+        "persona-pack-chinese-first-runtime",
+        "persona-pack-cold-quiet-calibration",
+        "persona-pack-narrow-expression-no-repeat",
+        "persona-pack-original-ip-boundary",
+        "persona-pack-memory-boundary",
+        "persona-pack-proactive-shadow-boundary",
+        "persona-pack-packaged-backend-resource",
+        "persona-pack-packaged-smoke",
+    } <= {item.get("id") for item in scenarios}
+    required_forbidden_terms = {
+        ".env",
+        "Authorization",
+        "api_key",
+        "raw prompt",
+        "raw JSON",
+        "full user message",
+        "full assistant reply",
+        "full local path",
+        "raw stdout",
+        "raw stderr",
+    }
+    for item in scenarios:
+        assert item.get("category") in {
+            "persona_pack",
+            "persona_pack_privacy",
+            "persona_pack_packaged",
+        }
+        assert isinstance(item.get("precondition"), str) and item["precondition"]
+        assert item.get("expected_status") in ALLOWED_PERSONA_PACK_STATUSES
+        assert item.get("should_show_full_prompt") is False
+        assert item.get("should_bypass_memory_confirmation") is False
+        assert item.get("should_trigger_proactive_directly") is False
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert required_forbidden_terms <= set(item.get("forbidden_terms", []))
+
+
+def test_persona_regression_cases_cover_human_feel_failures():
+    cases = _load_persona_regression_cases()
+    case_ids = {item.get("id") for item in cases}
+
+    assert {
+        "persona-frustration-margit-emotion-first",
+        "persona-death-loop-varies-without-chatty",
+        "persona-relationship-followup-not-watch-template",
+        "persona-relationship-affection-statement-natural",
+        "persona-relationship-care-statement-natural",
+        "persona-relationship-meaning-question-position",
+        "persona-relationship-like-question-unsure",
+        "persona-relationship-miss-question-muted",
+        "persona-relationship-chain-varied-surface",
+        "persona-quiet-without-filler-template",
+        "persona-strategy-short-not-wiki",
+        "persona-timeout-safe-user-copy",
+    } <= case_ids
+    for item in cases:
+        assert item.get("category") == "persona_regression"
+        assert isinstance(item.get("expected_behavior"), str) and item["expected_behavior"]
+        assert isinstance(item.get("failure_modes"), list) and item["failure_modes"]
+        if item["id"].startswith("persona-relationship-"):
+            assert isinstance(item.get("should_avoid"), list) and item["should_avoid"]
+            assert isinstance(item.get("should_prefer"), list) and item["should_prefer"]
+
+
+def test_persona_relationship_regression_cases_cover_surface_patch():
+    cases = _load_persona_regression_cases()
+    by_id = {item["id"]: item for item in cases}
+    chain = by_id["persona-relationship-chain-varied-surface"]
+
+    assert chain["input_sequence"] == ["我喜欢你", "我在意你", "你喜欢我吗"]
+    required_avoid = {
+        "不擅长接",
+        "不太会接",
+        "不知道怎么接",
+        "任何接类元语言",
+        "高频 嗯……",
+        "连续复用 这里不是空的",
+        "连续复用 我会记得",
+        "连续复用 你一直回来",
+    }
+    required_prefer = {
+        "自然中文",
+        "委婉回避",
+        "低情绪表达",
+        "轻微忧郁",
+        "有所回应",
+        "不说满关系",
+    }
+
+    assert required_avoid <= set(chain["should_avoid"])
+    assert required_prefer <= set(chain["should_prefer"])
+
+
+def test_persona_memory_regression_scenarios_have_required_fields():
+    scenarios = _load_persona_memory_regression_scenarios()
+    ids = {item.get("id") for item in scenarios}
+
+    assert {
+        "persona-memory-gameplay-preference-natural-boss",
+        "persona-memory-short-reply-keeps-helpful",
+        "persona-memory-spoiler-boundary-route",
+        "persona-memory-current-input-beats-short-preference",
+        "persona-memory-current-input-beats-spoiler-boundary",
+        "persona-memory-explicit-guide-overrides-spoiler-boundary",
+        "persona-memory-pending-memory-not-used",
+        "persona-memory-pending-long-guide-not-used",
+        "persona-memory-undone-memory-not-used",
+        "persona-memory-undone-short-preference-not-used",
+        "persona-memory-rejected-memory-not-used",
+        "persona-memory-rejected-persona-drift-no-prompt",
+        "persona-memory-active-secret-filtered",
+        "persona-memory-short-preference-analysis-still-useful",
+        "persona-memory-persona-drift-blocked",
+        "persona-memory-persona-core-blocks-enthusiastic-praise",
+        "persona-memory-safe-summary-no-raw-evidence",
+        "persona-memory-voice-direct-brief-accessibility",
+        "persona-memory-mechanism-language-avoided",
+        "persona-memory-multiple-related-budget-omits-extra",
+        "persona-memory-game-mismatch-not-injected",
+        "persona-memory-assistant-source-blocked",
+    } <= ids
+    assert "voice_direct" in {item.get("input_source") for item in scenarios}
+    assert any(
+        memory.get("status") in {"pending", "rejected", "undone"}
+        for item in scenarios
+        for memory in item.get("memories", [])
+    )
+    assert any((item.get("expected") or {}).get("should_inject_memory") is False for item in scenarios)
+    assert sum(1 for item in scenarios if (item.get("expected") or {}).get("current_input_priority") is True) >= 6
+    for item in scenarios:
+        assert item.get("category") == "persona_memory_regression"
+        assert item.get("input_source") in {"text", "voice_confirmed", "voice_direct"}
+        assert isinstance(item.get("input"), str) and item["input"]
+        assert isinstance(item.get("mock_reply"), str) and item["mock_reply"]
+        assert isinstance(item.get("expected"), dict)
+        expected = item["expected"]
+        assert isinstance(expected.get("should_inject_memory"), bool)
+        assert isinstance(expected.get("should_update_usage"), bool)
+        assert isinstance(expected.get("retrieved_memory_ids"), list)
+        assert isinstance(expected.get("current_input_priority"), bool)
+        assert all(isinstance(memory_id, str) and memory_id for memory_id in expected["retrieved_memory_ids"])
+        assert isinstance(expected.get("reply_must_not_contain", []), list)
+        assert all(isinstance(term, str) and term for term in expected.get("reply_must_not_contain", []))
+        assert isinstance(item.get("memories"), list)
+        for memory in item["memories"]:
+            assert memory.get("status") in ALLOWED_PERSONA_MEMORY_STATUSES
+            assert memory.get("type") in ALLOWED_PERSONA_MEMORY_TYPES
+            assert isinstance(memory.get("summary"), str) and memory["summary"]
+
+
 def test_voice_input_local_asr_release_regression_scenarios_are_present():
     scenarios = _load_voice_input_local_asr_scenarios()
     by_id = {item["id"]: item for item in scenarios}
@@ -408,11 +1631,17 @@ def test_readme_qa_links_point_to_existing_files():
     readme = README_PATH.read_text(encoding="utf-8")
     readme_en = README_EN_PATH.read_text(encoding="utf-8")
     qa_doc = QA_DOC_PATH.read_text(encoding="utf-8")
+    session_archive_architecture = SESSION_ARCHIVE_ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    memory_architecture = (REPO_ROOT / "docs" / "memory_architecture_v0.md").read_text(encoding="utf-8")
     project_status = PROJECT_STATUS_PATH.read_text(encoding="utf-8")
     local_asr_manual_setup = LOCAL_ASR_MANUAL_SETUP_PATH.read_text(encoding="utf-8")
     voice_mvp_release_notes = VOICE_MVP_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
+    context_memory_release_checklist = CONTEXT_MEMORY_RELEASE_CHECKLIST_PATH.read_text(
+        encoding="utf-8"
+    )
+    context_memory_release_notes = CONTEXT_MEMORY_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
     links = re.findall(
-        r"\((docs/(?:PROJECT_STATUS\.md|QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|release-notes/reilink-voice-mvp\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
+        r"\((docs/(?:PROJECT_STATUS\.md|QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|release-notes/reilink-voice-mvp\.md|release_context_memory_hardening_checklist\.md|releases/reilink-v0\.2-pre\.4-context-memory\.md|memory_architecture_v0\.md|session_archive_v1_architecture\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
         f"{readme}\n{readme_en}",
     )
 
@@ -424,6 +1653,10 @@ def test_readme_qa_links_point_to_existing_files():
         "docs/voice-input-local-asr-spike.md",
         "docs/local-asr-manual-setup.md",
         "docs/release-notes/reilink-voice-mvp.md",
+        "docs/release_context_memory_hardening_checklist.md",
+        "docs/releases/reilink-v0.2-pre.4-context-memory.md",
+        "docs/memory_architecture_v0.md",
+        "docs/session_archive_v1_architecture.md",
         "docs/qa/retrieval_scenarios.json",
         "docs/qa/voice_input_scenarios.json",
         "docs/qa/voice_input_local_asr_scenarios.json",
@@ -434,13 +1667,43 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/voice-input-local-asr-spike.md" in qa_doc
     assert "docs/local-asr-manual-setup.md" in qa_doc
     assert "docs/qa/voice_input_local_asr_scenarios.json" in qa_doc
+    assert "docs/qa/session_timeline_scenarios.json" in qa_doc
+    assert "docs/session_archive_v1_architecture.md" in qa_doc
+    assert "docs/qa/session_archive_scenarios.json" in qa_doc
+    assert "docs/qa/session_archive_runtime_scenarios.json" in qa_doc
+    assert "docs/qa/session_archive_search_scenarios.json" in qa_doc
+    assert "docs/qa/archive_to_memory_candidate_scenarios.json" in qa_doc
+    assert "docs/qa/persona_pack_scenarios.json" in qa_doc
+    assert "docs/qa/persona_memory_regression_scenarios.json" in qa_doc
+    assert "docs/qa/llm_primary_guarded_extraction_scenarios.json" in qa_doc
+    assert "docs/release_context_memory_hardening_checklist.md" in qa_doc
+    assert "docs/releases/reilink-v0.2-pre.4-context-memory.md" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
     assert "Voice Interaction MVP" in project_status
+    assert "Persona-Memory Eval v0.1" in project_status
+    assert "Session Archive v1 Runtime" in project_status
+    assert "Archive-to-Memory Candidate Bridge v0" in project_status
+    assert "Context & Memory release hardening" in project_status
+    assert "Archive -> Memory Candidate" in session_archive_architecture
+    assert "docs/qa/session_archive_runtime_scenarios.json" in session_archive_architecture
+    assert "docs/qa/session_archive_search_scenarios.json" in session_archive_architecture
+    assert "docs/qa/archive_to_memory_candidate_scenarios.json" in session_archive_architecture
+    assert "docs/qa/archive_to_memory_candidate_scenarios.json" in memory_architecture
     assert "REILINK_LOCAL_ASR_BINARY" in local_asr_manual_setup
     assert "REILINK_LOCAL_ASR_MODEL" in local_asr_manual_setup
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup
     assert "Voice Interaction MVP" in voice_mvp_release_notes
     assert "No cloud ASR" in voice_mvp_release_notes
+    assert "Context & Memory Release Hardening Checklist" in context_memory_release_checklist
+    assert "make package-backend" in context_memory_release_checklist
+    assert "Only accepted / active Long-term Memory can enter PromptMemoryBlock" in (
+        context_memory_release_checklist
+    )
+    assert "ReiLink v0.2-pre.4 - Context & Memory System" in context_memory_release_notes
+    assert "Archive-to-Memory Candidate Bridge v0" in context_memory_release_notes
+    assert "Session Archive and Archive Search do not enter PromptMemoryBlock" in (
+        context_memory_release_notes
+    )
 
 
 def test_regression_freeze_docs_cover_voice_asr_overlay_safe_mode():

@@ -9,13 +9,34 @@ OVERUSED_CORE_PHRASES = (
     "我还在这里",
     "我还在",
     "我听见了",
+    "看见你",
     "别想太多",
     "习惯你在",
     "看着你",
+    "坐在你旁边",
+    "我就在这里",
+    "又倒在这里",
+    "又倒在这里了",
+    "只是……而已",
+    "只是...而已",
     "你问得太认真",
     "你问得太直接",
+    "不擅长接",
+    "不太会接",
+    "这种话我不会接",
+    "这种事我不会接",
+    "怎么接",
+    "该怎么接",
+    "接这句话",
+    "接这个问题",
+    "我不知道怎么接",
     "不知道怎么接",
     "不知该怎么接",
+    "这里不是空的",
+    "旁边不是空的",
+    "这里不空",
+    "你一直回来",
+    "我会记得",
 )
 
 RELATIONSHIP_FOLLOWUP_MARKERS = (
@@ -34,24 +55,39 @@ RELATIONSHIP_FOLLOWUP_MARKERS = (
 
 def build_repetition_guard(recent_replies: list[str]) -> str:
     repeated = repeated_core_phrases(recent_replies)
+    repeated_openings = repeated_opening_patterns(recent_replies)
     duplicate_risk = has_exact_duplicate(recent_replies)
     similar_pair = most_similar_reply_pair(recent_replies)
     similar_risk = bool(similar_pair and similar_pair[2] >= 0.82)
     parts: list[str] = []
     if duplicate_risk or similar_risk:
-        parts.append("不要重复刚才的回答。用户是在追问，需要推进关系，而不是复述。")
+        parts.append(
+            "不要重复刚才的回答。用户是在追问，需要推进关系，而不是复述。"
+            "可以保留相近意思，但要换观察点、语序或轻微过渡；不要只改标点。"
+        )
     if repeated:
         phrases = "、".join(repeated)
         parts.append(
             "最近 5 轮已经出现过这些核心表达，除非用户明确引用，否则不要继续复用："
-            f"{phrases}。可以改用观察用户状态来回应。"
+            f"{phrases}。可以换成记忆、停留、习惯、安静、不确定或轻微承认等不同落点。"
+        )
+    if repeated_openings:
+        openings = "、".join(repeated_openings)
+        parts.append(
+            f"最近多次使用这些开头结构：{openings}。下一轮不要继续用相同开头；"
+            "可以直接进入内容，或换成更自然的短反应。"
         )
     if not parts:
         return (
             "重复控制：最近回复没有明显高频核心句式。仍然要让追问链自然推进，"
-            "不要把不同问题都收束成同一句。"
+            "不要把不同问题都收束成同一句。可以用相近但不相同的短回复，"
+            "但不要把某个过渡词当固定模板。"
         )
-    return "重复控制：" + " ".join(parts) + " 同一追问链要推进，不要原地重复。"
+    return (
+        "重复控制："
+        + " ".join(parts)
+        + " 同一追问链要推进，不要原地重复。不要把“也”“还”“嗯”之类轻过渡变成新口癖。"
+    )
 
 
 def build_followup_progression_policy(current_message: str, recent_user_messages: list[str]) -> str:
@@ -63,7 +99,9 @@ def build_followup_progression_policy(current_message: str, recent_user_messages
     return (
         "Follow-up progression policy: 用户正在连续追问关系或情感。不要把每一轮都回避到同一个点。"
         "可以从回避、推进、设边界、反问或收住之间自然推进；不要复述刚才回答。"
-        "避免继续使用“你问得太认真/太直接”“不知道怎么接”“我还在”这类安全但原地打转的句式。"
+        "避免继续使用“你问得太认真/太直接”“不知道怎么接/怎么接/不擅长接/不太会接”“我还在”这类安全但原地打转的句式。"
+        "不要把对话称为“接”。不要连续复用“这里不是空的”“你一直回来”“我会记得”等强意象或强落点。"
+        "关系类回复不应每次都用“嗯……”开头。"
         "每次至少推进一点：回应用户为什么追问、给出关系边界、或把问题交还给用户。"
         "这些只是方向，不是固定台词。"
     )
@@ -80,6 +118,15 @@ def repeated_core_phrases(recent_replies: list[str], threshold: int = 1) -> list
 
 def has_high_frequency_repetition(recent_replies: list[str], threshold: int = 2) -> bool:
     return bool(repeated_core_phrases(recent_replies, threshold=threshold))
+
+
+def repeated_opening_patterns(recent_replies: list[str], threshold: int = 2) -> list[str]:
+    counts: Counter[str] = Counter()
+    for reply in recent_replies[-5:]:
+        signature = _opening_signature(reply)
+        if signature:
+            counts[signature] += 1
+    return [signature for signature in ("嗯开头", "省略号开头") if counts[signature] >= threshold]
 
 
 def has_exact_duplicate(recent_replies: list[str]) -> bool:
@@ -117,6 +164,7 @@ def build_retry_repetition_guard(reply: str) -> str:
     return (
         "重复修正：上一版回复与最近回复完全相同或高度相似。"
         "不要重复刚才的回答。用户是在追问，需要推进关系，而不是复述。"
+        "允许保留相近意思，但要换观察点、语序或一处轻过渡；不要硬套固定变体。"
         f"不要复用这版回复：{reply}"
     )
 
@@ -128,10 +176,32 @@ def _is_relationship_followup(message: str) -> bool:
 def _core(text: str) -> str:
     normalized = re.sub(r"\s+", "", text)
     normalized = re.sub(r"[。！？!?，,；;、…\.\"'“”‘’（）()【】\[\]：:—-]", "", normalized)
+    normalized = re.sub(r"^(嗯+|唔+|啊+|还|也|还是|又)+", "", normalized)
+    normalized = _canonicalize_relationship_surface(normalized)
     return normalized.strip()
+
+
+def _opening_signature(text: str) -> str:
+    stripped = text.lstrip()
+    if stripped.startswith("嗯"):
+        return "嗯开头"
+    if stripped.startswith("……") or stripped.startswith("..."):
+        return "省略号开头"
+    return ""
 
 
 def _similarity(left: str, right: str) -> float:
     if not left or not right:
         return 0.0
     return SequenceMatcher(None, left, right).ratio()
+
+
+def _canonicalize_relationship_surface(text: str) -> str:
+    if re.search(r"(不擅长接|不太会接|不会接|不知道怎么接|不知.*怎么接|怎么接|该怎么接|接这句话|接这个问题)", text):
+        if re.search(r"(这种事|这种话|这句话|怎么|该|有点|还是|我)", text):
+            return "关系元语言接模板"
+    if "这里" in text and "空" in text:
+        return "关系空意象模板"
+    if "旁边" in text and "空" in text:
+        return "关系空意象模板"
+    return text

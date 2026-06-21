@@ -146,6 +146,7 @@ button {
 
 .navItem {
   min-height: 44px;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -153,6 +154,9 @@ button {
   border-radius: 14px;
   padding: 0 12px;
   color: #9ca7bf;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
   text-decoration: none;
   transition:
     background 160ms ease,
@@ -366,10 +370,16 @@ button {
 
 .workspaceGrid {
   min-height: 0;
+  height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 430px;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 38vw);
   gap: 22px;
   padding-top: 18px;
+  overflow: hidden;
+}
+
+.workspaceGrid.homeOnly {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .chatColumn {
@@ -468,6 +478,50 @@ button {
   color: #7f8aa3;
   font-size: 11px;
   font-weight: 560;
+}
+
+.memoryNotice {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-height: 28px;
+  padding: 0 32px 2px;
+  color: #9aa6bd;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.memoryNotice.auto_saved {
+  color: #b8c9d8;
+}
+
+.memoryNotice.pending {
+  color: #aeb7ca;
+}
+
+.memoryNotice.undone {
+  color: #8995ad;
+}
+
+.textButton {
+  border: 0;
+  padding: 2px 0;
+  color: #c9d7f2;
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.textButton:hover {
+  color: #ffffff;
+}
+
+.textButton:disabled {
+  color: #6f7890;
+  cursor: default;
 }
 
 .messageBubble.user .messageSpeaker {
@@ -668,9 +722,86 @@ button {
 .voiceInputInlineStatus {
   grid-column: 2 / 4;
   min-height: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
   color: #aeb8d3;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.voiceInputInlineStatus span {
+  min-width: 0;
+}
+
+.voiceState-ready {
+  color: #c9eadc;
+}
+
+.voiceState-active {
+  color: #cfd9ff;
+}
+
+.voiceState-warning {
+  color: #ead8a8;
+}
+
+.voiceState-error {
+  color: #f0aaa7;
+}
+
+.voiceStateNotice {
+  color: #8fe7be;
+}
+
+.voiceInlineStop {
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.voiceModeControl {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(145, 164, 213, 0.16);
+  border-radius: 13px;
+  padding: 11px;
+  background: rgba(10, 14, 26, 0.42);
+}
+
+.voiceModeControl > span {
+  color: #aeb8d3;
+  font-size: 12px;
+}
+
+.voiceModeButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.voiceModeButton {
+  min-height: 34px;
+  border: 1px solid rgba(145, 164, 213, 0.22);
+  border-radius: 10px;
+  padding: 0 12px;
+  color: #dce5ff;
+  background: rgba(22, 28, 46, 0.78);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.voiceModeButton[aria-pressed="true"] {
+  border-color: rgba(143, 231, 190, 0.58);
+  color: #f2fff8;
+  background: rgba(43, 121, 91, 0.34);
+}
+
+.voiceModeButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .composer input {
@@ -751,15 +882,112 @@ button {
   background: linear-gradient(145deg, rgba(101, 76, 180, 0.64), rgba(51, 62, 111, 0.72));
 }
 
-.infoRail {
+.workspacePanel {
   min-width: 0;
-  height: calc(100vh - 152px);
-  max-height: calc(100vh - 152px);
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(145, 164, 213, 0.16);
+  border-radius: 18px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(17, 22, 38, 0.84), rgba(10, 14, 25, 0.78)),
+    rgba(10, 13, 24, 0.72);
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.workspacePanelHeader {
+  position: relative;
+  z-index: 3;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workspacePanelHeader h2 {
+  margin: 2px 0 4px;
+  color: #f1f5ff;
+  font-size: 18px;
+  font-weight: 720;
+}
+
+.workspacePanelHeader span {
+  display: block;
+  color: #9da8c0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workspaceTabs {
+  position: relative;
+  z-index: 3;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  overflow: visible;
+  padding: 4px 0 6px;
+}
+
+.workspaceTab {
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-height: 32px;
+  border: 1px solid rgba(145, 164, 213, 0.16);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: #aab5cc;
+  background: rgba(13, 17, 31, 0.48);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.workspaceTab:hover,
+.workspaceTab[aria-selected="true"] {
+  color: #eee8ff;
+  border-color: rgba(180, 158, 255, 0.36);
+  background: rgba(97, 76, 164, 0.28);
+}
+
+.workspacePanelBody {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
   overflow: auto;
-  padding-right: 2px;
+  overscroll-behavior: contain;
+  padding: 2px 6px 2px 0;
+  scrollbar-gutter: stable;
+}
+
+.workspaceQuickActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.workspaceQuickActions .smallButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 #settings-panel {
@@ -834,6 +1062,70 @@ button {
   gap: 10px;
 }
 
+.archiveSearchPanel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(145, 164, 213, 0.14);
+  border-radius: 13px;
+  padding: 11px;
+  background: rgba(10, 14, 26, 0.46);
+}
+
+.archiveSearchFilters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.archiveSearchField {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #aeb9d2;
+  font-size: 12px;
+}
+
+.archiveSearchFieldWide {
+  width: 100%;
+}
+
+.archiveSearchInputRow {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(150, 169, 218, 0.18);
+  border-radius: 10px;
+  padding: 0 10px;
+  color: #8ea0c6;
+  background: rgba(7, 10, 20, 0.46);
+}
+
+.archiveSearchField input,
+.archiveSearchInputRow input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(150, 169, 218, 0.18);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #edf2fb;
+  background: rgba(7, 10, 20, 0.46);
+  outline: none;
+}
+
+.archiveSearchInputRow input {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.archiveSearchField input:focus,
+.archiveSearchInputRow:focus-within {
+  border-color: rgba(142, 169, 238, 0.54);
+  box-shadow: 0 0 0 3px rgba(99, 132, 212, 0.14);
+}
+
 .gameContextControl,
 .voiceOutputPanel {
   display: grid;
@@ -842,6 +1134,53 @@ button {
   border-radius: 13px;
   padding: 11px;
   background: rgba(10, 14, 26, 0.46);
+}
+
+.voiceStatePanel {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(145, 164, 213, 0.18);
+  border-radius: 13px;
+  padding: 12px;
+  background: rgba(15, 20, 35, 0.58);
+}
+
+.voiceStatePanel div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.voiceStatePanel span {
+  color: #93a1bf;
+  font-size: 12px;
+}
+
+.voiceStatePanel strong {
+  color: #f2f6ff;
+  font-size: 15px;
+}
+
+.voiceStatePanel p {
+  margin: 0;
+  color: inherit;
+  font-size: 13px;
+}
+
+.voiceBoundaryList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.voiceBoundaryList span {
+  border: 1px solid rgba(143, 231, 190, 0.2);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #c9eadc;
+  background: rgba(33, 77, 63, 0.28);
+  font-size: 12px;
 }
 
 .providerStatusPanel {
@@ -1172,6 +1511,11 @@ button {
   background: rgba(12, 16, 30, 0.54);
 }
 
+.pendingMemoryItem.selected {
+  border-color: rgba(134, 164, 238, 0.34);
+  background: rgba(18, 25, 45, 0.66);
+}
+
 .pendingMemoryItem p {
   margin: 0;
   line-height: 1.5;
@@ -1390,6 +1734,75 @@ button {
   grid-column: 1 / -1;
 }
 
+.sessionTimelineSection {
+  padding: 0;
+}
+
+.sessionTimelineSection summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 0 10px;
+  color: #dce4f6;
+  font-weight: 680;
+}
+
+.sessionTimelineSection summary::marker {
+  color: #78849e;
+}
+
+.sessionTimelineBody {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.sessionTimelineActions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.sessionTimelineActions .settingHint {
+  margin: 0;
+}
+
+.sessionTimelineList {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sessionTimelineList.compact {
+  gap: 5px;
+}
+
+.sessionTimelineList li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  color: #b8c2d8;
+}
+
+.sessionTimelineList.compact li {
+  display: block;
+  border-left: 2px solid rgba(145, 164, 213, 0.18);
+  padding-left: 8px;
+  overflow-wrap: anywhere;
+}
+
+.sessionTimelineSummary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .debugJson {
   max-height: 240px;
   overflow: auto;
@@ -1401,14 +1814,11 @@ button {
   white-space: pre-wrap;
 }
 
-@media (max-width: 1240px) {
+@media (max-width: 960px) {
   .workspaceGrid {
     grid-template-columns: 1fr;
-  }
-
-  .infoRail {
     height: auto;
-    max-height: none;
+    overflow: visible;
   }
 
   .appWorkspace {
@@ -1419,6 +1829,11 @@ button {
 
   .chatColumn {
     min-height: 680px;
+  }
+
+  .workspacePanel {
+    height: min(720px, calc(100vh - 36px));
+    max-height: none;
   }
 }
 
@@ -1435,7 +1850,7 @@ button {
   }
 
   .navMenu {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     margin-top: 0;
   }
 
@@ -1501,6 +1916,14 @@ button {
   }
 
   .localAsrSetupActions {
+    grid-template-columns: 1fr;
+  }
+
+  .sessionTimelineActions {
+    grid-template-columns: 1fr;
+  }
+
+  .archiveSearchFilters {
     grid-template-columns: 1fr;
   }
 }

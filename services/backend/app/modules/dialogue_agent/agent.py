@@ -5,6 +5,11 @@ from typing import Any
 
 from app.modules.dialogue_agent.emotion import build_companion_policy
 from app.modules.dialogue_agent.intent import detect_intent
+from app.modules.dialogue_agent.memory_acknowledgement import (
+    build_memory_acknowledgement_policy,
+    build_memory_acknowledgement_retry_guard,
+    violates_memory_acknowledgement_policy,
+)
 from app.modules.dialogue_agent.metrics import ChatLatencyMetrics, set_last_chat_metrics
 from app.modules.dialogue_agent.providers import get_provider, log_provider_state
 from app.modules.dialogue_agent.providers import ProviderTimeoutError
@@ -15,7 +20,11 @@ from app.modules.dialogue_agent.repetition import (
     is_repetitive_reply,
 )
 from app.modules.dialogue_agent.segmenter import segment_reply
-from app.modules.dialogue_agent.semantic_extraction import extract_semantics
+from app.modules.dialogue_agent.semantic_extraction import (
+    extract_semantics,
+    run_semantic_shadow_background,
+    schedule_semantic_shadow_event,
+)
 from app.modules.dialogue_agent.session_focus import resolve_session_focus
 from app.modules.dialogue_agent.style import apply_rei_style
 from app.modules.dialogue_agent.validator import validate_or_repair
@@ -43,6 +52,17 @@ class DialogueError(RuntimeError):
 
 class DialogueTimeoutError(DialogueError):
     pass
+
+
+def _empty_memory_update() -> dict[str, Any]:
+    return {
+        "status": "none",
+        "summary": None,
+        "pending_memory_id": None,
+        "long_term_memory_id": None,
+        "pending_count": 0,
+        "undo_available": False,
+    }
 
 
 class DialogueAgent:
@@ -77,16 +97,20 @@ class DialogueAgent:
             else None
         )
         intent_result = detect_intent(request.message)
-        memory_context = self.memory.build_prompt_context_with_provenance()
         recent_user_messages = self.store.recent_user_messages(request.session_id)
         recent_assistant_replies = self.store.recent_assistant_replies(request.session_id)
         session_focus = resolve_session_focus(request.message, recent_user_messages)
         now = request_started_at
+        semantic_game_state = self.game_session.debug_state(now=now)
+        defer_semantic_shadow = background_tasks is not None
         semantic_extraction = extract_semantics(
             request.message,
             intent_result.intent,
-            self.game_session.debug_state(now=now),
+            semantic_game_state,
             session_focus_boss=session_focus.boss,
+            input_source=request.input_source,
+            run_llm_primary=True,
+            run_llm_shadow=not defer_semantic_shadow,
         )
         self.game_session.update_from_user_message(
             request.message,
@@ -105,6 +129,14 @@ class DialogueAgent:
             insert_at = 1 if session_focus.has_boss else 0
             session_context_items.insert(insert_at, game_session_summary)
         session_context = "\n".join(f"- {text}" for text in session_context_items)
+        prompt_memory_block = _retrieve_prompt_memory_block(
+            self.memory,
+            user_message=request.message,
+            current_game=game_context.active_game_display_name or game_status.game_name or game_session_debug.get("current_game"),
+            current_boss=session_focus.boss or ((game_session_debug.get("current_boss") or {}).get("name")),
+            input_source=request.input_source,
+            now=now,
+        )
         repetition_guard = "\n".join(
             item
             for item in (
@@ -113,14 +145,16 @@ class DialogueAgent:
             )
             if item
         )
+        memory_acknowledgement_policy = build_memory_acknowledgement_policy(request.message)
         companion_policy = build_companion_policy(request.message, intent_result.intent)
         system_prompt = self.persona.build_prompt(
             self.persona_id,
             game_status.model_dump(),
             intent_result.intent,
-            memory_context=memory_context.as_prompt_text(),
+            memory_context=prompt_memory_block.as_prompt_text(),
             session_context=session_context,
             companion_policy=companion_policy,
+            memory_response_policy=memory_acknowledgement_policy,
             repetition_guard=repetition_guard,
         )
         knowledge_result = self.knowledge.retrieve(
@@ -140,6 +174,31 @@ class DialogueAgent:
                 raise DialogueTimeoutError(str(exc)) from exc
             raise DialogueError(str(exc)) from exc
         reply = self._finalize_reply(llm_result.reply, intent_result.intent, request.session_id, request.message)
+        if memory_acknowledgement_policy and violates_memory_acknowledgement_policy(reply, request.message):
+            retry_prompt = f"{system_prompt}\n{build_memory_acknowledgement_retry_guard(request.message, reply)}"
+            try:
+                retry_result = self.provider.generate_with_metrics(
+                    retry_prompt,
+                    request.message,
+                    snippets,
+                    intent_result.intent,
+                )
+            except RuntimeError:
+                logger.exception("memory acknowledgement retry failed")
+                reply = self._finalize_reply("", intent_result.intent, request.session_id, request.message)
+            else:
+                retry_reply = self._finalize_reply(
+                    retry_result.reply,
+                    intent_result.intent,
+                    request.session_id,
+                    request.message,
+                )
+                reply = (
+                    retry_reply
+                    if not violates_memory_acknowledgement_policy(retry_reply, request.message)
+                    else self._finalize_reply("", intent_result.intent, request.session_id, request.message)
+                )
+                llm_result = _combine_retry_metrics(llm_result, retry_result)
         if is_repetitive_reply(reply, recent_assistant_replies):
             retry_prompt = f"{system_prompt}\n{build_retry_repetition_guard(reply)}"
             try:
@@ -148,13 +207,7 @@ class DialogueAgent:
                 logger.exception("repetition retry failed")
             else:
                 reply = self._finalize_reply(retry_result.reply, intent_result.intent, request.session_id, request.message)
-                llm_result = replace(
-                    retry_result,
-                    llm_latency_ms=llm_result.llm_latency_ms + retry_result.llm_latency_ms,
-                    provider_latency_ms=int(llm_result.provider_latency_ms or llm_result.llm_latency_ms)
-                    + int(retry_result.provider_latency_ms or retry_result.llm_latency_ms),
-                    fallback_reason=retry_result.fallback_reason or llm_result.fallback_reason,
-                )
+                llm_result = _combine_retry_metrics(llm_result, retry_result)
         reply_segments = segment_reply(reply, intent_result.intent, request.message)
         self.store.append(
             session_id=request.session_id,
@@ -166,17 +219,26 @@ class DialogueAgent:
             assistant_reply_segments=reply_segments.segments,
         )
         memory_start = time.perf_counter()
+        memory_update = self._safe_memory_update(
+            request.message,
+            reply,
+            intent_result.intent,
+            now,
+            semantic_extraction,
+            input_source=request.input_source,
+        ) or _empty_memory_update()
         if background_tasks is not None:
-            background_tasks.add_task(
-                self._safe_memory_update,
-                request.message,
-                reply,
-                intent_result.intent,
-                now,
-                semantic_extraction,
-            )
-        else:
-            self._safe_memory_update(request.message, reply, intent_result.intent, now, semantic_extraction)
+            if (semantic_extraction.get("llm_shadow") or {}).get("skip_reason") == "shadow_deferred":
+                shadow_trace_id = schedule_semantic_shadow_event(semantic_extraction)
+                background_tasks.add_task(
+                    run_semantic_shadow_background,
+                    request.message,
+                    intent_result.intent,
+                    semantic_game_state,
+                    session_focus_boss=session_focus.boss,
+                    input_source=request.input_source,
+                    trace_id=shadow_trace_id,
+                )
         memory_latency_ms = int((time.perf_counter() - memory_start) * 1000)
         total_latency_ms = int((time.perf_counter() - total_start) * 1000)
         provider_latency_ms = int(llm_result.provider_latency_ms or llm_result.llm_latency_ms)
@@ -235,6 +297,7 @@ class DialogueAgent:
             knowledge_retrieval_status=knowledge_result.retrieval_status,
             knowledge_not_used_reason=knowledge_result.not_used_reason,
             knowledge_retrieval_min_score=knowledge_result.retrieval_min_score,
+            memory_summary={"retrieval": prompt_memory_block.as_debug_dict()},
         )
         set_last_chat_metrics(metrics)
         logger.info(
@@ -267,6 +330,7 @@ class DialogueAgent:
             provider_latency_ms=provider_latency_ms,
             model_used=llm_result.selected_model,
             route_reason=llm_result.route_reason,
+            memory_update=memory_update,
         )
 
     def _safe_memory_update(
@@ -276,26 +340,68 @@ class DialogueAgent:
         intent: str,
         timestamp: datetime,
         semantic_extraction: dict[str, Any] | None = None,
-    ) -> None:
+        input_source: str | None = None,
+    ) -> dict[str, Any]:
         start = time.perf_counter()
         try:
-            pending = PendingMemoryQueue().generate_and_enqueue(
+            memory_update = PendingMemoryQueue().process_user_message(
                 user_message,
                 reply,
                 intent,
                 timestamp,
                 self.game_session.debug_state(now=timestamp),
                 semantic_extraction=semantic_extraction,
+                input_source=input_source,
             )
         except Exception:
             logger.exception("memory update error")
+            return {**_empty_memory_update(), "status": "failed"}
         else:
             logger.info(
-                "memory update completed pending_count=%s memory_latency_ms=%s",
-                len(pending),
+                "memory update completed status=%s pending_count=%s memory_latency_ms=%s",
+                memory_update.get("status"),
+                memory_update.get("pending_count"),
                 int((time.perf_counter() - start) * 1000),
             )
+            return memory_update
 
     def _finalize_reply(self, raw_reply: str, intent: str, session_id: str, user_message: str) -> str:
         reply = apply_rei_style(validate_or_repair(raw_reply, intent), seed=f"{session_id}:{user_message}")
         return normalize_terminology(reply)
+
+
+def _combine_retry_metrics(previous: Any, retry_result: Any) -> Any:
+    return replace(
+        retry_result,
+        llm_latency_ms=previous.llm_latency_ms + retry_result.llm_latency_ms,
+        provider_latency_ms=int(previous.provider_latency_ms or previous.llm_latency_ms)
+        + int(retry_result.provider_latency_ms or retry_result.llm_latency_ms),
+        fallback_reason=retry_result.fallback_reason or previous.fallback_reason,
+    )
+
+
+def _retrieve_prompt_memory_block(
+    memory: Any,
+    *,
+    user_message: str,
+    current_game: str | None,
+    current_boss: str | None,
+    input_source: str,
+    now: datetime,
+) -> Any:
+    from app.modules.memory.retrieval import PromptMemoryBlock
+
+    if not hasattr(memory, "retrieve_prompt_memory"):
+        return PromptMemoryBlock(skip_reason="memory_store_unavailable")
+    try:
+        return memory.retrieve_prompt_memory(
+            user_message=user_message,
+            current_game=current_game,
+            current_boss=current_boss,
+            input_source=input_source,
+            update_usage=True,
+            now=now,
+        )
+    except Exception:
+        logger.exception("memory retrieval error")
+        return PromptMemoryBlock(skip_reason="memory_retrieval_failed")

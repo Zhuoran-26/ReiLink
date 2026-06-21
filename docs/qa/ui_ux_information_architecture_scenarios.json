@@ -1,0 +1,235 @@
+[
+  {
+    "id": "ia-default-home-chat-not-debug",
+    "category": "ui_ux_ia",
+    "precondition": "Fresh app startup or a normal returning user opens ReiLink",
+    "input": "Open the app",
+    "expected_surface": "Home / Chat",
+    "expected_behavior": "The default product surface is the main chat workspace with Rei status and input available, not Event Stream, Prompt Preview, Raw JSON, or a large Debug workspace.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "raw JSON",
+      "API key",
+      ".env",
+      "full local path",
+      "full transcript",
+      "full assistant reply"
+    ]
+  },
+  {
+    "id": "ia-left-nav-launches-workspaces",
+    "category": "ui_ux_ia",
+    "precondition": "UI Surface v0 workspace shell is available",
+    "input": "Click a left navigation item such as Memory, Game, Voice, Overlay, Settings, or Developer",
+    "expected_surface": "Workspace Shell",
+    "expected_behavior": "The left navigation behaves as a workspace launcher that opens a focused module surface rather than only scrolling to a section in one crowded right column.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "API key",
+      ".env",
+      "full local path"
+    ]
+  },
+  {
+    "id": "ia-memory-has-independent-entry",
+    "category": "memory_ia",
+    "precondition": "A user wants to inspect or confirm memory",
+    "input": "Open Memory",
+    "expected_surface": "Memory workspace",
+    "expected_behavior": "Memory has a normal user-facing entry with Pending, Confirmed, Ignored, Search, Sources, and future Session Archive placement. It is not hidden only inside Debug.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "raw JSON",
+      "API key",
+      ".env",
+      "full local path",
+      "full transcript"
+    ]
+  },
+  {
+    "id": "ia-game-context-has-independent-entry",
+    "category": "game_ia",
+    "precondition": "A user wants to inspect the current game context",
+    "input": "Open Game",
+    "expected_surface": "Game workspace",
+    "expected_behavior": "Game has a normal user-facing entry for current game, boss, session state, knowledge support, supported games, and manual control without requiring the Debug workspace.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "raw provider response",
+      "API key",
+      ".env",
+      "full local path"
+    ]
+  },
+  {
+    "id": "ia-voice-has-first-class-entry",
+    "category": "voice_ia",
+    "precondition": "A user wants to configure Voice Input or Voice Output",
+    "input": "Open Voice",
+    "expected_surface": "Voice workspace",
+    "expected_behavior": "Voice has a first-class entry with Conversation placeholder, Input / Local ASR, Output, and Voice Profile placeholder instead of being buried only in Settings.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "raw ASR output",
+      "full transcript",
+      "API key",
+      ".env",
+      "full local path",
+      "audio payload"
+    ]
+  },
+  {
+    "id": "ia-voice-future-direct-conversation-clear",
+    "category": "voice_ia",
+    "precondition": "The Voice module is presented in docs or UI Surface v0 copy",
+    "input": "Read Voice planning or open Voice workspace",
+    "expected_surface": "Voice workspace",
+    "expected_behavior": "Voice clearly distinguishes current transcript-first Local ASR from the future direct spoken conversation loop with idle, listening, transcribing, ready_to_send, assistant_thinking, speaking, interrupted, and error states.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "auto-upload audio",
+      "cloud ASR required",
+      "raw prompt",
+      "full transcript",
+      "API key",
+      ".env"
+    ]
+  },
+  {
+    "id": "ia-overlay-safe-mode-boundary-visible",
+    "category": "overlay_ia",
+    "precondition": "A user opens Overlay planning or Overlay workspace on macOS",
+    "input": "Open Overlay",
+    "expected_surface": "Overlay workspace",
+    "expected_behavior": "Overlay shows Safe Mode boundaries: macOS auto-show is intentionally fail-closed, force close remains available, and the feature is not described as a complete game HUD.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "full assistant reply",
+      "full user input",
+      "API key",
+      ".env",
+      "full local path",
+      "raw stdout",
+      "raw stderr"
+    ]
+  },
+  {
+    "id": "ia-debug-is-separated",
+    "category": "debug_ia",
+    "precondition": "A developer or QA user wants diagnostics",
+    "input": "Open Developer / Debug",
+    "expected_surface": "Developer / Debug workspace",
+    "expected_behavior": "Event Stream, Prompt Preview, Semantic Shadow trace, Knowledge trace, Persona Pack summary, Runtime status, and safe Raw JSON live under Developer / Debug and do not overwhelm ordinary users by default.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "API key",
+      ".env",
+      "full local path",
+      "raw stdout",
+      "raw stderr",
+      "full persona markdown",
+      "full assistant reply"
+    ]
+  },
+  {
+    "id": "ia-debug-prompt-preview-safe-summary",
+    "category": "debug_privacy_ia",
+    "precondition": "Developer / Debug includes Prompt Preview",
+    "input": "Open Prompt Preview",
+    "expected_surface": "Developer / Debug workspace",
+    "expected_behavior": "Prompt Preview remains a safe summary surface with persona id, version, loaded sections, missing sections, fallback, truncation, raw_content_omitted, and path_omitted; it does not show full persona markdown or full prompt.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "full system prompt",
+      "API key",
+      ".env",
+      "full local path",
+      "full persona markdown",
+      "raw provider response"
+    ]
+  },
+  {
+    "id": "ia-memory-and-game-session-distinct",
+    "category": "memory_ia",
+    "precondition": "A user opens Memory or Game after a gameplay session",
+    "input": "Compare Memory and Game Session",
+    "expected_surface": "Memory workspace and Game workspace",
+    "expected_behavior": "Confirmed long-term memory, candidate memory, and ignored memory are distinct from current game session state, boss state, death count, frustration count, and session timeline.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "full transcript",
+      "API key",
+      ".env",
+      "full local path"
+    ]
+  },
+  {
+    "id": "ia-live2d-placeholder-only",
+    "category": "presentation_ia",
+    "precondition": "Future Presentation / Avatar appears in the IA or UI Surface v0",
+    "input": "Open Future Presentation / Avatar",
+    "expected_surface": "Future Presentation / Avatar placeholder",
+    "expected_behavior": "Live2D / Avatar is clearly a future presentation layer and placeholder. It does not become the current main experience and should follow Voice, Overlay, Memory, and Debug split work.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "implemented now",
+      "required for v0.2",
+      "raw prompt",
+      "API key",
+      ".env"
+    ]
+  },
+  {
+    "id": "ia-panel-switch-preserves-chat-input",
+    "category": "workspace_shell_ia",
+    "precondition": "UI Surface v0 lets users switch between Home, Memory, Game, Voice, Overlay, Settings, and Developer",
+    "input": "Type text in chat, switch panels, then return to Home / Chat",
+    "expected_surface": "Workspace Shell",
+    "expected_behavior": "Workspace switching preserves unsent chat input and does not reset current conversation state, Voice state, Overlay setting, Memory confirmation state, or Game Context.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "API key",
+      ".env",
+      "full local path"
+    ]
+  },
+  {
+    "id": "ia-settings-stops-being-dumping-ground",
+    "category": "settings_ia",
+    "precondition": "UI Surface v0 has separate Voice, Overlay, Memory, Game, and Developer workspaces",
+    "input": "Open Settings",
+    "expected_surface": "Settings workspace",
+    "expected_behavior": "Settings focuses on app-level preferences, model/persona mode, privacy, local data, reset controls, and safe app configuration. Feature-specific deep setup moves to each module workspace where possible.",
+    "should_show_debug_by_default": false,
+    "should_preserve_chat_input": true,
+    "forbidden_terms": [
+      "raw prompt",
+      "raw JSON",
+      "API key",
+      ".env",
+      "raw stdout",
+      "raw stderr"
+    ]
+  }
+]

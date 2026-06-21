@@ -3,10 +3,14 @@ from fastapi import APIRouter
 from app.modules.dialogue_agent.metrics import get_last_chat_metrics
 from app.modules.dialogue_agent.prompt_preview import build_prompt_preview
 from app.modules.dialogue_agent.providers import get_provider_info
-from app.modules.dialogue_agent.semantic_extraction import get_latest_semantic_extraction_debug
+from app.modules.dialogue_agent.semantic_extraction import (
+    get_latest_semantic_extraction_debug,
+    get_semantic_shadow_events,
+)
 from app.modules.game_session.state import GameSessionStore
 from app.modules.memory.profile import PlayerMemory
 from app.modules.memory.store import ConversationStore
+from app.modules.proactive.trigger import ProactiveCompanion
 from app.schemas.api import ChatDebugResponse, MemoryDebugResponse, PromptPreviewResponse
 
 router = APIRouter(tags=["debug"])
@@ -38,7 +42,7 @@ def debug_memory(session_id: str = "default") -> dict:
     memory_items = memory.build_prompt_context_with_provenance().as_debug_items()
     session_items = ConversationStore().recent_context(session_id)
     return {
-        "prompt_order": ["current_user_message", "current_session", "memory", "persona"],
+        "prompt_order": ["persona", "memory", "current_session", "game_state", "current_user_message"],
         "memory_written": active_state["memory_written"],
         "current_boss": active_state["current_boss"],
         "emotional_note": active_state["emotional_note"],
@@ -65,9 +69,15 @@ def debug_game_session() -> dict:
 @router.post("/debug/game-session/reset")
 def reset_game_session() -> dict:
     GameSessionStore().reset()
+    ProactiveCompanion().suppress_after_system_action("reset_game_session")
     return {"status": "reset"}
 
 
 @router.get("/debug/semantic-extraction/latest")
 def debug_semantic_extraction_latest() -> dict:
     return get_latest_semantic_extraction_debug()
+
+
+@router.get("/debug/semantic-shadow/events")
+def debug_semantic_shadow_events(since_id: int = 0, limit: int = 50) -> dict:
+    return get_semantic_shadow_events(since_id=since_id, limit=limit)

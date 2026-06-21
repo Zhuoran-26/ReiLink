@@ -86,6 +86,16 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     session_id: str = Field(default="default", min_length=1, max_length=80)
     mode: Literal["chat"] = "chat"
+    input_source: Literal["text", "voice_confirmed", "voice_direct"] = "text"
+
+
+class ChatMemoryUpdate(BaseModel):
+    status: Literal["none", "auto_saved", "pending", "blocked", "failed"] = "none"
+    summary: str | None = None
+    pending_memory_id: str | None = None
+    long_term_memory_id: str | None = None
+    pending_count: int = 0
+    undo_available: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -101,6 +111,7 @@ class ChatResponse(BaseModel):
     provider_latency_ms: int = 0
     model_used: str | None = None
     route_reason: str | None = None
+    memory_update: ChatMemoryUpdate = Field(default_factory=ChatMemoryUpdate)
 
 
 class MemoryEntry(BaseModel):
@@ -116,6 +127,30 @@ class MemoryEntry(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class LongTermMemoryItem(BaseModel):
+    id: str
+    created_at: str
+    updated_at: str
+    type: Literal[
+        "gameplay_preference",
+        "interaction_preference",
+        "emotional_pattern",
+        "accessibility_preference",
+        "do_not_remember",
+        "unknown",
+    ]
+    summary: str
+    user_visible_text: str
+    source_candidate_id: str
+    is_active: bool = True
+    related_game: str | None = None
+    related_entity: str | None = None
+    last_used_at: str | None = None
+    use_count: int = 0
+    retrieval_tags: list[str] = Field(default_factory=list)
+    deletion_status: str = "active"
+
+
 class UserProfileMemory(BaseModel):
     user_name: str | None = None
     favorite_game: str | None = None
@@ -125,6 +160,7 @@ class UserProfileMemory(BaseModel):
     current_boss: str | None = None
     repeated_struggles: list[str] = Field(default_factory=list)
     emotional_notes: list[str] = Field(default_factory=list)
+    long_term_memories: list[LongTermMemoryItem] = Field(default_factory=list)
     last_seen_at: str | None = None
     memory_updated_at: dict[str, str] = Field(default_factory=dict)
 
@@ -151,13 +187,56 @@ class MemoryResetResponse(BaseModel):
 
 class PendingMemoryItem(BaseModel):
     id: str
-    type: Literal["game_progress", "user_preference", "emotional_pattern", "relationship_preference", "playstyle"]
+    type: Literal[
+        "gameplay_preference",
+        "interaction_preference",
+        "emotional_pattern",
+        "accessibility_preference",
+        "do_not_remember",
+        "unknown",
+    ]
+    summary: str
     text: str
-    source: Literal["game_session", "conversation", "explicit_user_statement"]
+    source: Literal[
+        "game_session",
+        "conversation",
+        "explicit_user_statement",
+        "semantic_extraction",
+        "voice_confirmed",
+        "voice_direct",
+        "session_archive",
+        "assistant",
+        "proactive",
+    ]
+    source_event_id: str | None = None
+    long_term_memory_id: str | None = None
     confidence: float
-    status: Literal["pending", "accepted", "ignored"]
+    requires_confirmation: bool = True
+    status: Literal["pending", "accepted", "ignored", "expired", "rejected_by_guard"]
     created_at: str
+    expires_at: str
     updated_at: str
+    guard_reason: Literal[
+        "allow_candidate",
+        "reject_candidate",
+        "ignore_no_memory_intent",
+        "requires_confirmation",
+        "explicit_user_memory_request",
+        "session_event_only",
+        "persona_drift_blocked",
+        "sensitive_secret_blocked",
+        "assistant_source_blocked",
+        "duplicate_candidate",
+        "do_not_remember",
+    ] = "requires_confirmation"
+    privacy_level: Literal["normal", "sensitive", "secret"] = "normal"
+    related_game: str | None = None
+    related_entity: str | None = None
+    from_voice: bool = False
+    from_proactive: bool = False
+    from_assistant: bool = False
+    confirmation_intent: Literal["explicit", "implicit", "voice_confirmed", "voice_direct", "none"] = "implicit"
+    evidence_summary: str
     evidence: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -179,6 +258,14 @@ class AppSettings(BaseModel):
     overlay_position: Literal["top-right", "middle-right", "bottom-right", "top-left", "middle-left", "bottom-left"] = "middle-right"
     overlay_opacity: float = Field(default=0.72, ge=0.35, le=0.95)
     overlay_message_count: int = Field(default=2, ge=1, le=3)
+    voice_interaction_mode: Literal["confirm_send", "direct_conversation"] = "confirm_send"
+    voice_profile_id: Literal["rei_calm"] = "rei_calm"
+    voice_spoken_reply_mode: Literal["full", "brief", "silent"] = "full"
+    voice_direct_spoken_reply_mode: Literal["full", "brief", "silent"] = "brief"
+    voice_speak_proactive: bool = False
+    voice_speak_memory_prompts: bool = False
+    voice_max_spoken_chars: int = Field(default=120, ge=40, le=280)
+    voice_max_spoken_sentences: int = Field(default=2, ge=1, le=4)
     voice_output: Literal["on", "off"] = "off"
     voice_rate: float = Field(default=1.0, ge=0.7, le=1.3)
     voice_volume: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -200,6 +287,14 @@ class AppSettingsUpdate(BaseModel):
     overlay_position: Literal["top-right", "middle-right", "bottom-right", "top-left", "middle-left", "bottom-left"] | None = None
     overlay_opacity: float | None = Field(default=None, ge=0.35, le=0.95)
     overlay_message_count: int | None = Field(default=None, ge=1, le=3)
+    voice_interaction_mode: Literal["confirm_send", "direct_conversation"] | None = None
+    voice_profile_id: Literal["rei_calm"] | None = None
+    voice_spoken_reply_mode: Literal["full", "brief", "silent"] | None = None
+    voice_direct_spoken_reply_mode: Literal["full", "brief", "silent"] | None = None
+    voice_speak_proactive: bool | None = None
+    voice_speak_memory_prompts: bool | None = None
+    voice_max_spoken_chars: int | None = Field(default=None, ge=40, le=280)
+    voice_max_spoken_sentences: int | None = Field(default=None, ge=1, le=4)
     voice_output: Literal["on", "off"] | None = None
     voice_rate: float | None = Field(default=None, ge=0.7, le=1.3)
     voice_volume: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -237,6 +332,146 @@ class LocalDataStatusResponse(BaseModel):
     pending_memory_count: int = 0
     using_bundled_knowledge: bool = False
     writable: bool = False
+
+
+class SessionArchiveEventInput(BaseModel):
+    id: str | None = None
+    timestamp: str | None = None
+    event_type: str | None = None
+    type: str | None = None
+    safe_summary: StrictStr | None = None
+    summary: StrictStr | None = None
+    source: str | None = None
+    input_source: Literal["text", "voice_confirmed", "voice_direct"] | None = None
+    related_game: str | None = None
+    related_entity: str | None = None
+    risk_flags: list[str] = Field(default_factory=list)
+    privacy_level: Literal["normal", "sensitive", "secret"] = "normal"
+    can_generate_memory_candidate: bool = False
+
+
+class SessionArchiveCurrentRequest(BaseModel):
+    session_id: str = Field(default="default", min_length=1, max_length=80)
+    events: list[SessionArchiveEventInput] = Field(default_factory=list)
+    started_at: str | None = None
+    ended_at: str | None = None
+    game: str | None = None
+    area: str | None = None
+    boss: str | None = None
+    source: Literal["manual", "renderer", "session_timeline"] = "manual"
+
+
+class SessionArchiveEvent(BaseModel):
+    id: str
+    session_id: str
+    timestamp: str
+    event_type: str
+    safe_summary: str
+    source: str
+    input_source: Literal["text", "voice_confirmed", "voice_direct"] | None = None
+    related_game: str | None = None
+    related_entity: str | None = None
+    risk_flags: list[str] = Field(default_factory=list)
+    privacy_level: Literal["normal", "sensitive"] = "normal"
+    can_generate_memory_candidate: bool = False
+
+
+class SessionArchiveSummary(BaseModel):
+    id: str
+    session_id: str
+    title: str
+    created_at: str
+    updated_at: str
+    started_at: str
+    ended_at: str
+    source: str
+    game: str | None = None
+    area: str | None = None
+    boss: str | None = None
+    summary: str
+    event_count: int = 0
+    safe_event_summaries: list[str] = Field(default_factory=list)
+    memory_candidate_count: int = 0
+    accepted_memory_count: int = 0
+    privacy_level: Literal["normal", "sensitive"] = "normal"
+    retention_policy: str = "manual_latest_20"
+    is_deleted: bool = False
+    deletion_status: str = "active"
+
+
+class SessionArchiveDetail(SessionArchiveSummary):
+    events: list[SessionArchiveEvent] = Field(default_factory=list)
+
+
+class SessionArchiveSearchResult(BaseModel):
+    archive_id: str
+    event_id: str | None = None
+    relevance_score: int = 0
+    reason: str
+    safe_summary: str
+    matched_tags: list[str] = Field(default_factory=list)
+    game: str | None = None
+    boss: str | None = None
+    event_type: str | None = None
+    created_at: str
+    started_at: str
+    ended_at: str
+    event_count: int = 0
+
+
+class SessionArchiveSearchResponse(BaseModel):
+    results: list[SessionArchiveSearchResult] = Field(default_factory=list)
+    total: int = 0
+    omitted_count: int = 0
+    safe_result_summaries: list[str] = Field(default_factory=list)
+
+
+class SessionArchiveMemoryCandidateScanRequest(BaseModel):
+    limit: int = Field(default=5, ge=1, le=20)
+    date_from: str | None = None
+    date_to: str | None = None
+
+
+class SessionArchiveMemoryCandidateScanItem(BaseModel):
+    archive_id: str | None = None
+    archive_event_ids: list[str] = Field(default_factory=list)
+    candidate_id: str | None = None
+    candidate_type: str | None = None
+    guard_reason: str
+    safe_summary: str
+    evidence_summary: str | None = None
+
+
+class SessionArchiveMemoryCandidateScanSummary(BaseModel):
+    mode: Literal["single_archive", "recent_archives"]
+    archives_scanned: int = 0
+    events_scanned: int = 0
+    created_count: int = 0
+    skipped_count: int = 0
+    rejected_count: int = 0
+
+
+class SessionArchiveMemoryCandidateScanResponse(BaseModel):
+    created_candidates: list[PendingMemoryItem] = Field(default_factory=list)
+    skipped_candidates: list[SessionArchiveMemoryCandidateScanItem] = Field(default_factory=list)
+    rejected_candidates: list[SessionArchiveMemoryCandidateScanItem] = Field(default_factory=list)
+    scan_summary: SessionArchiveMemoryCandidateScanSummary
+
+
+class SessionArchiveCreateResponse(BaseModel):
+    status: Literal["created", "existing", "skipped"]
+    archive: SessionArchiveDetail | None = None
+    message: str
+
+
+class SessionArchiveDeleteResponse(BaseModel):
+    status: Literal["deleted"]
+    archive_id: str
+
+
+class SessionArchiveClearResponse(BaseModel):
+    status: Literal["cleared"]
+    deleted_count: int
 
 
 LocalAsrStatus = Literal[
@@ -452,6 +687,7 @@ class PromptPreviewResponse(BaseModel):
     game_context_summary: dict[str, Any] = Field(default_factory=dict)
     session_focus_summary: dict[str, Any] = Field(default_factory=dict)
     game_state_summary: dict[str, Any] = Field(default_factory=dict)
+    persona_pack_summary: dict[str, Any] = Field(default_factory=dict)
     knowledge_summary: dict[str, Any] = Field(default_factory=dict)
     memory_summary: dict[str, Any] = Field(default_factory=dict)
     final_context_summary: dict[str, Any] = Field(default_factory=dict)

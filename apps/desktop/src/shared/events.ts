@@ -2,16 +2,91 @@ import type { AudioConversionStatusValue } from "./api";
 import type { OverlayMessageSource, OverlayPosition } from "./overlay";
 
 export type ReiLinkEvent =
-  | { type: "user_message_sent"; timestamp: string; text: string }
+  | { type: "user_message_sent"; timestamp: string; text: string; source?: "text" | "voice_confirmed" | "voice_direct"; character_count?: number }
   | { type: "assistant_reply_started"; timestamp: string; message_id?: string }
-  | { type: "assistant_reply_segment_shown"; timestamp: string; segment_index: number; text: string }
+  | { type: "assistant_reply_segment_shown"; timestamp: string; segment_index: number; character_count: number }
   | { type: "assistant_reply_completed"; timestamp: string; message_id?: string }
   | { type: "proactive_message_shown"; timestamp: string; trigger_type: string; text: string }
   | { type: "pending_memory_created"; timestamp: string; memory_type: string; text: string }
   | { type: "pending_memory_accepted"; timestamp: string; memory_id: string }
   | { type: "pending_memory_ignored"; timestamp: string; memory_id: string }
+  | { type: "long_term_memory_undone"; timestamp: string; memory_id: string }
+  | { type: "memory_candidate_checked"; timestamp: string; memory_type?: string; summary?: string | null; decision: string; confidence?: number; guard_reason?: string; candidate_id?: string | null; memory_id?: string | null; source?: string }
+  | { type: "memory_candidate_pending"; timestamp: string; memory_type?: string; summary?: string | null; confidence?: number; guard_reason?: string; candidate_id?: string | null; source?: string }
+  | { type: "memory_auto_saved"; timestamp: string; memory_type?: string; summary?: string | null; guard_reason?: string; candidate_id?: string | null; memory_id?: string | null; source?: string }
+  | { type: "memory_auto_save_undo"; timestamp: string; memory_id: string; summary?: string }
+  | { type: "memory_candidate_rejected"; timestamp: string; memory_type?: string; summary?: string | null; guard_reason?: string; source?: string }
+  | { type: "session_archive_created"; timestamp: string; archive_id: string; event_count: number; game?: string; boss?: string; status?: "created" | "existing" }
+  | { type: "session_archive_deleted"; timestamp: string; archive_id: string }
+  | { type: "session_archive_cleared"; timestamp: string; deleted_count: number }
+  | { type: "session_archive_skipped"; timestamp: string; reason: string; event_count?: number }
+  | { type: "session_archive_search_started"; timestamp: string; query_summary?: string; filters?: Record<string, string> }
+  | {
+      type: "session_archive_search_completed";
+      timestamp: string;
+      query_summary?: string;
+      filters?: Record<string, string>;
+      result_count: number;
+      omitted_count: number;
+      safe_result_summaries?: string[];
+    }
+  | { type: "session_archive_search_cleared"; timestamp: string; query_summary?: string; filters?: Record<string, string> }
+  | { type: "archive_memory_scan_started"; timestamp: string; archive_id?: string | null; mode: "single_archive" | "recent_archives" }
+  | { type: "archive_memory_scan_completed"; timestamp: string; archive_id?: string | null; mode: "single_archive" | "recent_archives"; archives_scanned: number; events_scanned: number; created_count: number; skipped_count: number; rejected_count: number }
+  | { type: "archive_memory_candidate_created"; timestamp: string; archive_id?: string | null; candidate_id: string; memory_type: string; summary?: string | null }
+  | { type: "archive_memory_candidate_skipped"; timestamp: string; archive_id?: string | null; guard_reason: string; safe_summary?: string | null }
+  | { type: "archive_memory_candidate_rejected"; timestamp: string; archive_id?: string | null; guard_reason: string; safe_summary?: string | null }
   | { type: "game_context_changed"; timestamp: string; game?: string; source?: string }
-  | { type: "game_session_changed"; timestamp: string; game?: string; current_boss?: string; activity?: string }
+  | {
+      type: "semantic_extraction_traced";
+      timestamp: string;
+      source?: string;
+      primary_extractor?: string | null;
+      primary_status?: string | null;
+      fallback_extractor?: string | null;
+      guard_final_decision?: string | null;
+      applied_by?: string | null;
+      confidence?: string;
+      fallback_reason?: string | null;
+      skip_reason?: string | null;
+      parse_error?: string | null;
+      applied_updates?: string[];
+      llm_shadow_status?: "skipped" | "succeeded" | "failed";
+      llm_shadow_confidence?: "high" | "medium" | "low";
+      llm_shadow_summary?: string | null;
+      llm_shadow_diff?: string | null;
+      input_source?: "text" | "voice_confirmed" | "voice_direct";
+      llm_guard_decision?: "apply" | "ask_clarification" | "candidate_only" | "no_op" | "fallback_to_rule";
+      llm_guard_reason?: string | null;
+      llm_guard_summary?: string | null;
+      first_attempt_failed?: string | null;
+      compat_retry_used?: boolean;
+      compat_retry_succeeded?: boolean | null;
+      ultra_compact_used?: boolean;
+      json_recovery_stage?: string | null;
+      shadow_trace_id?: string;
+      shadow_event_phase?: "scheduled" | "final";
+      shadow_event_status?:
+        | "shadow_deferred"
+        | "shadow_succeeded"
+        | "shadow_timeout"
+        | "shadow_invalid_json"
+        | "shadow_auth_failed"
+        | "shadow_provider_unavailable"
+        | "shadow_provider_error"
+        | "shadow_cancelled"
+        | "shadow_expired";
+    }
+  | {
+      type: "game_session_changed";
+      timestamp: string;
+      game?: string;
+      current_boss?: string;
+      activity?: string;
+      death_count?: number;
+      frustration_count?: number;
+      last_cleared_boss?: string;
+    }
   | { type: "knowledge_used"; timestamp: string; game?: string; topics?: string[] }
   | { type: "model_routed"; timestamp: string; model?: string; route_reason?: string }
   | { type: "backend_status_changed"; timestamp: string; status: string }
@@ -33,6 +108,21 @@ export type ReiLinkEvent =
   | { type: "voice_input_stopped"; timestamp: string; character_count?: number; reason?: string; status?: string; language?: string }
   | { type: "voice_input_error"; timestamp: string; character_count?: number; reason?: string; status?: string; language?: string }
   | { type: "voice_input_unavailable"; timestamp: string; reason?: string; status?: string; language?: string }
+  | { type: "voice_direct_mode_enabled"; timestamp: string }
+  | { type: "voice_direct_mode_disabled"; timestamp: string }
+  | { type: "voice_transcription_auto_sent"; timestamp: string; character_count: number; provider?: "local_asr" | "web_speech" }
+  | {
+      type: "voice_transcription_auto_send_blocked";
+      timestamp: string;
+      character_count: number;
+      provider?: "local_asr" | "web_speech";
+      reason: "short_recording" | "short_transcript" | "partial_transcript";
+      duration_ms?: number;
+    }
+  | { type: "voice_profile_applied"; timestamp: string; profile_id: "rei_calm"; spoken_mode: "full" | "brief" | "silent"; source: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; max_spoken_chars: number; max_spoken_sentences: number }
+  | { type: "voice_reply_spoken_excerpt_created"; timestamp: string; spoken_mode: "full" | "brief" | "silent"; original_character_count: number; spoken_character_count: number; sentence_count: number; reason?: string }
+  | { type: "voice_reply_speak_skipped"; timestamp: string; reason: string; spoken_mode?: "full" | "brief" | "silent"; source?: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; original_character_count?: number }
+  | { type: "voice_reply_auto_speak_started"; timestamp: string; character_count: number; spoken_mode?: "full" | "brief" | "silent"; sentence_count?: number }
   | { type: "audio_capture_started"; timestamp: string; duration_ms?: number }
   | { type: "audio_capture_completed"; timestamp: string; duration_ms: number; size_bytes: number; mime_type?: string }
   | { type: "audio_capture_stopped"; timestamp: string; reason?: string; duration_ms?: number }

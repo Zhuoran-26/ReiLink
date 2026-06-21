@@ -1,4 +1,5 @@
 import {
+  Archive,
   Bot,
   Brain,
   Bug,
@@ -12,9 +13,11 @@ import {
   MessageSquare,
   Mic,
   RefreshCw,
+  Search,
   Send,
   Settings,
   Sparkles,
+  Trash2,
   Volume2,
   VolumeX,
   X
@@ -26,7 +29,9 @@ import {
   ApiRequestError,
   AppSettings,
   AudioProbeResponse,
+  ChatInputSource,
   ChatDebugResponse,
+  ChatMemoryUpdate,
   GameContextResponse,
   GameDetectionResponse,
   GameSessionDebugResponse,
@@ -43,6 +48,12 @@ import {
   ProactiveStatusResponse,
   ProviderDebugResponse,
   SemanticExtractionDebugResponse,
+  SemanticShadowEvent,
+  SessionArchiveDetail,
+  SessionArchiveEventInput,
+  SessionArchiveMemoryCandidateScanResponse,
+  SessionArchiveSearchResult,
+  SessionArchiveSummary,
   SetupStatus,
   UserProfileMemory
 } from "../shared/api";
@@ -60,8 +71,28 @@ import {
 import type { BackendRuntimeStatus, LocalFilePickerKind } from "../shared/runtime";
 import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
 import { eventBus } from "./eventBus";
+import {
+  appendSessionTimelineItems,
+  sanitizeSessionTimelineText,
+  sessionTimelineItemsFromEvent,
+  type SessionTimelineItem
+} from "./sessionTimeline";
 import { voiceInput, type VoiceInputStatus } from "./voiceInput";
 import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
+import {
+  buildSpokenAssistantReply,
+  VOICE_DEBUG_SPEAKING_ALLOWED,
+  VOICE_INTERRUPT_ON_NEW_RECORDING,
+  VOICE_PROFILE_DESCRIPTION,
+  VOICE_PROFILE_ID,
+  VOICE_PROFILE_LABEL,
+  VOICE_TEST_VOICE_ALLOWED,
+  voiceSpeakSkippedReasonText,
+  voiceSpokenModeText,
+  type VoiceReplySpeakSource,
+  type VoiceSpeakSkippedReason
+} from "./voiceProfile";
+import { resolveVoiceConversationState } from "./voiceState";
 
 type Message = {
   id: string;
@@ -71,6 +102,15 @@ type Message = {
   pending?: boolean;
   messageType?: "chat" | "proactive";
   triggerType?: string;
+};
+
+type MemoryNotice = {
+  status: "auto_saved" | "pending" | "undone";
+  summary: string;
+  pendingMemoryId?: string | null;
+  longTermMemoryId?: string | null;
+  pendingCount?: number;
+  undoAvailable?: boolean;
 };
 
 type DemoResetAction =
@@ -84,14 +124,100 @@ type DemoResetAction =
 
 type LocalAsrTranscriptionPhase = "idle" | "recording" | "transcribing";
 type MainVoiceInputProvider = "local_asr" | "web_speech" | "unavailable";
+type VoiceTransientState = {
+  kind: "interrupted" | "error";
+  message?: string;
+} | null;
+type VoiceTranscriptSendOptions = {
+  source: MainVoiceInputProvider;
+  mode: AppSettings["voice_interaction_mode"];
+  autoSent?: boolean;
+  characterCount: number;
+};
+type VoiceDirectAutoSendBlockReason = "short_recording" | "short_transcript" | "partial_transcript";
 type LocalAsrSettingsDraft = {
   local_asr_binary_path: string;
   local_asr_model_path: string;
   audio_converter_binary_path: string;
 };
 type LocalAsrSettingsDraftPathKey = keyof LocalAsrSettingsDraft;
+type WorkspaceId = "home" | "memory" | "game" | "voice" | "overlay" | "settings" | "debug" | "presentation";
+type WorkspaceTab = {
+  id: string;
+  label: string;
+};
 
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
+const VOICE_DIRECT_MIN_AUTO_SEND_DURATION_MS = 800;
+const VOICE_DIRECT_MIN_AUTO_SEND_CHARS = 4;
+const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
+const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
+  home: "Home / Chat",
+  memory: "记忆",
+  game: "游戏",
+  voice: "语音",
+  overlay: "Overlay",
+  settings: "设置",
+  debug: "Developer / Debug",
+  presentation: "Future / Avatar"
+};
+const WORKSPACE_SUBTITLES: Record<WorkspaceId, string> = {
+  home: "主聊天",
+  memory: "待确认记忆、长期记忆、最近会话归档和本地数据边界",
+  game: "当前游戏上下文、本局状态和知识摘要",
+  voice: "现有 Local ASR 与语音输出入口，保留未来直接语音对话位置",
+  overlay: "当前为 macOS Safe Mode，不恢复 auto-show",
+  settings: "应用级设置、模型偏好、人格和隐私控制",
+  debug: "开发诊断、Prompt Preview 安全摘要和 trace",
+  presentation: "未来 Presentation / Avatar 占位"
+};
+const WORKSPACE_TABS: Record<WorkspaceId, WorkspaceTab[]> = {
+  home: [{ id: "chat", label: "聊天" }],
+  memory: [
+    { id: "pending", label: "待确认" },
+    { id: "confirmed", label: "已保存" },
+    { id: "archive", label: "最近会话" },
+    { id: "local", label: "本地数据" },
+    { id: "future", label: "候选记忆" }
+  ],
+  game: [
+    { id: "current", label: "当前上下文" },
+    { id: "timeline", label: "本局时间线" },
+    { id: "knowledge", label: "知识" },
+    { id: "manual", label: "手动控制" }
+  ],
+  voice: [
+    { id: "conversation", label: "对话" },
+    { id: "input", label: "输入 / ASR" },
+    { id: "output", label: "输出" },
+    { id: "profile", label: "Voice Profile" }
+  ],
+  overlay: [
+    { id: "safe", label: "Safe Mode" },
+    { id: "placement", label: "位置" },
+    { id: "content", label: "内容" },
+    { id: "future", label: "Game Mode" }
+  ],
+  settings: [
+    { id: "app", label: "应用" },
+    { id: "provider", label: "模型" },
+    { id: "privacy", label: "隐私 / 数据" },
+    { id: "advanced", label: "高级" }
+  ],
+  debug: [
+    { id: "events", label: "Event Stream" },
+    { id: "prompt", label: "Prompt Preview" },
+    { id: "runtime", label: "Runtime" },
+    { id: "trace", label: "Trace" }
+  ],
+  presentation: [
+    { id: "avatar", label: "Avatar" },
+    { id: "policy", label: "Presentation Policy" }
+  ]
+};
+const DEFAULT_WORKSPACE_TABS: Record<WorkspaceId, string> = Object.fromEntries(
+  Object.entries(WORKSPACE_TABS).map(([workspaceId, tabs]) => [workspaceId, tabs[0]?.id ?? ""])
+) as Record<WorkspaceId, string>;
 
 const idleStatus: GameStatus = {
   game_id: null,
@@ -146,6 +272,7 @@ const emptyProfile: UserProfileMemory = {
   current_boss: null,
   repeated_struggles: [],
   emotional_notes: [],
+  long_term_memories: [],
   last_seen_at: null,
   memory_updated_at: {}
 };
@@ -240,6 +367,7 @@ const emptyPromptPreview: PromptPreviewResponse = {
   game_context_summary: {},
   session_focus_summary: {},
   game_state_summary: {},
+  persona_pack_summary: {},
   knowledge_summary: {},
   memory_summary: {},
   final_context_summary: {},
@@ -248,13 +376,38 @@ const emptyPromptPreview: PromptPreviewResponse = {
 
 const emptySemanticExtractionDebug: SemanticExtractionDebugResponse = {
   latest_user_message: null,
+  input_source: "text",
   rule_result: null,
   rule_confidence: 0,
   llm_called: false,
   semantic_extraction_model: null,
   semantic_extraction_latency_ms: 0,
   provider_latency_ms: 0,
+  llm_primary_status: "not_run",
+  llm_provider_status: "not_run",
+  llm_schema_valid: null,
+  rule_grounding: {},
+  primary_extractor: "llm",
+  primary_status: "not_run",
+  fallback_extractor: null,
+  guard_final_decision: "no_op",
+  applied_by: null,
+  first_attempt_failed: null,
+  compat_retry_used: false,
+  compat_retry_succeeded: null,
+  ultra_compact_used: false,
+  json_recovery_stage: "not_run",
   llm_result: null,
+  llm_shadow: null,
+  llm_primary: null,
+  llm_guard: null,
+  llm_guard_decision: "no_op",
+  llm_guard_reason: "not_run",
+  llm_guard_summary: "LLM 主识别未运行",
+  llm_shadow_status: "skipped",
+  llm_shadow_confidence: "low",
+  llm_shadow_summary: "未运行",
+  llm_shadow_diff: "规则和 LLM 均无高置信更新",
   final_decision: null,
   skip_reason: null,
   latency_ms: 0,
@@ -427,6 +580,14 @@ const defaultAppSettings: AppSettings = {
   overlay_position: OVERLAY_DEFAULT_POSITION,
   overlay_opacity: OVERLAY_DEFAULT_OPACITY,
   overlay_message_count: OVERLAY_DEFAULT_MESSAGE_COUNT,
+  voice_interaction_mode: "confirm_send",
+  voice_profile_id: VOICE_PROFILE_ID,
+  voice_spoken_reply_mode: "full",
+  voice_direct_spoken_reply_mode: "brief",
+  voice_speak_proactive: false,
+  voice_speak_memory_prompts: false,
+  voice_max_spoken_chars: 120,
+  voice_max_spoken_sentences: 2,
   voice_output: "off",
   voice_rate: 1,
   voice_volume: 1,
@@ -453,6 +614,30 @@ const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSetti
   overlay_message_count: hasAppSetting(settings, "overlay_message_count")
     ? settings.overlay_message_count
     : patch.overlay_message_count ?? previous.overlay_message_count,
+  voice_interaction_mode: hasAppSetting(settings, "voice_interaction_mode")
+    ? settings.voice_interaction_mode
+    : patch.voice_interaction_mode ?? previous.voice_interaction_mode,
+  voice_profile_id: hasAppSetting(settings, "voice_profile_id")
+    ? settings.voice_profile_id
+    : patch.voice_profile_id ?? previous.voice_profile_id,
+  voice_spoken_reply_mode: hasAppSetting(settings, "voice_spoken_reply_mode")
+    ? settings.voice_spoken_reply_mode
+    : patch.voice_spoken_reply_mode ?? previous.voice_spoken_reply_mode,
+  voice_direct_spoken_reply_mode: hasAppSetting(settings, "voice_direct_spoken_reply_mode")
+    ? settings.voice_direct_spoken_reply_mode
+    : patch.voice_direct_spoken_reply_mode ?? previous.voice_direct_spoken_reply_mode,
+  voice_speak_proactive: hasAppSetting(settings, "voice_speak_proactive")
+    ? settings.voice_speak_proactive
+    : patch.voice_speak_proactive ?? previous.voice_speak_proactive,
+  voice_speak_memory_prompts: hasAppSetting(settings, "voice_speak_memory_prompts")
+    ? settings.voice_speak_memory_prompts
+    : patch.voice_speak_memory_prompts ?? previous.voice_speak_memory_prompts,
+  voice_max_spoken_chars: hasAppSetting(settings, "voice_max_spoken_chars")
+    ? settings.voice_max_spoken_chars
+    : patch.voice_max_spoken_chars ?? previous.voice_max_spoken_chars,
+  voice_max_spoken_sentences: hasAppSetting(settings, "voice_max_spoken_sentences")
+    ? settings.voice_max_spoken_sentences
+    : patch.voice_max_spoken_sentences ?? previous.voice_max_spoken_sentences,
   voice_output: hasAppSetting(settings, "voice_output") ? settings.voice_output : patch.voice_output ?? previous.voice_output,
   voice_rate: hasAppSetting(settings, "voice_rate") ? settings.voice_rate : patch.voice_rate ?? previous.voice_rate,
   voice_volume: hasAppSetting(settings, "voice_volume") ? settings.voice_volume : patch.voice_volume ?? previous.voice_volume
@@ -461,6 +646,7 @@ const voiceSettingFallback = (settings: Partial<AppSettings>, previous: AppSetti
 export const INTERIM_PLACEHOLDERS = ["……", "……嗯", "嗯……"];
 const PLACEHOLDER_DELAY_MS = 3000;
 const PROACTIVE_CHECK_INTERVAL_MS = 30000;
+const PROACTIVE_SYSTEM_ACTION_SUPPRESSION_MS = 180000;
 const AUTO_SCROLL_THRESHOLD_PX = 120;
 const EVENT_STREAM_LIMIT = 20;
 const TEST_VOICE_TEXT = "你好，我是 Rei。语音输出测试。";
@@ -547,6 +733,14 @@ const labelMap: Record<string, string> = {
   knowledge_not_used_reason: "未使用原因",
   knowledge_retrieval_min_score: "最低命中分数",
   auto_game_detection: "自动游戏检测",
+  voice_interaction_mode: "语音交互模式",
+  voice_profile_id: "语音档案",
+  voice_spoken_reply_mode: "普通播报模式",
+  voice_direct_spoken_reply_mode: "直接对话播报模式",
+  voice_speak_proactive: "播报主动陪伴",
+  voice_speak_memory_prompts: "播报记忆确认",
+  voice_max_spoken_chars: "最长播报字数",
+  voice_max_spoken_sentences: "最长播报句数",
   voice_output: "语音输出",
   voice_rate: "语速",
   voice_volume: "音量",
@@ -555,6 +749,30 @@ const labelMap: Record<string, string> = {
   llm_event: "LLM 游戏事件",
   llm_memory: "LLM 记忆",
   llm_result: "LLM 判断",
+  llm_guard: "LLM Guard",
+  llm_guard_decision: "Guard 判定",
+  llm_guard_reason: "Guard 原因",
+  llm_guard_summary: "Guard 摘要",
+  llm_primary: "LLM 主候选",
+  primary_extractor: "Primary extractor",
+  primary_status: "Primary 状态",
+  fallback_extractor: "Fallback extractor",
+  guard_final_decision: "最终判定",
+  applied_by: "应用来源",
+  first_attempt_failed: "首次失败",
+  compat_retry_used: "Compat retry",
+  compat_retry_succeeded: "Compat 结果",
+  ultra_compact_used: "Ultra compact",
+  json_recovery_stage: "JSON 恢复",
+  llm_primary_status: "主识别状态",
+  llm_provider_status: "Provider 状态",
+  llm_schema_valid: "Schema 有效",
+  rule_grounding: "规则 grounding",
+  llm_shadow: "LLM 影子候选",
+  llm_shadow_confidence: "影子置信度",
+  llm_shadow_diff: "规则 / 影子差异",
+  llm_shadow_status: "影子状态",
+  llm_shadow_summary: "影子摘要",
   main_reply_model: "回复模型",
   memory: "记忆摘要",
   manual_override: "手动选择",
@@ -572,9 +790,13 @@ const labelMap: Record<string, string> = {
   new_message: "新消息打断",
   parse_error: "解析错误",
   persona: "人格",
+  persona_pack: "人格包",
+  persona_pack_enabled: "人格包启用",
   persona_mode: "人格模式",
   previous_game: "上一个游戏",
   prompt_order: "上下文顺序",
+  prompt_char_budget: "人格包预算",
+  prompt_char_count: "人格包长度",
   process_name: "进程名",
   provider_latency_ms: "模型耗时",
   requires_user_activity_after_proactive: "等待用户回应",
@@ -592,6 +814,13 @@ const labelMap: Record<string, string> = {
   snippet_titles: "命中的知识标题",
   snippet_previews: "知识片段预览",
   result_scores: "命中分数",
+  loaded_sections: "已加载段落",
+  injected_sections: "已注入段落",
+  missing_sections: "缺失段落",
+  omitted_sections: "省略段落",
+  persona_section_truncated: "人格包已截断",
+  truncated_sections: "截断段落",
+  raw_content_omitted: "原文已隐藏",
   snippets_count: "命中知识条数",
   support_status: "支持状态",
   supported_games_count: "已支持游戏数",
@@ -603,6 +832,8 @@ const valueMap: Record<string, string> = {
   auto: "自动",
   boss_attempt: "挑战中",
   boss_cleared: "已通过",
+  boss_changed: "Boss 已更新",
+  boss_detected: "检测到 Boss",
   boss_failed: "挑战失败",
   casual_chat: "闲聊",
   casual_or_short_reply: "日常短回复",
@@ -619,10 +850,12 @@ const valueMap: Record<string, string> = {
   boss: "Boss",
   elden_ring: "Elden Ring",
   explicit_user_statement: "明确表达",
+  explicit_user_memory_request: "显式记忆请求",
   fast: "快速",
   fresh: "新鲜",
   frustration_loop: "挫败循环",
   game_progress: "游戏进度",
+  gameplay_preference: "玩法偏好",
   game_session: "游戏状态",
   elden_ring_boss_strategy: "Boss 攻略",
   elden_ring_general_help: "游戏帮助",
@@ -644,21 +877,29 @@ const valueMap: Record<string, string> = {
   high: "高",
   hide: "隐藏",
   idle: "空闲",
-  idle_silence: "空闲沉默",
+  idle_silence: "沉默陪伴",
   ignored: "已忽略",
+  ignore_no_memory_intent: "无记忆意图",
   initial_grace: "初始等待中",
   late_night: "深夜提醒",
   low: "低",
+  low_confidence_rule: "规则置信度较低",
+  llm_fallback: "LLM 兜底",
   manual: "手动选择",
   user_switch: "用户切换",
   detector: "自动检测",
   session: "对话状态",
+  semantic_extraction_auth_failed: "语义识别认证失败",
+  semantic_extraction_parse_error: "语义识别解析失败",
+  semantic_extraction_provider_error: "语义识别服务失败",
+  semantic_extraction_timeout: "语义识别超时",
   medium: "中",
   "memory boss conflicts with fresh game state": "记忆里的 Boss 与当前游戏状态冲突",
   minimal: "minimal（自然）",
   no_candidate_trigger: "暂无可触发项",
   no_active_game: "尚未确定当前游戏",
   no_game_detected: "未检测到游戏",
+  no_semantic_signal: "无明显语义信号",
   no_knowledge_match: "没有可用知识命中",
   no_supported_knowledge: "未支持知识库",
   used: "已使用本地知识",
@@ -682,15 +923,39 @@ const valueMap: Record<string, string> = {
   off: "关闭",
   on: "开启",
   pending: "待确认",
+  rejected_by_guard: "已阻止",
+  expired: "已过期",
   persona: "人格",
+  persona_drift_blocked: "人设漂移已阻止",
   persona_preference: "互动偏好",
+  passive_death_statement: "被动死亡表达",
+  provider_unavailable: "语义模型不可用",
   playstyle: "玩法",
   playstyle_preference: "玩法偏好",
+  proactive: "主动消息",
   pro: "高质量",
   profile: "长期记忆",
+  requires_confirmation: "需要确认",
   recent_user_message: "刚刚发言",
+  recent_assistant_reply: "刚回复过",
   relationship_preference: "互动偏好",
+  semantic_extraction: "语义识别",
+  sensitive_secret_blocked: "敏感内容已阻止",
   repeated_death: "反复死亡",
+  repeat_trigger_type: "同类主动陪伴已触发",
+  rule: "规则",
+  mixed: "规则 + LLM",
+  slang_failure_expression: "低置信失败表达",
+  unknown_boss_alias: "未知 Boss 指代",
+  game_semantic_keywords_no_rule_update: "低置信游戏语义",
+  shadow_mode_game_semantics: "影子识别游戏语义",
+  shadow_deferred: "后台识别中",
+  skipped: "已跳过",
+  succeeded: "已完成",
+  auth_failed: "认证失败",
+  invalid_json: "返回 JSON 无效",
+  timeout: "超时",
+  provider_error: "模型服务失败",
   running: "运行中",
   sample: "样例",
   short: "简短",
@@ -707,9 +972,22 @@ const valueMap: Record<string, string> = {
   not_found: "未找到运行环境",
   user_is_typing: "正在输入",
   user_preference: "用户偏好",
+  interaction_preference: "互动偏好",
+  accessibility_preference: "舒适度偏好",
+  do_not_remember: "不要记住",
+  unknown: "未分类",
+  assistant: "助手消息",
+  assistant_source_blocked: "非用户来源已阻止",
+  voice_confirmed: "语音确认发送",
+  voice_direct: "直接语音对话",
   user_stop: "用户停止",
   unavailable: "当前环境不支持",
   waiting_for_user_activity_after_proactive: "等待用户回应",
+  system_action_suppression: "系统操作后暂不打扰",
+  memory_candidate_created: "生成待确认记忆",
+  emotion_frustrated: "识别到挫败",
+  emotion_tired: "识别到疲惫",
+  emotion_calm: "识别到冷静",
   weak: "较弱",
   current_game: "当前运行游戏",
   user_message: "对话识别",
@@ -727,8 +1005,7 @@ const valueMap: Record<string, string> = {
   detected_only: "暂未支持",
   supported: "已支持",
   unsupported: "暂未支持",
-  window_title: "窗口标题",
-  unknown: "未知"
+  window_title: "窗口标题"
 };
 
 const formatDebugLabel = (key: string) => labelMap[key] ?? key;
@@ -740,6 +1017,15 @@ const debugText = (value: unknown, fallback = "无"): string => {
   if (typeof value === "number") return String(value);
   if (Array.isArray(value)) return value.map((item) => debugText(item)).join("、") || fallback;
   return JSON.stringify(value);
+};
+
+const safePathText = (value: unknown, fallback = "未设置"): string => {
+  const text = debugText(value, fallback);
+  if (text === fallback || (!text.includes("/") && !text.includes("\\"))) return text;
+  const normalized = text.replace(/\\/g, "/").replace(/\/+$/, "");
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 1) return text;
+  return `…/${parts.slice(-2).join("/")}`;
 };
 
 const debugTime = (value: string | null | undefined): string => {
@@ -840,10 +1126,13 @@ const debugListText = (item: unknown): string => {
   return meta ? `${meta}: ${text}` : text;
 };
 
-const truncateEventText = (value: string, maxLength = 64) =>
-  value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
-
 const eventTextLength = (value: string) => `${value.length} 字`;
+
+const userMessageEventSummary = (event: Extract<ReiLinkEvent, { type: "user_message_sent" }>) => {
+  if (event.source === "voice_direct") return `语音自动发送 ${event.character_count ?? event.text.length} 字`;
+  if (event.source === "voice_confirmed") return `语音确认发送 ${event.character_count ?? event.text.length} 字`;
+  return `用户消息 ${eventTextLength(event.text)}`;
+};
 
 const voiceStopReasonText = (reason?: string) => {
   const labels: Record<string, string> = {
@@ -925,6 +1214,25 @@ const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
   return "";
 };
 
+const voiceInteractionModeText = (mode: AppSettings["voice_interaction_mode"]) =>
+  mode === "direct_conversation" ? "直接对话" : "确认后发送";
+
+const voiceInteractionModeDescription = (mode: AppSettings["voice_interaction_mode"]) =>
+  mode === "direct_conversation" ? "转写后会自动发送。" : "转写后需要确认发送。";
+
+const voiceSpeakSourceText = (source?: VoiceReplySpeakSource) => {
+  const labels: Record<VoiceReplySpeakSource, string> = {
+    assistant_reply: "普通回复",
+    direct_conversation: "直接对话",
+    proactive: "主动陪伴",
+    memory_prompt: "记忆确认",
+    debug: "调试内容"
+  };
+  return source ? labels[source] : "";
+};
+
+const voiceProfileToggleText = (enabled: boolean) => (enabled ? "开启" : "关闭");
+
 const overlayPositionText = (position?: string) => {
   const labels: Record<string, string> = {
     "top-right": "右上",
@@ -937,30 +1245,182 @@ const overlayPositionText = (position?: string) => {
   return labels[position ?? ""] ?? "右中";
 };
 
+const semanticShadowStatusText = (status?: string | null) => {
+  const labels: Record<string, string> = {
+    skipped: "已跳过",
+    succeeded: "已完成",
+    failed: "失败"
+  };
+  return labels[status ?? ""] ?? debugText(status);
+};
+
+const semanticGuardDecisionText = (decision?: string | null) => {
+  const labels: Record<string, string> = {
+    apply: "已应用",
+    ask_clarification: "需澄清",
+    candidate_only: "仅候选",
+    no_op: "无更新",
+    fallback_to_rule: "规则 fallback"
+  };
+  return labels[decision ?? ""] ?? debugText(decision);
+};
+
+const semanticShadowEventStatusText = (status?: string | null) => {
+  const labels: Record<string, string> = {
+    shadow_deferred: "LLM 影子识别已调度",
+    shadow_succeeded: "LLM 影子识别完成",
+    shadow_timeout: "LLM 影子识别超时",
+    shadow_invalid_json: "LLM 影子识别失败：invalid_json",
+    shadow_auth_failed: "LLM 影子识别失败：auth_failed",
+    shadow_provider_unavailable: "LLM 影子识别跳过：provider_unavailable",
+    shadow_provider_error: "LLM 影子识别失败：provider_error",
+    shadow_cancelled: "LLM 影子识别已取消",
+    shadow_expired: "LLM 影子识别超时或已过期"
+  };
+  return labels[status ?? ""] ?? debugText(status);
+};
+
 const eventSummary = (event: ReiLinkEvent) => {
   switch (event.type) {
     case "user_message_sent":
-      return truncateEventText(event.text);
+      return userMessageEventSummary(event);
     case "assistant_reply_started":
       return "开始生成回复";
     case "assistant_reply_segment_shown":
-      return `第 ${event.segment_index + 1} 段 / ${eventTextLength(event.text)}`;
+      return `第 ${event.segment_index + 1} 段 / ${event.character_count} 字`;
     case "assistant_reply_completed":
       return "回复显示完成";
     case "proactive_message_shown":
-      return `${debugText(event.trigger_type)}: ${truncateEventText(event.text)}`;
+      return `${debugText(event.trigger_type)}: ${sanitizeSessionTimelineText(event.text, 64)}`;
     case "pending_memory_created":
-      return `${debugText(event.memory_type)}: ${truncateEventText(event.text)}`;
+      return `${debugText(event.memory_type)}: ${sanitizeSessionTimelineText(event.text, 64)}`;
     case "pending_memory_accepted":
       return event.memory_id;
     case "pending_memory_ignored":
       return event.memory_id;
+    case "long_term_memory_undone":
+      return event.memory_id;
+    case "memory_candidate_checked":
+      return [
+        `decision=${debugText(event.decision)}`,
+        event.memory_type ? `type=${debugText(event.memory_type)}` : "",
+        event.guard_reason ? `guard=${debugText(event.guard_reason)}` : "",
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
+    case "memory_candidate_pending":
+      return [
+        event.memory_type ? debugText(event.memory_type) : "",
+        event.guard_reason ? `guard=${debugText(event.guard_reason)}` : "",
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
+    case "memory_auto_saved":
+      return [
+        event.memory_id ? `memory=${debugText(event.memory_id)}` : "",
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
+    case "memory_auto_save_undo":
+      return [
+        `memory=${debugText(event.memory_id)}`,
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
+    case "memory_candidate_rejected":
+      return [
+        event.guard_reason ? `guard=${debugText(event.guard_reason)}` : "",
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : ""
+      ].filter(Boolean).join(" / ");
+    case "session_archive_created":
+      return [
+        event.status === "existing" ? "已存在" : "已创建",
+        `事件 ${event.event_count}`,
+        event.game ? sanitizeSessionTimelineText(event.game, 36) : "",
+        event.boss ? sanitizeSessionTimelineText(event.boss, 36) : "",
+        event.archive_id
+      ].filter(Boolean).join(" / ");
+    case "session_archive_deleted":
+      return event.archive_id;
+    case "session_archive_cleared":
+      return `清空 ${event.deleted_count} 条`;
+    case "session_archive_skipped":
+      return [
+        sanitizeSessionTimelineText(event.reason, 64),
+        typeof event.event_count === "number" ? `输入事件 ${event.event_count}` : ""
+      ].filter(Boolean).join(" / ");
+    case "session_archive_search_started":
+      return [
+        event.query_summary ? sanitizeSessionTimelineText(event.query_summary, 64) : "最近会话",
+        ...Object.entries(event.filters ?? {}).map(([key, value]) => `${key}=${sanitizeSessionTimelineText(value, 36)}`)
+      ].filter(Boolean).join(" / ");
+    case "session_archive_search_completed":
+      return [
+        `结果 ${event.result_count}`,
+        event.omitted_count ? `省略 ${event.omitted_count}` : "",
+        event.query_summary ? sanitizeSessionTimelineText(event.query_summary, 64) : "",
+        ...Object.entries(event.filters ?? {}).map(([key, value]) => `${key}=${sanitizeSessionTimelineText(value, 36)}`),
+        ...(event.safe_result_summaries ?? []).slice(0, 2).map((summary) => sanitizeSessionTimelineText(summary, 48))
+      ].filter(Boolean).join(" / ");
+    case "session_archive_search_cleared":
+      return [
+        event.query_summary ? sanitizeSessionTimelineText(event.query_summary, 64) : "已清除",
+        ...Object.entries(event.filters ?? {}).map(([key, value]) => `${key}=${sanitizeSessionTimelineText(value, 36)}`)
+      ].filter(Boolean).join(" / ");
+    case "archive_memory_scan_started":
+      return [
+        event.mode === "recent_archives" ? "最近归档" : debugText(event.archive_id, "单条归档"),
+        "检查可保存偏好"
+      ].filter(Boolean).join(" / ");
+    case "archive_memory_scan_completed":
+      return [
+        event.mode === "recent_archives" ? "最近归档" : debugText(event.archive_id, "单条归档"),
+        `归档 ${event.archives_scanned}`,
+        `事件 ${event.events_scanned}`,
+        `新候选 ${event.created_count}`,
+        event.skipped_count ? `跳过 ${event.skipped_count}` : "",
+        event.rejected_count ? `拒绝 ${event.rejected_count}` : ""
+      ].filter(Boolean).join(" / ");
+    case "archive_memory_candidate_created":
+      return [
+        debugText(event.memory_type),
+        event.summary ? sanitizeSessionTimelineText(event.summary, 64) : "",
+        event.archive_id ? `archive=${debugText(event.archive_id)}` : ""
+      ].filter(Boolean).join(" / ");
+    case "archive_memory_candidate_skipped":
+    case "archive_memory_candidate_rejected":
+      return [
+        `guard=${debugText(event.guard_reason)}`,
+        event.safe_summary ? sanitizeSessionTimelineText(event.safe_summary, 64) : "",
+        event.archive_id ? `archive=${debugText(event.archive_id)}` : ""
+      ].filter(Boolean).join(" / ");
     case "game_context_changed":
       return [debugText(event.game), debugText(event.source)].join(" / ");
+    case "semantic_extraction_traced":
+      return [
+        `语义识别：${debugText(event.source)}`,
+        debugText(event.confidence),
+        event.shadow_event_status ? semanticShadowEventStatusText(event.shadow_event_status) : "",
+        event.fallback_reason ? `原因：${debugText(event.fallback_reason)}` : "",
+        event.skip_reason && event.skip_reason !== "no_semantic_signal" ? `跳过：${debugText(event.skip_reason)}` : "",
+        event.parse_error ? `错误：${debugText(event.parse_error)}` : "",
+        event.applied_updates?.length ? debugText(event.applied_updates) : "",
+        event.llm_guard_decision ? `Guard：${semanticGuardDecisionText(event.llm_guard_decision)}` : "",
+        event.llm_guard_summary ? sanitizeSessionTimelineText(event.llm_guard_summary, 96) : "",
+        event.llm_shadow_status ? `影子：${semanticShadowStatusText(event.llm_shadow_status)}` : "",
+        event.llm_shadow_summary ? sanitizeSessionTimelineText(event.llm_shadow_summary, 96) : "",
+        event.llm_shadow_diff ? sanitizeSessionTimelineText(event.llm_shadow_diff, 96) : ""
+      ].filter(Boolean).join(" / ");
     case "game_session_changed":
-      return [debugText(event.game), debugText(event.current_boss), debugText(event.activity)].join(" / ");
+      return [
+        debugText(event.game),
+        debugText(event.current_boss),
+        debugText(event.activity),
+        typeof event.death_count === "number" ? `死亡 ${event.death_count}` : "",
+        typeof event.frustration_count === "number" ? `挫败 ${event.frustration_count}` : "",
+        event.last_cleared_boss ? `通过 ${debugText(event.last_cleared_boss)}` : ""
+      ].filter(Boolean).join(" / ");
     case "knowledge_used":
-      return [event.game ? debugText(event.game) : "", debugText(event.topics)].filter(Boolean).join(" / ");
+      return [
+        event.game ? sanitizeSessionTimelineText(event.game, 36) : "",
+        debugText((event.topics ?? []).map((topic) => sanitizeSessionTimelineText(topic, 48)).filter(Boolean))
+      ].filter(Boolean).join(" / ");
     case "model_routed":
       return `模型：${debugText(event.model)} / 原因：${debugText(event.route_reason)}`;
     case "backend_status_changed":
@@ -1009,6 +1469,46 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [voiceInputReasonText(event.reason, event.status), event.character_count ? `${event.character_count} 字` : "", event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
     case "voice_input_unavailable":
       return [voiceInputReasonText(event.reason, event.status), event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ");
+    case "voice_direct_mode_enabled":
+      return "直接对话模式已开启";
+    case "voice_direct_mode_disabled":
+      return "直接对话模式已关闭";
+    case "voice_transcription_auto_sent":
+      return [`语音文本 ${event.character_count} 字`, event.provider ? debugText(event.provider) : ""].filter(Boolean).join(" / ");
+    case "voice_transcription_auto_send_blocked":
+      return [
+        directVoiceAutoSendBlockSummary(event.reason),
+        `识别文本 ${event.character_count} 字`,
+        event.duration_ms ? `${event.duration_ms} ms` : "",
+        event.provider ? debugText(event.provider) : ""
+      ].filter(Boolean).join(" / ");
+    case "voice_profile_applied":
+      return [
+        VOICE_PROFILE_LABEL,
+        voiceSpokenModeText(event.spoken_mode),
+        voiceSpeakSourceText(event.source),
+        `上限 ${event.max_spoken_sentences} 句 / ${event.max_spoken_chars} 字`
+      ].filter(Boolean).join(" / ");
+    case "voice_reply_spoken_excerpt_created":
+      return [
+        voiceSpokenModeText(event.spoken_mode),
+        `${event.spoken_character_count}/${event.original_character_count} 字`,
+        `${event.sentence_count} 句`,
+        event.reason ? debugText(event.reason) : ""
+      ].filter(Boolean).join(" / ");
+    case "voice_reply_speak_skipped":
+      return [
+        voiceSpeakSkippedReasonText(event.reason as VoiceSpeakSkippedReason),
+        event.spoken_mode ? voiceSpokenModeText(event.spoken_mode) : "",
+        voiceSpeakSourceText(event.source),
+        event.original_character_count ? `${event.original_character_count} 字` : ""
+      ].filter(Boolean).join(" / ");
+    case "voice_reply_auto_speak_started":
+      return [
+        `自动播报 ${event.character_count} 字`,
+        event.spoken_mode ? voiceSpokenModeText(event.spoken_mode) : "",
+        event.sentence_count ? `${event.sentence_count} 句` : ""
+      ].filter(Boolean).join(" / ");
     case "audio_capture_started":
       return `最长 ${event.duration_ms ?? 0} ms`;
     case "audio_capture_completed":
@@ -1078,7 +1578,26 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     pending_memory_created: "发现待确认记忆",
     pending_memory_accepted: "记忆已保存",
     pending_memory_ignored: "记忆已忽略",
+    long_term_memory_undone: "记忆已撤销",
+    memory_candidate_checked: "记忆候选已检查",
+    memory_candidate_pending: "记忆待确认",
+    memory_auto_saved: "记忆已自动保存",
+    memory_auto_save_undo: "自动保存记忆已撤销",
+    memory_candidate_rejected: "记忆候选已拒绝",
+    session_archive_created: "会话归档已保存",
+    session_archive_deleted: "会话归档已删除",
+    session_archive_cleared: "会话归档已清空",
+    session_archive_skipped: "会话归档已跳过",
+    session_archive_search_started: "会话归档搜索开始",
+    session_archive_search_completed: "会话归档搜索完成",
+    session_archive_search_cleared: "会话归档搜索已清除",
+    archive_memory_scan_started: "归档记忆检查开始",
+    archive_memory_scan_completed: "归档记忆检查完成",
+    archive_memory_candidate_created: "归档生成待确认记忆",
+    archive_memory_candidate_skipped: "归档记忆候选已跳过",
+    archive_memory_candidate_rejected: "归档记忆候选已拒绝",
     game_context_changed: "游戏上下文变化",
+    semantic_extraction_traced: "语义识别来源",
     game_session_changed: "游戏状态变化",
     knowledge_used: "使用游戏知识",
     model_routed: "模型路由完成",
@@ -1101,6 +1620,14 @@ const eventTypeText = (type: ReiLinkEvent["type"]) => {
     voice_input_stopped: "语音输入已停止",
     voice_input_error: "语音输入失败",
     voice_input_unavailable: "语音输入不可用",
+    voice_direct_mode_enabled: "直接对话已开启",
+    voice_direct_mode_disabled: "直接对话已关闭",
+    voice_transcription_auto_sent: "语音文本自动发送",
+    voice_transcription_auto_send_blocked: "语音文本等待确认",
+    voice_profile_applied: "Voice Profile 已应用",
+    voice_reply_spoken_excerpt_created: "语音短版已生成",
+    voice_reply_speak_skipped: "语音播报已跳过",
+    voice_reply_auto_speak_started: "语音回复自动播报",
     audio_capture_started: "录音测试开始",
     audio_capture_completed: "录音测试完成",
     audio_capture_stopped: "录音已停止",
@@ -1402,6 +1929,41 @@ const appendTranscriptToInput = (current: string, transcript: string) => {
   return `${current.trimEnd()} ${text}`;
 };
 
+const directVoiceAutoSendBlockReasonText = (reason: VoiceDirectAutoSendBlockReason) => {
+  const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
+    short_recording: "这句太短了。可以再说一次，或确认后发送。",
+    short_transcript: "识别结果太短了。可以再说一次，或确认后发送。",
+    partial_transcript: "这句像是还没说完。可以再说一次，或确认后发送。"
+  };
+  return labels[reason];
+};
+
+const directVoiceAutoSendBlockSummary = (reason: VoiceDirectAutoSendBlockReason) => {
+  const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
+    short_recording: "录音过短，已改为确认发送",
+    short_transcript: "识别文本过短，已改为确认发送",
+    partial_transcript: "疑似半句，已改为确认发送"
+  };
+  return labels[reason];
+};
+
+const directVoiceAutoSendBlockReason = (transcript: string, durationMs?: number): VoiceDirectAutoSendBlockReason | null => {
+  const text = transcript.trim();
+  if (!text) return "short_transcript";
+  if (typeof durationMs === "number" && durationMs > 0 && durationMs < VOICE_DIRECT_MIN_AUTO_SEND_DURATION_MS) {
+    return "short_recording";
+  }
+  const compact = text.replace(/\s+/g, "");
+  if (compact.length <= VOICE_DIRECT_MIN_AUTO_SEND_CHARS - 1) return "short_transcript";
+  const partialEndMarkers = (
+    "我想,我现在,我現在,我换,我換,我换去,我換去,不打,先不打,去打,换到,換到,那个,那個,这个,這個,帮我,幫我"
+  ).split(",");
+  if (compact.length <= 8 && partialEndMarkers.some((marker) => compact.endsWith(marker))) {
+    return "partial_transcript";
+  }
+  return null;
+};
+
 const safeProviderDebug = (debug: ProviderDebugResponse) => {
   const safeDebug: Partial<ProviderDebugResponse> = { ...debug };
   delete safeDebug.env_file_path;
@@ -1456,15 +2018,94 @@ export function EventStreamPanel({
   );
 }
 
+export function SessionTimelinePanel({
+  items,
+  open,
+  onOpenChange,
+  onClear
+}: {
+  items: SessionTimelineItem[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onClear: () => void;
+}) {
+  return (
+    <details
+      className="debugSection sessionTimelineSection"
+      onToggle={(event) => onOpenChange(event.currentTarget.open)}
+      open={open}
+    >
+      <summary>
+        <span>Session Timeline / 本局时间线</span>
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </summary>
+      {open && (
+        <div className="sessionTimelineBody">
+          <div className="sessionTimelineActions">
+            <p className="settingHint">只记录本局关键变化的安全短摘要，不保存完整聊天或调试内容。</p>
+            <button className="smallButton quiet" type="button" disabled={items.length === 0} onClick={onClear}>
+              清空时间线
+            </button>
+          </div>
+          <ol className="sessionTimelineList" aria-label="本局时间线列表">
+            {items.map((item, index) => (
+              <li key={`${item.id}-${index}`}>
+                <span className="eventStreamTime">{eventStreamTime(item.timestamp)}</span>
+                <span className="sessionTimelineSummary">{item.summary}</span>
+              </li>
+            ))}
+            {items.length === 0 && <li className="emptyDebugText eventStreamEmpty">本局还没有记录到关键变化。</li>}
+          </ol>
+        </div>
+      )}
+    </details>
+  );
+}
+
 const pendingEvidenceSummary = (memory: PendingMemory) => {
+  if (memory.evidence_summary) return memory.evidence_summary;
   const evidence = asRecord(memory.evidence);
-  const userMessage = debugText(evidence.user_message, "");
+  const inputSummary = debugText(evidence.input_summary, "");
   const gameState = debugText(evidence.game_state_summary, "");
+  const semanticReason = debugText(evidence.semantic_reason, "");
   const parts = [
-    userMessage ? `用户：${userMessage}` : "",
-    gameState ? `游戏：${gameState}` : ""
+    inputSummary ? `输入：${inputSummary}` : "",
+    gameState ? `游戏：${gameState}` : "",
+    semanticReason ? `识别：${semanticReason}` : ""
   ].filter(Boolean);
   return parts.join(" / ") || "无";
+};
+
+const archiveMemoryGuardText = (reason: string) => ({
+  single_session_event_only: "只是一局里的单次事件",
+  single_emotional_state_only: "只是单次情绪状态",
+  assistant_source_blocked: "来源是 Rei 回复",
+  proactive_source_blocked: "来源是主动提示",
+  sensitive_secret_blocked: "含敏感内容或已脱敏内容",
+  persona_drift_blocked: "像人格偏移请求",
+  duplicate_candidate: "已有相同候选或已保存",
+  no_recent_archives: "暂无最近归档",
+  no_safe_archive_events: "没有可检查的安全事件",
+  no_candidate: "没有稳定偏好"
+} as Record<string, string>)[reason] || debugText(reason);
+
+const archiveMemoryScanFeedback = (response: SessionArchiveMemoryCandidateScanResponse) => {
+  const { created_count, skipped_count, rejected_count } = response.scan_summary;
+  if (created_count > 0) {
+    return `生成 ${created_count} 条待确认记忆`;
+  }
+  const firstRejected = response.rejected_candidates[0];
+  if (firstRejected) {
+    return `没有生成候选：${archiveMemoryGuardText(firstRejected.guard_reason)}`;
+  }
+  const firstSkipped = response.skipped_candidates[0];
+  if (firstSkipped) {
+    return `没有发现值得保存的偏好：${archiveMemoryGuardText(firstSkipped.guard_reason)}`;
+  }
+  if (skipped_count || rejected_count) {
+    return `没有生成候选：跳过 ${skipped_count} 条，拒绝 ${rejected_count} 条`;
+  }
+  return "没有发现值得保存的偏好";
 };
 
 const firstDefined = (...values: unknown[]) => values.find((value) => value !== null && value !== undefined && value !== "");
@@ -1595,6 +2236,8 @@ export function App() {
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
   const [pendingMemoryBusyId, setPendingMemoryBusyId] = useState("");
+  const [memoryNotice, setMemoryNotice] = useState<MemoryNotice | null>(null);
+  const [longTermMemoryBusyId, setLongTermMemoryBusyId] = useState("");
   const [debugActionBusy, setDebugActionBusy] = useState("");
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -1615,9 +2258,26 @@ export function App() {
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("home");
+  const [workspaceTabs, setWorkspaceTabs] = useState<Record<WorkspaceId, string>>(DEFAULT_WORKSPACE_TABS);
   const [debugOpen, setDebugOpen] = useState(true);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [eventStreamOpen, setEventStreamOpen] = useState(false);
+  const [sessionTimelineOpen, setSessionTimelineOpen] = useState(false);
+  const [sessionTimeline, setSessionTimeline] = useState<SessionTimelineItem[]>([]);
+  const [sessionArchives, setSessionArchives] = useState<SessionArchiveSummary[]>([]);
+  const [sessionArchiveDetail, setSessionArchiveDetail] = useState<SessionArchiveDetail | null>(null);
+  const [sessionArchiveBusy, setSessionArchiveBusy] = useState("");
+  const [sessionArchiveFeedback, setSessionArchiveFeedback] = useState("");
+  const [sessionArchiveScanCreatedCount, setSessionArchiveScanCreatedCount] = useState(0);
+  const [sessionArchiveSearchQuery, setSessionArchiveSearchQuery] = useState("");
+  const [sessionArchiveSearchGame, setSessionArchiveSearchGame] = useState("");
+  const [sessionArchiveSearchBoss, setSessionArchiveSearchBoss] = useState("");
+  const [sessionArchiveSearchEventType, setSessionArchiveSearchEventType] = useState("");
+  const [sessionArchiveSearchActive, setSessionArchiveSearchActive] = useState(false);
+  const [sessionArchiveSearchResults, setSessionArchiveSearchResults] = useState<SessionArchiveSearchResult[]>([]);
+  const [sessionArchiveSearchTotal, setSessionArchiveSearchTotal] = useState(0);
+  const [sessionArchiveSearchOmitted, setSessionArchiveSearchOmitted] = useState(0);
   const [recentEvents, setRecentEvents] = useState<ReiLinkEvent[]>(() => eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
   const [setupHelpOpen, setSetupHelpOpen] = useState(false);
   const [demoDocHintOpen, setDemoDocHintOpen] = useState(false);
@@ -1630,6 +2290,10 @@ export function App() {
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
   const [voiceStatus, setVoiceStatus] = useState<VoiceOutputStatus>(() => voiceOutput.getStatus());
   const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>(() => voiceInput.getStatus());
+  const [voiceTranscriptReady, setVoiceTranscriptReady] = useState<{ source: MainVoiceInputProvider; characterCount: number } | null>(null);
+  const [voiceAutoSendBlockedHint, setVoiceAutoSendBlockedHint] = useState("");
+  const [voiceAssistantTurnActive, setVoiceAssistantTurnActive] = useState(false);
+  const [voiceTransientState, setVoiceTransientState] = useState<VoiceTransientState>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const forceNextScrollRef = useRef(true);
@@ -1640,31 +2304,91 @@ export function App() {
   const lastGameSessionEventRef = useRef<string | null>(null);
   const lastKnowledgeEventRef = useRef<string | null>(null);
   const lastModelRouteEventRef = useRef<string | null>(null);
+  const lastSemanticTraceEventRef = useRef<string | null>(null);
+  const lastSemanticShadowEventIdRef = useRef(0);
   const lastOverlayEnabledRef = useRef<boolean | null>(null);
   const lastOverlayConfigRef = useRef<OverlayConfig | null>(null);
   const lastOverlayContentRef = useRef<OverlayContentUpdate | null>(null);
+  const sessionTimelineBaselineReadyRef = useRef(false);
+  const sessionTimelineUserActiveRef = useRef(false);
   const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
+  const proactiveSuppressedUntilRef = useRef(0);
+  const voiceInterruptedTimerRef = useRef<number | null>(null);
+
+  const suppressProactiveAfterSystemAction = useCallback(() => {
+    proactiveSuppressedUntilRef.current = Date.now() + PROACTIVE_SYSTEM_ACTION_SUPPRESSION_MS;
+  }, []);
+
+  const clearVoiceInterruptedTimer = useCallback(() => {
+    if (voiceInterruptedTimerRef.current === null) return;
+    window.clearTimeout(voiceInterruptedTimerRef.current);
+    voiceInterruptedTimerRef.current = null;
+  }, []);
+
+  const clearVoiceTransientState = useCallback(() => {
+    clearVoiceInterruptedTimer();
+    setVoiceTransientState(null);
+    setVoiceAutoSendBlockedHint("");
+  }, [clearVoiceInterruptedTimer]);
+
+  const setVoiceInterrupted = useCallback(() => {
+    clearVoiceInterruptedTimer();
+    setVoiceTransientState({ kind: "interrupted" });
+    voiceInterruptedTimerRef.current = window.setTimeout(() => {
+      voiceInterruptedTimerRef.current = null;
+      setVoiceTransientState((current) => current?.kind === "interrupted" ? null : current);
+    }, 1400);
+  }, [clearVoiceInterruptedTimer]);
+
+  const setVoiceError = useCallback((message = "语音没有接上。可以再试一次。") => {
+    clearVoiceInterruptedTimer();
+    setVoiceTransientState({ kind: "error", message });
+  }, [clearVoiceInterruptedTimer]);
+
+  const markVoiceTranscriptReady = useCallback((source: MainVoiceInputProvider, transcript: string) => {
+    const characterCount = transcript.trim().length;
+    if (characterCount <= 0) return;
+    clearVoiceTransientState();
+    setVoiceTranscriptReady({ source, characterCount });
+  }, [clearVoiceTransientState]);
+
+  const clearVoiceTranscriptReady = useCallback(() => {
+    setVoiceTranscriptReady(null);
+    setVoiceAutoSendBlockedHint("");
+  }, []);
 
   const stopVoiceOutput = useCallback((reason: VoiceStopReason = "user_stop") => {
     voiceOutput.stop(reason);
-  }, []);
+    if (reason === "user_stop") {
+      setVoiceInterrupted();
+    }
+  }, [setVoiceInterrupted]);
 
   const testVoiceOutput = useCallback(() => {
+    if (!VOICE_TEST_VOICE_ALLOWED) return;
+    clearVoiceTransientState();
     voiceOutput.speak(TEST_VOICE_TEXT, {
       rate: appSettings.voice_rate,
       volume: appSettings.voice_volume,
       source: "test_voice"
     });
-  }, [appSettings.voice_rate, appSettings.voice_volume]);
+  }, [appSettings.voice_rate, appSettings.voice_volume, clearVoiceTransientState]);
 
-  const startVoiceInput = useCallback(() => {
-    voiceOutput.stop("user_stop");
-    voiceInput.start({
+  const startVoiceInput = () => {
+    clearVoiceTransientState();
+    clearVoiceTranscriptReady();
+    if (VOICE_INTERRUPT_ON_NEW_RECORDING && voiceOutput.getStatus().active) {
+      stopVoiceOutput("user_stop");
+    }
+    const started = voiceInput.start({
       onFinalTranscript: (transcript) => {
-        setInput((current) => appendTranscriptToInput(current, transcript));
+        handleRecognizedVoiceTranscript("web_speech", transcript);
       }
     });
-  }, []);
+    if (!started) {
+      setVoiceError("语音没有接上。可以再试一次。");
+    }
+  };
 
   const stopVoiceInput = useCallback(() => {
     voiceInput.stop("user_stop");
@@ -1734,7 +2458,14 @@ export function App() {
 
   const emitGameSessionChanged = useCallback((currentGameSession: GameSessionDebugResponse) => {
     const currentBoss = currentGameSession.current_boss?.name;
-    const signature = eventSignature(currentGameSession.current_game, currentBoss, currentGameSession.current_activity);
+    const signature = eventSignature(
+      currentGameSession.current_game,
+      currentBoss,
+      currentGameSession.current_activity,
+      currentGameSession.death_count,
+      currentGameSession.frustration_count,
+      currentGameSession.last_cleared_boss
+    );
     if (lastGameSessionEventRef.current === signature) return;
     lastGameSessionEventRef.current = signature;
     eventBus.emit({
@@ -1742,7 +2473,10 @@ export function App() {
       timestamp: eventTimestamp(),
       game: currentGameSession.current_game ?? undefined,
       current_boss: currentBoss,
-      activity: currentGameSession.current_activity ?? undefined
+      activity: currentGameSession.current_activity ?? undefined,
+      death_count: currentGameSession.death_count,
+      frustration_count: currentGameSession.frustration_count,
+      last_cleared_boss: currentGameSession.last_cleared_boss ?? undefined
     });
   }, []);
 
@@ -1810,6 +2544,150 @@ export function App() {
     );
   }, [emitGameContextChanged, emitGameSessionChanged, emitKnowledgeUsed, emitModelRouted]);
 
+  const emitSemanticExtractionTrace = useCallback((debug: SemanticExtractionDebugResponse) => {
+    const trace = debug.extraction_trace;
+    const source = trace?.source ?? debug.source ?? "none";
+    const primaryExtractor = trace?.primary_extractor ?? debug.primary_extractor ?? null;
+    const primaryStatus = trace?.primary_status ?? debug.primary_status ?? debug.llm_primary_status ?? null;
+    const fallbackExtractor = trace?.fallback_extractor ?? debug.fallback_extractor ?? null;
+    const guardFinalDecision = trace?.final_decision ?? debug.guard_final_decision ?? null;
+    const appliedBy = trace?.applied_by ?? debug.applied_by ?? null;
+    const confidence = trace?.confidence ?? debug.confidence;
+    const fallbackReason = trace?.fallback_reason ?? debug.fallback_reason ?? null;
+    const skipReason = trace?.skip_reason ?? debug.skip_reason ?? null;
+    const parseError = trace?.parse_error ?? debug.parse_error ?? null;
+    const appliedUpdates = trace?.applied_updates ?? debug.applied_updates ?? [];
+    const shadowStatus = trace?.llm_shadow_status ?? debug.llm_shadow_status ?? null;
+    const shadowConfidence = trace?.llm_shadow_confidence ?? debug.llm_shadow_confidence ?? null;
+    const shadowSummary = trace?.llm_shadow_summary ?? debug.llm_shadow_summary ?? null;
+    const shadowDiff = trace?.llm_shadow_diff ?? debug.llm_shadow_diff ?? null;
+    const guardDecision = trace?.llm_guard_decision ?? debug.llm_guard_decision ?? null;
+    const guardReason = trace?.llm_guard_reason ?? debug.llm_guard_reason ?? null;
+    const guardSummary = trace?.llm_guard_summary ?? debug.llm_guard_summary ?? null;
+    const firstAttemptFailed = debug.first_attempt_failed ?? null;
+    const compatRetryUsed = Boolean(debug.compat_retry_used);
+    const compatRetrySucceeded = debug.compat_retry_succeeded ?? null;
+    const ultraCompactUsed = Boolean(debug.ultra_compact_used);
+    const jsonRecoveryStage = debug.json_recovery_stage ?? null;
+    if (skipReason === "shadow_deferred" && shadowStatus === "skipped") return;
+    const shouldEmit = Boolean(
+      source !== "none"
+      || fallbackReason
+      || parseError
+      || (skipReason && skipReason !== "no_semantic_signal")
+      || appliedUpdates.length
+      || (guardDecision && guardDecision !== "no_op")
+      || (shadowStatus && shadowStatus !== "skipped")
+      || (shadowSummary && !String(shadowSummary).startsWith("跳过：no_semantic_signal"))
+    );
+    if (!shouldEmit) return;
+    const key = JSON.stringify({
+      source,
+      primaryExtractor,
+      primaryStatus,
+      fallbackExtractor,
+      guardFinalDecision,
+      appliedBy,
+      confidence,
+      fallbackReason,
+      skipReason,
+      parseError,
+      appliedUpdates,
+      shadowStatus,
+      shadowConfidence,
+      shadowSummary,
+      shadowDiff,
+      guardDecision,
+      guardReason,
+      guardSummary,
+      firstAttemptFailed,
+      compatRetryUsed,
+      compatRetrySucceeded,
+      ultraCompactUsed,
+      jsonRecoveryStage,
+      inputSource: debug.input_source
+    });
+    if (lastSemanticTraceEventRef.current === key) return;
+    lastSemanticTraceEventRef.current = key;
+    eventBus.emit({
+      type: "semantic_extraction_traced",
+      timestamp: eventTimestamp(),
+      source,
+      primary_extractor: primaryExtractor,
+      primary_status: primaryStatus,
+      fallback_extractor: fallbackExtractor,
+      guard_final_decision: guardFinalDecision,
+      applied_by: appliedBy,
+      confidence,
+      fallback_reason: fallbackReason,
+      skip_reason: skipReason,
+      parse_error: parseError,
+      applied_updates: appliedUpdates,
+      llm_shadow_status: shadowStatus ?? undefined,
+      llm_shadow_confidence: shadowConfidence ?? undefined,
+      llm_shadow_summary: shadowSummary,
+      llm_shadow_diff: shadowDiff,
+      input_source: debug.input_source,
+      llm_guard_decision: guardDecision ?? undefined,
+      llm_guard_reason: guardReason,
+      llm_guard_summary: guardSummary,
+      first_attempt_failed: firstAttemptFailed,
+      compat_retry_used: compatRetryUsed,
+      compat_retry_succeeded: compatRetrySucceeded,
+      ultra_compact_used: ultraCompactUsed,
+      json_recovery_stage: jsonRecoveryStage
+    });
+  }, []);
+
+  const emitSemanticShadowEvents = useCallback((events: SemanticShadowEvent[]) => {
+    for (const event of events) {
+      if (event.id <= lastSemanticShadowEventIdRef.current) continue;
+      lastSemanticShadowEventIdRef.current = Math.max(lastSemanticShadowEventIdRef.current, event.id);
+      eventBus.emit({
+        type: "semantic_extraction_traced",
+        timestamp: event.timestamp,
+        source: event.source ?? "none",
+        primary_extractor: event.primary_extractor ?? null,
+        primary_status: event.primary_status ?? null,
+        fallback_extractor: event.fallback_extractor ?? null,
+        guard_final_decision: event.guard_final_decision ?? null,
+        applied_by: event.applied_by ?? null,
+        confidence: event.confidence ?? "low",
+        fallback_reason: event.fallback_reason ?? null,
+        skip_reason: event.skip_reason ?? null,
+        parse_error: event.parse_error ?? null,
+        applied_updates: event.applied_updates ?? [],
+        llm_shadow_status: event.llm_shadow_status,
+        llm_shadow_confidence: event.llm_shadow_confidence,
+        llm_shadow_summary: event.llm_shadow_summary ?? null,
+        llm_shadow_diff: event.llm_shadow_diff ?? null,
+        input_source: event.input_source,
+        llm_guard_decision: event.llm_guard_decision,
+        llm_guard_reason: event.llm_guard_reason ?? null,
+        llm_guard_summary: event.llm_guard_summary ?? null,
+        first_attempt_failed: event.first_attempt_failed ?? null,
+        compat_retry_used: event.compat_retry_used,
+        compat_retry_succeeded: event.compat_retry_succeeded ?? null,
+        ultra_compact_used: event.ultra_compact_used,
+        json_recovery_stage: event.json_recovery_stage ?? null,
+        shadow_trace_id: event.trace_id,
+        shadow_event_phase: event.phase,
+        shadow_event_status: event.status
+      });
+    }
+  }, []);
+
+  const pollSemanticShadowEvents = useCallback(async () => {
+    if (backendStatus !== "connected" || appSettings.debug_panel !== "show") return;
+    try {
+      const response = await api.semanticShadowEvents(lastSemanticShadowEventIdRef.current);
+      emitSemanticShadowEvents(response.events);
+      lastSemanticShadowEventIdRef.current = Math.max(lastSemanticShadowEventIdRef.current, response.latest_id);
+    } catch {
+      // Keep shadow polling observational only; it must never surface as a user-facing chat error.
+    }
+  }, [appSettings.debug_panel, backendStatus, emitSemanticShadowEvents]);
+
   const recordPendingMemories = useCallback((memories: PendingMemory[], emitCreated: boolean) => {
     const previousIds = knownPendingMemoryIdsRef.current;
     if (emitCreated) {
@@ -1826,6 +2704,237 @@ export function App() {
     }
     knownPendingMemoryIdsRef.current = new Set(memories.map((memory) => memory.id));
     setPendingMemories(memories);
+  }, []);
+
+  const sessionArchiveSearchCriteria = useMemo(() => ({
+    q: sessionArchiveSearchQuery.trim(),
+    game: sessionArchiveSearchGame.trim(),
+    boss: sessionArchiveSearchBoss.trim(),
+    event_type: sessionArchiveSearchEventType.trim()
+  }), [sessionArchiveSearchBoss, sessionArchiveSearchEventType, sessionArchiveSearchGame, sessionArchiveSearchQuery]);
+  const sessionArchiveSearchFilters = useMemo(() => {
+    const filters: Record<string, string> = {};
+    if (sessionArchiveSearchCriteria.game) filters.game = sessionArchiveSearchCriteria.game;
+    if (sessionArchiveSearchCriteria.boss) filters.boss = sessionArchiveSearchCriteria.boss;
+    if (sessionArchiveSearchCriteria.event_type) filters.event_type = sessionArchiveSearchCriteria.event_type;
+    return filters;
+  }, [sessionArchiveSearchCriteria]);
+  const sessionArchiveSearchQuerySummary = useMemo(
+    () => sanitizeSessionTimelineText(sessionArchiveSearchCriteria.q, 64),
+    [sessionArchiveSearchCriteria.q]
+  );
+  const hasSessionArchiveSearchCriteria = Boolean(
+    sessionArchiveSearchCriteria.q ||
+    sessionArchiveSearchCriteria.game ||
+    sessionArchiveSearchCriteria.boss ||
+    sessionArchiveSearchCriteria.event_type
+  );
+
+  const refreshSessionArchives = useCallback(async (preferredArchiveId?: string | null) => {
+    try {
+      const archives = await api.sessionArchives();
+      setSessionArchives(archives);
+      const nextArchiveId = preferredArchiveId ??
+        (sessionArchiveDetail && archives.some((archive) => archive.id === sessionArchiveDetail.id)
+          ? sessionArchiveDetail.id
+          : archives[0]?.id ?? null);
+      if (!nextArchiveId) {
+        setSessionArchiveDetail(null);
+        return;
+      }
+      setSessionArchiveDetail(await api.sessionArchive(nextArchiveId));
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "读取会话归档失败"));
+    }
+  }, [sessionArchiveDetail]);
+
+  const loadSessionArchiveDetail = useCallback(async (archiveId: string) => {
+    setSessionArchiveBusy(`read-${archiveId}`);
+    try {
+      setLastError("");
+      setLastRawError("");
+      setSessionArchiveDetail(await api.sessionArchive(archiveId));
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "读取会话归档失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  }, []);
+
+  const runSessionArchiveSearch = useCallback(async (options?: { preserveFeedback?: boolean }) => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy("search");
+    try {
+      setLastError("");
+      setLastRawError("");
+      eventBus.emit({
+        type: "session_archive_search_started",
+        timestamp: eventTimestamp(),
+        query_summary: sessionArchiveSearchQuerySummary || undefined,
+        filters: sessionArchiveSearchFilters
+      });
+      const response = await api.searchSessionArchives({ ...sessionArchiveSearchCriteria, limit: 20 });
+      setSessionArchiveSearchActive(true);
+      setSessionArchiveSearchResults(response.results);
+      setSessionArchiveSearchTotal(response.total);
+      setSessionArchiveSearchOmitted(response.omitted_count);
+      eventBus.emit({
+        type: "session_archive_search_completed",
+        timestamp: eventTimestamp(),
+        query_summary: sessionArchiveSearchQuerySummary || undefined,
+        filters: sessionArchiveSearchFilters,
+        result_count: response.total,
+        omitted_count: response.omitted_count,
+        safe_result_summaries: response.safe_result_summaries
+      });
+      if (!options?.preserveFeedback) {
+        setSessionArchiveFeedback(
+          response.total > 0
+            ? `找到 ${response.total} 条会话归档${response.omitted_count > 0 ? `，已省略 ${response.omitted_count} 条` : ""}`
+            : "没有找到匹配的会话归档。"
+        );
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "搜索会话归档失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  }, [
+    sessionArchiveSearchCriteria,
+    sessionArchiveSearchFilters,
+    sessionArchiveSearchQuerySummary,
+    suppressProactiveAfterSystemAction
+  ]);
+
+  const clearSessionArchiveSearch = useCallback(async () => {
+    const previousQuerySummary = sessionArchiveSearchQuerySummary;
+    const previousFilters = sessionArchiveSearchFilters;
+    setSessionArchiveSearchQuery("");
+    setSessionArchiveSearchGame("");
+    setSessionArchiveSearchBoss("");
+    setSessionArchiveSearchEventType("");
+    setSessionArchiveSearchActive(false);
+    setSessionArchiveSearchResults([]);
+    setSessionArchiveSearchTotal(0);
+    setSessionArchiveSearchOmitted(0);
+    setSessionArchiveFeedback("");
+    eventBus.emit({
+      type: "session_archive_search_cleared",
+      timestamp: eventTimestamp(),
+      query_summary: previousQuerySummary || undefined,
+      filters: previousFilters
+    });
+    await refreshSessionArchives();
+  }, [refreshSessionArchives, sessionArchiveSearchFilters, sessionArchiveSearchQuerySummary]);
+
+  const deleteSessionArchive = useCallback(async (archiveId: string) => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy(`delete-${archiveId}`);
+    try {
+      setLastError("");
+      setLastRawError("");
+      await api.deleteSessionArchive(archiveId);
+      eventBus.emit({ type: "session_archive_deleted", timestamp: eventTimestamp(), archive_id: archiveId });
+      setSessionArchiveFeedback("已删除这条会话归档");
+      if (sessionArchiveSearchActive) {
+        await runSessionArchiveSearch({ preserveFeedback: true });
+      } else {
+        await refreshSessionArchives(null);
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "删除会话归档失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  }, [refreshSessionArchives, runSessionArchiveSearch, sessionArchiveSearchActive, suppressProactiveAfterSystemAction]);
+
+  const clearSessionArchives = useCallback(async () => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy("clear");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const result = await api.clearSessionArchives();
+      eventBus.emit({ type: "session_archive_cleared", timestamp: eventTimestamp(), deleted_count: result.deleted_count });
+      setSessionArchiveFeedback(result.deleted_count > 0 ? `已清空 ${result.deleted_count} 条会话归档` : "没有需要清空的会话归档");
+      setSessionArchiveSearchActive(false);
+      setSessionArchiveSearchResults([]);
+      setSessionArchiveSearchTotal(0);
+      setSessionArchiveSearchOmitted(0);
+      await refreshSessionArchives(null);
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "清空会话归档失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  }, [refreshSessionArchives, suppressProactiveAfterSystemAction]);
+
+  const noticeFromMemoryUpdate = useCallback((update?: ChatMemoryUpdate): MemoryNotice | null => {
+    if (!update || update.status === "none" || update.status === "blocked" || update.status === "failed") return null;
+    const summary = update.summary?.trim() || "";
+    if (update.status === "auto_saved") {
+      return {
+        status: "auto_saved",
+        summary,
+        pendingMemoryId: update.pending_memory_id,
+        longTermMemoryId: update.long_term_memory_id,
+        pendingCount: update.pending_count,
+        undoAvailable: update.undo_available
+      };
+    }
+    if (update.status === "pending") {
+      return {
+        status: "pending",
+        summary,
+        pendingMemoryId: update.pending_memory_id,
+        pendingCount: update.pending_count
+      };
+    }
+    return null;
+  }, []);
+
+  const emitMemoryUpdateEvents = useCallback((update?: ChatMemoryUpdate) => {
+    if (!update || update.status === "none" || update.status === "failed") return;
+    const timestamp = eventTimestamp();
+    eventBus.emit({
+      type: "memory_candidate_checked",
+      timestamp,
+      decision: update.status,
+      summary: update.summary,
+      candidate_id: update.pending_memory_id,
+      memory_id: update.long_term_memory_id,
+      source: "chat_response"
+    });
+    if (update.status === "auto_saved") {
+      eventBus.emit({
+        type: "memory_auto_saved",
+        timestamp,
+        summary: update.summary,
+        candidate_id: update.pending_memory_id,
+        memory_id: update.long_term_memory_id,
+        source: "chat_response"
+      });
+    } else if (update.status === "pending") {
+      eventBus.emit({
+        type: "memory_candidate_pending",
+        timestamp,
+        summary: update.summary,
+        candidate_id: update.pending_memory_id,
+        source: "chat_response"
+      });
+    } else if (update.status === "blocked") {
+      eventBus.emit({
+        type: "memory_candidate_rejected",
+        timestamp,
+        summary: update.summary,
+        source: "chat_response"
+      });
+    }
   }, []);
 
   const refreshStatus = useCallback(async (options: { emitPendingMemoryCreated?: boolean } = {}) => {
@@ -1863,10 +2972,13 @@ export function App() {
       setProactiveStatus(await api.proactiveStatus());
       const currentGameSessionDebug = await api.gameSessionDebug();
       setGameSessionDebug(currentGameSessionDebug);
-      setSemanticDebug(await api.semanticExtractionDebug());
+      const currentSemanticDebug = await api.semanticExtractionDebug();
+      setSemanticDebug(currentSemanticDebug);
+      emitSemanticExtractionTrace(currentSemanticDebug);
       setPromptPreview(await api.promptPreview());
       recordPendingMemories(await api.pendingMemories(), Boolean(options.emitPendingMemoryCreated));
       emitDebugSnapshotEvents(currentGameContext, currentGameSessionDebug, currentChatDebug, currentProviderDebug);
+      sessionTimelineBaselineReadyRef.current = true;
     } catch (error) {
       setBackendStatus("disconnected");
       setSettingsLoaded(false);
@@ -1874,10 +2986,11 @@ export function App() {
       setLastRawError(errorRawText(error));
       setLastError(productErrorText(error, "后端未连接"));
     }
-  }, [emitBackendStatusChanged, emitDebugSnapshotEvents, recordPendingMemories]);
+  }, [emitBackendStatusChanged, emitDebugSnapshotEvents, emitSemanticExtractionTrace, recordPendingMemories]);
 
   const updateAppSettings = async (patch: Partial<AppSettings>) => {
     const busyKey = Object.keys(patch)[0] ?? "settings";
+    suppressProactiveAfterSystemAction();
     setSettingsBusy(busyKey);
     try {
       setLastError("");
@@ -1889,6 +3002,12 @@ export function App() {
           voiceSettingFallback(updated, previous, patch)
         )
       );
+      if (patch.voice_interaction_mode) {
+        eventBus.emit({
+          type: patch.voice_interaction_mode === "direct_conversation" ? "voice_direct_mode_enabled" : "voice_direct_mode_disabled",
+          timestamp: eventTimestamp()
+        });
+      }
       if (patch.debug_panel === "hide") {
         setDebugOpen(false);
         setPromptPreviewOpen(false);
@@ -1905,6 +3024,7 @@ export function App() {
   };
 
   const refreshLocalAsrSetup = async (message = "本地 ASR 状态已刷新") => {
+    suppressProactiveAfterSystemAction();
     setLocalAsrSettingsBusy("refresh");
     try {
       setLastError("");
@@ -1952,6 +3072,7 @@ export function App() {
   };
 
   const saveLocalAsrSettings = async () => {
+    suppressProactiveAfterSystemAction();
     const payload: LocalAsrSettingsUpdate = {};
     const binaryPath = localAsrSettingsDraft.local_asr_binary_path.trim();
     const modelPath = localAsrSettingsDraft.local_asr_model_path.trim();
@@ -1983,6 +3104,7 @@ export function App() {
   };
 
   const clearLocalAsrSettings = async () => {
+    suppressProactiveAfterSystemAction();
     setLocalAsrSettingsBusy("clear");
     try {
       setLastError("");
@@ -2004,6 +3126,7 @@ export function App() {
 
   const checkLocalAsr = async () => {
     if (localAsrStatus.status !== "local_asr_ready" || localAsrProbeChecking) return;
+    suppressProactiveAfterSystemAction();
     setLocalAsrProbeChecking(true);
     try {
       setLocalAsrProbe(await api.probeLocalAsr());
@@ -2066,6 +3189,42 @@ export function App() {
     });
   };
 
+  function handleRecognizedVoiceTranscript(source: MainVoiceInputProvider, transcript: string, options: { durationMs?: number } = {}) {
+    const trimmedTranscript = transcript.trim();
+    if (!trimmedTranscript) return;
+    if (appSettings.voice_interaction_mode === "direct_conversation") {
+      const blockReason = directVoiceAutoSendBlockReason(trimmedTranscript, options.durationMs);
+      if (blockReason) {
+        setInput((current) => appendTranscriptToInput(current, transcript));
+        markVoiceTranscriptReady(source, transcript);
+        setVoiceAutoSendBlockedHint(directVoiceAutoSendBlockReasonText(blockReason));
+        eventBus.emit({
+          type: "voice_transcription_auto_send_blocked",
+          timestamp: eventTimestamp(),
+          character_count: trimmedTranscript.length,
+          provider: source === "unavailable" ? undefined : source,
+          reason: blockReason,
+          duration_ms: options.durationMs
+        });
+        return;
+      }
+      clearVoiceTransientState();
+      clearVoiceTranscriptReady();
+      void submitChatMessage(trimmedTranscript, {
+        clearInput: false,
+        voiceTranscript: {
+          source,
+          mode: "direct_conversation",
+          autoSent: true,
+          characterCount: trimmedTranscript.length
+        }
+      });
+      return;
+    }
+    setInput((current) => appendTranscriptToInput(current, transcript));
+    markVoiceTranscriptReady(source, transcript);
+  }
+
   const runLocalAsrTranscription = async () => {
     if (localAsrTranscriptionPhase === "recording") {
       audioCapture.stop("user_stop");
@@ -2079,7 +3238,11 @@ export function App() {
     ) {
       return;
     }
-    voiceOutput.stop("user_stop");
+    clearVoiceTransientState();
+    clearVoiceTranscriptReady();
+    if (voiceOutput.getStatus().active) {
+      stopVoiceOutput("user_stop");
+    }
     setLocalAsrTranscriptionResult(null);
     setLocalAsrTranscriptionPhase("recording");
     const started = await audioCapture.start({
@@ -2099,7 +3262,7 @@ export function App() {
           .then((result) => {
             setLocalAsrTranscriptionResult(result);
             if (result.status === "local_asr_transcription_succeeded" && result.transcript.trim()) {
-              setInput((current) => appendTranscriptToInput(current, result.transcript));
+              handleRecognizedVoiceTranscript("local_asr", result.transcript, { durationMs: result.duration_ms });
               eventBus.emit({
                 type: "local_asr_transcription_completed",
                 timestamp: eventTimestamp(),
@@ -2124,6 +3287,11 @@ export function App() {
               });
               return;
             }
+            setVoiceError(
+              result.conversion_status === "audio_conversion_not_configured"
+                ? "本地语音识别暂不可用。请检查设置。"
+                : mainVoiceInputLocalAsrStatusText("idle", result, audioCaptureStatus)
+            );
             eventBus.emit({
               type: "local_asr_transcription_error",
               timestamp: eventTimestamp(),
@@ -2165,6 +3333,7 @@ export function App() {
               model_name: localAsrStatus.safe_model_name
             };
             setLocalAsrTranscriptionResult(fallback);
+            setVoiceError("本地语音识别暂不可用。请检查设置。");
             eventBus.emit({
               type: "local_asr_transcription_error",
               timestamp: eventTimestamp(),
@@ -2191,7 +3360,10 @@ export function App() {
           .finally(() => setLocalAsrTranscriptionPhase("idle"));
       }
     });
-    if (!started) setLocalAsrTranscriptionPhase("idle");
+    if (!started) {
+      setLocalAsrTranscriptionPhase("idle");
+      setVoiceError(audioCapture.getStatus().lastError ?? "本地语音识别暂不可用。请检查设置。");
+    }
   };
 
   const updateBackendAutoStart = async (enabled: boolean) => {
@@ -2279,6 +3451,7 @@ export function App() {
   const updateManualGameContext = async (gameId: string | null, action = "manual-game") => {
     setGameContextBusy(action);
     try {
+      sessionTimelineUserActiveRef.current = true;
       setLastError("");
       setLastRawError("");
       const updated = await api.setManualGameContext(gameId);
@@ -2315,10 +3488,32 @@ export function App() {
   };
 
   useEffect(() => {
-    return eventBus.subscribe(() => {
+    return eventBus.subscribe((event) => {
       setRecentEvents(eventBus.getRecentEvents(EVENT_STREAM_LIMIT));
+      if (event.type === "user_message_sent") {
+        sessionTimelineUserActiveRef.current = true;
+        return;
+      }
+      if (!sessionTimelineBaselineReadyRef.current) return;
+      const timelineItems = sessionTimelineItemsFromEvent(event);
+      if (timelineItems.length > 0) {
+        if (event.type === "proactive_message_shown" ||
+          event.type === "pending_memory_accepted" ||
+          event.type === "pending_memory_ignored") {
+          sessionTimelineUserActiveRef.current = true;
+        }
+        if (!sessionTimelineUserActiveRef.current) return;
+        setSessionTimeline((current) => appendSessionTimelineItems(current, timelineItems));
+      }
     });
   }, []);
+
+  useEffect(() => {
+    if (backendStatus !== "connected" || appSettings.debug_panel !== "show") return;
+    void pollSemanticShadowEvents();
+    const interval = window.setInterval(() => void pollSemanticShadowEvents(), SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [appSettings.debug_panel, backendStatus, pollSemanticShadowEvents]);
 
   useEffect(() => {
     const unsubscribe = voiceOutput.subscribe(setVoiceStatus);
@@ -2344,6 +3539,20 @@ export function App() {
       audioCapture.stop("unmount");
     };
   }, []);
+
+  useEffect(() => {
+    return () => clearVoiceInterruptedTimer();
+  }, [clearVoiceInterruptedTimer]);
+
+  useEffect(() => {
+    if (!voiceStatus.lastError) return;
+    setVoiceError(voiceStatus.lastError === "当前环境不支持语音输出。" ? "语音播放不可用。回复已保留在聊天里。" : voiceStatus.lastError);
+  }, [setVoiceError, voiceStatus.lastError]);
+
+  useEffect(() => {
+    if (!voiceInputStatus.lastError) return;
+    setVoiceError(voiceInputStatus.lastError);
+  }, [setVoiceError, voiceInputStatus.lastError]);
 
   useEffect(() => {
     if (appSettings.voice_output === "off") {
@@ -2462,6 +3671,7 @@ export function App() {
 
   const checkProactive = useCallback(async () => {
     if (backendStatus !== "connected" || appSettings.proactive_companion !== "on" || sending) return;
+    if (Date.now() < proactiveSuppressedUntilRef.current) return;
     try {
       const response = await api.checkProactive("default", Boolean(input.trim()), backendStatus === "connected");
       if (response.should_send && response.message) {
@@ -2499,12 +3709,32 @@ export function App() {
     return () => window.clearInterval(interval);
   }, [appSettings.proactive_companion, backendStatus, checkProactive]);
 
-  const sendMessage = async (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = input.trim();
+  const submitChatMessage = async (
+    messageText: string,
+    options: { voiceTranscript?: VoiceTranscriptSendOptions; clearInput?: boolean } = {}
+  ) => {
+    const trimmed = messageText.trim();
     if (!trimmed || sending) return;
     voiceOutput.stop("new_message");
     voiceInput.stop("user_stop");
+    const fallbackVoiceTranscript: VoiceTranscriptSendOptions | null = voiceTranscriptReady
+      ? {
+          source: voiceTranscriptReady.source,
+          mode: appSettings.voice_interaction_mode,
+          characterCount: Math.max(voiceTranscriptReady.characterCount, trimmed.length)
+        }
+      : null;
+    const voiceTranscript = options.voiceTranscript ?? fallbackVoiceTranscript;
+    const sendingVoiceTranscript = Boolean(voiceTranscript);
+    const chatInputSource: ChatInputSource = voiceTranscript?.autoSent
+      ? "voice_direct"
+      : sendingVoiceTranscript
+        ? "voice_confirmed"
+        : "text";
+    if (sendingVoiceTranscript) {
+      clearVoiceTransientState();
+      setVoiceAssistantTurnActive(true);
+    }
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed, createdAt: new Date().toISOString() };
     const placeholderId = crypto.randomUUID();
     const replyMessageId = crypto.randomUUID();
@@ -2513,10 +3743,26 @@ export function App() {
     setLastInterimPlaceholderShown(false);
     setLastError("");
     setLastRawError("");
+    setMemoryNotice(null);
     queueMessageAutoScroll(true);
     setMessages((current) => [...current, userMessage]);
-    eventBus.emit({ type: "user_message_sent", timestamp: userMessage.createdAt, text: trimmed });
-    setInput("");
+    if (voiceTranscript?.autoSent) {
+      eventBus.emit({
+        type: "voice_transcription_auto_sent",
+        timestamp: userMessage.createdAt,
+        character_count: voiceTranscript.characterCount,
+        provider: voiceTranscript.source === "unavailable" ? undefined : voiceTranscript.source
+      });
+    }
+    eventBus.emit({
+      type: "user_message_sent",
+      timestamp: userMessage.createdAt,
+      text: voiceTranscript?.autoSent ? "" : trimmed,
+      source: chatInputSource,
+      character_count: sendingVoiceTranscript ? voiceTranscript?.characterCount ?? trimmed.length : undefined
+    });
+    if (options.clearInput ?? true) setInput("");
+    clearVoiceTranscriptReady();
     setSending(true);
     eventBus.emit({ type: "assistant_reply_started", timestamp: eventTimestamp(), message_id: replyMessageId });
     const placeholderTimer = window.setTimeout(() => {
@@ -2529,7 +3775,9 @@ export function App() {
       ]);
     }, PLACEHOLDER_DELAY_MS);
     try {
-      const response = await api.chat(trimmed);
+      const response = await api.chat(trimmed, "default", chatInputSource);
+      const nextMemoryNotice = noticeFromMemoryUpdate(response.memory_update);
+      emitMemoryUpdateEvents(response.memory_update);
       window.clearTimeout(placeholderTimer);
       setLastResponseLatencyMs(Date.now() - requestStartedAt);
       emitModelRouted(response.model_used, response.route_reason, response.request_started_at ?? String(requestStartedAt));
@@ -2550,20 +3798,67 @@ export function App() {
           type: "assistant_reply_segment_shown",
           timestamp: segmentCreatedAt,
           segment_index: index,
-          text: segment
+          character_count: segment.length
         });
       }
       eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
       void pushOverlayContent(segments.join(" "), "assistant_reply");
       if (appSettings.voice_output === "on" && !spokenAssistantReplyIdsRef.current.has(replyMessageId)) {
         spokenAssistantReplyIdsRef.current.add(replyMessageId);
-        voiceOutput.speak(segments.join("\n"), {
-          rate: appSettings.voice_rate,
-          volume: appSettings.voice_volume,
-          source: "assistant_reply"
+        const fullReplyText = segments.join("\n");
+        const voiceSpeakSource: VoiceReplySpeakSource = voiceTranscript?.mode === "direct_conversation" ? "direct_conversation" : "assistant_reply";
+        const speakDecision = buildSpokenAssistantReply(fullReplyText, appSettings, voiceSpeakSource);
+        eventBus.emit({
+          type: "voice_profile_applied",
+          timestamp: eventTimestamp(),
+          profile_id: speakDecision.profileId,
+          spoken_mode: speakDecision.spokenMode,
+          source: speakDecision.source,
+          max_spoken_chars: speakDecision.maxSpokenChars,
+          max_spoken_sentences: speakDecision.maxSpokenSentences
         });
+        if (!speakDecision.shouldSpeak) {
+          eventBus.emit({
+            type: "voice_reply_speak_skipped",
+            timestamp: eventTimestamp(),
+            reason: speakDecision.skippedReason ?? "empty_spoken_text",
+            spoken_mode: speakDecision.spokenMode,
+            source: speakDecision.source,
+            original_character_count: speakDecision.originalCharacterCount
+          });
+        } else {
+          if (speakDecision.excerptCreated) {
+            eventBus.emit({
+              type: "voice_reply_spoken_excerpt_created",
+              timestamp: eventTimestamp(),
+              spoken_mode: speakDecision.spokenMode,
+              original_character_count: speakDecision.originalCharacterCount,
+              spoken_character_count: speakDecision.spokenCharacterCount,
+              sentence_count: speakDecision.sentenceCount,
+              reason: "voice_profile"
+            });
+          }
+          const speakingStarted = voiceOutput.speak(speakDecision.spokenText, {
+            rate: appSettings.voice_rate,
+            volume: appSettings.voice_volume,
+            source: "assistant_reply"
+          });
+          if (voiceTranscript?.mode === "direct_conversation" && speakingStarted) {
+            eventBus.emit({
+              type: "voice_reply_auto_speak_started",
+              timestamp: eventTimestamp(),
+              character_count: speakDecision.spokenCharacterCount,
+              spoken_mode: speakDecision.spokenMode,
+              sentence_count: speakDecision.sentenceCount
+            });
+          }
+          if (sendingVoiceTranscript && !speakingStarted) {
+            setVoiceError("语音播放不可用。回复已保留在聊天里。");
+          }
+        }
       }
       setLastInterimPlaceholderShown(placeholderShown);
+      setMemoryNotice(nextMemoryNotice);
       await refreshStatus({ emitPendingMemoryCreated: true });
     } catch (error) {
       window.clearTimeout(placeholderTimer);
@@ -2578,9 +3873,18 @@ export function App() {
       ]);
       eventBus.emit({ type: "assistant_reply_completed", timestamp: eventTimestamp(), message_id: replyMessageId });
       setLastInterimPlaceholderShown(placeholderShown);
+      if (sendingVoiceTranscript) {
+        setVoiceError("语音没有接上。可以再试一次。");
+      }
     } finally {
       setSending(false);
+      setVoiceAssistantTurnActive(false);
     }
+  };
+
+  const sendMessage = async (event: FormEvent) => {
+    event.preventDefault();
+    await submitChatMessage(input);
   };
 
   const handlePendingMemory = async (id: string, action: "accept" | "ignore") => {
@@ -2608,6 +3912,7 @@ export function App() {
     if (action === "reset-memory" && !window.confirm("这会清空本地记忆，无法撤销。确定继续吗？")) {
       return;
     }
+    suppressProactiveAfterSystemAction();
     setDebugActionBusy(action);
     try {
       setLastError("");
@@ -2645,6 +3950,7 @@ export function App() {
   };
 
   const clearCurrentChat = () => {
+    suppressProactiveAfterSystemAction();
     queueMessageAutoScroll(true);
     setMessages([]);
   };
@@ -2670,6 +3976,7 @@ export function App() {
     }
 
     setDebugActionBusy(`demo-${action}`);
+    suppressProactiveAfterSystemAction();
     setDemoResetFeedback("");
     try {
       setLastError("");
@@ -2724,6 +4031,7 @@ export function App() {
   const promptModelRoute = asRecord(promptPreview.model_route_summary);
   const promptGameContext = asRecord(promptPreview.game_context_summary);
   const promptGameState = asRecord(promptPreview.game_state_summary);
+  const personaPackSummary = asRecord(promptPreview.persona_pack_summary);
   const promptBossHistory = asArray(promptGameState.boss_history);
   const gameStateSummary = {
     current_game: firstDefined(promptGameState.current_game, gameSessionDebug.current_game),
@@ -2738,12 +4046,181 @@ export function App() {
   };
   const knowledgeSummary = asRecord(promptPreview.knowledge_summary);
   const memorySummary = asRecord(promptPreview.memory_summary);
+  const memoryRetrievalSummary = asRecord(memorySummary.retrieval);
+  const memoryRetrievalSafeSummaries = asArray(memoryRetrievalSummary.safe_summaries);
+  const memoryRetrievalSafetyNotes = asArray(memoryRetrievalSummary.safety_notes);
   const injectedMemory = asArray(memorySummary.injected);
   const skippedMemory = asArray(memorySummary.skipped);
   const recentBossHistory = gameSessionDebug.boss_history.slice(0, 5);
   const debugPanelVisible = appSettings.debug_panel === "show";
   const displayGame = gameContext.active_game_display_name ?? gameSessionDebug.current_game ?? gameStatus.game_name ?? "idle";
   const displayBoss = gameSessionDebug.current_boss?.name ?? null;
+  const archiveCurrentSession = async () => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy("archive-current");
+    try {
+      setLastError("");
+      setLastRawError("");
+      const archiveEvents: SessionArchiveEventInput[] = sessionTimeline.map((item) => ({
+        id: item.id,
+        timestamp: item.timestamp,
+        event_type: item.type,
+        safe_summary: sanitizeSessionTimelineText(item.summary, 160),
+        source: item.source,
+        related_game: displayGame !== "idle" ? displayGame : null,
+        related_entity: displayBoss,
+        privacy_level: "normal",
+        can_generate_memory_candidate: false
+      }));
+      const response = await api.archiveCurrentSession({
+        session_id: "default",
+        events: archiveEvents,
+        started_at: sessionTimeline[0]?.timestamp ?? null,
+        ended_at: sessionTimeline[sessionTimeline.length - 1]?.timestamp ?? null,
+        game: displayGame !== "idle" ? displayGame : null,
+        boss: displayBoss,
+        source: "session_timeline"
+      });
+      setSessionArchiveFeedback(response.message);
+      if (response.archive) {
+        eventBus.emit({
+          type: "session_archive_created",
+          timestamp: eventTimestamp(),
+          archive_id: response.archive.id,
+          event_count: response.archive.event_count,
+          game: response.archive.game ?? undefined,
+          boss: response.archive.boss ?? undefined,
+          status: response.status === "existing" ? "existing" : "created"
+        });
+        if (sessionArchiveSearchActive) {
+          await runSessionArchiveSearch({ preserveFeedback: true });
+          await loadSessionArchiveDetail(response.archive.id);
+        } else {
+          await refreshSessionArchives(response.archive.id);
+        }
+      } else {
+        eventBus.emit({
+          type: "session_archive_skipped",
+          timestamp: eventTimestamp(),
+          reason: response.message,
+          event_count: archiveEvents.length
+        });
+        if (sessionArchiveSearchActive) {
+          await runSessionArchiveSearch({ preserveFeedback: true });
+        } else {
+          await refreshSessionArchives();
+        }
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "归档当前会话失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  };
+
+  const emitArchiveMemoryScanEvents = (
+    response: SessionArchiveMemoryCandidateScanResponse,
+    archiveId: string | null,
+    mode: "single_archive" | "recent_archives"
+  ) => {
+    eventBus.emit({
+      type: "archive_memory_scan_completed",
+      timestamp: eventTimestamp(),
+      archive_id: archiveId,
+      mode,
+      archives_scanned: response.scan_summary.archives_scanned,
+      events_scanned: response.scan_summary.events_scanned,
+      created_count: response.scan_summary.created_count,
+      skipped_count: response.scan_summary.skipped_count,
+      rejected_count: response.scan_summary.rejected_count
+    });
+    response.created_candidates.forEach((candidate) => {
+      eventBus.emit({
+        type: "archive_memory_candidate_created",
+        timestamp: eventTimestamp(),
+        archive_id: archiveId,
+        candidate_id: candidate.id,
+        memory_type: candidate.type,
+        summary: candidate.summary
+      });
+    });
+    response.skipped_candidates.slice(0, 3).forEach((item) => {
+      eventBus.emit({
+        type: "archive_memory_candidate_skipped",
+        timestamp: eventTimestamp(),
+        archive_id: item.archive_id ?? archiveId,
+        guard_reason: item.guard_reason,
+        safe_summary: item.safe_summary
+      });
+    });
+    response.rejected_candidates.slice(0, 3).forEach((item) => {
+      eventBus.emit({
+        type: "archive_memory_candidate_rejected",
+        timestamp: eventTimestamp(),
+        archive_id: item.archive_id ?? archiveId,
+        guard_reason: item.guard_reason,
+        safe_summary: item.safe_summary
+      });
+    });
+  };
+
+  const scanSessionArchiveMemoryCandidates = async (archiveId: string) => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy(`scan-${archiveId}`);
+    setSessionArchiveScanCreatedCount(0);
+    try {
+      setLastError("");
+      setLastRawError("");
+      eventBus.emit({
+        type: "archive_memory_scan_started",
+        timestamp: eventTimestamp(),
+        archive_id: archiveId,
+        mode: "single_archive"
+      });
+      const response = await api.scanSessionArchiveMemoryCandidates(archiveId);
+      emitArchiveMemoryScanEvents(response, archiveId, "single_archive");
+      setSessionArchiveFeedback(archiveMemoryScanFeedback(response));
+      setSessionArchiveScanCreatedCount(response.scan_summary.created_count);
+      if (response.scan_summary.created_count > 0) {
+        recordPendingMemories(await api.pendingMemories(), true);
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "检查归档候选记忆失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  };
+
+  const scanRecentSessionArchiveMemoryCandidates = async () => {
+    suppressProactiveAfterSystemAction();
+    setSessionArchiveBusy("scan-recent");
+    setSessionArchiveScanCreatedCount(0);
+    try {
+      setLastError("");
+      setLastRawError("");
+      eventBus.emit({
+        type: "archive_memory_scan_started",
+        timestamp: eventTimestamp(),
+        archive_id: null,
+        mode: "recent_archives"
+      });
+      const response = await api.scanRecentSessionArchiveMemoryCandidates({ limit: 5 });
+      emitArchiveMemoryScanEvents(response, null, "recent_archives");
+      setSessionArchiveFeedback(archiveMemoryScanFeedback(response));
+      setSessionArchiveScanCreatedCount(response.scan_summary.created_count);
+      if (response.scan_summary.created_count > 0) {
+        recordPendingMemories(await api.pendingMemories(), true);
+      }
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "检查最近归档候选记忆失败"));
+    } finally {
+      setSessionArchiveBusy("");
+    }
+  };
+
   const localAsrConfigReady = localAsrStatus.status === "local_asr_ready";
   const localAsrTranscriptionBusy = localAsrTranscriptionPhase !== "idle";
   const localAsrTranscriptionButtonDisabled = !localAsrConfigReady ||
@@ -2754,7 +4231,18 @@ export function App() {
   const mainVoiceInputProvider = selectMainVoiceInputProvider(localAsrStatus, voiceInputStatus);
   const mainVoiceInputUsesLocalAsr = mainVoiceInputProvider === "local_asr";
   const mainVoiceInputUsesWebSpeech = mainVoiceInputProvider === "web_speech";
-  const mainVoiceInputStatus = mainVoiceInputStatusText(
+  const voiceDirectConversationEnabled = appSettings.voice_interaction_mode === "direct_conversation";
+  const voiceInteractionModeLabel = voiceInteractionModeText(appSettings.voice_interaction_mode);
+  const voiceInteractionModeHint = voiceInteractionModeDescription(appSettings.voice_interaction_mode);
+  const voiceProfileNormalModeLabel = voiceSpokenModeText(appSettings.voice_spoken_reply_mode);
+  const voiceProfileDirectModeLabel = voiceSpokenModeText(appSettings.voice_direct_spoken_reply_mode);
+  const voiceProfileNeverSpokenItems = [
+    "Debug / Prompt Preview / Event Stream / Trace",
+    "Knowledge Trace / Persona Summary / Memory internal",
+    "API key / .env / raw prompt",
+    "stdout / stderr / full local paths"
+  ];
+  const baseMainVoiceInputStatus = mainVoiceInputStatusText(
     mainVoiceInputProvider,
     voiceInputStatus,
     localAsrStatus,
@@ -2762,6 +4250,12 @@ export function App() {
     localAsrTranscriptionResult,
     audioCaptureStatus
   );
+  const mainVoiceInputStatus =
+    voiceDirectConversationEnabled &&
+    localAsrTranscriptionPhase === "idle" &&
+    localAsrTranscriptionResult?.status === "local_asr_transcription_succeeded"
+      ? "转写完成，已自动发送"
+      : baseMainVoiceInputStatus;
   const mainVoiceInputDisabled = mainVoiceInputUsesLocalAsr
     ? localAsrTranscriptionButtonDisabled
     : !mainVoiceInputUsesWebSpeech || !webSpeechVoiceInputAvailable(voiceInputStatus);
@@ -2781,6 +4275,26 @@ export function App() {
     localAsrTranscriptionResult,
     audioCaptureStatus
   );
+  const voiceErrorMessage = voiceTransientState?.kind === "error" ? voiceTransientState.message ?? "语音没有接上。可以再试一次。" : null;
+  const resolvedVoiceConversationState = resolveVoiceConversationState({
+    transcribing: localAsrTranscriptionPhase === "transcribing",
+    listening: localAsrTranscriptionPhase === "recording" || voiceInputStatus.phase !== "idle",
+    assistantThinking: voiceAssistantTurnActive && sending,
+    speaking: voiceStatus.active,
+    interrupted: voiceTransientState?.kind === "interrupted",
+    readyToSend: Boolean(voiceTranscriptReady && input.trim() && (!voiceDirectConversationEnabled || voiceAutoSendBlockedHint)),
+    errorMessage: voiceErrorMessage
+  });
+  const voiceConversationState = {
+    ...resolvedVoiceConversationState,
+    description:
+      voiceDirectConversationEnabled && ["idle", "transcribing"].includes(resolvedVoiceConversationState.state)
+        ? voiceInteractionModeHint
+        : resolvedVoiceConversationState.description
+  };
+  const voiceConfirmSendText = voiceTranscriptReady
+    ? voiceAutoSendBlockedHint || `${voiceTranscriptReady.characterCount} 字已在输入框，仍需点击发送。`
+    : "确认后发送，默认不自动发送。";
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
   const detectedKnowledgeGameId = gameContext.detected_game.knowledge_game_id;
@@ -2838,6 +4352,88 @@ export function App() {
   const onboardingApiKeyText = setupStatus.api_key_loaded
     ? "当前 DeepSeek API Key 已加载。"
     : "当前 API Key 未配置，请先完成模型配置。";
+  const memoryNoticeSummary = memoryNotice?.summary?.trim() || "";
+  const memoryNoticeText = memoryNotice
+    ? memoryNotice.status === "auto_saved"
+      ? memoryNoticeSummary
+        ? `已记住：${memoryNoticeSummary}`
+        : "记忆已更新"
+      : memoryNotice.status === "pending"
+        ? `${memoryNotice.pendingCount && memoryNotice.pendingCount > 1 ? `${memoryNotice.pendingCount} 条` : "有新的"}记忆待确认`
+        : "已撤销这条记忆"
+    : "";
+  const activeWorkspaceTabs = WORKSPACE_TABS[activeWorkspace];
+  const activeWorkspaceTab = workspaceTabs[activeWorkspace] || DEFAULT_WORKSPACE_TABS[activeWorkspace];
+  const settingsWorkspaceTitle = ({
+    app: "应用设置",
+    provider: "模型设置",
+    privacy: "隐私与本地数据",
+    advanced: "高级设置"
+  } as Record<string, string>)[activeWorkspaceTab] || "设置";
+  const settingsWorkspaceDescription = ({
+    app: "基础体验、人格模式、聊天回复长度、游戏检测和主动陪伴。切换 tab 不会清空聊天草稿。",
+    provider: "模型偏好、本地 backend 运行状态和 API Key 加载状态只显示安全摘要。",
+    privacy: "记忆开关、本地数据与演示重置入口。路径只显示安全摘要，不暴露完整本地路径。",
+    advanced: "Overlay、Voice Output、Voice Input 和 Local ASR 等现有高级配置集中在这里。"
+  } as Record<string, string>)[activeWorkspaceTab] || "";
+  const settingsWorkspaceFooter = ({
+    app: `本地保存到 settings.json，不包含密钥。自动游戏检测当前为${debugText(appSettings.auto_game_detection)}。`,
+    provider: "模型配置只显示 provider、模型名和 API Key 加载状态，不显示 .env 或密钥原文。",
+    privacy: "本地数据操作保持显式按钮；显式记忆可撤销，隐式候选仍需确认。",
+    advanced: "高级设置复用现有功能入口；Voice v2.1 只提供主动开启的直接对话，不实现 hands-free、常驻监听或 Overlay auto-show。"
+  } as Record<string, string>)[activeWorkspaceTab] || "本地保存到 settings.json，不包含密钥。";
+
+  const openWorkspace = useCallback((workspaceId: WorkspaceId, tabId?: string) => {
+    setActiveWorkspace(workspaceId);
+    if (tabId) {
+      setWorkspaceTabs((current) => ({ ...current, [workspaceId]: tabId }));
+    }
+  }, []);
+
+  const openPendingMemory = useCallback(() => {
+    openWorkspace("memory", "pending");
+  }, [openWorkspace]);
+
+  const handleUndoLongTermMemory = useCallback(async (memoryId: string, summary = "") => {
+    setLongTermMemoryBusyId(memoryId);
+    try {
+      await api.undoLongTermMemory(memoryId);
+      eventBus.emit({ type: "long_term_memory_undone", timestamp: eventTimestamp(), memory_id: memoryId });
+      eventBus.emit({ type: "memory_auto_save_undo", timestamp: eventTimestamp(), memory_id: memoryId, summary });
+      setMemoryNotice({
+        status: "undone",
+        summary: summary || "已撤销这条记忆",
+        longTermMemoryId: memoryId,
+        undoAvailable: false
+      });
+      await refreshStatus();
+    } catch (error) {
+      setLastRawError(errorRawText(error));
+      setLastError(productErrorText(error, "撤销记忆失败"));
+    } finally {
+      setLongTermMemoryBusyId("");
+    }
+  }, [refreshStatus]);
+
+  const closeWorkspace = useCallback(() => {
+    setActiveWorkspace("home");
+  }, []);
+
+  const switchWorkspaceTab = useCallback((tabId: string) => {
+    setWorkspaceTabs((current) => ({ ...current, [activeWorkspace]: tabId }));
+    if (activeWorkspace === "memory" && tabId === "archive") {
+      void refreshSessionArchives();
+    }
+  }, [activeWorkspace, refreshSessionArchives]);
+
+  useEffect(() => {
+    if (activeWorkspace === "home") return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWorkspace();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeWorkspace, closeWorkspace]);
 
   useEffect(() => {
     if (forceNextScrollRef.current || shouldAutoScrollRef.current) {
@@ -2847,12 +4443,7 @@ export function App() {
   }, [messages, onboardingVisible, scrollMessagesToBottom]);
 
   const openSettingsPanel = () => {
-    const panel = document.getElementById("settings-panel");
-    if (typeof panel?.scrollIntoView === "function") {
-      panel.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    const focusTarget = panel?.querySelector("select, button") as HTMLElement | null;
-    focusTarget?.focus();
+    openWorkspace("settings", "provider");
   };
 
   return (
@@ -2864,26 +4455,78 @@ export function App() {
         </div>
 
         <nav className="navMenu" aria-label="应用导航">
-          <a className="navItem active" href="#chat-panel">
+          <button
+            aria-current={activeWorkspace === "home" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "home" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("home")}
+          >
             <MessageSquare size={18} />
             <span>聊天</span>
-          </a>
-          <a className="navItem" href="#pending-memory-panel">
+          </button>
+          <button
+            aria-current={activeWorkspace === "memory" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "memory" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("memory")}
+          >
             <Database size={18} />
             <span>记忆</span>
-          </a>
-          <a className="navItem" href="#game-session-panel">
+          </button>
+          <button
+            aria-current={activeWorkspace === "game" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "game" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("game")}
+          >
             <Gamepad2 size={18} />
             <span>游戏</span>
-          </a>
-          <a className="navItem" href="#settings-panel">
+          </button>
+          <button
+            aria-current={activeWorkspace === "voice" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "voice" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("voice")}
+          >
+            <Mic size={18} />
+            <span>语音</span>
+          </button>
+          <button
+            aria-current={activeWorkspace === "overlay" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "overlay" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("overlay")}
+          >
+            <Volume2 size={18} />
+            <span>Overlay</span>
+          </button>
+          <button
+            aria-current={activeWorkspace === "settings" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "settings" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("settings")}
+          >
             <Settings size={18} />
             <span>设置</span>
-          </a>
-          <a className="navItem" href="#debug-panel">
+          </button>
+          <button
+            aria-current={activeWorkspace === "debug" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "debug" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("debug")}
+          >
             <Bug size={18} />
             <span>调试</span>
-          </a>
+          </button>
+          <button
+            aria-current={activeWorkspace === "presentation" ? "page" : undefined}
+            className={`navItem ${activeWorkspace === "presentation" ? "active" : ""}`}
+            type="button"
+            onClick={() => openWorkspace("presentation")}
+          >
+            <Sparkles size={18} />
+            <span>未来</span>
+          </button>
         </nav>
 
         <div className="companionStatusCard">
@@ -2950,7 +4593,7 @@ export function App() {
           </div>
         </header>
 
-        <section className="workspaceGrid">
+        <section className={`workspaceGrid ${activeWorkspace === "home" ? "homeOnly" : ""}`}>
           <section className="chatColumn" aria-label="主聊天界面" id="chat-panel">
             <div className="timelineMarker">今天</div>
 
@@ -3023,7 +4666,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </li>
                     <li>
                       <strong>确认记忆</strong>
-                      <span>ReiLink 不会直接写入长期记忆，需要你手动保存。</span>
+                      <span>显式记忆会给出可撤销提示；隐式候选仍需要你确认。</span>
                     </li>
                     <li>
                       <strong>开启主动陪伴</strong>
@@ -3069,6 +4712,27 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 
             {lastError && <div className="errorNotice" role="status">{lastError}</div>}
 
+            {memoryNotice && (
+              <div className={`memoryNotice ${memoryNotice.status}`} role="status" aria-label="记忆提示">
+                <span>{memoryNoticeText}</span>
+                {memoryNotice.status === "pending" && (
+                  <button className="textButton" type="button" onClick={openPendingMemory}>
+                    查看
+                  </button>
+                )}
+                {memoryNotice.status === "auto_saved" && memoryNotice.undoAvailable && memoryNotice.longTermMemoryId && (
+                  <button
+                    className="textButton"
+                    type="button"
+                    disabled={longTermMemoryBusyId === memoryNotice.longTermMemoryId}
+                    onClick={() => void handleUndoLongTermMemory(memoryNotice.longTermMemoryId || "", memoryNotice.summary)}
+                  >
+                    撤销
+                  </button>
+                )}
+              </div>
+            )}
+
             <form className="composer" onSubmit={sendMessage}>
               <button
                 className={`iconButton voiceInputButton ${mainVoiceInputActive ? "active" : ""}`}
@@ -3092,28 +4756,1504 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               <input
                 aria-label="聊天输入"
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(event) => {
+                  const nextInput = event.target.value;
+                  setInput(nextInput);
+                  if (!nextInput.trim()) clearVoiceTranscriptReady();
+                }}
                 placeholder="问 Margit、路线、装备，或者随便说点什么。"
               />
               <button className="sendButton" type="submit" disabled={sending || !input.trim()}>
                 <Send size={18} />
                 <span>{sending ? "发送中" : "发送"}</span>
               </button>
-              <div className="voiceInputInlineStatus" role="status">
-                语音输入：{mainVoiceInputStatus}
-                {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
+              <div className={`voiceInputInlineStatus voiceState-${voiceConversationState.tone}`} role="status">
+                <span>
+                  Voice v2.1：{voiceConversationState.label}。{voiceConversationState.description}
+                </span>
+                <span>
+                  语音输入：{mainVoiceInputStatus}
+                  {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
+                </span>
+                <span>模式：{voiceInteractionModeLabel}</span>
+                {voiceDirectConversationEnabled && !voiceAutoSendBlockedHint && (
+                  <span className="voiceStateNotice">转写后会自动发送</span>
+                )}
+                {voiceConversationState.state === "ready_to_send" && (
+                  <span className="voiceStateNotice">{voiceConfirmSendText}</span>
+                )}
+                {voiceConversationState.state === "speaking" && (
+                  <button
+                    className="smallButton quiet voiceInlineStop"
+                    type="button"
+                    aria-label="停止语音 / Stop Voice"
+                    onClick={() => stopVoiceOutput("user_stop")}
+                  >
+                    <VolumeX size={13} />
+                    停止播放
+                  </button>
+                )}
               </div>
             </form>
           </section>
         </section>
 
-        <aside className="infoRail" aria-label="信息侧栏">
+        {activeWorkspace !== "home" && (
+        <aside className="workspacePanel" aria-label="工作区面板">
+          <div className="workspacePanelHeader">
+            <div>
+              <p className="eyebrow">Workspace</p>
+              <h2>{WORKSPACE_LABELS[activeWorkspace]}</h2>
+              <span>{WORKSPACE_SUBTITLES[activeWorkspace]}</span>
+            </div>
+            <button className="iconButton soft" type="button" aria-label="关闭工作区" onClick={closeWorkspace}>
+              <X size={16} />
+            </button>
+          </div>
+          <div className="workspaceTabs" role="tablist" aria-label={`${WORKSPACE_LABELS[activeWorkspace]} tabs`}>
+            {activeWorkspaceTabs.map((tab) => (
+              <button
+                aria-selected={activeWorkspaceTab === tab.id}
+                className="workspaceTab"
+                key={tab.id}
+                role="tab"
+                type="button"
+                onClick={() => switchWorkspaceTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="workspacePanelBody">
+          {activeWorkspace === "memory" && activeWorkspaceTab === "confirmed" && (
+            <section className="infoCard" aria-label="已保存记忆">
+              <div className="cardHeader">
+                <Database size={17} />
+                <h2>已保存记忆</h2>
+                <span className="countPill">{memoryProfile.long_term_memories.length}</span>
+              </div>
+              <p className="settingHint">
+                已保存记忆来自显式记忆请求或你确认过的候选；这里仅显示安全摘要，不显示原始输入或调试内容。
+              </p>
+              <div className="pendingMemoryList">
+                {memoryProfile.long_term_memories.map((memory) => (
+                  <article className="pendingMemoryItem" key={memory.id}>
+                    <p>{memory.user_visible_text || memory.summary}</p>
+                    <div className="pendingMemoryMeta">
+                      <span>{debugText(memory.type)}</span>
+                      <span>{memory.is_active ? "有效" : "已停用"}</span>
+                      {memory.related_game && <span>{debugText(memory.related_game)}</span>}
+                      <span>使用 {memory.use_count ?? 0} 次</span>
+                      {memory.last_used_at && <span>最近使用 {formatMessageTime(memory.last_used_at)}</span>}
+                    </div>
+                    {memory.is_active && (
+                      <div className="pendingMemoryActions">
+                        <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={longTermMemoryBusyId === memory.id}
+                          onClick={() => void handleUndoLongTermMemory(memory.id, memory.user_visible_text || memory.summary)}
+                        >
+                          撤销
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                ))}
+                {memoryProfile.long_term_memories.length === 0 && <p className="emptyDebugText">暂无已保存记忆</p>}
+              </div>
+              <dl className="debugFacts">
+                <div>
+                  <dt>记忆开关</dt>
+                  <dd>{appSettings.memory_enabled ? "开启" : "关闭"}</dd>
+                </div>
+                <div>
+                  <dt>已注入记忆</dt>
+                  <dd>{injectedMemory.length}</dd>
+                </div>
+                <div>
+                  <dt>已跳过记忆</dt>
+                  <dd>{skippedMemory.length}</dd>
+                </div>
+              </dl>
+            </section>
+          )}
+
+          {activeWorkspace === "memory" && activeWorkspaceTab === "archive" && (
+            <section className="infoCard" aria-label="最近会话归档">
+              <div className="cardHeader">
+                <Archive size={17} />
+                <h2>最近会话</h2>
+                <span className="countPill">{sessionArchiveSearchActive ? sessionArchiveSearchTotal : sessionArchives.length}</span>
+              </div>
+              <p className="settingHint">
+                会话归档只保存本局时间线的安全摘要；它不是长期记忆，不进入 PromptMemoryBlock，也不会保存原始聊天、Prompt、JSON、密钥、完整路径或语音全文。
+              </p>
+              <div className="debugActions">
+                <button
+                  className="smallButton"
+                  type="button"
+                  disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                  onClick={() => void archiveCurrentSession()}
+                >
+                  <Archive size={14} />
+                  归档当前会话
+                </button>
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                  onClick={() => void (sessionArchiveSearchActive ? runSessionArchiveSearch() : refreshSessionArchives())}
+                >
+                  <RefreshCw size={14} />
+                  刷新
+                </button>
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  disabled={sessionArchiveBusy !== "" || sessionArchives.length === 0 || backendStatus !== "connected"}
+                  onClick={() => void scanRecentSessionArchiveMemoryCandidates()}
+                >
+                  <Sparkles size={14} />
+                  从最近归档检查候选
+                </button>
+                <button
+                  className="smallButton quiet"
+                  type="button"
+                  disabled={sessionArchiveBusy !== "" || sessionArchives.length === 0 || backendStatus !== "connected"}
+                  onClick={() => void clearSessionArchives()}
+                >
+                  <Trash2 size={14} />
+                  清空归档
+                </button>
+              </div>
+              <form
+                aria-label="搜索会话归档"
+                className="archiveSearchPanel"
+                role="search"
+                onSubmit={(event: FormEvent<HTMLFormElement>) => {
+                  event.preventDefault();
+                  if (backendStatus !== "connected" || sessionArchiveBusy !== "" || !hasSessionArchiveSearchCriteria) return;
+                  void runSessionArchiveSearch();
+                }}
+              >
+                <label className="archiveSearchField archiveSearchFieldWide">
+                  <span>搜索归档</span>
+                  <span className="archiveSearchInputRow">
+                    <Search size={14} />
+                    <input
+                      aria-label="搜索会话归档关键词"
+                      placeholder="搜索会话、游戏、Boss 或事件…"
+                      value={sessionArchiveSearchQuery}
+                      onChange={(event) => setSessionArchiveSearchQuery(event.target.value)}
+                    />
+                  </span>
+                </label>
+                <div className="archiveSearchFilters" aria-label="会话归档搜索过滤">
+                  <label className="archiveSearchField">
+                    <span>游戏</span>
+                    <input
+                      aria-label="按游戏过滤会话归档"
+                      value={sessionArchiveSearchGame}
+                      onChange={(event) => setSessionArchiveSearchGame(event.target.value)}
+                    />
+                  </label>
+                  <label className="archiveSearchField">
+                    <span>Boss / 实体</span>
+                    <input
+                      aria-label="按 Boss 或实体过滤会话归档"
+                      value={sessionArchiveSearchBoss}
+                      onChange={(event) => setSessionArchiveSearchBoss(event.target.value)}
+                    />
+                  </label>
+                  <label className="archiveSearchField">
+                    <span>事件类型</span>
+                    <input
+                      aria-label="按事件类型过滤会话归档"
+                      value={sessionArchiveSearchEventType}
+                      onChange={(event) => setSessionArchiveSearchEventType(event.target.value)}
+                    />
+                  </label>
+                </div>
+                <div className="debugActions">
+                  <button
+                    className="smallButton"
+                    type="submit"
+                    disabled={sessionArchiveBusy !== "" || backendStatus !== "connected" || !hasSessionArchiveSearchCriteria}
+                  >
+                    <Search size={14} />
+                    搜索
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    disabled={sessionArchiveBusy !== "" || (!sessionArchiveSearchActive && !hasSessionArchiveSearchCriteria)}
+                    onClick={() => void clearSessionArchiveSearch()}
+                  >
+                    清除搜索
+                  </button>
+                </div>
+              </form>
+              {sessionArchiveFeedback && <p className="demoResetFeedback" role="status">{sessionArchiveFeedback}</p>}
+              {sessionArchiveScanCreatedCount > 0 && (
+                <button className="textButton" type="button" onClick={openPendingMemory}>
+                  查看待确认记忆
+                </button>
+              )}
+              {sessionArchiveSearchActive ? (
+                <div className="pendingMemoryList" aria-label="会话归档搜索结果">
+                  {sessionArchiveSearchResults.map((result) => (
+                    <article
+                      className={`pendingMemoryItem ${sessionArchiveDetail?.id === result.archive_id ? "selected" : ""}`}
+                      key={`${result.archive_id}-${result.event_id ?? "archive"}`}
+                    >
+                      <p>{result.safe_summary}</p>
+                      <p className="settingHint">{result.reason}</p>
+                      <div className="pendingMemoryMeta">
+                        <span>{debugText(result.game, "未记录游戏")}</span>
+                        <span>Boss：{debugText(result.boss, "未记录")}</span>
+                        <span>{result.event_count} 个事件</span>
+                        <span>{formatMessageTime(result.started_at)} - {formatMessageTime(result.ended_at)}</span>
+                        <span>{result.matched_tags.length} 个命中</span>
+                        <span>事件：{debugText(result.event_type, "归档")}</span>
+                      </div>
+                      <div className="pendingMemoryActions">
+                        <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== ""}
+                          onClick={() => void loadSessionArchiveDetail(result.archive_id)}
+                        >
+                          查看
+                        </button>
+                        <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                          onClick={() => void scanSessionArchiveMemoryCandidates(result.archive_id)}
+                        >
+                          <Sparkles size={14} />
+                          检查可保存偏好
+                        </button>
+                        <button
+                          aria-label={`删除会话归档搜索结果 ${result.safe_summary}`}
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== ""}
+                          onClick={() => void deleteSessionArchive(result.archive_id)}
+                        >
+                          <Trash2 size={14} />
+                          删除
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  {sessionArchiveSearchResults.length === 0 && <p className="emptyDebugText">没有找到匹配的会话归档。</p>}
+                  {sessionArchiveSearchOmitted > 0 && (
+                    <p className="emptyDebugText">还有 {sessionArchiveSearchOmitted} 条安全结果未显示。</p>
+                  )}
+                </div>
+              ) : (
+                <div className="pendingMemoryList">
+                  {sessionArchives.map((archive) => (
+                    <article
+                      className={`pendingMemoryItem ${sessionArchiveDetail?.id === archive.id ? "selected" : ""}`}
+                      key={archive.id}
+                    >
+                      <p>{archive.title}</p>
+                      <p className="settingHint">{archive.summary}</p>
+                      <div className="pendingMemoryMeta">
+                        <span>{debugText(archive.game, "未记录游戏")}</span>
+                        <span>Boss：{debugText(archive.boss, "未记录")}</span>
+                        <span>{archive.event_count} 个事件</span>
+                        <span>{formatMessageTime(archive.started_at)} - {formatMessageTime(archive.ended_at)}</span>
+                        <span>{archive.privacy_level === "sensitive" ? "已脱敏" : "普通"}</span>
+                      </div>
+                      {archive.safe_event_summaries.length > 0 && (
+                        <ul className="sessionTimelineList compact" aria-label={`${archive.title} 安全事件摘要`}>
+                          {archive.safe_event_summaries.slice(0, 3).map((summary, index) => (
+                            <li key={`${archive.id}-summary-${index}`}>{summary}</li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="pendingMemoryActions">
+                        <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== ""}
+                          onClick={() => void loadSessionArchiveDetail(archive.id)}
+                        >
+                          查看
+                        </button>
+                        <button
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                          onClick={() => void scanSessionArchiveMemoryCandidates(archive.id)}
+                        >
+                          <Sparkles size={14} />
+                          检查可保存偏好
+                        </button>
+                        <button
+                          aria-label={`删除会话归档 ${archive.title}`}
+                          className="smallButton quiet"
+                          type="button"
+                          disabled={sessionArchiveBusy !== ""}
+                          onClick={() => void deleteSessionArchive(archive.id)}
+                        >
+                          <Trash2 size={14} />
+                          删除
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  {sessionArchives.length === 0 && <p className="emptyDebugText">暂无会话归档</p>}
+                </div>
+              )}
+              {sessionArchiveDetail && (
+                <div className="debugSection archiveDetail" aria-label="会话归档详情">
+                  <h3>{sessionArchiveDetail.title}</h3>
+                  <p className="settingHint">{sessionArchiveDetail.summary}</p>
+                  <dl className="debugFacts">
+                    <div>
+                      <dt>游戏</dt>
+                      <dd>{debugText(sessionArchiveDetail.game, "未记录")}</dd>
+                    </div>
+                    <div>
+                      <dt>Boss / 区域</dt>
+                      <dd>{debugText(sessionArchiveDetail.boss ?? sessionArchiveDetail.area, "未记录")}</dd>
+                    </div>
+                    <div>
+                      <dt>事件数</dt>
+                      <dd>{sessionArchiveDetail.event_count}</dd>
+                    </div>
+                    <div>
+                      <dt>已确认记忆事件</dt>
+                      <dd>{sessionArchiveDetail.accepted_memory_count}</dd>
+                    </div>
+                    <div>
+                      <dt>隐私级别</dt>
+                      <dd>{sessionArchiveDetail.privacy_level === "sensitive" ? "已脱敏" : "普通"}</dd>
+                    </div>
+                    <div>
+                      <dt>保留策略</dt>
+                      <dd>{debugText(sessionArchiveDetail.retention_policy)}</dd>
+                    </div>
+                  </dl>
+                  <div className="debugActions">
+                    <button
+                      className="smallButton quiet"
+                      type="button"
+                      disabled={sessionArchiveBusy !== "" || backendStatus !== "connected"}
+                      onClick={() => void scanSessionArchiveMemoryCandidates(sessionArchiveDetail.id)}
+                    >
+                      <Sparkles size={14} />
+                      检查可保存偏好
+                    </button>
+                  </div>
+                  <ol className="eventStreamList" aria-label="会话归档安全事件">
+                    {sessionArchiveDetail.events.map((event) => (
+                      <li key={event.id}>
+                        <span className="eventStreamTime">{eventStreamTime(event.timestamp)}</span>
+                        <span className="eventStreamType" title={event.event_type}>{event.event_type}</span>
+                        <span className="eventStreamSummary">{event.safe_summary}</span>
+                      </li>
+                    ))}
+                    {sessionArchiveDetail.events.length === 0 && <li className="emptyDebugText eventStreamEmpty">没有可显示的安全事件</li>}
+                  </ol>
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeWorkspace === "memory" && activeWorkspaceTab === "local" && (
+            <section className="infoCard" aria-label="本地数据与隐私">
+              <div className="cardHeader">
+                <FolderOpen size={17} />
+                <h2>本地数据与隐私</h2>
+              </div>
+              <p className="settingHint">本地数据写入用户数据目录，不写入 packaged `.app`。界面只显示目录摘要，避免暴露完整本地路径。</p>
+              <dl className="debugFacts localDataFacts">
+                <div>
+                  <dt>用户数据目录</dt>
+                  <dd>{safePathText(displayLocalDataStatus.data_dir)}</dd>
+                </div>
+                <div>
+                  <dt>记忆目录</dt>
+                  <dd>{safePathText(displayLocalDataStatus.memory_dir)}</dd>
+                </div>
+                <div>
+                  <dt>会话目录</dt>
+                  <dd>{safePathText(displayLocalDataStatus.session_dir)}</dd>
+                </div>
+                <div>
+                  <dt>数据目录状态</dt>
+                  <dd>{displayLocalDataStatus.writable ? "可写" : "不可写"}</dd>
+                </div>
+                <div>
+                  <dt>待确认记忆数</dt>
+                  <dd>{displayLocalDataStatus.pending_memory_count}</dd>
+                </div>
+              </dl>
+              <button
+                className="smallButton"
+                type="button"
+                title="Open local data directory"
+                disabled={!backendRuntimeAvailable || localDataBusy !== ""}
+                onClick={() => void openLocalDataDirectory()}
+              >
+                <FolderOpen size={14} />
+                打开本地数据目录
+              </button>
+              {demoResetFeedback && (
+                <p className="demoResetFeedback" role="status">
+                  {demoResetFeedback}
+                </p>
+              )}
+            </section>
+          )}
+
+          {activeWorkspace === "memory" && activeWorkspaceTab === "future" && (
+            <section className="infoCard" aria-label="候选记忆占位">
+              <div className="cardHeader">
+                <Brain size={17} />
+                <h2>候选记忆</h2>
+              </div>
+              <p className="settingHint">
+                候选记忆已接入基础确认流；后续这里会承接来源筛选、忽略记录、Session Archive 和本地搜索。
+              </p>
+            </section>
+          )}
+
+          {activeWorkspace === "game" && activeWorkspaceTab === "timeline" && (
+            <section className="infoCard" aria-label="本局时间线">
+              <div className="cardHeader">
+                <Gamepad2 size={17} />
+                <h2>本局时间线</h2>
+              </div>
+              <SessionTimelinePanel
+                items={sessionTimeline}
+                open={sessionTimelineOpen}
+                onOpenChange={setSessionTimelineOpen}
+                onClear={() => setSessionTimeline([])}
+              />
+            </section>
+          )}
+
+          {activeWorkspace === "game" && activeWorkspaceTab === "knowledge" && (
+            <section className="infoCard" aria-label="知识摘要">
+              <div className="cardHeader">
+                <FileText size={17} />
+                <h2>知识摘要</h2>
+              </div>
+              <p className="settingHint">这里显示当前知识可用性和命中摘要；详细 trace 保留在 Developer / Debug。</p>
+              <dl className="debugFacts">
+                <div>
+                  <dt>当前游戏</dt>
+                  <dd>{debugText(gameContext.active_game_display_name, "未选择")}</dd>
+                </div>
+                <div>
+                  <dt>知识库状态</dt>
+                  <dd>{gameContextKnowledgeStatus}</dd>
+                </div>
+                <div>
+                  <dt>兜底方式</dt>
+                  <dd>{gameContextFallbackMode}</dd>
+                </div>
+                <div>
+                  <dt>知识命中</dt>
+                  <dd>{chatDebug.knowledge_matched ? "是" : "否"}</dd>
+                </div>
+                <div>
+                  <dt>检索状态</dt>
+                  <dd>{knowledgeRetrievalStatusText(chatDebug.knowledge_retrieval_status)}</dd>
+                </div>
+              </dl>
+            </section>
+          )}
+
+	          {activeWorkspace === "game" && activeWorkspaceTab === "manual" && (
+	            <section className="infoCard" aria-label="当前游戏控制">
+              <div className="cardHeader">
+                <Gamepad2 size={17} />
+                <h2>手动游戏控制</h2>
+              </div>
+              <div className="gameContextControl" aria-label="当前游戏控制">
+                <dl className="debugFacts">
+                  <div>
+                    <dt>{formatDebugLabel("current_game")}</dt>
+                    <dd>{debugText(gameContext.active_game_display_name, "未选择")}</dd>
+                  </div>
+                  <div>
+                    <dt>{formatDebugLabel("active_source")}</dt>
+                    <dd>{debugText(gameContext.active_source)}</dd>
+                  </div>
+                  <div>
+                    <dt>{formatDebugLabel("automatic_detected_result")}</dt>
+                    <dd>{debugText(detectedGameDisplay, "未检测到游戏")}</dd>
+                  </div>
+                  <div>
+                    <dt>{formatDebugLabel("knowledge_available")}</dt>
+                    <dd>{gameContextKnowledgeStatus}</dd>
+                  </div>
+                </dl>
+                <label className="settingRow">
+                  <span>当前游戏</span>
+                  <select
+                    aria-label="当前游戏"
+                    disabled={gameContextBusy !== ""}
+                    value={manualGameId}
+                    onChange={(event) => void updateManualGameContext(event.target.value || null)}
+                  >
+                    <option value="">跟随自动/对话</option>
+                    {gameContext.available_games.map((game) => (
+                      <option key={game.game_id} value={game.game_id}>
+                        {game.display_name}（{knowledgeStatusText(game.support_status, game.knowledge_available)}）
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="debugActions">
+                  <button
+                    className="smallButton"
+                    type="button"
+                    disabled={gameContextBusy !== "" || !canUseDetectedGame}
+                    onClick={() => void updateManualGameContext(detectedKnowledgeGameId ?? null, "use-detected-game")}
+                  >
+                    使用检测结果
+                  </button>
+                  <button
+                    className="smallButton quiet"
+                    type="button"
+                    disabled={gameContextBusy !== "" || !gameContext.manual_override.enabled}
+                    onClick={() => void updateManualGameContext(null, "clear-manual-game")}
+                  >
+                    清除手动选择
+                  </button>
+                </div>
+                <div className="catalogSummary" aria-label="已支持游戏">
+                  <div>
+                    <strong>已支持</strong>
+                    <span>{supportedCatalogGames.map((game) => game.display_name).join(" / ") || "无"}</span>
+                  </div>
+                  <div>
+                    <strong>暂未接入知识库</strong>
+                    <span>{plannedCatalogGames.map((game) => game.display_name).join(" / ") || "无"}</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {activeWorkspace === "voice" && activeWorkspaceTab === "conversation" && (
+            <section className="infoCard" aria-label="语音对话">
+              <div className="cardHeader">
+                <Mic size={17} />
+                <h2>Voice v2.1 对话状态</h2>
+              </div>
+              <p className="settingHint">
+                Voice v2.1 已接入可选直接对话模式；默认仍是确认后发送。直接对话不是常驻监听，每轮仍需你主动点击录音。
+              </p>
+              <div className="voiceModeControl" role="group" aria-label="直接对话模式">
+                <span>当前模式</span>
+                <div className="voiceModeButtons">
+                  <button
+                    aria-pressed={appSettings.voice_interaction_mode === "confirm_send"}
+                    className="voiceModeButton"
+                    disabled={settingsBusy !== "" && settingsBusy !== "voice_interaction_mode"}
+                    type="button"
+                    onClick={() => void updateAppSettings({ voice_interaction_mode: "confirm_send" })}
+                  >
+                    确认后发送
+                  </button>
+                  <button
+                    aria-pressed={appSettings.voice_interaction_mode === "direct_conversation"}
+                    className="voiceModeButton"
+                    disabled={settingsBusy !== "" && settingsBusy !== "voice_interaction_mode"}
+                    type="button"
+                    onClick={() => void updateAppSettings({ voice_interaction_mode: "direct_conversation" })}
+                  >
+                    直接对话
+                  </button>
+                </div>
+              </div>
+              <p className="settingHint">
+                {voiceDirectConversationEnabled
+                  ? "开启时：用户主动录音后，转写结果会自动发送给 Rei，并进入正常聊天流程；自动发送也不能绕过记忆确认。"
+                  : "关闭时：转写后会先进入输入框，仍需你确认发送；未确认 transcript 不进入 memory、prompt、retrieval 或 game context。"}
+                音频仍只在本地处理。
+              </p>
+              <div className={`voiceStatePanel voiceState-${voiceConversationState.tone}`} role="status" aria-label="Voice v2.1 状态">
+                <div>
+                  <span>当前状态</span>
+                  <strong>{voiceConversationState.label}</strong>
+                </div>
+                <p>{voiceConversationState.description}</p>
+              </div>
+              <dl className="debugFacts">
+                <div>
+                  <dt>状态机</dt>
+                  <dd>{voiceConversationState.state}</dd>
+                </div>
+                <div>
+                  <dt>当前模式</dt>
+                  <dd>{voiceInteractionModeLabel}</dd>
+                </div>
+                <div>
+                  <dt>未确认 transcript</dt>
+                  <dd>{voiceTranscriptReady ? voiceConfirmSendText : "无"}</dd>
+                </div>
+                <div>
+                  <dt>主输入</dt>
+                  <dd>{mainVoiceInputProviderText(mainVoiceInputProvider)}</dd>
+                </div>
+                <div>
+                  <dt>输入状态</dt>
+                  <dd>{mainVoiceInputStatus}</dd>
+                </div>
+                <div>
+                  <dt>语音输出</dt>
+                  <dd>{appSettings.voice_output === "on" ? "开启" : "关闭"} / {voicePhaseText(voiceStatus)}</dd>
+                </div>
+                <div>
+                  <dt>Auto-send</dt>
+                  <dd>{voiceDirectConversationEnabled ? "开启，仅本轮主动录音后自动发送" : "关闭"}</dd>
+                </div>
+                <div>
+                  <dt>Hands-free</dt>
+                  <dd>关闭，后续能力</dd>
+                </div>
+              </dl>
+              <div className="voiceBoundaryList" aria-label="语音安全边界">
+                <span>音频不上传</span>
+                <span>ASR 本地运行</span>
+                <span>transcript 未确认不写 memory</span>
+                <span>不播报 Debug / Prompt Preview / Trace</span>
+                <span>TTS 可停止</span>
+              </div>
+              <div className="workspaceQuickActions">
+                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("input")}>
+                  <Mic size={14} />
+                  输入 / ASR
+                </button>
+                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("output")}>
+                  <Volume2 size={14} />
+                  语音输出
+                </button>
+                {voiceStatus.active && (
+                  <button className="smallButton quiet" type="button" aria-label="停止语音 / Stop Voice" onClick={() => stopVoiceOutput("user_stop")}>
+                    <VolumeX size={14} />
+                    停止播放
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
+
+	          {activeWorkspace === "voice" && activeWorkspaceTab === "input" && (
+	            <section className="infoCard" aria-label="语音输入">
+	              <div className="cardHeader">
+	                <Mic size={17} />
+	                <h2>输入 / Local ASR</h2>
+	              </div>
+	              <div className="voiceOutputPanel" role="group" aria-label="语音输入设置">
+	                <div className="settingRow static">
+	                  <span>语音输入 / Voice Input</span>
+	                  <strong>{voiceInputAvailabilityText(voiceInputStatus)}</strong>
+	                </div>
+	                <p className="settingHint">当前状态：{voiceInputPhaseText(voiceInputStatus)}。</p>
+	                <p className="settingHint">语言：{voiceInputStatus.language}。识别结果会先填入输入框，不会自动发送。</p>
+	                <p className="settingHint">
+	                  语音识别功能：{voiceInputApiText(voiceInputStatus)}。麦克风权限：{voiceInputStatus.diagnostics.microphonePermission}。运行环境：{voiceInputRuntimeText(voiceInputStatus)}。
+	                </p>
+	                {!voiceInputStatus.supported && (
+	                  <p className="settingHint">当前运行环境不支持本地语音识别。你仍然可以使用系统听写输入到文本框。</p>
+	                )}
+	                {voiceInputServiceUnavailable(voiceInputStatus) && (
+	                  <p className="settingHint">当前运行环境的语音识别服务不可用。你仍然可以使用系统听写输入到文本框。</p>
+	                )}
+	                {voiceInputStatus.lastTranscriptCharacterCount > 0 && (
+	                  <p className="settingHint">最近识别：{voiceInputStatus.lastTranscriptCharacterCount} 字。</p>
+	                )}
+	                {voiceInputStatus.lastError && <p className="settingHint">{voiceInputStatus.lastError}</p>}
+	                <div className="settingRow static">
+	                  <span>本地语音识别 / Local ASR</span>
+	                  <strong>{localAsrStatusText(localAsrStatus)}</strong>
+	                </div>
+	                <p className="settingHint">{localAsrStatus.display_message}</p>
+	                <p className="settingHint">{localAsrStatusDetail(localAsrStatus)}</p>
+	                <div className="localAsrSetupPanel" role="group" aria-label="本地 ASR 配置 / Local ASR Setup">
+	                  <div className="settingRow static">
+	                    <span>本地 ASR 配置 / Local ASR Setup</span>
+	                    <strong>{localAsrSourceText(localAsrSettings.source)}</strong>
+	                  </div>
+	                  <p className="settingHint">{localAsrSettingsSummaryText(localAsrSettings)}</p>
+	                  <div className="localAsrPathField">
+	                    <label htmlFor="voice-local-asr-binary-path">本地识别程序 / ASR Binary</label>
+	                    <div className="localAsrPathInputRow">
+	                      <input
+	                        aria-label="本地识别程序 / ASR Binary"
+	                        autoComplete="off"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        id="voice-local-asr-binary-path"
+	                        placeholder="/opt/homebrew/bin/whisper-cli"
+	                        spellCheck={false}
+	                        type="text"
+	                        value={localAsrSettingsDraft.local_asr_binary_path}
+	                        onChange={(event) =>
+	                          setLocalAsrSettingsDraft((current) => ({
+	                            ...current,
+	                            local_asr_binary_path: event.target.value
+	                          }))
+	                        }
+	                      />
+	                      <button
+	                        aria-label="选择本地识别程序文件"
+	                        className="smallButton quiet localAsrBrowseButton"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        type="button"
+	                        onClick={() => void selectLocalAsrFile("asr_binary", "local_asr_binary_path")}
+	                      >
+	                        <FolderOpen size={14} />
+	                        选择...
+	                      </button>
+	                    </div>
+	                  </div>
+	                  <div className="localAsrPathField">
+	                    <label htmlFor="voice-local-asr-model-path">模型文件 / Model File</label>
+	                    <div className="localAsrPathInputRow">
+	                      <input
+	                        aria-label="模型文件 / Model File"
+	                        autoComplete="off"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        id="voice-local-asr-model-path"
+	                        placeholder="~/Library/Application Support/ReiLink/models/ggml-base.bin"
+	                        spellCheck={false}
+	                        type="text"
+	                        value={localAsrSettingsDraft.local_asr_model_path}
+	                        onChange={(event) =>
+	                          setLocalAsrSettingsDraft((current) => ({
+	                            ...current,
+	                            local_asr_model_path: event.target.value
+	                          }))
+	                        }
+	                      />
+	                      <button
+	                        aria-label="选择模型文件"
+	                        className="smallButton quiet localAsrBrowseButton"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        type="button"
+	                        onClick={() => void selectLocalAsrFile("asr_model", "local_asr_model_path")}
+	                      >
+	                        <FolderOpen size={14} />
+	                        选择...
+	                      </button>
+	                    </div>
+	                  </div>
+	                  <div className="localAsrPathField">
+	                    <label htmlFor="voice-local-asr-converter-path">音频转换工具 / Audio Converter</label>
+	                    <div className="localAsrPathInputRow">
+	                      <input
+	                        aria-label="音频转换工具 / Audio Converter"
+	                        autoComplete="off"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        id="voice-local-asr-converter-path"
+	                        placeholder="/opt/homebrew/bin/ffmpeg"
+	                        spellCheck={false}
+	                        type="text"
+	                        value={localAsrSettingsDraft.audio_converter_binary_path}
+	                        onChange={(event) =>
+	                          setLocalAsrSettingsDraft((current) => ({
+	                            ...current,
+	                            audio_converter_binary_path: event.target.value
+	                          }))
+	                        }
+	                      />
+	                      <button
+	                        aria-label="选择音频转换工具文件"
+	                        className="smallButton quiet localAsrBrowseButton"
+	                        disabled={localAsrSettingsBusy !== ""}
+	                        type="button"
+	                        onClick={() => void selectLocalAsrFile("asr_converter", "audio_converter_binary_path")}
+	                      >
+	                        <FolderOpen size={14} />
+	                        选择...
+	                      </button>
+	                    </div>
+	                  </div>
+	                  <div className="localAsrSetupActions">
+	                    <button
+	                      className="smallButton quiet"
+	                      type="button"
+	                      aria-label="保存配置 / Save"
+	                      disabled={localAsrSettingsBusy !== ""}
+	                      onClick={() => void saveLocalAsrSettings()}
+	                    >
+	                      <FileText size={14} />
+	                      保存配置
+	                    </button>
+	                    <button
+	                      className="smallButton quiet"
+	                      type="button"
+	                      aria-label="清除配置 / Clear"
+	                      disabled={localAsrSettingsBusy !== ""}
+	                      onClick={() => void clearLocalAsrSettings()}
+	                    >
+	                      <X size={14} />
+	                      清除配置
+	                    </button>
+	                    <button
+	                      className="smallButton quiet"
+	                      type="button"
+	                      aria-label="重新检测 / Refresh Status"
+	                      disabled={localAsrSettingsBusy !== ""}
+	                      onClick={() => void refreshLocalAsrSetup()}
+	                    >
+	                      <RefreshCw size={14} />
+	                      重新检测
+	                    </button>
+	                  </div>
+	                  {localAsrSettingsMessage && <p className="settingHint">{localAsrSettingsMessage}</p>}
+	                </div>
+	                {(localAsrStatus.safe_binary_name || localAsrStatus.safe_model_name) && (
+	                  <p className="settingHint">
+	                    {localAsrStatus.safe_binary_name ? `识别程序：${debugText(localAsrStatus.safe_binary_name)}` : ""}
+	                    {localAsrStatus.safe_binary_name && localAsrStatus.safe_model_name ? "。" : ""}
+	                    {localAsrStatus.safe_model_name ? `模型：${debugText(localAsrStatus.safe_model_name)}` : ""}
+	                  </p>
+	                )}
+	                {localAsrStatus.safe_model_name && (
+	                  <p className="settingHint">
+	                    模型取舍：{debugText(localAsrStatus.safe_model_name)} 由用户自行配置，ReiLink 不内置模型。base 通常速度和准确率较均衡；tiny 更快但更不准，small / medium / large 可能更准但更慢或超时。
+	                  </p>
+	                )}
+	                <div className="settingRow static">
+	                  <span>本地 ASR 检查</span>
+	                  <strong>{localAsrProbeStatusText(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</strong>
+	                </div>
+	                <p className="settingHint">{localAsrProbeHint(localAsrProbe, localAsrProbeChecking, localAsrConfigReady)}</p>
+	                {localAsrProbe && (
+	                  <p className="settingHint">
+	                    {localAsrProbe.duration_ms} ms
+	                    {localAsrProbe.binary_name ? `。识别程序：${debugText(localAsrProbe.binary_name)}` : ""}
+	                    {localAsrProbe.model_name ? `。模型：${debugText(localAsrProbe.model_name)}` : ""}
+	                  </p>
+	                )}
+	                <button
+	                  className="smallButton quiet"
+	                  type="button"
+	                  aria-label="检查本地 ASR / Check Local ASR"
+	                  disabled={!localAsrConfigReady || localAsrProbeChecking}
+	                  onClick={() => void checkLocalAsr()}
+	                >
+	                  <RefreshCw size={14} />
+	                  检查本地 ASR
+	                </button>
+	                <div className="settingRow static">
+	                  <span>本地转写测试 / Local Transcribe Test</span>
+	                  <strong>
+	                    {localAsrTranscriptionStatusText(
+	                      localAsrTranscriptionPhase,
+	                      localAsrTranscriptionResult,
+	                      localAsrConfigReady,
+	                      audioCaptureStatus
+	                    )}
+	                  </strong>
+	                </div>
+	                <p className="settingHint">
+	                  {localAsrTranscriptionHint(
+	                    localAsrTranscriptionPhase,
+	                    localAsrTranscriptionResult,
+	                    localAsrConfigReady,
+	                    audioCaptureStatus,
+	                    localAsrStatus
+	                  )}
+	                </p>
+	                {localAsrTranscriptionResult && (
+	                  <p className="settingHint">
+	                    {localAsrTranscriptionResult.transcript_char_count} 字
+	                    {`。语言：${debugText(localAsrTranscriptionResult.language)}`}
+	                    {localAsrTranscriptionResult.transcript_normalized_to_simplified ? "。已规范为简体中文" : ""}
+	                    {localAsrTranscriptionResult.duration_ms ? `。${localAsrTranscriptionResult.duration_ms} ms` : ""}
+	                    {localAsrTranscriptionResult.size_bytes ? `。${audioBytesText(localAsrTranscriptionResult.size_bytes)}` : ""}
+	                    {`。格式：${audioFormatSummaryText(localAsrTranscriptionResult.mime_type)}`}
+	                    {audioFormatConversionHint(localAsrTranscriptionResult.mime_type) ? `。${audioFormatConversionHint(localAsrTranscriptionResult.mime_type)}` : ""}
+	                    {`。转换：${audioConversionStatusText(localAsrTranscriptionResult.conversion_status)}`}
+	                    {localAsrTranscriptionResult.converted_mime_type ? `。目标格式：${audioFormatSummaryText(localAsrTranscriptionResult.converted_mime_type)}` : ""}
+	                    {`。转换工具：${localAsrTranscriptionResult.converter_configured ? "已配置" : "未配置"}`}
+	                    {localAsrTranscriptionResult.safe_converter_name ? `。转换器：${debugText(localAsrTranscriptionResult.safe_converter_name)}` : ""}
+	                    {`。临时音频已清理：${localAsrTranscriptionResult.temporary_file_cleaned ? "是" : "否"}`}
+	                    {`。原始音频已清理：${localAsrTranscriptionResult.temporary_input_cleaned ? "是" : "否"}`}
+	                    {`。转换音频已清理：${localAsrTranscriptionResult.temporary_converted_cleaned ? "是" : "否"}`}
+	                    {localAsrTranscriptionResult.binary_name ? `。识别程序：${debugText(localAsrTranscriptionResult.binary_name)}` : ""}
+	                    {localAsrTranscriptionResult.model_name ? `。模型：${debugText(localAsrTranscriptionResult.model_name)}` : ""}
+	                  </p>
+	                )}
+	                <button
+	                  className="smallButton quiet"
+	                  type="button"
+	                  aria-label={localAsrTranscriptionPhase === "recording" ? "停止本地转写录音 / Stop Local Transcribe Recording" : "录音并转写 / Record & Transcribe"}
+	                  disabled={localAsrTranscriptionButtonDisabled}
+	                  onClick={() => void runLocalAsrTranscription()}
+	                >
+	                  <Mic size={14} />
+	                  {localAsrTranscriptionPhase === "recording" ? "停止录音" : localAsrTranscriptionBusy ? "正在转写" : "录音并转写"}
+	                </button>
+	                <div className="settingRow static">
+	                  <span>录音测试 / Audio Capture Test</span>
+	                  <strong>{audioProbeStatusText(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</strong>
+	                </div>
+	                <p className="settingHint">{audioProbeHint(audioCaptureStatus, audioProbeUploading, audioProbeResult)}</p>
+	                {audioProbeResult && (
+	                  <p className="settingHint">
+	                    {audioBytesText(audioProbeResult.size_bytes)}。临时音频已清理：{audioProbeResult.temporary_file_cleaned ? "是" : "否"}
+	                    {`。格式：${audioFormatSummaryText(audioProbeResult.mime_type)}`}
+	                    {audioFormatConversionHint(audioProbeResult.mime_type) ? `。${audioFormatConversionHint(audioProbeResult.mime_type)}` : ""}
+	                  </p>
+	                )}
+	                <button
+	                  className="smallButton quiet"
+	                  type="button"
+	                  aria-label={audioCaptureStatus.phase === "recording" ? "停止录音 / Stop Recording" : "测试录音 / Test Recording"}
+	                  disabled={audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
+	                  onClick={() => void runAudioCaptureProbe()}
+	                >
+	                  <Mic size={14} />
+	                  {audioCaptureStatus.phase === "recording" ? "停止录音" : "测试录音"}
+	                </button>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "voice" && activeWorkspaceTab === "output" && (
+	            <section className="infoCard" aria-label="语音输出">
+	              <div className="cardHeader">
+	                <Volume2 size={17} />
+	                <h2>语音输出</h2>
+	              </div>
+	              <div className="voiceOutputPanel" role="group" aria-label="语音输出设置">
+	                <label className="settingRow">
+	                  <span>语音输出 / Voice Output</span>
+	                  <select
+	                    aria-label="语音输出 / Voice Output"
+	                    disabled={settingsBusy !== "" || !voiceStatus.available}
+	                    value={appSettings.voice_output}
+	                    onChange={(event) =>
+	                      void updateAppSettings({ voice_output: event.target.value as AppSettings["voice_output"] })
+	                    }
+	                  >
+	                    <option value="off">关闭</option>
+	                    <option value="on">开启</option>
+	                  </select>
+	                </label>
+	                <p className="settingHint">
+	                  当前状态：{appSettings.voice_output === "on" ? "已开启" : "已关闭"}；本地语音：
+	                  {voiceStatus.available ? "可用" : "不可用"}。
+	                </p>
+	                <p className="settingHint">播放状态：{voicePhaseText(voiceStatus)}。</p>
+	                {voiceStatus.available && (
+	                  <p className="settingHint">
+	                    语音选择：{voiceStatus.hasChineseVoice ? "优先使用中文语音" : voiceStatus.hasVoices ? "使用系统默认语音" : "等待系统语音列表"}。
+	                  </p>
+	                )}
+	                {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
+	                <p className="settingHint">如果更换过系统语音包，请先点“测试语音”确认系统声音可用。</p>
+	                <p className="settingHint">
+	                  直接对话模式下，如果 Voice Output 开启，Rei 回复完成后默认短版播报；关闭时只显示文字回复。
+	                </p>
+	                {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
+	                <label className="settingRow">
+	                  <span>语速 / Rate</span>
+	                  <span className="rangeControl">
+	                    <input
+	                      aria-label="语速 / Rate"
+	                      disabled={settingsBusy !== ""}
+	                      max="1.3"
+	                      min="0.7"
+	                      step="0.1"
+	                      type="range"
+	                      value={appSettings.voice_rate}
+	                      onChange={(event) => void updateAppSettings({ voice_rate: Number(event.target.value) })}
+	                    />
+	                    <strong>{appSettings.voice_rate.toFixed(1)}</strong>
+	                  </span>
+	                </label>
+	                <label className="settingRow">
+	                  <span>音量 / Volume</span>
+	                  <span className="rangeControl">
+	                    <input
+	                      aria-label="音量 / Volume"
+	                      disabled={settingsBusy !== ""}
+	                      max="1"
+	                      min="0"
+	                      step="0.1"
+	                      type="range"
+	                      value={appSettings.voice_volume}
+	                      onChange={(event) => void updateAppSettings({ voice_volume: Number(event.target.value) })}
+	                    />
+	                    <strong>{appSettings.voice_volume.toFixed(1)}</strong>
+	                  </span>
+	                </label>
+	                {voiceStatus.active && (
+	                  <button
+	                    className="smallButton quiet"
+	                    type="button"
+	                    aria-label="停止语音 / Stop Voice"
+	                    onClick={() => stopVoiceOutput("user_stop")}
+	                  >
+	                    <VolumeX size={14} />
+	                    停止语音
+	                  </button>
+	                )}
+	                <button
+	                  className="smallButton quiet"
+	                  type="button"
+	                  aria-label="测试语音 / Test Voice"
+	                  disabled={!voiceStatus.available || !VOICE_TEST_VOICE_ALLOWED}
+	                  onClick={testVoiceOutput}
+	                >
+	                  <Volume2 size={14} />
+	                  测试语音
+	                </button>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "voice" && activeWorkspaceTab === "profile" && (
+	            <section className="infoCard" aria-label="Voice Profile">
+	              <div className="cardHeader">
+	                <Volume2 size={17} />
+	                <h2>Voice Profile</h2>
+	              </div>
+	              <div className="voiceOutputPanel" role="group" aria-label="Voice Profile 策略">
+	                <div className="settingRow static">
+	                  <span>当前 Profile</span>
+	                  <strong>{VOICE_PROFILE_LABEL}</strong>
+	                </div>
+	                <p className="settingHint">{VOICE_PROFILE_DESCRIPTION} 这不是角色音色，也不声明真人或角色声音。</p>
+	                <div className="settingRow static">
+	                  <span>普通聊天</span>
+	                  <strong>{voiceProfileNormalModeLabel}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>直接对话</span>
+	                  <strong>{voiceProfileDirectModeLabel}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>最长播报</span>
+	                  <strong>
+	                    {appSettings.voice_max_spoken_sentences} 句 / {appSettings.voice_max_spoken_chars} 字
+	                  </strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>主动陪伴播报</span>
+	                  <strong>{voiceProfileToggleText(appSettings.voice_speak_proactive)}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>记忆确认播报</span>
+	                  <strong>{voiceProfileToggleText(appSettings.voice_speak_memory_prompts)}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>调试内容播报</span>
+	                  <strong>{VOICE_DEBUG_SPEAKING_ALLOWED ? "允许" : "永不播报"}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>新录音打断播放</span>
+	                  <strong>{VOICE_INTERRUPT_ON_NEW_RECORDING ? "开启" : "关闭"}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>Test Voice</span>
+	                  <strong>{VOICE_TEST_VOICE_ALLOWED ? "可用" : "关闭"}</strong>
+	                </div>
+	                <label className="settingRow">
+	                  <span>普通聊天播报模式</span>
+	                  <select
+	                    aria-label="普通聊天播报模式"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.voice_spoken_reply_mode}
+	                    onChange={(event) =>
+	                      void updateAppSettings({
+	                        voice_spoken_reply_mode: event.target.value as AppSettings["voice_spoken_reply_mode"]
+	                      })
+	                    }
+	                  >
+	                    <option value="full">全文播报</option>
+	                    <option value="brief">短版播报</option>
+	                    <option value="silent">静默</option>
+	                  </select>
+	                </label>
+	                <label className="settingRow">
+	                  <span>直接对话播报模式</span>
+	                  <select
+	                    aria-label="直接对话播报模式"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.voice_direct_spoken_reply_mode}
+	                    onChange={(event) =>
+	                      void updateAppSettings({
+	                        voice_direct_spoken_reply_mode: event.target.value as AppSettings["voice_direct_spoken_reply_mode"]
+	                      })
+	                    }
+	                  >
+	                    <option value="full">全文播报</option>
+	                    <option value="brief">短版播报</option>
+	                    <option value="silent">静默</option>
+	                  </select>
+	                </label>
+	                <label className="settingRow">
+	                  <span>最长播报字数</span>
+	                  <span className="rangeControl">
+	                    <input
+	                      aria-label="最长播报字数"
+	                      disabled={settingsBusy !== ""}
+	                      max="280"
+	                      min="40"
+	                      step="10"
+	                      type="range"
+	                      value={appSettings.voice_max_spoken_chars}
+	                      onChange={(event) => void updateAppSettings({ voice_max_spoken_chars: Number(event.target.value) })}
+	                    />
+	                    <strong>{appSettings.voice_max_spoken_chars}</strong>
+	                  </span>
+	                </label>
+	                <label className="settingRow">
+	                  <span>最长播报句数</span>
+	                  <select
+	                    aria-label="最长播报句数"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.voice_max_spoken_sentences}
+	                    onChange={(event) => void updateAppSettings({ voice_max_spoken_sentences: Number(event.target.value) })}
+	                  >
+	                    <option value={1}>1</option>
+	                    <option value={2}>2</option>
+	                    <option value={3}>3</option>
+	                    <option value={4}>4</option>
+	                  </select>
+	                </label>
+	                <label className="settingRow">
+	                  <span>播报主动陪伴</span>
+	                  <input
+	                    aria-label="播报主动陪伴"
+	                    checked={appSettings.voice_speak_proactive}
+	                    disabled={settingsBusy !== ""}
+	                    type="checkbox"
+	                    onChange={(event) => void updateAppSettings({ voice_speak_proactive: event.target.checked })}
+	                  />
+	                </label>
+	                <label className="settingRow">
+	                  <span>播报记忆确认</span>
+	                  <input
+	                    aria-label="播报记忆确认"
+	                    checked={appSettings.voice_speak_memory_prompts}
+	                    disabled={settingsBusy !== ""}
+	                    type="checkbox"
+	                    onChange={(event) => void updateAppSettings({ voice_speak_memory_prompts: event.target.checked })}
+	                  />
+	                </label>
+	                <p className="settingHint">永不播报：{voiceProfileNeverSpokenItems.join("；")}。</p>
+	                <p className="settingHint">
+	                  完整回复仍显示在聊天里；Voice Profile 只决定可不可以说、说全文还是短版，以及短版长度。
+	                </p>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "overlay" && activeWorkspaceTab === "safe" && (
+	            <section className="infoCard" aria-label="Overlay Safe Mode">
+	              <div className="cardHeader">
+	                <Volume2 size={17} />
+	                <h2>Safe Mode</h2>
+	              </div>
+	              <div className="voiceOutputPanel" role="group" aria-label="Overlay / 游戏悬浮层">
+	                <div className="settingRow overlayToggleRow">
+	                  <span>Overlay / 游戏悬浮层</span>
+	                  <div
+	                    aria-label="Overlay 开关"
+	                    className="overlayToggleControl"
+	                    role="group"
+	                  >
+	                    <button
+	                      aria-label="关闭 Overlay"
+	                      aria-pressed={appSettings.overlay_enabled === "off"}
+	                      className="overlayToggleButton"
+	                      disabled={settingsBusy !== "" && settingsBusy !== "overlay_enabled"}
+	                      type="button"
+	                      onClick={() => void updateAppSettings({ overlay_enabled: "off" })}
+	                    >
+	                      关闭
+	                    </button>
+	                    <button
+	                      aria-label="开启 Overlay"
+	                      aria-pressed={appSettings.overlay_enabled === "on"}
+	                      className="overlayToggleButton"
+	                      disabled={settingsBusy !== "" && settingsBusy !== "overlay_enabled"}
+	                      type="button"
+	                      onClick={() => void updateAppSettings({ overlay_enabled: "on" })}
+	                    >
+	                      开启
+	                    </button>
+	                  </div>
+	                </div>
+	                <button
+	                  aria-label="强制关闭悬浮层"
+	                  className="smallButton overlayForceOffButton"
+	                  type="button"
+	                  onClick={() => void forceDisableOverlay()}
+	                >
+	                  强制关闭悬浮层
+	                </button>
+	                <p className="settingHint">默认关闭。开启后只保存设置，ReiLink 前台时不显示，避免遮挡 Settings。</p>
+	                <p className="settingHint">macOS 当前为安全模式：自动显示小气泡暂时关闭，以避免抢焦点或影响窗口切换。</p>
+	                <p className="settingHint">强制关闭用于异常时立即关闭悬浮层；不显示调试信息、路径、密钥或完整回复。</p>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "overlay" && activeWorkspaceTab === "placement" && (
+	            <section className="infoCard" aria-label="Overlay 位置">
+	              <div className="cardHeader">
+	                <Volume2 size={17} />
+	                <h2>位置</h2>
+	              </div>
+	              <div className="voiceOutputPanel">
+	                <label className="settingRow">
+	                  <span>位置预设</span>
+	                  <select
+	                    aria-label="Overlay 位置预设"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.overlay_position}
+	                    onChange={(event) =>
+	                      void updateAppSettings({ overlay_position: event.target.value as AppSettings["overlay_position"] })
+	                    }
+	                  >
+	                    <option value="top-right">右上</option>
+	                    <option value="middle-right">右中</option>
+	                    <option value="bottom-right">右下</option>
+	                    <option value="top-left">左上</option>
+	                    <option value="middle-left">左中</option>
+	                    <option value="bottom-left">左下</option>
+	                  </select>
+	                </label>
+	                <label className="settingRow">
+	                  <span>背景透明度</span>
+	                  <span className="rangeControl">
+	                    <input
+	                      aria-label="Overlay 背景透明度"
+	                      disabled={settingsBusy !== ""}
+	                      max="0.95"
+	                      min="0.35"
+	                      step="0.01"
+	                      type="range"
+	                      value={appSettings.overlay_opacity}
+	                      onChange={(event) => void updateAppSettings({ overlay_opacity: Number(event.target.value) })}
+	                    />
+	                    <strong>{Math.round(overlayRuntimeConfig.opacity * 100)}%</strong>
+	                  </span>
+	                </label>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "overlay" && activeWorkspaceTab === "content" && (
+	            <section className="infoCard" aria-label="Overlay 内容">
+	              <div className="cardHeader">
+	                <MessageSquare size={17} />
+	                <h2>内容</h2>
+	              </div>
+	              <div className="voiceOutputPanel">
+	                <label className="settingRow">
+	                  <span>显示消息数</span>
+	                  <select
+	                    aria-label="Overlay 显示消息数量"
+	                    disabled={settingsBusy !== ""}
+	                    value={appSettings.overlay_message_count}
+	                    onChange={(event) => void updateAppSettings({ overlay_message_count: Number(event.target.value) })}
+	                  >
+	                    <option value={1}>1</option>
+	                    <option value={2}>2</option>
+	                    <option value={3}>3</option>
+	                  </select>
+	                </label>
+	                <p className="settingHint">Overlay 只接收安全短摘要，不显示完整 prompt、完整回复、完整用户输入、路径、密钥或调试输出。</p>
+	              </div>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "overlay" && activeWorkspaceTab === "future" && (
+	            <section className="infoCard" aria-label="Overlay Game Mode 占位">
+	              <div className="cardHeader">
+	                <Gamepad2 size={17} />
+	                <h2>Future Game Mode</h2>
+	              </div>
+	              <p className="settingHint">
+	                Game Mode Overlay 后续只做低打扰状态和最近 1 到 2 句安全提示。本阶段不恢复 auto-show，也不把 Overlay 描述为完整游戏 HUD。
+	              </p>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "debug" && !debugPanelVisible && (
+	            <section className="infoCard" aria-label="Developer Debug 已隐藏">
+	              <div className="cardHeader">
+	                <Bug size={17} />
+	                <h2>Developer / Debug 已隐藏</h2>
+	              </div>
+	              <p className="settingHint">调试面板已在设置中关闭。普通聊天、记忆、游戏和语音功能不会受到影响。</p>
+	            </section>
+	          )}
+
+	          {activeWorkspace === "debug" && activeWorkspaceTab === "events" && debugPanelVisible && (
+	            <section className="infoCard" aria-label="事件流">
+	              <div className="cardHeader">
+                <Bug size={17} />
+                <h2>Event Stream</h2>
+              </div>
+              <EventStreamPanel
+                events={recentEvents}
+                open={eventStreamOpen}
+                onOpenChange={setEventStreamOpen}
+              />
+	            </section>
+	          )}
+
+	          {activeWorkspace === "debug" && activeWorkspaceTab === "trace" && debugPanelVisible && (
+	            <section className="infoCard" aria-label="语义识别 Trace">
+              <div className="cardHeader">
+                <Brain size={17} />
+                <h2>LLM Primary Extraction</h2>
+              </div>
+              <p className="settingHint">Primary Extraction 先生成候选，Guard 决定是否写入 game state；Shadow 只保留候选诊断。</p>
+              <dl className="debugFacts">
+                <div>
+                  <dt>{formatDebugLabel("source")}</dt>
+                  <dd>{debugText(semanticDebug.source)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("input_source")}</dt>
+                  <dd>{debugText(semanticDebug.input_source)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("primary_extractor")}</dt>
+                  <dd>{debugText(semanticDebug.primary_extractor)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("fallback_extractor")}</dt>
+                  <dd>{debugText(semanticDebug.fallback_extractor)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("guard_final_decision")}</dt>
+                  <dd>{debugText(semanticDebug.guard_final_decision)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("applied_by")}</dt>
+                  <dd>{debugText(semanticDebug.applied_by)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_primary_status")}</dt>
+                  <dd>{debugText(semanticDebug.llm_primary_status)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_provider_status")}</dt>
+                  <dd>{debugText(semanticDebug.llm_provider_status)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_schema_valid")}</dt>
+                  <dd>{semanticDebug.llm_schema_valid == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.llm_schema_valid)} />}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("first_attempt_failed")}</dt>
+                  <dd>{debugText(semanticDebug.first_attempt_failed)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("compat_retry_used")}</dt>
+                  <dd><BooleanBadge value={Boolean(semanticDebug.compat_retry_used)} /></dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("compat_retry_succeeded")}</dt>
+                  <dd>{semanticDebug.compat_retry_succeeded == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.compat_retry_succeeded)} />}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("ultra_compact_used")}</dt>
+                  <dd><BooleanBadge value={Boolean(semanticDebug.ultra_compact_used)} /></dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("json_recovery_stage")}</dt>
+                  <dd>{debugText(semanticDebug.json_recovery_stage)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("confidence")}</dt>
+                  <dd>{debugText(semanticDebug.confidence)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_guard_decision")}</dt>
+                  <dd>{semanticGuardDecisionText(semanticDebug.llm_guard_decision)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_guard_summary")}</dt>
+                  <dd>{debugText(semanticDebug.llm_guard_summary)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("rule_grounding")}</dt>
+                  <dd>{semanticSummary(semanticDebug.rule_grounding)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("applied_updates")}</dt>
+                  <dd>{debugText(semanticDebug.applied_updates)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("parse_error")}</dt>
+                  <dd>{debugText(semanticDebug.parse_error)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_shadow_status")}</dt>
+                  <dd>{semanticShadowStatusText(semanticDebug.llm_shadow_status)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_shadow_summary")}</dt>
+                  <dd>{debugText(semanticDebug.llm_shadow_summary)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("llm_shadow_diff")}</dt>
+                  <dd>{debugText(semanticDebug.llm_shadow_diff)}</dd>
+                </div>
+              </dl>
+            </section>
+          )}
+
+          {activeWorkspace === "presentation" && activeWorkspaceTab === "avatar" && (
+            <section className="infoCard" aria-label="Future Presentation / Avatar">
+              <div className="cardHeader">
+                <Sparkles size={17} />
+                <h2>Future Presentation / Avatar</h2>
+              </div>
+              <p className="settingHint">
+                Live2D / Avatar 只是未来 presentation layer 占位。本阶段不引入资源、不加载 runtime，也不把它作为主体验。
+              </p>
+              <p className="settingHint">当前优先级仍是 Voice、Overlay、Memory 和 Debug Split。</p>
+            </section>
+          )}
+          {activeWorkspace === "presentation" && activeWorkspaceTab === "policy" && (
+            <section className="infoCard" aria-label="Presentation Policy">
+              <div className="cardHeader">
+                <Sparkles size={17} />
+                <h2>Presentation Policy</h2>
+              </div>
+              <p className="settingHint">
+                Presentation / Avatar 只保留未来入口，不抢占当前 Home、Voice、Overlay、Memory 或 Debug surface。
+              </p>
+              <p className="settingHint">
+                本阶段不加载 Live2D runtime、不引入 Avatar 资源，也不新增角色动作、语音对话或外部视觉服务。
+              </p>
+            </section>
+          )}
+          {activeWorkspace === "settings" && (
           <section className="infoCard settingsPanel" aria-label="设置" id="settings-panel" style={{ order: 1 }}>
             <div className="cardHeader">
               <Settings size={17} />
-              <h2>设置</h2>
+              <h2>{settingsWorkspaceTitle}</h2>
             </div>
+            {settingsWorkspaceDescription && <p className="settingHint">{settingsWorkspaceDescription}</p>}
             <div className="settingRows">
+              {activeWorkspaceTab === "app" && (
+              <>
               <label className="settingRow">
                 <span>人格模式</span>
                 <select
@@ -3142,6 +6282,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="hide">隐藏</option>
                 </select>
               </label>
+              </>
+              )}
+              {activeWorkspaceTab === "privacy" && (
+              <>
               <label className="settingRow">
                 <span>记忆</span>
                 <select
@@ -3160,6 +6304,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="manual">手动</option>
                 </select>
               </label>
+              </>
+              )}
+              {activeWorkspaceTab === "app" && (
+              <>
               <label className="settingRow">
                 <span>回复长度</span>
                 <select
@@ -3174,6 +6322,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="normal">普通</option>
                 </select>
               </label>
+              </>
+              )}
+              {activeWorkspaceTab === "provider" && (
+              <>
               <label className="settingRow">
                 <span>模型偏好</span>
                 <select
@@ -3189,14 +6341,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="pro">高质量</option>
                 </select>
               </label>
-              <div className="voiceOutputPanel" role="group" aria-label="Overlay 设置">
+              </>
+              )}
+              {activeWorkspaceTab === "advanced" && (
+              <>
+		              <div className="voiceOutputPanel" role="group" aria-label="Overlay / 游戏悬浮层">
                 <div className="settingRow overlayToggleRow">
                   <span>Overlay / 游戏悬浮层</span>
-                  <div
-                    aria-label="Overlay / 游戏悬浮层"
-                    className="overlayToggleControl"
-                    role="group"
-                  >
+	                  <div
+	                    aria-label="Overlay 开关"
+	                    className="overlayToggleControl"
+	                    role="group"
+	                  >
                     <button
                       aria-label="关闭 Overlay"
                       aria-pressed={appSettings.overlay_enabled === "off"}
@@ -3305,6 +6461,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 )}
                 {!voiceStatus.available && <p className="settingHint">当前环境不支持本地语音输出。</p>}
                 <p className="settingHint">如果更换过系统语音包，请先点“测试语音”确认系统声音可用。</p>
+                <p className="settingHint">
+                  直接对话模式下，如果 Voice Output 开启，Rei 回复完成后默认短版播报；关闭时只显示文字回复。
+                </p>
                 {voiceStatus.lastError && <p className="settingHint">{voiceStatus.lastError}</p>}
                 <label className="settingRow">
                   <span>语速 / Rate</span>
@@ -3353,7 +6512,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   className="smallButton quiet"
                   type="button"
                   aria-label="测试语音 / Test Voice"
-                  disabled={!voiceStatus.available}
+                  disabled={!voiceStatus.available || !VOICE_TEST_VOICE_ALLOWED}
                   onClick={testVoiceOutput}
                 >
                   <Volume2 size={14} />
@@ -3626,6 +6785,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   {audioCaptureStatus.phase === "recording" ? "停止录音" : "测试录音"}
                 </button>
               </div>
+              </>
+              )}
+              {activeWorkspaceTab === "provider" && (
+              <>
               <label className="settingRow">
                 <span>自动启动本地后端</span>
                 <select
@@ -3662,7 +6825,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </div>
                   <div>
                     <dt>用户数据</dt>
-                    <dd>{debugText(backendRuntimeStatus.user_data_dir, "未设置")}</dd>
+                    <dd>{safePathText(backendRuntimeStatus.user_data_dir)}</dd>
                   </div>
                   {backendRuntimeStatus.backend_start_error ? (
                     <div>
@@ -3692,6 +6855,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </div>
                 </dl>
               </div>
+              </>
+              )}
+              {activeWorkspaceTab === "app" && (
+              <>
               <div className="onboardingSettingsPanel" role="group" aria-label="新手引导设置">
                 <div>
                   <span>新手引导</span>
@@ -3701,6 +6868,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   重新查看
                 </button>
               </div>
+              </>
+              )}
+              {activeWorkspaceTab === "privacy" && (
+              <>
               <div className="localDataPanel demoResetPanel" role="group" aria-label="本地数据">
                 <div className="demoResetHeader">
                   <div>
@@ -3711,23 +6882,23 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <dl className="debugFacts localDataFacts">
                   <div>
                     <dt>用户数据目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.data_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.data_dir)}</dd>
                   </div>
                   <div>
                     <dt>记忆目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.memory_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.memory_dir)}</dd>
                   </div>
                   <div>
                     <dt>会话目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.session_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.session_dir)}</dd>
                   </div>
                   <div>
                     <dt>设置目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.settings_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.settings_dir)}</dd>
                   </div>
                   <div>
                     <dt>日志目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.logs_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.logs_dir)}</dd>
                   </div>
                   <div>
                     <dt>知识资源</dt>
@@ -3735,7 +6906,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </div>
                   <div>
                     <dt>知识目录</dt>
-                    <dd>{debugText(displayLocalDataStatus.knowledge_dir, "未设置")}</dd>
+                    <dd>{safePathText(displayLocalDataStatus.knowledge_dir)}</dd>
                   </div>
                   <div>
                     <dt>数据目录状态</dt>
@@ -3857,6 +7028,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </p>
                 )}
               </div>
+              </>
+              )}
+              {activeWorkspaceTab === "app" && (
+              <>
               <label className="settingRow">
                 <span>自动游戏检测</span>
                 <select
@@ -3971,12 +7146,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <option value="high">高</option>
                 </select>
               </label>
+              </>
+              )}
             </div>
-            <p className="settingHint">
-              本地保存到 settings.json，不包含密钥。自动游戏检测当前为{debugText(appSettings.auto_game_detection)}。
-            </p>
+            <p className="settingHint">{settingsWorkspaceFooter}</p>
           </section>
+          )}
 
+          {activeWorkspace === "memory" && activeWorkspaceTab === "pending" && (
           <section className="infoCard pendingPanel" aria-label="待确认记忆" id="pending-memory-panel" style={{ order: 2 }}>
             <div className="cardHeader">
               <Database size={17} />
@@ -3986,13 +7163,15 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             <div className="pendingMemoryList">
               {pendingMemories.map((memory) => (
                 <article className="pendingMemoryItem" key={memory.id}>
-                  <p>{memory.text}</p>
+                  <p>{memory.summary || memory.text}</p>
                   <div className="pendingMemoryMeta">
                     <span>{debugText(memory.type)}</span>
                     <span>{debugText(memory.source)}</span>
+                    <span>{memory.requires_confirmation ? "需确认" : "无需确认"}</span>
                     <span>{memory.confidence.toFixed(2)}</span>
                   </div>
                   <p className="pendingMemoryEvidence">{pendingEvidenceSummary(memory)}</p>
+                  <p className="pendingMemoryEvidence">Guard：{debugText(memory.guard_reason)}</p>
                   <div className="pendingMemoryActions">
                     <button
                       className="smallButton"
@@ -4016,7 +7195,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               {pendingMemories.length === 0 && <p className="emptyDebugText">暂无待确认记忆</p>}
             </div>
           </section>
+          )}
 
+          {activeWorkspace === "game" && activeWorkspaceTab === "current" && (
           <section className="infoCard gameSessionPanel" aria-label="游戏状态" id="game-session-panel" style={{ order: 3 }}>
             <div className="cardHeader">
               <Gamepad2 size={17} />
@@ -4065,8 +7246,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               {recentBossHistory.length === 0 && <li>无</li>}
             </ul>
           </section>
+          )}
 
-          {debugPanelVisible && (
+          {activeWorkspace === "debug" && activeWorkspaceTab === "runtime" && debugPanelVisible && (
             <section className="infoCard foldPanel" aria-label="调试面板" id="debug-panel" style={{ order: 5 }}>
               <button
                 className="foldHeader"
@@ -4120,6 +7302,13 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     events={recentEvents}
                     open={eventStreamOpen}
                     onOpenChange={setEventStreamOpen}
+                  />
+
+                  <SessionTimelinePanel
+                    items={sessionTimeline}
+                    open={sessionTimelineOpen}
+                    onOpenChange={setSessionTimelineOpen}
+                    onClear={() => setSessionTimeline([])}
                   />
 
                   <section className="debugSection">
@@ -4293,6 +7482,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <section className="debugSection">
                     <h3>语音输入</h3>
                     <dl className="debugFacts">
+                      <div>
+                        <dt>Voice v2.1 状态</dt>
+                        <dd>{voiceConversationState.label}</dd>
+                      </div>
+                      <div>
+                        <dt>Voice v2.1 模式</dt>
+                        <dd>{appSettings.voice_interaction_mode}</dd>
+                      </div>
+                      <div>
+                        <dt>待确认语音文本</dt>
+                        <dd>{voiceTranscriptReady ? `${voiceTranscriptReady.characterCount} 字` : "无"}</dd>
+                      </div>
                       <div>
                         <dt>主输入提供方</dt>
                         <dd>{mainVoiceInputProviderText(mainVoiceInputProvider)}</dd>
@@ -4616,7 +7817,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("knowledge_path")}</dt>
-                        <dd>{debugText(chatDebug.knowledge_path)}</dd>
+                        <dd>{safePathText(chatDebug.knowledge_path, "无")}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("manifest_status")}</dt>
@@ -4692,8 +7893,76 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   </section>
 
 	                  <section className="debugSection">
-	                    <h3>语义识别</h3>
+	                    <h3>LLM Primary Extraction</h3>
 	                    <dl className="debugFacts">
+                      <div>
+                        <dt>{formatDebugLabel("source")}</dt>
+                        <dd>{debugText(semanticDebug.source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("input_source")}</dt>
+                        <dd>{debugText(semanticDebug.input_source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("primary_extractor")}</dt>
+                        <dd>{debugText(semanticDebug.primary_extractor)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("fallback_extractor")}</dt>
+                        <dd>{debugText(semanticDebug.fallback_extractor)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("guard_final_decision")}</dt>
+                        <dd>{debugText(semanticDebug.guard_final_decision)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("applied_by")}</dt>
+                        <dd>{debugText(semanticDebug.applied_by)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_primary_status")}</dt>
+                        <dd>{debugText(semanticDebug.llm_primary_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_provider_status")}</dt>
+                        <dd>{debugText(semanticDebug.llm_provider_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_schema_valid")}</dt>
+                        <dd>{semanticDebug.llm_schema_valid == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.llm_schema_valid)} />}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("first_attempt_failed")}</dt>
+                        <dd>{debugText(semanticDebug.first_attempt_failed)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("compat_retry_used")}</dt>
+                        <dd><BooleanBadge value={Boolean(semanticDebug.compat_retry_used)} /></dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("compat_retry_succeeded")}</dt>
+                        <dd>{semanticDebug.compat_retry_succeeded == null ? "未运行" : <BooleanBadge value={Boolean(semanticDebug.compat_retry_succeeded)} />}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("ultra_compact_used")}</dt>
+                        <dd><BooleanBadge value={Boolean(semanticDebug.ultra_compact_used)} /></dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("json_recovery_stage")}</dt>
+                        <dd>{debugText(semanticDebug.json_recovery_stage)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("confidence")}</dt>
+                        <dd>{debugText(semanticDebug.confidence)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("fallback_reason")}</dt>
+                        <dd>{debugText(semanticDebug.fallback_reason)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("applied_updates")}</dt>
+                        <dd>{debugText(semanticDebug.applied_updates)}</dd>
+                      </div>
                       <div>
                         <dt>{formatDebugLabel("latest_user_message")}</dt>
                         <dd>{debugText(semanticDebug.latest_user_message)}</dd>
@@ -4705,7 +7974,13 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         </dd>
                       </div>
                       <div>
-                        <dt>{formatDebugLabel("confidence")}</dt>
+                        <dt>{formatDebugLabel("rule_grounding")}</dt>
+                        <dd>
+                          {semanticSummary(semanticDebug.rule_grounding)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("rule_confidence")}</dt>
                         <dd>{Number(semanticDebug.rule_confidence ?? 0).toFixed(2)}</dd>
                       </div>
                       <div>
@@ -4713,6 +7988,30 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>
                           <BooleanBadge value={semanticDebug.llm_called} />
                         </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_guard_decision")}</dt>
+                        <dd>{semanticGuardDecisionText(semanticDebug.llm_guard_decision)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_guard_summary")}</dt>
+                        <dd>{debugText(semanticDebug.llm_guard_summary)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_shadow_status")}</dt>
+                        <dd>{semanticShadowStatusText(semanticDebug.llm_shadow_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_shadow_confidence")}</dt>
+                        <dd>{debugText(semanticDebug.llm_shadow_confidence)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_shadow_summary")}</dt>
+                        <dd>{debugText(semanticDebug.llm_shadow_summary)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("llm_shadow_diff")}</dt>
+                        <dd>{debugText(semanticDebug.llm_shadow_diff)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("model")}</dt>
@@ -4774,6 +8073,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             overlay_position: appSettings.overlay_position,
                             overlay_opacity: appSettings.overlay_opacity,
                             overlay_message_count: appSettings.overlay_message_count,
+                            voice_interaction_mode: appSettings.voice_interaction_mode,
                             voice_output: appSettings.voice_output,
                             voice_rate: appSettings.voice_rate,
                             voice_volume: appSettings.voice_volume
@@ -4812,6 +8112,17 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                               runtimeEnvironment: voiceInputRuntimeText(voiceInputStatus),
                               lastStartStatus: voiceInputStatus.diagnostics.lastStartStatus
                             }
+                          },
+                          voice_v2: {
+                            state: voiceConversationState.state,
+                            label: voiceConversationState.label,
+                            mode: appSettings.voice_interaction_mode,
+                            auto_send_enabled: voiceDirectConversationEnabled,
+                            hands_free_enabled: false,
+                            transcript_ready: Boolean(voiceTranscriptReady),
+                            transcript_character_count: voiceTranscriptReady?.characterCount ?? 0,
+                            tts_active: voiceStatus.active,
+                            tts_phase: voiceStatus.phase
                           },
                           local_asr: {
                             status: localAsrStatus.status,
@@ -4959,7 +8270,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             </section>
           )}
 
-          {debugPanelVisible && (
+          {activeWorkspace === "debug" && activeWorkspaceTab === "prompt" && debugPanelVisible && (
             <section className="infoCard foldPanel" aria-label="回复上下文预览" id="prompt-preview-panel" style={{ order: 4 }}>
               <button
                 className="foldHeader"
@@ -4983,6 +8294,52 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <div>
                       <dt>{formatDebugLabel("prompt_order")}</dt>
                       <dd>{formatPromptOrder(promptPreview.prompt_order)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("persona_pack")}</dt>
+                      <dd>
+                        {debugText(personaPackSummary.name)} / v{debugText(personaPackSummary.version)} /{" "}
+                        {debugText(personaPackSummary.status)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("persona_pack_enabled")}</dt>
+                      <dd>{debugText(personaPackSummary.enabled)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("loaded_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.loaded_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("injected_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.injected_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("missing_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.missing_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("omitted_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.omitted_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("persona_section_truncated")}</dt>
+                      <dd>{debugText(personaPackSummary.persona_section_truncated)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("truncated_sections")}</dt>
+                      <dd>{debugText(personaPackSummary.truncated_sections)}</dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("prompt_char_count")}</dt>
+                      <dd>
+                        {debugText(personaPackSummary.prompt_char_count)} /{" "}
+                        {debugText(personaPackSummary.prompt_char_budget)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("raw_content_omitted")}</dt>
+                      <dd>{debugText(personaPackSummary.raw_content_omitted)}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("selected_model")}</dt>
@@ -5103,7 +8460,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("knowledge_path")}</dt>
-                      <dd>{debugText(knowledgeSummary.knowledge_path)}</dd>
+                      <dd>{safePathText(knowledgeSummary.knowledge_path, "无")}</dd>
                     </div>
                     <div>
                       <dt>{formatDebugLabel("manifest_status")}</dt>
@@ -5179,7 +8536,39 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         已注入 {injectedMemory.length} / 已跳过 {skippedMemory.length}
                       </dd>
                     </div>
+                    <div>
+                      <dt>记忆检索</dt>
+                      <dd>
+                        已检索 {debugText(memoryRetrievalSummary.retrieved_count ?? 0)} / 省略{" "}
+                        {debugText(memoryRetrievalSummary.omitted_count ?? 0)} / 约{" "}
+                        {debugText(memoryRetrievalSummary.token_estimate ?? 0)} token
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{formatDebugLabel("skip_reason")}</dt>
+                      <dd className={memoryRetrievalSummary.skip_reason ? "debugError" : ""}>
+                        {debugText(memoryRetrievalSummary.skip_reason)}
+                      </dd>
+                    </div>
                   </dl>
+                  <div className="debugSubgroup">
+                    <h4>检索记忆</h4>
+                    <ul className="debugList">
+                      {memoryRetrievalSafeSummaries.map((item, index) => (
+                        <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
+                      ))}
+                      {memoryRetrievalSafeSummaries.length === 0 && <li>无</li>}
+                    </ul>
+                  </div>
+                  <div className="debugSubgroup">
+                    <h4>记忆检索边界</h4>
+                    <ul className="debugList">
+                      {memoryRetrievalSafetyNotes.map((item, index) => (
+                        <li key={`${debugListText(item)}-${index}`}>{debugListText(item)}</li>
+                      ))}
+                      {memoryRetrievalSafetyNotes.length === 0 && <li>无</li>}
+                    </ul>
+                  </div>
                   <div className="debugSubgroup">
                     <h4>注入记忆</h4>
                     <ul className="debugList">
@@ -5211,7 +8600,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               )}
             </section>
           )}
+          </div>
         </aside>
+        )}
       </section>
       </section>
     </main>
