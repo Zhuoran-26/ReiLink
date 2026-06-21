@@ -6,7 +6,16 @@
     "action": "Read the spec and QA scenarios",
     "expected": "The implementation includes the Voice v2 state model, confirm-send default, opt-in Direct Conversation Mode, compact state UI, Conversation state panel, TTS interruption, and speaking / listening mutual exclusion.",
     "implemented_in_v21": true,
-    "must_not_implement": ["auto-send default", "hands-free default", "new TTS engine", "character voice", "Overlay voice state", "Overlay auto-show", "Live2D", "vision"]
+    "must_not_implement": [
+      "auto-send default",
+      "hands-free default",
+      "new TTS engine",
+      "character voice",
+      "Overlay voice state",
+      "Overlay auto-show",
+      "Live2D",
+      "vision"
+    ]
   },
   {
     "id": "voice-v21-default-confirm-send",
@@ -17,7 +26,14 @@
     "expected": "Voice interaction mode defaults to 确认后发送. ASR transcript waits for user confirmation and can be edited or cleared before sending.",
     "implemented_in_v21": true,
     "should_auto_send": false,
-    "must_not_trigger": ["memory_write", "pending_memory", "prompt_injection", "knowledge_retrieval", "game_context_extraction", "proactive"]
+    "must_not_trigger": [
+      "memory_write",
+      "pending_memory",
+      "prompt_injection",
+      "knowledge_retrieval",
+      "game_context_extraction",
+      "proactive"
+    ]
   },
   {
     "id": "voice-v21-direct-conversation-opt-in",
@@ -28,7 +44,12 @@
     "expected": "Direct Conversation Mode is explicitly enabled, persisted through settings, and shown in Voice workspace plus Home / Chat. It is not implied by enabling Local ASR or Voice Output.",
     "implemented_in_v21": true,
     "should_auto_send": true,
-    "must_preserve": ["clear_off_switch", "visible_mode_indicator", "normal_chat_flow", "memory_confirmation"]
+    "must_preserve": [
+      "clear_off_switch",
+      "visible_mode_indicator",
+      "normal_chat_flow",
+      "memory_confirmation"
+    ]
   },
   {
     "id": "voice-v21-direct-conversation-not-hands-free",
@@ -37,7 +58,12 @@
     "action": "Do nothing after assistant reply completes",
     "expected": "The app does not begin listening automatically. Each round still requires an explicit user click or push-to-talk action.",
     "implemented_in_v21": true,
-    "must_not_do": ["wake_word_listening", "background_recording", "automatic_start", "always_on_microphone"]
+    "must_not_do": [
+      "wake_word_listening",
+      "background_recording",
+      "automatic_start",
+      "always_on_microphone"
+    ]
   },
   {
     "id": "voice-v21-direct-conversation-web-speech-auto-send",
@@ -47,7 +73,13 @@
     "expected_state": "assistant_thinking",
     "expected": "The transcript is sent through the existing chat endpoint without requiring a second send click.",
     "implemented_in_v21": true,
-    "must_not_bypass": ["normal_chat_request", "memory_confirmation", "knowledge_gating", "game_context_safety", "persona_guardrails"]
+    "must_not_bypass": [
+      "normal_chat_request",
+      "memory_confirmation",
+      "knowledge_gating",
+      "game_context_safety",
+      "persona_guardrails"
+    ]
   },
   {
     "id": "voice-v21-direct-conversation-local-asr-auto-send",
@@ -58,7 +90,13 @@
     "expected": "The transcript is sent through the existing chat endpoint after local transcription succeeds.",
     "implemented_in_v21": true,
     "should_upload_audio": false,
-    "must_not_bypass": ["normal_chat_request", "memory_confirmation", "knowledge_gating", "game_context_safety", "persona_guardrails"]
+    "must_not_bypass": [
+      "normal_chat_request",
+      "memory_confirmation",
+      "knowledge_gating",
+      "game_context_safety",
+      "persona_guardrails"
+    ]
   },
   {
     "id": "voice-v21-direct-conversation-preserves-draft",
@@ -67,7 +105,11 @@
     "action": "A voice transcript is auto-sent",
     "expected": "The voice transcript is sent as its own chat turn and the existing typed draft is not overwritten.",
     "implemented_in_v21": true,
-    "must_preserve": ["unsent_chat_input", "chat_history", "manual_text_send"]
+    "must_preserve": [
+      "unsent_chat_input",
+      "chat_history",
+      "manual_text_send"
+    ]
   },
   {
     "id": "voice-v21-direct-conversation-output-on",
@@ -78,7 +120,15 @@
     "expected": "The assistant reply is spoken after completion using renderer-side speechSynthesis. Voice Profile v1 defaults Direct Conversation to brief mode while the full reply remains visible in chat.",
     "implemented_in_v21": true,
     "expected_spoken_mode": "brief",
-    "must_not_speak": ["Debug", "Prompt Preview", "Event Stream", "Semantic Shadow trace", "raw prompt", "full unconfirmed transcript", "spoken text in events"]
+    "must_not_speak": [
+      "Debug",
+      "Prompt Preview",
+      "Event Stream",
+      "Semantic Shadow trace",
+      "raw prompt",
+      "full unconfirmed transcript",
+      "spoken text in events"
+    ]
   },
   {
     "id": "voice-v21-direct-conversation-output-full-configurable",
@@ -89,7 +139,14 @@
     "expected": "The sanitized full assistant reply is spoken, the full chat reply remains visible, and events contain only safe mode and count summaries.",
     "implemented_in_v21": true,
     "expected_spoken_mode": "full",
-    "forbidden_terms": ["full assistant reply in Event Stream", "spoken text in Event Stream", "raw prompt", "API key", ".env", "full local path"]
+    "forbidden_terms": [
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "SPOKEN_TEXT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "voice-v21-direct-conversation-output-silent-configurable",
@@ -117,7 +174,18 @@
     "action": "Inspect Event Stream, Debug, Prompt Preview, Raw JSON, and Overlay",
     "expected": "Safe events show lifecycle, provider, mode, character count, sentence count, max limits, and skip reason only. They do not show the full transcript, raw prompt, paths, secrets, full assistant reply, or spoken text.",
     "implemented_in_v21": true,
-    "forbidden_terms": ["full transcript", "raw transcript", "raw prompt", "API key", ".env", "full local path", "audio content", "base64 audio", "full assistant reply", "spoken text"]
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "SPOKEN_TEXT_MARKER"
+    ]
   },
   {
     "id": "voice-v2-push-to-talk-user-gesture",
@@ -127,7 +195,11 @@
     "expected_state": "listening",
     "expected": "Recording starts only after a user gesture and shows a visible listening state.",
     "implemented_in_v21": true,
-    "must_not_do": ["wake_word_listening", "background_recording", "automatic_start"]
+    "must_not_do": [
+      "wake_word_listening",
+      "background_recording",
+      "automatic_start"
+    ]
   },
   {
     "id": "voice-v2-hands-free-future-only",
@@ -136,7 +208,11 @@
     "action": "Check hands-free / auto-listen behavior",
     "expected": "Hands-free is documented as future optional behavior and remains off by default.",
     "implemented_in_v21": false,
-    "must_not_implement": ["hands-free default", "always-on microphone", "wake word"]
+    "must_not_implement": [
+      "hands-free default",
+      "always-on microphone",
+      "wake word"
+    ]
   },
   {
     "id": "voice-v2-state-listening-to-transcribing",
@@ -147,7 +223,13 @@
     "expected": "Captured audio is sent only to the local backend transcription path.",
     "implemented_in_v21": true,
     "should_upload_audio": false,
-    "forbidden_terms": ["audio content", "base64 audio", "full temp path", "API key", ".env"]
+    "forbidden_terms": [
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER"
+    ]
   },
   {
     "id": "voice-v2-state-ready-to-thinking",
@@ -166,7 +248,10 @@
     "expected_state": "listening",
     "expected": "Active TTS stops before recording begins and the interruption is treated as intentional.",
     "implemented_in_v21": true,
-    "must_not_do": ["record_and_speak_at_same_time", "auto_replay_interrupted_tts"]
+    "must_not_do": [
+      "record_and_speak_at_same_time",
+      "auto_replay_interrupted_tts"
+    ]
   },
   {
     "id": "voice-v2-stop-voice-interrupted",
@@ -176,7 +261,12 @@
     "expected_state": "interrupted",
     "expected": "Speech stops and Event Stream records only a safe lifecycle summary.",
     "implemented_in_v21": true,
-    "forbidden_terms": ["full assistant reply", "raw prompt", "API key", ".env"]
+    "forbidden_terms": [
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER"
+    ]
   },
   {
     "id": "voice-v2-mutual-exclusion-speaking-listening",
@@ -185,7 +275,11 @@
     "action": "Attempt to enter listening while speaking, or speaking while listening",
     "expected": "The controller serializes the transition so listening and speaking are never active at the same time.",
     "implemented_in_v21": true,
-    "must_preserve": ["user_control", "audio_cleanup", "safe_event_summary"]
+    "must_preserve": [
+      "user_control",
+      "audio_cleanup",
+      "safe_event_summary"
+    ]
   },
   {
     "id": "voice-v2-game-mode-short-spoken-output",
@@ -194,7 +288,11 @@
     "action": "Assistant produces a long strategy answer",
     "expected": "Voice speaks only a short safe companion sentence while the fuller answer remains in chat.",
     "implemented_in_v21": true,
-    "must_not_do": ["read_long_debug_output", "read_raw_knowledge_snippets", "hardcode_Rei_replies"]
+    "must_not_do": [
+      "read_long_debug_output",
+      "read_raw_knowledge_snippets",
+      "hardcode_Rei_replies"
+    ]
   },
   {
     "id": "voice-v2-confirm-send-unconfirmed-transcript-privacy",
@@ -203,7 +301,16 @@
     "action": "Inspect Event Stream, Debug, Prompt Preview, Raw JSON, Overlay, memory, and game context",
     "expected": "Only safe transcript status or character count is visible; no state write has occurred.",
     "implemented_in_v21": true,
-    "forbidden_terms": ["full transcript", "raw transcript", "raw prompt", "API key", ".env", "full local path", "audio content", "base64 audio"]
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER"
+    ]
   },
   {
     "id": "voice-v2-error-local-asr-not-configured",
@@ -213,7 +320,12 @@
     "expected_state": "error",
     "expected": "UI shows 本地语音识别未配置 and does not start transcription.",
     "implemented_in_v21": true,
-    "forbidden_terms": ["full binary path", "full model path", "API key", ".env"]
+    "forbidden_terms": [
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER"
+    ]
   },
   {
     "id": "voice-v2-error-mic-denied",
@@ -223,7 +335,12 @@
     "expected_state": "error",
     "expected": "UI shows 麦克风权限被拒绝 and does not retry automatically.",
     "implemented_in_v21": true,
-    "forbidden_terms": ["raw permission object", "audio content", "API key", ".env"]
+    "forbidden_terms": [
+      "RAW_PERMISSION_OBJECT_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER"
+    ]
   },
   {
     "id": "voice-v2-error-asr-timeout",
@@ -233,7 +350,12 @@
     "expected_state": "error",
     "expected": "UI suggests a smaller model or shorter recording and cleans temporary audio.",
     "implemented_in_v21": true,
-    "forbidden_terms": ["raw stdout", "raw stderr", "full temp path", "full transcript"]
+    "forbidden_terms": [
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "voice-v2-error-tts-unavailable",
@@ -243,7 +365,12 @@
     "expected_state": "error",
     "expected": "UI falls back to text and shows a short speech playback error.",
     "implemented_in_v21": true,
-    "forbidden_terms": ["full assistant reply in Event Stream", "raw TTS event", "API key", ".env"]
+    "forbidden_terms": [
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "RAW_TTS_EVENT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER"
+    ]
   },
   {
     "id": "voice-v2-error-provider-timeout",
@@ -253,7 +380,11 @@
     "expected_state": "error",
     "expected": "UI shows a friendly timeout message without replaying or re-sending automatically.",
     "implemented_in_v21": true,
-    "must_not_do": ["automatic_retry_send", "memory_write_from_failed_turn", "speak_raw_error"]
+    "must_not_do": [
+      "automatic_retry_send",
+      "memory_write_from_failed_turn",
+      "speak_raw_error"
+    ]
   },
   {
     "id": "voice-v21-home-chat-state-visible",
@@ -262,7 +393,11 @@
     "action": "Move through confirm-send and Direct Conversation voice states",
     "expected": "The chat input area shows compact, Chinese-first state and current mode while keeping normal text input usable.",
     "implemented_in_v21": true,
-    "must_preserve": ["chat_history", "unsent_chat_input", "manual_send_control"]
+    "must_preserve": [
+      "chat_history",
+      "unsent_chat_input",
+      "manual_send_control"
+    ]
   },
   {
     "id": "voice-v21-workspace-conversation-tab",
@@ -271,7 +406,14 @@
     "action": "Open the Conversation tab",
     "expected": "Conversation tab shows state, 确认后发送 / 直接对话 mode switch, input mode, send policy, output policy, transcript confirmation, interruption, and safe errors.",
     "implemented_in_v21": true,
-    "must_not_show": ["raw prompt", "full local path", "raw stdout", "raw stderr", "API key", ".env"]
+    "must_not_show": [
+      "raw prompt",
+      "full local path",
+      "raw stdout",
+      "raw stderr",
+      "API key",
+      ".env"
+    ]
   },
   {
     "id": "voice-v21-output-tab-direct-note",
@@ -288,6 +430,16 @@
     "action": "Display Voice state in Overlay",
     "expected": "Overlay shows only low-risk state such as listening, transcribing, ready to confirm, speaking, interrupted, direct mode enabled, or error.",
     "implemented_in_v21": false,
-    "must_not_show": ["full transcript", "full assistant reply", "Debug", "Prompt Preview", "raw prompt", "memory content", "API key", ".env", "full local path"]
+    "must_not_show": [
+      "full transcript",
+      "full assistant reply",
+      "Debug",
+      "Prompt Preview",
+      "raw prompt",
+      "memory content",
+      "API key",
+      ".env",
+      "full local path"
+    ]
   }
 ]

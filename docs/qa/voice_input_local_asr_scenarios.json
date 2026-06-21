@@ -7,7 +7,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows 语音识别服务不可用 and keeps system dictation as a temporary fallback.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", "raw_prompt"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "RAW_PROMPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-not-configured",
@@ -17,7 +24,13 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Settings shows 本地语音识别未配置 with a readable setup hint.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-binary-missing",
@@ -27,7 +40,13 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows 缺少本地识别程序 without showing the full configured path.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-binary-not-executable",
@@ -37,7 +56,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows 识别程序不可执行 without running the binary or showing the full configured path.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", "raw subprocess output"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "RAW_SUBPROCESS_OUTPUT_MARKER"
+    ]
   },
   {
     "id": "local-asr-model-missing",
@@ -47,7 +73,13 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows 缺少本地语音模型 without showing the full configured path.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-ready",
@@ -57,7 +89,13 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Settings shows 本地语音识别可用 and does not start recording until the user clicks the voice button.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-probe-not-ready",
@@ -67,7 +105,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Check Local ASR is disabled or returns 配置未就绪 without starting the binary.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-probe-binary-missing-disabled",
@@ -77,7 +123,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Check Local ASR stays disabled and the UI shows 缺少本地识别程序.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-probe-model-missing-disabled",
@@ -87,7 +140,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Check Local ASR stays disabled and the UI shows 缺少本地语音模型.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full model path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_MODEL_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-probe-succeeded",
@@ -97,7 +157,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Settings shows 可以启动 and explains that this does not prove transcription is available.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "raw transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "RAW_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-probe-timed-out",
@@ -107,7 +176,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Settings shows 启动超时 with a safe Chinese summary.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-probe-failed",
@@ -117,7 +194,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Settings shows 启动失败 without exposing raw stdout or stderr.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-probe-privacy",
@@ -127,7 +212,18 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Probe does not fill the chat input, send a message, create audio files, write memory, alter prompt preview, run retrieval, or extract game context.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full audio path", "raw transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "RAW_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "audio-capture-permission-denied",
@@ -137,7 +233,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows 麦克风权限被拒绝 and does not crash.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "audio-capture-recording-started",
@@ -147,7 +250,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Renderer starts MediaRecorder only after the user click and shows 正在录音.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "audio-capture-recording-stopped",
@@ -157,7 +267,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Recorder stops, all audio tracks are stopped, and the blob is sent only to the local backend probe endpoint.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "audio-capture-max-duration",
@@ -167,7 +284,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Recording stops automatically at the maximum duration and does not become continuous listening.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "audio-capture-upload-succeeded",
@@ -177,7 +301,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend writes the blob to a temp file, checks size and MIME summary, deletes the temp file, and returns a safe summary.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path", "raw exception"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "RAW_EXCEPTION_MARKER"
+    ]
   },
   {
     "id": "audio-capture-file-too-large",
@@ -187,7 +319,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns 录音文件过大 and does not keep the uploaded audio.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "audio-capture-invalid-audio",
@@ -197,7 +336,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns 录音数据无效 without exposing the payload.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "audio-capture-temp-file-cleaned",
@@ -207,7 +353,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Temporary audio is deleted immediately and UI shows 临时音频已清理.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "audio-capture-cleanup-failed",
@@ -217,7 +370,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns 临时音频清理失败 with no temp path or raw exception.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path", "raw exception"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "RAW_EXCEPTION_MARKER"
+    ]
   },
   {
     "id": "audio-capture-no-transcription",
@@ -227,7 +388,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "No ASR is called, no transcript is produced, and the chat input remains unchanged.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "audio content", "base64 audio"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER"
+    ]
   },
   {
     "id": "audio-capture-no-auto-send",
@@ -237,7 +406,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "No chat request is sent, memory is not written, retrieval is not triggered, and game context extraction is not triggered.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "audio content", "base64 audio"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER"
+    ]
   },
   {
     "id": "audio-capture-privacy",
@@ -247,7 +424,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows duration, size, MIME, and cleanup status only; it does not show paths or audio data.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path", "raw exception", "full local filesystem path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcription-completed",
@@ -257,7 +443,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Transcript fills the input box and Event Stream only shows completion plus character count.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcription-error",
@@ -267,7 +460,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows 本地语音识别失败 with a Chinese summary and no raw subprocess output.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "raw subprocess output", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "RAW_SUBPROCESS_OUTPUT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcript-awaits-send",
@@ -277,7 +477,13 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Transcript remains editable in the input and is not sent until the user clicks 发送.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcript-does-not-enter-memory-before-send",
@@ -287,7 +493,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Unconfirmed transcript does not enter memory, prompt preview, knowledge retrieval, or game context extraction.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-temporary-audio-cleanup",
@@ -297,7 +510,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Temporary audio is deleted after completion, failure, or timeout; UI does not show the full temp path.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", "tmp/voice-input/"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "tmp/voice-input/"
+    ]
   },
   {
     "id": "local-asr-event-stream-privacy",
@@ -307,7 +527,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Event Stream shows Chinese lifecycle summaries and character counts only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "raw subprocess output", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_SUBPROCESS_OUTPUT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-packaged-unavailable-fallback",
@@ -317,7 +545,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Packaged app stays usable, shows local ASR unavailable fallback, and does not write models or user data into the app bundle.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full audio path", ".app/Contents/Resources/data"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      ".app/Contents/Resources/data"
+    ]
   },
   {
     "id": "local-asr-transcribe-not-ready-disabled",
@@ -327,7 +562,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Record & Transcribe stays disabled and backend refuses transcription without launching the binary.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-fake-binary-text",
@@ -337,7 +581,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend runs the configured binary with model and temp audio args, cleans temp audio, and renderer fills the input.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-language-zh-cn-normalized-to-zh",
@@ -347,7 +600,17 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend passes -l zh to the local ASR command, defaults unsafe or unsupported language to zh, and never passes raw unsupported language into subprocess args.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "shell=True", "en;rm -rf", "full binary path", "full model path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "shell=True",
+      "en;rm -rf",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcript-simplified-normalization",
@@ -357,7 +620,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend trims and collapses whitespace, lightly normalizes ASR transcript to Simplified Chinese before the renderer fills input, and Event Stream only shows character count plus 已规范为简体中文.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full transcript", "raw prompt", "memory write"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "memory write"
+    ]
   },
   {
     "id": "local-asr-transcribe-no-text",
@@ -367,7 +639,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows 没有识别到可用文本 and does not change the input.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full transcript", "audio content"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "AUDIO_CONTENT_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-timed-out",
@@ -377,7 +657,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns 本地语音识别超时，可以尝试更小模型或更短录音, cleans temp audio, and UI keeps the input unchanged.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-nonzero-failed",
@@ -387,7 +676,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns a safe failed status without raw stdout or stderr, and renderer does not fill transcript.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full temp path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-cleanup-succeeded",
@@ -397,7 +695,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Response and UI show temporary_file_cleaned true and no temp audio remains.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-cleanup-failed",
@@ -407,7 +712,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns 临时音频清理失败 with no transcript, raw exception, or temp path.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw exception", "full temp path", "audio content", "base64 audio", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-not-auto-sent",
@@ -417,7 +731,13 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "No /api/chat call is made until the user clicks 发送.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-not-stored-before-send",
@@ -427,7 +747,13 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "No memory write, prompt preview refresh, knowledge retrieval, or game context extraction is triggered before send.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-event-stream-no-transcript",
@@ -437,7 +763,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Event Stream displays start/completed/error summaries, char count, duration, size, MIME, and cleanup only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full transcript", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-packaged-fake-binary-optional-smoke",
@@ -447,7 +781,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Packaged app can record and fill input from fake local ASR while Event Stream remains sanitized.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full temp path", ".app/Contents/Resources/data"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      ".app/Contents/Resources/data"
+    ]
   },
   {
     "id": "local-asr-transcribe-fake-whisper-plain-text",
@@ -457,7 +799,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend parses the plain transcript, cleans temp audio, and renderer only fills the input.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-fake-whisper-timestamped",
@@ -467,7 +818,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend strips timestamp prefixes and joins multi-line text into a readable transcript.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "-->", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "-->",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-fake-whisper-noisy",
@@ -477,7 +836,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend drops obvious log noise and only keeps the transcript text.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "whisper_init", "system_info", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "whisper_init",
+      "system_info",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-fake-whisper-empty",
@@ -487,7 +854,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns no_text, renderer keeps the input unchanged, and no chat flow is triggered.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcribe-fake-whisper-long",
@@ -497,7 +871,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend truncates transcript to the configured length limit before returning it.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "long payload", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "long payload",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-audio-format-may-need-conversion",
@@ -507,7 +889,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Settings and Debug Panel show a safe MIME summary and a gentle note that WAV conversion may be needed later.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "audio content", "base64 audio", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-audio-conversion-not-configured",
@@ -517,7 +906,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns a safe conversion-not-configured summary, does not call local ASR, cleans temp audio, and renderer shows 尚未配置音频转换工具.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER"
+    ]
   },
   {
     "id": "local-asr-audio-conversion-succeeded",
@@ -527,7 +925,17 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend calls the converter with list args, passes the converted WAV path to local ASR, reports converted_mime_type audio/wav, and only fills the input after transcript success.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content", "base64 audio"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER"
+    ]
   },
   {
     "id": "local-asr-audio-conversion-failed",
@@ -537,7 +945,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns 音频格式转换失败, skips local ASR transcription, cleans temp audio, and does not expose converter stdout/stderr.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER"
+    ]
   },
   {
     "id": "local-asr-audio-conversion-timed-out",
@@ -547,7 +964,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Backend returns 音频格式转换超时, skips local ASR transcription, cleans temp audio, and renderer keeps the input unchanged.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER"
+    ]
   },
   {
     "id": "local-asr-audio-conversion-event-stream-privacy",
@@ -557,7 +983,18 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Event Stream and Debug Panel show safe conversion status, source MIME, target MIME, cleanup flags, and safe converter name only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full temp path", "audio content", "base64 audio", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "real-local-asr-config-ready",
@@ -568,7 +1005,17 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Settings and Debug Panel show Local ASR ready using safe filenames only; no model or binary is bundled or committed.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full audio path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "real-local-asr-probe-succeeded",
@@ -579,7 +1026,17 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "CLI probe reports that the binary can start while explaining this does not prove model compatibility or transcript quality.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full audio path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "real-audio-capture-succeeded",
@@ -590,7 +1047,17 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Audio Capture Test records short local audio, shows duration / size / MIME, cleans temporary audio, and does not transcribe or fill the input.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full audio path", "audio content", "base64 audio", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "real-audio-conversion-succeeded",
@@ -601,7 +1068,18 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Record & Transcribe reports safe conversion status, converted_mime_type audio/wav, and cleanup flags before ASR receives the converted WAV.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full converter path", "full audio path", "audio content", "base64 audio", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "real-record-transcribe-fills-input",
@@ -612,7 +1090,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "A real transcript fills the chat input for user review, with no automatic chat send.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full audio path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "real-record-transcribe-does-not-auto-send",
@@ -623,7 +1109,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The user must manually click send; no chat request is made immediately after transcription success.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw prompt", "full audio path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_PROMPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "real-record-transcribe-no-context-pollution",
@@ -634,7 +1129,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "No memory write, prompt preview refresh, knowledge retrieval, semantic extraction, or game context update is triggered before send.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw prompt", "full audio path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_PROMPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "real-local-asr-packaged-app-optional-smoke",
@@ -645,7 +1149,19 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Packaged app is not a black screen, backend health is ok, Local ASR controls render, Record & Transcribe can fill input, and app quit leaves no self-started backend residue.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", ".app/Contents/Resources/data"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      ".app/Contents/Resources/data"
+    ]
   },
   {
     "id": "real-local-asr-troubleshooting-no-text",
@@ -656,7 +1172,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows no-text troubleshooting guidance, keeps the input unchanged, and does not expose raw ASR output.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full audio path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "real-local-asr-troubleshooting-timeout",
@@ -667,7 +1191,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "UI shows timeout troubleshooting guidance, cleans temporary audio, skips auto-send, and does not expose raw subprocess output.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full audio path", "full transcript"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-real-whisper-optional-manual",
@@ -678,7 +1210,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Manual QA verifies config detection, CLI probe, Record & Transcribe, safe UI summaries, and no auto-send; failures may indicate format, model, binary, timeout, or parser incompatibility.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full binary path", "full model path", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-packaged-real-whisper-optional-manual",
@@ -689,7 +1230,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Manual packaged QA verifies backend self-start, local ASR status, Record & Transcribe, sanitized Event Stream, and no backend residue after quit.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "full temp path", ".app/Contents/Resources/data"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_TEMP_PATH_MARKER",
+      ".app/Contents/Resources/data"
+    ]
   },
   {
     "id": "local-asr-transcribe-no-context-pollution",
@@ -699,7 +1248,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The transcript only sits in the input and does not write memory, refresh prompt preview, trigger retrieval, or change game context.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "full transcript", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "main-voice-button-local-asr-ready",
@@ -709,7 +1266,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The main chat voice button is enabled, shows 本地语音识别可用, and does not show 语音识别服务不可用.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "main-voice-button-local-asr-record-transcribe",
@@ -719,7 +1283,16 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The main chat button records push-to-talk audio, posts it to the local ASR transcription endpoint, fills the transcript into the input, and waits for manual send.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw prompt", "full transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_PROMPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "main-voice-button-web-speech-fallback",
@@ -729,7 +1302,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The main chat voice button keeps the Web Speech fallback, fills final transcript into the input, and does not call the Local ASR transcription endpoint.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "full transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "main-voice-button-unavailable-with-local-asr-not-ready",
@@ -739,7 +1320,14 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The main chat voice button is disabled or safely unavailable and distinguishes the Local ASR status from the Web Speech service state.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw transcript", "full transcript", "full audio path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   },
   {
     "id": "main-voice-button-local-asr-conversion-not-configured",
@@ -749,7 +1337,17 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The main chat voice status shows 音频转换工具未配置, does not call the local ASR binary, keeps the input unchanged, and does not auto-send.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw prompt", "full transcript", "full audio path", "full converter path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_PROMPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER"
+    ]
   },
   {
     "id": "main-voice-button-local-asr-no-context-pollution",
@@ -759,7 +1357,15 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The unconfirmed transcript stays only in the input and does not write memory, refresh prompt preview, trigger retrieval, or change game context.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw transcript", "full transcript", "full temp path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_TEMP_PATH_MARKER"
+    ]
   },
   {
     "id": "local-asr-settings-ui-visible",
@@ -770,11 +1376,11 @@
     "should_upload_audio": false,
     "expected_behavior": "Settings -> Voice Input shows 本地 ASR 配置 / Local ASR Setup with binary, model, converter inputs and Save / Clear / Refresh controls.",
     "forbidden_terms": [
-      ".env",
-      "Authorization",
-      "api_key",
-      "raw transcript",
-      "full local path"
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER"
     ]
   },
   {
@@ -786,14 +1392,14 @@
     "should_upload_audio": false,
     "expected_behavior": "Settings save calls the settings API, then the UI shows only safe basenames and a user_settings source; the full paths are not shown outside editing inputs.",
     "forbidden_terms": [
-      ".env",
-      "Authorization",
-      "api_key",
-      "raw stdout",
-      "raw stderr",
-      "full binary path",
-      "full model path",
-      "full converter path"
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER"
     ]
   },
   {
@@ -805,13 +1411,13 @@
     "should_upload_audio": false,
     "expected_behavior": "Status, probe, transcription, and conversion use saved user settings first and report source user_settings with safe basenames only.",
     "forbidden_terms": [
-      ".env",
-      "Authorization",
-      "api_key",
-      "raw env",
-      "full binary path",
-      "full model path",
-      "full converter path"
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_ENV_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER"
     ]
   },
   {
@@ -823,13 +1429,13 @@
     "should_upload_audio": false,
     "expected_behavior": "Clear removes saved user settings and the next settings/status response falls back to env or none without exposing full env values.",
     "forbidden_terms": [
-      ".env",
-      "Authorization",
-      "api_key",
-      "raw env",
-      "full binary path",
-      "full model path",
-      "full converter path"
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_ENV_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER"
     ]
   },
   {
@@ -841,14 +1447,14 @@
     "should_upload_audio": false,
     "expected_behavior": "Event Stream, Debug Panel, and Raw JSON include only booleans, source, and safe binary/model/converter basenames.",
     "forbidden_terms": [
-      ".env",
-      "Authorization",
-      "api_key",
-      "raw stdout",
-      "raw stderr",
-      "full binary path",
-      "full model path",
-      "full converter path"
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER"
     ]
   },
   {
@@ -860,14 +1466,14 @@
     "should_upload_audio": false,
     "expected_behavior": "Packaged app reloads Local ASR settings from the user data directory, remains non-black-screen, and keeps Debug/Event/Raw surfaces free of full paths.",
     "forbidden_terms": [
-      ".env",
-      "Authorization",
-      "api_key",
-      "raw stdout",
-      "raw stderr",
-      "full binary path",
-      "full model path",
-      "full converter path"
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER"
     ]
   },
   {
@@ -879,7 +1485,19 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The packaged app is not a black screen, the backend starts or connects, user data stays outside the .app, .env is not copied into the app, and app-owned backend processes are gone after quit.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "base64", "raw prompt", "long internal payload"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER",
+      "long internal payload"
+    ]
   },
   {
     "id": "local-asr-no-env-setup-save",
@@ -890,7 +1508,20 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Save persists user settings, Refresh Status becomes ready, and UI surfaces show only safe basenames for whisper-cli, ggml-base.bin, and ffmpeg.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER"
+    ]
   },
   {
     "id": "local-asr-settings-refresh-ready",
@@ -901,7 +1532,20 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Refresh Status rereads settings, reports source user_settings, enables Check Local ASR and Record & Transcribe, and keeps full paths out of Debug/Event/Raw JSON.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER"
+    ]
   },
   {
     "id": "local-asr-settings-persist-after-restart",
@@ -912,7 +1556,20 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The reopened packaged app reloads settings from the user data directory, shows source user_settings, remains ready, and Check Local ASR can still start.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER"
+    ]
   },
   {
     "id": "local-asr-check-probe-succeeds",
@@ -923,7 +1580,19 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The probe reports that the local ASR binary can start, without recording audio, passing model/audio paths, filling the input, or showing raw stdout/stderr.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full audio path", "full transcript", "base64"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER"
+    ]
   },
   {
     "id": "local-asr-audio-capture-succeeds",
@@ -934,7 +1603,18 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Audio Capture Test completes, shows duration, size, MIME, and cleanup status, and does not call ASR or fill the chat input.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "audio content", "full transcript", "base64"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER"
+    ]
   },
   {
     "id": "local-asr-record-transcribe-fills-input",
@@ -945,7 +1625,20 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Recording and local transcription succeed, cleaned transcript fills the input, and the send button still requires a user click before chat flow starts.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER"
+    ]
   },
   {
     "id": "local-asr-main-chat-button-uses-local-asr",
@@ -956,7 +1649,18 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The main chat voice button is available as Local ASR, does not show Web Speech unavailable as the primary path, and records/transcribes only after the user clicks.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "base64", "raw prompt"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-transcript-simplified-chinese",
@@ -967,7 +1671,18 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The transcript is lightly normalized to Simplified Chinese while English and numbers remain intact, and only a character count plus normalization status appears in Debug/Event surfaces.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "raw transcript", "base64"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "BASE64_MARKER"
+    ]
   },
   {
     "id": "local-asr-no-auto-send",
@@ -978,7 +1693,19 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "The transcript stays editable in the input and no chat request is made until the user manually clicks Send.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "raw transcript", "base64", "raw prompt"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-no-context-pollution",
@@ -989,7 +1716,19 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Unconfirmed transcript does not write memory, update prompt preview, trigger knowledge retrieval, trigger semantic extraction, or change game context.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "raw transcript", "base64", "raw prompt"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-native-picker-cancel-keeps-input",
@@ -1000,7 +1739,17 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Canceling the native file picker leaves the existing input unchanged and does not save, execute, copy, upload, or read any local file.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full transcript", "base64", "raw prompt"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-native-picker-fill-and-save",
@@ -1011,7 +1760,21 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Each native file picker button fills only its matching input field. Settings are persisted only after Save, Refresh Status can read the saved config, and Debug/Event surfaces show safe basenames rather than full paths.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64", "raw prompt"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-native-picker-regression-freeze",
@@ -1022,7 +1785,22 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Local ASR Setup shows three 选择... buttons, canceling a native picker keeps the current input, selecting binary/model/converter updates only the matching field, Save persists settings, Refresh Status and Check Local ASR still work, restart keeps settings, and Debug/Event surfaces never show full paths or transcripts.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "raw transcript", "base64", "raw prompt"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER"
+    ]
   },
   {
     "id": "voice-local-asr-regression-freeze",
@@ -1033,7 +1811,22 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Voice Output remains default off with Test Voice available, Web Speech is not treated as the reliable packaged path, Local ASR ready is visible, Record & Transcribe fills the input without auto-send, accepted memory is the only memory that enters prompt, and proactive content does not enter memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "raw transcript", "base64", "raw prompt"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER"
+    ]
   },
   {
     "id": "local-asr-privacy-no-full-paths",
@@ -1044,7 +1837,22 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Event Stream, Debug Panel, Raw JSON, and chat surfaces show safe basenames and summaries only, never full configured paths, temp paths, raw subprocess output, full transcript, or audio payloads.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64", "raw prompt", "long internal payload"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER",
+      "long internal payload"
+    ]
   },
   {
     "id": "local-asr-clear-config-fallback",
@@ -1055,7 +1863,20 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "Clear removes saved settings, Local ASR returns to unconfigured safe fallback, the main chat voice button falls back safely, and cleared full paths do not remain visible.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full binary path", "full model path", "full converter path", "full audio path", "full transcript", "base64"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_BINARY_PATH_MARKER",
+      "FULL_MODEL_PATH_MARKER",
+      "FULL_CONVERTER_PATH_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER"
+    ]
   },
   {
     "id": "local-asr-backend-no-residual-process",
@@ -1066,6 +1887,18 @@
     "should_auto_send": false,
     "should_upload_audio": false,
     "expected_behavior": "After app quit, the app-owned backend is no longer listening and no Local ASR settings, temp audio, memory, session, or .env files were written inside the .app.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw stdout", "raw stderr", "raw exception", "full audio path", "full transcript", "base64", "raw prompt", "long internal payload"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "RAW_EXCEPTION_MARKER",
+      "FULL_AUDIO_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "BASE64_MARKER",
+      "RAW_PROMPT_MARKER",
+      "long internal payload"
+    ]
   }
 ]

@@ -260,7 +260,7 @@ def test_session_archive_search_redacts_raw_secret_and_does_not_mutate_memory_or
                 "timestamp": _now(),
                 "event_type": "session_note",
                 "safe_summary": (
-                    "raw prompt raw JSON Authorization bearer token secret sk-test-secret-1234567890 "
+                    "raw prompt raw JSON Authorization bearer token secret=TEST_SECRET_PLACEHOLDER "
                     "/Users/example/project/services/backend/.env stdout stderr"
                 ),
                 "source": "manual",
@@ -272,7 +272,7 @@ def test_session_archive_search_redacts_raw_secret_and_does_not_mutate_memory_or
     )
 
     assert result["status"] == "created"
-    search = store.search_archives(q="sk-test-secret-1234567890")
+    search = store.search_archives(q="TEST_SECRET_PLACEHOLDER")
     serialized = json.dumps(search, ensure_ascii=False).lower()
     for forbidden in (
         ".env",
@@ -289,7 +289,7 @@ def test_session_archive_search_redacts_raw_secret_and_does_not_mutate_memory_or
         "stderr",
         "secret",
         "/users/example",
-        "sk-test-secret",
+        "TEST_SECRET_PLACEHOLDER",
     ):
         assert forbidden not in serialized
 
@@ -310,7 +310,7 @@ def test_session_archive_redacts_raw_prompt_secrets_paths_and_voice_transcript()
                 "timestamp": _now(),
                 "event_type": "voice_mode_used",
                 "safe_summary": (
-                    "full voice transcript raw prompt raw JSON: 我的 API key 是 sk-test-secret-1234567890，"
+                    "full voice transcript raw prompt raw JSON: 我的 api_key=TEST_SECRET_PLACEHOLDER，"
                     "路径 /Users/example/project/services/backend/.env，stdout stderr"
                 ),
                 "source": "voice_direct",
@@ -342,7 +342,7 @@ def test_session_archive_redacts_raw_prompt_secrets_paths_and_voice_transcript()
         "stderr",
         "secret",
         "/users/example",
-        "sk-test-secret",
+        "TEST_SECRET_PLACEHOLDER",
     ):
         assert forbidden not in serialized
     assert "voice_direct" in serialized

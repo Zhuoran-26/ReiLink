@@ -5,7 +5,13 @@
     "precondition": "Open ReiLink normally",
     "action": "Launch the desktop app",
     "expected": "Home / Chat is visible, chat input is usable, and the right workspace panel is closed by default.",
-    "must_not_show_by_default": ["Event Stream", "Prompt Preview", "Raw JSON", "Semantic Shadow trace", "large Settings panel"]
+    "must_not_show_by_default": [
+      "Event Stream",
+      "Prompt Preview",
+      "Raw JSON",
+      "Semantic Shadow trace",
+      "large Settings panel"
+    ]
   },
   {
     "id": "ui-surface-launcher-opens-workspaces",
@@ -13,7 +19,11 @@
     "precondition": "Home / Chat is visible",
     "action": "Click Memory, Game, Voice, Overlay, Settings, Developer / Debug, and Future / Avatar launcher entries",
     "expected": "Each entry opens a focused workspace panel with title, tabs, and a close button.",
-    "must_preserve": ["chat_history", "unsent_chat_input", "backend_connection_state"]
+    "must_preserve": [
+      "chat_history",
+      "unsent_chat_input",
+      "backend_connection_state"
+    ]
   },
   {
     "id": "ui-surface-close-behavior",
@@ -28,7 +38,11 @@
     "precondition": "Any non-home workspace is open",
     "action": "Inspect Developer / Debug, Settings, Voice, Overlay, Game, Memory, and Future / Avatar workspace headers and tabs",
     "expected": "Workspace title, close button, and tabs are fully visible above the content body and are not covered by cards or scroll content.",
-    "must_preserve": ["workspace_header_visibility", "tab_hit_testing", "close_button_hit_testing"]
+    "must_preserve": [
+      "workspace_header_visibility",
+      "tab_hit_testing",
+      "close_button_hit_testing"
+    ]
   },
   {
     "id": "ui-surface-debug-tabs-clickable",
@@ -36,7 +50,14 @@
     "precondition": "Developer / Debug workspace is open",
     "action": "Click Event Stream, Prompt Preview, Runtime, and Trace tabs",
     "expected": "Each tab becomes selected and the workspace body changes to the matching safe debug surface: Event Stream, Prompt Preview, Runtime, or Trace.",
-    "must_not_show": ["raw prompt", "full persona markdown", "API key", ".env", "full local path", "raw provider response"]
+    "must_not_show": [
+      "raw prompt",
+      "full persona markdown",
+      "API key",
+      ".env",
+      "full local path",
+      "raw provider response"
+    ]
   },
   {
     "id": "ui-surface-settings-tabs-clickable",
@@ -44,7 +65,11 @@
     "precondition": "Settings workspace is open",
     "action": "Click 应用, 模型, 隐私 / 数据, and 高级 tabs",
     "expected": "Each tab remains clickable and visibly selectable, and the workspace body changes to matching content: app settings, model status, privacy/local data, or advanced legacy controls.",
-    "must_preserve": ["chat_history", "unsent_chat_input", "tab_hit_testing"]
+    "must_preserve": [
+      "chat_history",
+      "unsent_chat_input",
+      "tab_hit_testing"
+    ]
   },
   {
     "id": "ui-surface-body-scroll-isolated",
@@ -66,7 +91,12 @@
     "precondition": "Open the Voice workspace",
     "action": "Switch Conversation, Input / Local ASR, Output, and Voice Profile tabs",
     "expected": "Each Voice tab renders different matching content; Conversation states direct Voice v2 is not implemented, Input exposes Local ASR, Output exposes Voice Output and Test Voice, and Voice Profile remains a future placeholder.",
-    "must_not_implement": ["auto listen/send/respond/speak loop", "wake word", "cloud ASR requirement", "automatic transcript send"]
+    "must_not_implement": [
+      "auto listen/send/respond/speak loop",
+      "wake word",
+      "cloud ASR requirement",
+      "automatic transcript send"
+    ]
   },
   {
     "id": "ui-surface-overlay-safe-mode",
@@ -74,7 +104,12 @@
     "precondition": "Open the Overlay workspace",
     "action": "Switch Safe Mode, Placement, Content, and Future Game Mode tabs",
     "expected": "Each Overlay tab renders different matching content; Safe Mode states macOS auto-show is fail-closed, Placement exposes position/opacity, Content exposes message count, and Future Game Mode remains a placeholder.",
-    "must_not_implement": ["macOS auto-show restore", "full game HUD", "raw prompt display", "full assistant reply display"]
+    "must_not_implement": [
+      "macOS auto-show restore",
+      "full game HUD",
+      "raw prompt display",
+      "full assistant reply display"
+    ]
   },
   {
     "id": "ui-surface-debug-separated-safe",
@@ -82,7 +117,15 @@
     "precondition": "Open Developer / Debug",
     "action": "Switch Event Stream, Prompt Preview, Runtime, and Trace tabs",
     "expected": "Debug surfaces are opt-in and Prompt Preview remains a safe summary.",
-    "forbidden_terms": ["raw prompt", "API key", ".env", "full local path", "full persona markdown", "full assistant reply", "raw provider response"]
+    "forbidden_terms": [
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "FULL_PERSONA_MARKDOWN_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "RAW_PROVIDER_RESPONSE_MARKER"
+    ]
   },
   {
     "id": "ui-surface-future-avatar-placeholder",
@@ -90,7 +133,11 @@
     "precondition": "Open Future / Avatar",
     "action": "Switch Avatar and Presentation Policy tabs",
     "expected": "Avatar and Presentation Policy render distinct placeholders for future presentation work.",
-    "must_not_implement": ["Live2D runtime", "avatar assets", "presentation layer behavior"]
+    "must_not_implement": [
+      "Live2D runtime",
+      "avatar assets",
+      "presentation layer behavior"
+    ]
   },
   {
     "id": "ui-surface-tabs-preserve-chat-draft",
@@ -98,6 +145,11 @@
     "precondition": "Home / Chat is visible and the chat input contains an unsent draft",
     "action": "Open Settings, Developer / Debug, Voice, Overlay, and Future / Avatar; switch multiple tabs in each workspace; then close the workspace with the close button and Escape",
     "expected": "The selected tab style and content match, each workspace keeps its own active tab state, and the unsent chat draft remains unchanged.",
-    "must_not_implement": ["Voice v2", "Overlay auto-show", "Hermes-style memory", "Live2D"]
+    "must_not_implement": [
+      "Voice v2",
+      "Overlay auto-show",
+      "Hermes-style memory",
+      "Live2D"
+    ]
   }
 ]

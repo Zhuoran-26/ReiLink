@@ -193,7 +193,7 @@ Recommended Memory workspace:
 
 - Pending: candidate memories waiting for user confirmation.
 - Confirmed: accepted long-term memories with source summaries.
-- Ignored: ignored or do-not-ask-again items.
+- Ignored: ignored or do-not-prompt-again items.
 - Search: local search across confirmed memory and later session archive.
 - Sources: where a memory came from, using safe summaries.
 - Session Archive later: chat/game-session summaries that are not long-term memory.
@@ -203,7 +203,7 @@ Key boundaries:
 - Candidate Memory implementation needs this UI position before backend expansion.
 - Confirmed long-term memory and Game Session state must stay separate.
 - Session Archive and Search should not be mixed directly into the main Chat surface.
-- Memory should expose edit, delete, ignore, and do-not-ask-again as explicit user actions.
+- Memory should expose edit, delete, ignore, and do-not-prompt-again as explicit user actions.
 - Memory writes must keep the current confirmation boundary.
 
 ## Game IA Position
@@ -282,7 +282,7 @@ Next:
    - Implement only after the Voice v2 spec and shell are ready.
    - Keep Local ASR no-upload, confirm-send default, TTS interruption, and transcript safety boundaries.
 4. Hermes-style Memory Architecture v0.
-   - Design candidate memory, source summaries, confirmed list, ignore/delete/do-not-ask-again, and session archive boundaries.
+   - Design candidate memory, source summaries, confirmed list, ignore/delete/do-not-prompt-again, and session archive boundaries.
    - Depends on Memory workspace placement.
 5. Candidate Memory v1.
    - Implement after the memory UI contract is clear.

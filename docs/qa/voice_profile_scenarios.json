@@ -6,7 +6,13 @@
     "action": "Inspect the current profile",
     "expected": "The UI shows profile rei_calm, normal chat full mode, Direct Conversation brief mode, max length settings, conservative proactive / memory speaking toggles, never-spoken categories, and a speechSynthesis caveat.",
     "implemented_in_v1": true,
-    "must_not_claim": ["character voice", "voice clone", "new TTS engine", "Rei Ayanami", "official IP"]
+    "must_not_claim": [
+      "character voice",
+      "voice clone",
+      "new TTS engine",
+      "Rei Ayanami",
+      "official IP"
+    ]
   },
   {
     "id": "voice-profile-v1-direct-brief-default",
@@ -16,7 +22,11 @@
     "expected": "The full reply remains visible in chat, while TTS speaks only the brief excerpt selected by Voice Profile v1.",
     "implemented_in_v1": true,
     "expected_mode": "brief",
-    "must_preserve": ["full_chat_reply", "normal_chat_flow", "stop_voice_control"]
+    "must_preserve": [
+      "full_chat_reply",
+      "normal_chat_flow",
+      "stop_voice_control"
+    ]
   },
   {
     "id": "voice-profile-v1-normal-full-default",
@@ -35,7 +45,14 @@
     "expected": "TTS speaks the full sanitized assistant reply and the Event Stream records only mode and counts.",
     "implemented_in_v1": true,
     "expected_mode": "full",
-    "forbidden_event_content": ["full assistant reply", "spoken text", "raw prompt", "API key", ".env", "full local path"]
+    "forbidden_event_content": [
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "SPOKEN_TEXT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "voice-profile-v1-direct-silent-configurable",
@@ -69,7 +86,17 @@
     "action": "Inspect Event Stream and event payloads",
     "expected": "Events include profile id, source, mode, counts, sentence count, max limits, and skip reason only. They do not include full assistant text or spoken text.",
     "implemented_in_v1": true,
-    "forbidden_event_content": ["full assistant reply", "spoken text", "ASR transcript", "raw prompt", "API key", ".env", "stdout", "stderr", "full local path"]
+    "forbidden_event_content": [
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "SPOKEN_TEXT_MARKER",
+      "ASR transcript",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "voice-profile-v1-test-voice",

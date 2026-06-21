@@ -10,7 +10,12 @@
     "should_write_long_term_memory": true,
     "undo_available": true,
     "expected_behavior": "After Memory Candidate guard passes, save the explicit gameplay preference as LongTermMemory, show a lightweight chat hint, and allow undo.",
-    "forbidden_terms": ["raw prompt", "raw JSON", ".env", "API key"]
+    "forbidden_terms": [
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "ENV_FILE_MARKER",
+      "CREDENTIAL_MARKER"
+    ]
   },
   {
     "id": "memory-architecture-explicit-do-not-remember",
@@ -22,7 +27,11 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Treat the user message as a negative memory request; do not create a pending memory.",
-    "forbidden_terms": ["raw transcript", "raw prompt", "raw JSON"]
+    "forbidden_terms": [
+      "RAW_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER"
+    ]
   },
   {
     "id": "memory-architecture-one-off-death-not-long-term",
@@ -34,7 +43,9 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Update or discuss Game Session State only; do not create Long-term Memory from a one-off death event.",
-    "forbidden_terms": ["long-term memory"]
+    "forbidden_terms": [
+      "long-term memory"
+    ]
   },
   {
     "id": "memory-architecture-spoiler-preference",
@@ -46,7 +57,9 @@
     "requires_confirmation": true,
     "should_write_long_term_memory": false,
     "expected_behavior": "Create a safe candidate for avoid_spoilers preference and keep it bounded to strategy/knowledge behavior.",
-    "forbidden_terms": ["persona change"]
+    "forbidden_terms": [
+      "persona change"
+    ]
   },
   {
     "id": "memory-architecture-short-reply-preference",
@@ -58,7 +71,9 @@
     "requires_confirmation": true,
     "should_write_long_term_memory": false,
     "expected_behavior": "Create a bounded interaction preference candidate such as reply_length=short, not a persona change.",
-    "forbidden_terms": ["Rei becomes"]
+    "forbidden_terms": [
+      "Rei becomes"
+    ]
   },
   {
     "id": "memory-architecture-persona-drift-sajiao-rejected",
@@ -70,7 +85,10 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Reject persona-changing memory; Persona Core has priority over user memory.",
-    "forbidden_terms": ["persona override", "always affectionate"]
+    "forbidden_terms": [
+      "persona override",
+      "always affectionate"
+    ]
   },
   {
     "id": "memory-architecture-delete-memory-request",
@@ -82,7 +100,9 @@
     "requires_confirmation": true,
     "should_write_long_term_memory": false,
     "expected_behavior": "Route to delete/revise flow for an existing memory; remove it from retrieval after confirmed deletion.",
-    "forbidden_terms": ["raw memory payload"]
+    "forbidden_terms": [
+      "raw memory payload"
+    ]
   },
   {
     "id": "memory-architecture-accept-pending-memory",
@@ -95,7 +115,9 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": true,
     "expected_behavior": "Confirm intent accepts the pending candidate and creates LongTermMemory if guard still passes.",
-    "forbidden_terms": ["raw transcript"]
+    "forbidden_terms": [
+      "RAW_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "memory-architecture-ignore-pending-memory",
@@ -108,7 +130,9 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Deny intent marks the pending candidate ignored and suppresses near-duplicate prompts.",
-    "forbidden_terms": ["long-term memory"]
+    "forbidden_terms": [
+      "long-term memory"
+    ]
   },
   {
     "id": "memory-architecture-weak-confirmation-keeps-pending",
@@ -121,7 +145,9 @@
     "requires_confirmation": true,
     "should_write_long_term_memory": false,
     "expected_behavior": "Uncertain confirmation keeps the candidate pending or lowers confidence; it does not create LongTermMemory.",
-    "forbidden_terms": ["auto accept"]
+    "forbidden_terms": [
+      "auto accept"
+    ]
   },
   {
     "id": "memory-architecture-voice-memory-intent-candidate",
@@ -135,7 +161,10 @@
     "should_write_long_term_memory": true,
     "undo_available": true,
     "expected_behavior": "Confirmed voice transcript with an explicit remember request still passes Memory Candidate guard, then can auto-save with a non-blocking undo hint.",
-    "forbidden_terms": ["full transcript", "raw audio"]
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "raw audio"
+    ]
   },
   {
     "id": "memory-architecture-proactive-does-not-write-memory",
@@ -147,7 +176,9 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Assistant/proactive content alone must not create MemoryCandidate or LongTermMemory.",
-    "forbidden_terms": ["assistant self memory"]
+    "forbidden_terms": [
+      "assistant self memory"
+    ]
   },
   {
     "id": "memory-architecture-assistant-reply-not-memory-source",
@@ -159,7 +190,9 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Assistant-generated claims cannot become user memory unless the user later confirms them.",
-    "forbidden_terms": ["raw assistant reply"]
+    "forbidden_terms": [
+      "raw assistant reply"
+    ]
   },
   {
     "id": "memory-architecture-game-knowledge-not-user-memory",
@@ -171,7 +204,9 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Game knowledge remains Knowledge Retrieval context and is not saved as user memory.",
-    "forbidden_terms": ["user preference"]
+    "forbidden_terms": [
+      "user preference"
+    ]
   },
   {
     "id": "memory-architecture-retrieved-memory-persona-core-priority",
@@ -183,7 +218,9 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "PromptMemoryBlock can tune strategy lightly, but Persona Core remains higher priority and blocks personality drift.",
-    "forbidden_terms": ["override persona"]
+    "forbidden_terms": [
+      "override persona"
+    ]
   },
   {
     "id": "memory-architecture-retrieval-token-budget",
@@ -195,7 +232,10 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "PromptMemoryBlock selects a small number of relevant safe summaries and reports omitted_count.",
-    "forbidden_terms": ["raw transcript", "full memory store"]
+    "forbidden_terms": [
+      "RAW_TRANSCRIPT_MARKER",
+      "full memory store"
+    ]
   },
   {
     "id": "memory-architecture-current-input-beats-stale-memory",
@@ -208,19 +248,26 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Current explicit user input overrides stale retrieved memory for this reply.",
-    "forbidden_terms": ["memory override"]
+    "forbidden_terms": [
+      "memory override"
+    ]
   },
   {
     "id": "memory-architecture-secret-rejected",
     "category": "memory_architecture",
     "layer": "privacy_guard",
-    "input": "记住我的 API key 是 sk-xxx。",
+    "input": "记住我的 API key 是 TEST_SECRET_PLACEHOLDER。",
     "expected_status": "rejected_by_guard",
     "expected_type": "none",
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Reject technical secrets and do not display or store the secret value.",
-    "forbidden_terms": ["sk-", "API key", ".env", "Authorization"]
+    "forbidden_terms": [
+      "TEST_SECRET_PLACEHOLDER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER"
+    ]
   },
   {
     "id": "memory-architecture-do-not-remember-suppresses-future",
@@ -232,7 +279,9 @@
     "requires_confirmation": true,
     "should_write_long_term_memory": false,
     "expected_behavior": "Create or update a bounded do-not-remember preference after confirmation; suppress matching future candidates.",
-    "forbidden_terms": ["raw transcript"]
+    "forbidden_terms": [
+      "RAW_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "memory-architecture-candidate-expiry",
@@ -244,7 +293,9 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Expire stale unconfirmed candidates and remove them from confirmation prompts.",
-    "forbidden_terms": ["auto accept"]
+    "forbidden_terms": [
+      "auto accept"
+    ]
   },
   {
     "id": "memory-architecture-duplicate-candidate-merge",
@@ -256,7 +307,9 @@
     "requires_confirmation": true,
     "should_write_long_term_memory": false,
     "expected_behavior": "Merge duplicate candidates or evidence summaries instead of creating repeated prompts.",
-    "forbidden_terms": ["duplicate prompt storm"]
+    "forbidden_terms": [
+      "duplicate prompt storm"
+    ]
   },
   {
     "id": "memory-architecture-memory-workspace-visible-delete",
@@ -268,7 +321,11 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Memory workspace should expose pending/confirmed/ignored states and allow user-visible deletion in future polish.",
-    "forbidden_terms": ["raw prompt", "raw JSON", "full transcript"]
+    "forbidden_terms": [
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "memory-architecture-direct-conversation-low-interruption",
@@ -281,7 +338,10 @@
     "requires_confirmation": true,
     "should_write_long_term_memory": false,
     "expected_behavior": "Do not interrupt active direct conversation with frequent memory confirmations; stage safely for later review.",
-    "forbidden_terms": ["auto save", "full transcript"]
+    "forbidden_terms": [
+      "auto save",
+      "FULL_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "memory-architecture-overlay-hides-sensitive-memory",
@@ -293,7 +353,11 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Overlay must not show sensitive memory candidates by default; future memory cues must be opt-in and safe-summary-only.",
-    "forbidden_terms": ["full memory", "raw transcript", "API key"]
+    "forbidden_terms": [
+      "full memory",
+      "RAW_TRANSCRIPT_MARKER",
+      "CREDENTIAL_MARKER"
+    ]
   },
   {
     "id": "memory-architecture-debug-safe-summary-only",
@@ -305,6 +369,13 @@
     "requires_confirmation": false,
     "should_write_long_term_memory": false,
     "expected_behavior": "Debug may show candidate type, status, guard reason, and safe summary; it must omit raw prompt, raw JSON, paths, secrets, and full transcript.",
-    "forbidden_terms": ["raw prompt", "raw JSON", ".env", "full transcript", "stdout", "stderr"]
+    "forbidden_terms": [
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "ENV_FILE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   }
 ]

@@ -6379,7 +6379,7 @@ describe("App", () => {
     expect(within(archivePanel).getByText(/不是长期记忆/)).toBeInTheDocument();
     expect(within(archivePanel).getByRole("button", { name: "归档当前会话" })).toBeInTheDocument();
     expect(within(archivePanel).getByRole("button", { name: "刷新" })).toBeInTheDocument();
-    expect(screen.queryByText(/sk-test-secret|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/TEST_SECRET_PLACEHOLDER|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toHaveValue("归档入口可见性草稿");
   });
 
@@ -6392,7 +6392,7 @@ describe("App", () => {
     await waitFor(() => expect(within(archivePanel).getAllByText("艾尔登法环 / 恶兆妖鬼 Margit").length).toBeGreaterThan(0));
     await waitFor(() => expect(within(archivePanel).getAllByText(/死亡次数更新：3/).length).toBeGreaterThan(0));
     expect(within(archivePanel).getByText(/不是长期记忆/)).toBeInTheDocument();
-    expect(screen.queryByText(/sk-test-secret|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/TEST_SECRET_PLACEHOLDER|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
 
     await openWorkspaceTab("已保存");
     expect(await screen.findByRole("heading", { name: "已保存记忆" })).toBeInTheDocument();
@@ -6451,7 +6451,7 @@ describe("App", () => {
     expect(screen.getByText("用户打 Boss 前偏好先探索地图，不喜欢直接硬打。")).toBeInTheDocument();
     expect(screen.getByText("session_archive")).toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toBeVisible();
-    expect(screen.queryByText(/sk-test-secret|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/TEST_SECRET_PLACEHOLDER|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
   });
 
   it("shows safe skipped feedback when archive scan finds no stable preference", async () => {
@@ -6500,7 +6500,7 @@ describe("App", () => {
     expect(within(results).getByText("1 个命中")).toBeInTheDocument();
     expect(within(archivePanel).getByRole("button", { name: "归档当前会话" })).toBeVisible();
     expect(within(archivePanel).getByRole("button", { name: "刷新" })).toBeVisible();
-    expect(screen.queryByText(/sk-test-secret|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/TEST_SECRET_PLACEHOLDER|\.env|raw prompt|raw JSON|\/Users\//i)).not.toBeInTheDocument();
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "session_archive_search_started" }),

@@ -1260,7 +1260,7 @@ def test_shadow_memory_and_proactive_candidates_are_not_applied(monkeypatch):
 def test_shadow_invalid_json_fails_safely_without_raw_payload(monkeypatch):
     monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
     monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
-    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: "raw prompt /Users/aragoto/private/.env sk-secret")
+    monkeypatch.setattr(sem, "_call_deepseek_flash", lambda *args, **kwargs: "raw prompt /Users/aragoto/private/.env TEST_SECRET_PLACEHOLDER")
 
     result = sem.extract_semantics("我在那个骑马金甲大哥那里又寄了几次。", "casual_chat", _game_state())
 
@@ -1272,7 +1272,7 @@ def test_shadow_invalid_json_fails_safely_without_raw_payload(monkeypatch):
     assert "raw prompt" not in serialized
     assert "/users/aragoto" not in serialized
     assert ".env" not in serialized
-    assert "sk-secret" not in serialized
+    assert "TEST_SECRET_PLACEHOLDER" not in serialized
 
 
 def test_safe_label_preserves_non_path_slash_and_redacts_local_paths():
@@ -1290,7 +1290,7 @@ def test_shadow_safe_summary_sanitizes_untrusted_model_text(monkeypatch):
     user_message = "我在那个骑马金甲大哥那里又寄了几次。"
     payload = _shadow_payload(
         boss="tree_sentinel",
-        boss_label=f"{user_message} /Users/aragoto/private/.env raw prompt sk-secret",
+        boss_label=f"{user_message} /Users/aragoto/private/.env raw prompt TEST_SECRET_PLACEHOLDER",
         memory=True,
         reasoning=f"{user_message} stdout stderr /Users/aragoto/private/.env",
     )
@@ -1307,7 +1307,7 @@ def test_shadow_safe_summary_sanitizes_untrusted_model_text(monkeypatch):
     assert "stdout" not in serialized
     assert "stderr" not in serialized
     assert "deepseek_api_key" not in serialized
-    assert "sk-secret" not in serialized
+    assert "TEST_SECRET_PLACEHOLDER" not in serialized
 
 
 def test_short_guide_preference_creates_pending_candidate():
@@ -2378,12 +2378,12 @@ def test_llm_primary_safe_trace_does_not_expose_raw_prompt_transcript_or_paths(m
         _primary_payload(
             boss="tree_sentinel",
             confidence="medium",
-            reasoning="raw prompt /Users/aragoto/.env transcript sk-test stdout",
+            reasoning="raw prompt /Users/aragoto/.env transcript TEST_SECRET_PLACEHOLDER stdout",
         ),
     )
 
     result = sem.extract_semantics(
-        "那个骑马金甲大哥又寄了 /Users/aragoto/.env sk-test raw prompt",
+        "那个骑马金甲大哥又寄了 /Users/aragoto/.env TEST_SECRET_PLACEHOLDER raw prompt",
         "casual_chat",
         _game_state(),
         input_source="voice_confirmed",
@@ -2402,7 +2402,7 @@ def test_llm_primary_safe_trace_does_not_expose_raw_prompt_transcript_or_paths(m
     assert "私密转写" not in serialized
     assert "/users/aragoto" not in serialized
     assert ".env" not in serialized
-    assert "sk-test" not in serialized
+    assert "TEST_SECRET_PLACEHOLDER" not in serialized
     assert "raw prompt" not in serialized
     assert "transcript" not in serialized
 

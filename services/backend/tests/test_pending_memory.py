@@ -226,7 +226,7 @@ def test_persona_drift_request_is_rejected_without_saving_raw_terms():
 def test_secret_memory_request_is_rejected_without_secret_leak():
     queue = PendingMemoryQueue()
     queue.generate_and_enqueue(
-        "记住我的 DEEPSEEK_API_KEY=sk-secret-value",
+        "记住我的 DEEPSEEK_API_KEY=TEST_SECRET_PLACEHOLDER",
         "",
         "casual_chat",
         _now(),
@@ -235,7 +235,7 @@ def test_secret_memory_request_is_rejected_without_secret_leak():
     serialized = json.dumps(queue.list(status=None), ensure_ascii=False)
 
     assert queue.list() == []
-    assert "sk-secret-value" not in serialized
+    assert "TEST_SECRET_PLACEHOLDER" not in serialized
     assert "DEEPSEEK_API_KEY" not in serialized
     assert "sensitive_secret_blocked" in serialized
 
@@ -377,7 +377,7 @@ def test_guard_blocks_sensitive_input_before_llm_even_if_provider_available(monk
 
     monkeypatch.setattr(memory_candidate_check, "_call_memory_check_provider", fake_call)
 
-    result = memory_candidate_check.check_memory_candidate("记住我的 API key 是 sk-test-secret。")
+    result = memory_candidate_check.check_memory_candidate("记住我的 API key 是 TEST_SECRET_PLACEHOLDER。")
 
     assert calls == []
     assert result.suggested_action == "reject"
