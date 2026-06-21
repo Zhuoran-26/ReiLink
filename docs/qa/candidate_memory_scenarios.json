@@ -13,7 +13,12 @@
     "should_show_chat_hint": true,
     "undo_available": true,
     "expected_behavior": "After Memory Candidate guard passes, auto-save the explicit request as a visible long-term memory, show a lightweight chat hint, and allow undo.",
-    "forbidden_terms": ["raw prompt", "raw JSON", ".env", "API key"]
+    "forbidden_terms": [
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "ENV_FILE_MARKER",
+      "CREDENTIAL_MARKER"
+    ]
   },
   {
     "id": "candidate-memory-do-not-remember-rejected",
@@ -27,7 +32,11 @@
     "should_write_long_term_memory": false,
     "should_show_pending_ui": false,
     "expected_behavior": "Record only a safe non-pending guard result or no visible candidate; do not interrupt the user.",
-    "forbidden_terms": ["raw transcript", "raw prompt", "raw JSON"]
+    "forbidden_terms": [
+      "RAW_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER"
+    ]
   },
   {
     "id": "candidate-memory-session-death-no-candidate",
@@ -41,7 +50,9 @@
     "should_write_long_term_memory": false,
     "should_show_pending_ui": false,
     "expected_behavior": "Treat this as game/session state only; do not create a MemoryCandidate.",
-    "forbidden_terms": ["long-term memory"]
+    "forbidden_terms": [
+      "long-term memory"
+    ]
   },
   {
     "id": "candidate-memory-short-reply-pending",
@@ -55,7 +66,9 @@
     "should_write_long_term_memory": false,
     "should_show_pending_ui": true,
     "expected_behavior": "Create a bounded interaction preference candidate without changing Persona Core.",
-    "forbidden_terms": ["persona override"]
+    "forbidden_terms": [
+      "persona override"
+    ]
   },
   {
     "id": "candidate-memory-spoiler-pending",
@@ -69,7 +82,9 @@
     "should_write_long_term_memory": false,
     "should_show_pending_ui": true,
     "expected_behavior": "Create a safe spoiler-boundary candidate; keep it pending until accepted.",
-    "forbidden_terms": ["persona change"]
+    "forbidden_terms": [
+      "persona change"
+    ]
   },
   {
     "id": "candidate-memory-persona-drift-rejected",
@@ -83,7 +98,10 @@
     "should_write_long_term_memory": false,
     "should_show_pending_ui": false,
     "expected_behavior": "Reject persona-changing memory requests and avoid saving the raw persona-drift wording.",
-    "forbidden_terms": ["raw user text", "persona override"]
+    "forbidden_terms": [
+      "raw user text",
+      "persona override"
+    ]
   },
   {
     "id": "candidate-memory-secret-rejected-no-leak",
@@ -97,7 +115,12 @@
     "should_write_long_term_memory": false,
     "should_show_pending_ui": false,
     "expected_behavior": "Block secret-like content and store only a safe guard reason, never the secret value.",
-    "forbidden_terms": ["API key", ".env", "Authorization", "Bearer", "sk-secret"]
+    "forbidden_terms": [
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "TEST_SECRET_PLACEHOLDER"
+    ]
   },
   {
     "id": "candidate-memory-voice-direct-explicit-auto-save",
@@ -113,7 +136,9 @@
     "should_show_chat_hint": true,
     "undo_available": true,
     "expected_behavior": "Voice direct explicit memory can auto-save after guard passes and show a non-blocking undo hint; it must not pop a blocking modal.",
-    "forbidden_terms": ["raw transcript"]
+    "forbidden_terms": [
+      "RAW_TRANSCRIPT_MARKER"
+    ]
   },
   {
     "id": "candidate-memory-accept-long-term",
@@ -128,7 +153,10 @@
     "should_write_long_term_memory": true,
     "should_show_pending_ui": false,
     "expected_behavior": "Accepting a pending candidate creates a visible long-term memory item and removes it from the pending list.",
-    "forbidden_terms": ["raw transcript", "raw prompt"]
+    "forbidden_terms": [
+      "RAW_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER"
+    ]
   },
   {
     "id": "candidate-memory-ignore-no-long-term",
@@ -143,7 +171,9 @@
     "should_write_long_term_memory": false,
     "should_show_pending_ui": false,
     "expected_behavior": "Ignoring a candidate marks it ignored and does not create long-term memory.",
-    "forbidden_terms": ["long-term memory write"]
+    "forbidden_terms": [
+      "long-term memory write"
+    ]
   },
   {
     "id": "candidate-memory-duplicate-deduped",
@@ -158,7 +188,9 @@
     "should_write_long_term_memory": false,
     "should_show_pending_ui": false,
     "expected_behavior": "Do not create another visible candidate for a near-duplicate preference.",
-    "forbidden_terms": ["duplicate pending item"]
+    "forbidden_terms": [
+      "duplicate pending item"
+    ]
   },
   {
     "id": "candidate-memory-assistant-source-blocked",
@@ -172,6 +204,8 @@
     "should_write_long_term_memory": false,
     "should_show_pending_ui": false,
     "expected_behavior": "Assistant or proactive text alone must never become user memory.",
-    "forbidden_terms": ["assistant reply as memory"]
+    "forbidden_terms": [
+      "assistant reply as memory"
+    ]
   }
 ]

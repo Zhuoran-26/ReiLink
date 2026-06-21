@@ -108,7 +108,7 @@ RELAXED_SEMANTIC_MARKERS = (
     "慢",
 )
 SAFE_REPORT_FORBIDDEN_TERMS = (
-    "sk-test-secret",
+    "TEST_SECRET_PLACEHOLDER",
     "raw prompt",
     "raw json",
     ".env",

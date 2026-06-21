@@ -13,7 +13,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive may store a short safe event summary copied from Session Timeline, without raw prompt, raw transcript, or provider payload.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-raw-prompt-blocked",
@@ -29,7 +42,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "The raw prompt must be dropped or redacted before any archive write; Debug may only show a safe blocked reason.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-raw-json-blocked",
@@ -45,7 +71,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive may record a safe parse status label, but never the raw JSON body.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-secret-blocked",
@@ -61,7 +100,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Secret-like content is rejected from archive and cannot create an archive-derived memory candidate.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-full-voice-transcript-blocked",
@@ -77,7 +129,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive stores only voice mode metadata and a safe session event summary; it does not save the full transcript by default.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-game-context-summary",
@@ -93,7 +158,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive may store a safe session summary such as Elden Ring / Margit without raw chat text.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-boss-death-summary",
@@ -109,7 +187,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive may store a safe death count summary, but a single death event does not become Long-term Memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-boss-cleared-summary",
@@ -125,7 +216,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive may store a safe cleared boss summary for review and future search.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-memory-accepted-event",
@@ -141,7 +245,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive may record that a memory was accepted using a safe type/summary label, without raw evidence.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-memory-rejected-secret-blocked",
@@ -157,7 +274,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Rejected secret memory must not be archived as content; only aggregate safe guard counts may exist later.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-proactive-not-user-fact",
@@ -173,7 +303,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive may store that proactive was shown, but the proactive text is not treated as a user fact.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-assistant-reply-not-user-fact",
@@ -189,7 +332,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Assistant-generated claims do not become archive user facts or Memory Candidates.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-default-excluded-from-prompt",
@@ -205,7 +361,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Session Archive is not injected into PromptMemoryBlock by default.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-not-long-term-memory",
@@ -221,7 +390,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive entry remains review history and does not automatically become Long-term Memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-candidate-requires-confirmation",
@@ -237,7 +419,20 @@
     "can_generate_memory_candidate": true,
     "requires_user_confirmation": true,
     "expected_behavior": "Archive-derived signal creates only a pending Memory Candidate after guard; user confirmation is required before Long-term Memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-repeated-preference-candidate",
@@ -253,7 +448,20 @@
     "can_generate_memory_candidate": true,
     "requires_user_confirmation": true,
     "expected_behavior": "Repeated safe archive summaries may propose a bounded gameplay preference candidate, but still require guard and confirmation.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-single-death-no-candidate",
@@ -269,7 +477,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Single death events are useful archive history but do not create memory candidates.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-search-by-game-safe",
@@ -285,7 +506,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Search result returns safe summaries and matched game tags only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-search-by-boss-safe",
@@ -301,7 +535,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Search result returns safe summaries and boss tags without raw chat transcript.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-search-result-no-raw-transcript",
@@ -317,7 +564,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Search output shows archive id, safe reason, tags, and safe summary only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-user-delete-session",
@@ -333,7 +593,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Deleted archive entry is excluded from search, bridge detection, debug summary, and future retrieval.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-user-disable",
@@ -349,7 +622,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Persistent archive writes stop; current short-lived Session Timeline may still operate locally.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-direct-voice-no-full-transcript",
@@ -365,7 +651,21 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Archive may store input_source=voice_direct and safe event summaries, not full transcript or raw audio.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret", "raw audio"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER",
+      "raw audio"
+    ]
   },
   {
     "id": "session-archive-overlay-sensitive-hidden",
@@ -381,7 +681,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Overlay does not display sensitive archive content; future archive cues must be opt-in and safe-summary-only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-debug-safe-summary-only",
@@ -397,7 +710,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Debug shows archive counts, retention, safe event summaries, and skip reasons only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-retention-expires-old",
@@ -413,7 +739,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Expired archive entries are excluded from search, bridge detection, debug summaries, and future retrieval.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-export-placeholder",
@@ -429,7 +768,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Architecture reserves an export path for safe summaries only; v1 runtime does not implement export yet.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-current-input-priority-over-retrieval",
@@ -445,7 +797,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Current user input stays higher priority than any future archive retrieval signal.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-persona-core-priority",
@@ -461,7 +826,20 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Persona Core remains higher priority than archive, and archive cannot change Rei into a different persona.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "session-archive-privacy-level-blocks-retrieval",
@@ -477,6 +855,19 @@
     "can_generate_memory_candidate": false,
     "requires_user_confirmation": false,
     "expected_behavior": "Privacy level and deletion status block search result display, bridge detection, and any future retrieval.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full voice transcript", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   }
 ]

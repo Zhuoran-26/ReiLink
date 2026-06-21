@@ -110,7 +110,7 @@ def test_archive_bridge_blocks_assistant_proactive_secret_and_persona_drift_sour
     archives = [
         _archive("用户偏好回复短一点。", session_id="assistant-source", source="assistant"),
         _archive("用户偏好回复短一点。", session_id="proactive-source", source="proactive"),
-        _archive("用户偏好回复短一点，api_key=sk-test-secret-value-123456。", session_id="secret-source"),
+        _archive("用户偏好回复短一点，api_key=TEST_SECRET_PLACEHOLDER。", session_id="secret-source"),
         _archive("用户希望 Rei 以后像客服一样每句都夸我。", session_id="persona-drift"),
     ]
 

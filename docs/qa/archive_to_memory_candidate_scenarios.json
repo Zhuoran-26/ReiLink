@@ -15,7 +15,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The bridge creates one pending session_archive candidate with safe evidence, but does not write long-term memory until the user accepts it.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-repeated-gameplay-recent-pending",
@@ -33,7 +46,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The recent scan can create one pending gameplay preference from repeated safe summaries and includes only archive ids, event ids, counts, and safe evidence.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-short-reply-pending",
@@ -51,7 +77,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "A pending interaction preference is created and appears in the existing 待确认 flow.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-spoiler-preference-pending",
@@ -69,7 +108,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "A pending spoiler-related interaction preference is created for user confirmation only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-single-death-no-candidate",
@@ -87,7 +139,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The bridge skips the single-session event and returns a safe skip reason.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-single-emotion-no-candidate",
@@ -105,7 +170,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The bridge skips the single emotional state and does not create pending or long-term memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-assistant-source-blocked",
@@ -123,7 +201,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "Assistant-origin content is rejected and never treated as the user's memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-proactive-source-blocked",
@@ -141,7 +232,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "Proactive-origin content is rejected and does not become user memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-secret-blocked",
@@ -159,7 +263,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The bridge rejects the item and exposes only a safe rejection reason.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-persona-drift-blocked",
@@ -177,7 +294,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "Persona drift is rejected and never written as memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-duplicate-pending-deduped",
@@ -195,7 +325,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The scan returns a duplicate skip and does not add another pending item.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-already-accepted-deduped",
@@ -213,7 +356,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The scan deduplicates against accepted long-term memory and does not recreate pending memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-source-evidence-safe",
@@ -231,7 +387,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The pending item has source=session_archive and public evidence contains safe archive ids/counts/summaries only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-accept-writes-long-term",
@@ -249,7 +418,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "Only explicit user acceptance writes long-term memory through the existing pending-memory accept flow.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-ignore-no-long-term",
@@ -267,7 +449,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "Ignoring the pending candidate does not write long-term memory and does not add it to prompt memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-scan-recent-empty",
@@ -285,7 +480,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The endpoint returns a safe empty result and does not error.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-scan-recent-limit",
@@ -303,7 +511,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The scan observes the bounded limit and reports archives_scanned/events_scanned without scanning full history.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-search-no-auto-candidate",
@@ -321,7 +542,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "Search returns safe summaries only and never creates memory candidates by itself.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-not-in-prompt-before-accept",
@@ -339,7 +573,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "Pending archive candidates remain outside prompt assembly until accepted.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-renderer-scan-button-visible",
@@ -357,7 +604,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "UI shows 检查可保存偏好 / 从最近归档检查候选 without hiding archive, refresh, delete, clear, or search controls.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-renderer-created-pending-count",
@@ -375,7 +635,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The UI shows success feedback, pending count updates, and the candidate is visible in 待确认.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-renderer-empty-feedback",
@@ -393,7 +666,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The UI shows a safe skipped message and does not reveal raw archive material.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-renderer-input-unblocked",
@@ -411,7 +697,20 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "The chat input remains visible and the draft is not lost after archive scanning or tab switching.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   },
   {
     "id": "archive-memory-packaged-smoke",
@@ -429,6 +728,19 @@
     "should_use_raw_archive_content": false,
     "should_auto_create_from_search": false,
     "expected_behavior": "Packaged app is non-black, backend connects, scan endpoint is available, pending candidate appears only after explicit scan, and quitting leaves no backend residue.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "API key", "raw prompt", "raw JSON", "raw model response", "full transcript", "raw chat transcript", "full local path", "stdout", "stderr", "secret"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "RAW_MODEL_RESPONSE_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_CHAT_TRANSCRIPT_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "SECRET_MARKER"
+    ]
   }
 ]

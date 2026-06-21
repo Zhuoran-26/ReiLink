@@ -120,7 +120,7 @@ def test_pending_ignored_rejected_and_expired_candidates_are_not_retrieved(tmp_p
     queue = PendingMemoryQueue(tmp_path / "pending.jsonl", player_memory=PlayerMemory(tmp_path / "profile.json", tmp_path / "episodes.jsonl"))
     pending = queue.generate_and_enqueue("我不喜欢长篇攻略", "", "casual_chat", datetime.now(timezone.utc), {})
     queue.ignore(pending[0]["id"])
-    queue.generate_and_enqueue("记住我的 API key 是 sk-test-secret。", "", "casual_chat", datetime.now(timezone.utc), {})
+    queue.generate_and_enqueue("记住我的 API key 是 TEST_SECRET_PLACEHOLDER。", "", "casual_chat", datetime.now(timezone.utc), {})
 
     memory = PlayerMemory(tmp_path / "profile.json", tmp_path / "episodes.jsonl")
     block = memory.retrieve_prompt_memory(user_message="玛尔基特怎么打？", current_game="Elden Ring")
@@ -197,7 +197,7 @@ def test_secret_and_persona_drift_memories_are_not_retrieved(tmp_path: Path):
     memory = _player_memory(
         tmp_path,
         [
-            _memory("secret", "玩家 API key 是 sk-test-secret", memory_type="unknown"),
+            _memory("secret", "玩家 API key 是 TEST_SECRET_PLACEHOLDER", memory_type="unknown"),
             {**_memory("sensitive", "玩家保存了一段敏感凭据", memory_type="interaction_preference"), "privacy_level": "sensitive"},
             _memory("drift", "玩家希望 Rei 以后都撒娇一点", memory_type="interaction_preference"),
             _memory("safe", "玩家希望游戏中回复更短", memory_type="interaction_preference"),
@@ -208,7 +208,7 @@ def test_secret_and_persona_drift_memories_are_not_retrieved(tmp_path: Path):
     serialized = json.dumps(block.as_debug_dict(), ensure_ascii=False)
 
     assert [item.memory_id for item in block.memories] == ["safe"]
-    assert "sk-test-secret" not in serialized
+    assert "TEST_SECRET_PLACEHOLDER" not in serialized
     assert "撒娇" not in serialized
 
 

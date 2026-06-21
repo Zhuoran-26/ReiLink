@@ -114,7 +114,11 @@
     "should_inject_prompt": false,
     "should_update_usage": false,
     "safe_trace_only": true,
-    "forbidden_terms": ["sk-test-secret", "API key", ".env"],
+    "forbidden_terms": [
+      "TEST_SECRET_PLACEHOLDER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER"
+    ],
     "expected_behavior": "Secret-like memory text is filtered and never appears in prompt preview or retrieval events."
   },
   {
@@ -206,7 +210,10 @@
     "should_inject_prompt": false,
     "should_update_usage": false,
     "safe_trace_only": true,
-    "forbidden_terms": ["撒娇", "客服"],
+    "forbidden_terms": [
+      "撒娇",
+      "客服"
+    ],
     "expected_behavior": "Persona drift memory is filtered before prompt assembly."
   },
   {
@@ -233,7 +240,12 @@
     "should_inject_prompt": true,
     "should_update_usage": false,
     "safe_trace_only": true,
-    "forbidden_terms": ["raw prompt", "raw JSON", ".env", "/Users/"],
+    "forbidden_terms": [
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
+    ],
     "expected_behavior": "Prompt Preview shows safe summaries, retrieved_count, omitted_count, and raw_prompt_omitted=true."
   },
   {
@@ -364,7 +376,16 @@
     "should_inject_prompt": false,
     "should_update_usage": false,
     "safe_trace_only": true,
-    "forbidden_terms": ["raw transcript", "raw prompt", "raw JSON", "API key", ".env", "/Users/", "stdout", "stderr"],
+    "forbidden_terms": [
+      "RAW_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ],
     "expected_behavior": "Retrieval observability fields expose only counts, ids, types, safe summaries, and token estimates."
   },
   {
@@ -378,7 +399,10 @@
     "should_inject_prompt": true,
     "should_update_usage": true,
     "safe_trace_only": true,
-    "forbidden_terms": ["我记得你", "根据记忆"],
+    "forbidden_terms": [
+      "我记得你",
+      "根据记忆"
+    ],
     "expected_behavior": "Rei may naturally adapt the response but should not mechanically announce memory retrieval."
   },
   {

@@ -1150,11 +1150,11 @@ def test_overlay_scenarios_have_required_fields():
         "overlay-macos-autoshow-restore-checklist",
     } <= {item.get("id") for item in scenarios}
     required_forbidden_terms = {
-        ".env",
-        "Authorization",
-        "api_key",
-        "raw prompt",
-        "raw JSON",
+        "ENV_FILE_MARKER",
+        "AUTH_HEADER_MARKER",
+        "CREDENTIAL_MARKER",
+        "RAW_PROMPT_MARKER",
+        "RAW_JSON_MARKER",
     }
     for item in scenarios:
         assert item.get("category") in {"overlay", "overlay_privacy", "overlay_packaged"}
@@ -1196,17 +1196,17 @@ def test_session_timeline_scenarios_have_required_fields():
         "session-timeline-packaged-smoke",
     } <= {item.get("id") for item in scenarios}
     required_forbidden_terms = {
-        ".env",
-        "Authorization",
-        "api_key",
-        "raw prompt",
-        "raw JSON",
-        "full user message",
-        "full assistant reply",
-        "full transcript",
-        "raw stdout",
-        "raw stderr",
-        "full local path",
+        "ENV_FILE_MARKER",
+        "AUTH_HEADER_MARKER",
+        "CREDENTIAL_MARKER",
+        "RAW_PROMPT_MARKER",
+        "RAW_JSON_MARKER",
+        "FULL_USER_MESSAGE_MARKER",
+        "FULL_ASSISTANT_REPLY_MARKER",
+        "FULL_TRANSCRIPT_MARKER",
+        "STDOUT_MARKER",
+        "STDERR_MARKER",
+        "LOCAL_PATH_MARKER",
     }
     for item in scenarios:
         assert item.get("category") in {
@@ -1257,19 +1257,19 @@ def test_session_archive_scenarios_have_required_fields():
         "session-archive-privacy-level-blocks-retrieval",
     } <= {item.get("id") for item in scenarios}
     required_forbidden_terms = {
-        ".env",
-        "Authorization",
-        "api_key",
-        "API key",
-        "raw prompt",
-        "raw JSON",
-        "raw model response",
-        "full transcript",
-        "raw chat transcript",
-        "full local path",
-        "stdout",
-        "stderr",
-        "secret",
+        "ENV_FILE_MARKER",
+        "AUTH_HEADER_MARKER",
+        "CREDENTIAL_MARKER",
+        "CREDENTIAL_MARKER",
+        "RAW_PROMPT_MARKER",
+        "RAW_JSON_MARKER",
+        "RAW_MODEL_RESPONSE_MARKER",
+        "FULL_TRANSCRIPT_MARKER",
+        "RAW_CHAT_TRANSCRIPT_MARKER",
+        "LOCAL_PATH_MARKER",
+        "STDOUT_MARKER",
+        "STDERR_MARKER",
+        "SECRET_MARKER",
     }
     for item in scenarios:
         assert item.get("category") == "session_archive"
@@ -1348,19 +1348,19 @@ def test_session_archive_search_scenarios_have_required_fields():
         "session-archive-search-packaged-smoke",
     } <= ids
     required_forbidden_terms = {
-        ".env",
-        "Authorization",
-        "api_key",
-        "API key",
-        "raw prompt",
-        "raw JSON",
-        "raw model response",
-        "full transcript",
-        "raw chat transcript",
-        "full local path",
-        "stdout",
-        "stderr",
-        "secret",
+        "ENV_FILE_MARKER",
+        "AUTH_HEADER_MARKER",
+        "CREDENTIAL_MARKER",
+        "CREDENTIAL_MARKER",
+        "RAW_PROMPT_MARKER",
+        "RAW_JSON_MARKER",
+        "RAW_MODEL_RESPONSE_MARKER",
+        "FULL_TRANSCRIPT_MARKER",
+        "RAW_CHAT_TRANSCRIPT_MARKER",
+        "LOCAL_PATH_MARKER",
+        "STDOUT_MARKER",
+        "STDERR_MARKER",
+        "SECRET_MARKER",
     }
     for item in scenarios:
         assert item.get("category") == "session_archive_search"
@@ -1395,19 +1395,19 @@ def test_archive_to_memory_candidate_scenarios_have_required_fields():
         "archive-memory-packaged-smoke",
     } <= ids
     required_forbidden_terms = {
-        ".env",
-        "Authorization",
-        "api_key",
-        "API key",
-        "raw prompt",
-        "raw JSON",
-        "raw model response",
-        "full transcript",
-        "raw chat transcript",
-        "full local path",
-        "stdout",
-        "stderr",
-        "secret",
+        "ENV_FILE_MARKER",
+        "AUTH_HEADER_MARKER",
+        "CREDENTIAL_MARKER",
+        "CREDENTIAL_MARKER",
+        "RAW_PROMPT_MARKER",
+        "RAW_JSON_MARKER",
+        "RAW_MODEL_RESPONSE_MARKER",
+        "FULL_TRANSCRIPT_MARKER",
+        "RAW_CHAT_TRANSCRIPT_MARKER",
+        "LOCAL_PATH_MARKER",
+        "STDOUT_MARKER",
+        "STDERR_MARKER",
+        "SECRET_MARKER",
     }
     for item in scenarios:
         assert item.get("category") == "archive_to_memory_candidate"
@@ -1447,16 +1447,16 @@ def test_persona_pack_scenarios_have_required_fields():
         "persona-pack-packaged-smoke",
     } <= {item.get("id") for item in scenarios}
     required_forbidden_terms = {
-        ".env",
-        "Authorization",
-        "api_key",
-        "raw prompt",
-        "raw JSON",
-        "full user message",
-        "full assistant reply",
-        "full local path",
-        "raw stdout",
-        "raw stderr",
+        "ENV_FILE_MARKER",
+        "AUTH_HEADER_MARKER",
+        "CREDENTIAL_MARKER",
+        "RAW_PROMPT_MARKER",
+        "RAW_JSON_MARKER",
+        "FULL_USER_MESSAGE_MARKER",
+        "FULL_ASSISTANT_REPLY_MARKER",
+        "LOCAL_PATH_MARKER",
+        "STDOUT_MARKER",
+        "STDERR_MARKER",
     }
     for item in scenarios:
         assert item.get("category") in {
@@ -1608,14 +1608,14 @@ def test_voice_input_local_asr_release_regression_scenarios_are_present():
         "local-asr-backend-no-residual-process",
     }
     required_forbidden_terms = {
-        ".env",
-        "Authorization",
-        "api_key",
-        "raw stdout",
-        "raw stderr",
-        "full audio path",
-        "full transcript",
-        "base64",
+        "ENV_FILE_MARKER",
+        "AUTH_HEADER_MARKER",
+        "CREDENTIAL_MARKER",
+        "STDOUT_MARKER",
+        "STDERR_MARKER",
+        "FULL_AUDIO_PATH_MARKER",
+        "FULL_TRANSCRIPT_MARKER",
+        "BASE64_MARKER",
     }
 
     assert release_ids <= set(by_id)

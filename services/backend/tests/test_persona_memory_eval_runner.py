@@ -138,7 +138,7 @@ def test_persona_memory_eval_result_shape_is_stable_and_safe():
     assert_report_is_safe(report)
     serialized = json.dumps(report, ensure_ascii=False).lower()
     assert "raw prompt should never be copied" not in serialized
-    assert "sk-test-secret" not in serialized
+    assert "TEST_SECRET_PLACEHOLDER" not in serialized
 
 
 def test_persona_memory_eval_live_missing_marker_is_warning(monkeypatch):
@@ -199,7 +199,7 @@ def test_persona_memory_eval_live_hard_fail_tiers(monkeypatch):
         monkeypatch,
         [
             "PromptMemoryBlock 里说你喜欢先探索。",
-            "你的 API key 是 sk-live-secret。",
+            "你的 API key 是 TEST_SECRET_PLACEHOLDER。",
             "主人，亲亲，你太棒了。",
             "我不能剧透。",
         ],
@@ -372,8 +372,8 @@ def test_prompt_preview_memory_summary_stays_safe_and_does_not_update_usage():
                     "created_at": now.isoformat(),
                     "updated_at": now.isoformat(),
                     "type": "unknown",
-                    "summary": "玩家 API key 是 sk-test-secret",
-                    "user_visible_text": "玩家 API key 是 sk-test-secret",
+                    "summary": "玩家 API key 是 TEST_SECRET_PLACEHOLDER",
+                    "user_visible_text": "玩家 API key 是 TEST_SECRET_PLACEHOLDER",
                     "source_candidate_id": "pending-preview-secret",
                     "is_active": True,
                     "related_game": None,
@@ -407,7 +407,7 @@ def test_prompt_preview_memory_summary_stays_safe_and_does_not_update_usage():
     assert profile_after_preview.long_term_memories[0]["use_count"] == 7
     assert "raw transcript should stay hidden" not in serialized
     assert "回答短一点" not in serialized
-    assert "sk-test-secret" not in serialized
+    assert "TEST_SECRET_PLACEHOLDER" not in serialized
     assert "api key 是" not in serialized
 
 

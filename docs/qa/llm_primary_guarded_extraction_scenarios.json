@@ -12,7 +12,11 @@
     },
     "expected_decision": "apply",
     "expected_behavior": "Typed text enters LLM-primary extraction. Guard validates catalog grounding and can apply current_boss through deterministic state update.",
-    "must_not_do": ["rule_first_primary_read", "memory_write", "proactive_trigger"]
+    "must_not_do": [
+      "rule_first_primary_read",
+      "memory_write",
+      "proactive_trigger"
+    ]
   },
   {
     "id": "llm-primary-v101-switch-negation-malenia-to-margit",
@@ -29,7 +33,12 @@
     },
     "expected_decision": "apply",
     "expected_behavior": "Guard applies Margit as the new current boss from the LLM-primary candidate. Rule grounding must not preserve Malenia only because it was mentioned first.",
-    "must_not_do": ["rule_first_old_boss_override", "keep_malenia", "memory_write", "proactive_trigger"]
+    "must_not_do": [
+      "rule_first_old_boss_override",
+      "keep_malenia",
+      "memory_write",
+      "proactive_trigger"
+    ]
   },
   {
     "id": "llm-primary-v101-from-a-to-b-switch",
@@ -44,7 +53,10 @@
     },
     "expected_decision": "apply",
     "expected_behavior": "LLM-primary switch semantics should win over the old boss rule hit when schema and guard confidence are sufficient.",
-    "must_not_do": ["fallback_to_old_rule_hit", "silent_conflict"]
+    "must_not_do": [
+      "fallback_to_old_rule_hit",
+      "silent_conflict"
+    ]
   },
   {
     "id": "llm-primary-v101-guide-only-margit-no-switch",
@@ -58,9 +70,15 @@
       "guide_only_entity": "margit"
     },
     "expected_decision": "candidate_only",
-    "acceptable_decisions": ["candidate_only", "ask_clarification"],
+    "acceptable_decisions": [
+      "candidate_only",
+      "ask_clarification"
+    ],
     "expected_behavior": "Guide-only mention can help the reply but must not switch current boss.",
-    "must_not_do": ["overwrite_current_boss", "treat_guide_entity_as_current_target"]
+    "must_not_do": [
+      "overwrite_current_boss",
+      "treat_guide_entity_as_current_target"
+    ]
   },
   {
     "id": "llm-primary-v101-voice-typo-malenia",
@@ -73,9 +91,16 @@
       "possible_asr_recovery": true
     },
     "expected_decision": "apply",
-    "acceptable_decisions": ["apply", "ask_clarification"],
+    "acceptable_decisions": [
+      "apply",
+      "ask_clarification"
+    ],
     "expected_behavior": "Voice typo should produce an LLM-primary candidate trace. High grounding can apply; uncertainty should ask clarification.",
-    "must_not_do": ["no_semantic_signal_without_candidate", "large_alias_patch_only", "memory_write"]
+    "must_not_do": [
+      "no_semantic_signal_without_candidate",
+      "large_alias_patch_only",
+      "memory_write"
+    ]
   },
   {
     "id": "llm-primary-v101-voice-uncertain-cat-ear-margit",
@@ -89,7 +114,10 @@
     },
     "expected_decision": "ask_clarification",
     "expected_behavior": "Uncertain ASR typo should be visible as candidate / clarification trace, not a silent no-op or unsafe state write.",
-    "must_not_do": ["silent_no_signal", "unsafe_apply_without_grounding"]
+    "must_not_do": [
+      "silent_no_signal",
+      "unsafe_apply_without_grounding"
+    ]
   },
   {
     "id": "voice-direct-v101-short-transcript-blocked",
@@ -99,7 +127,12 @@
     "precondition": "Direct Conversation Mode is enabled",
     "expected_decision": "ready_to_send",
     "expected_behavior": "Short transcript is placed in the input for confirmation and is not auto-sent to chat.",
-    "must_not_do": ["chat_auto_send", "memory_write", "proactive_trigger", "event_stream_full_transcript"]
+    "must_not_do": [
+      "chat_auto_send",
+      "memory_write",
+      "proactive_trigger",
+      "event_stream_full_transcript"
+    ]
   },
   {
     "id": "llm-primary-voice-direct-asr-near-miss-margit",
@@ -110,12 +143,22 @@
     "expected_candidate": {
       "intent": "report_current_boss",
       "possible_boss": "margit",
-      "uncertainty": ["possible_asr_entity_misspelling"]
+      "uncertainty": [
+        "possible_asr_entity_misspelling"
+      ]
     },
     "expected_decision": "ask_clarification",
-    "acceptable_decisions": ["ask_clarification", "candidate_only", "apply_if_grounding_high"],
+    "acceptable_decisions": [
+      "ask_clarification",
+      "candidate_only",
+      "apply_if_grounding_high"
+    ],
     "expected_behavior": "Voice source still uses LLM-primary extraction. ASR uncertainty lowers source reliability unless catalog and context grounding are strong enough.",
-    "must_not_do": ["add_alias_patch_for_every_typo", "silent_wrong_update", "memory_write"]
+    "must_not_do": [
+      "add_alias_patch_for_every_typo",
+      "silent_wrong_update",
+      "memory_write"
+    ]
   },
   {
     "id": "llm-primary-conflict-explicit-switch-allowed",
@@ -131,7 +174,10 @@
     },
     "expected_decision": "apply",
     "expected_behavior": "A conflict with current boss is not automatically low confidence. Explicit switch wording raises context confidence and guard may apply.",
-    "must_not_do": ["keep_old_boss_only_because_conflict_exists", "silent_conflict_without_trace"]
+    "must_not_do": [
+      "keep_old_boss_only_because_conflict_exists",
+      "silent_conflict_without_trace"
+    ]
   },
   {
     "id": "llm-primary-guide-reference-does-not-switch-boss",
@@ -146,9 +192,15 @@
       "boss_switched": false
     },
     "expected_decision": "candidate_only",
-    "acceptable_decisions": ["candidate_only", "ask_clarification"],
+    "acceptable_decisions": [
+      "candidate_only",
+      "ask_clarification"
+    ],
     "expected_behavior": "Guard distinguishes guide request from current boss report and should not silently switch current_boss.",
-    "must_not_do": ["overwrite_current_boss", "treat_entity_mention_as_state_update"]
+    "must_not_do": [
+      "overwrite_current_boss",
+      "treat_entity_mention_as_state_update"
+    ]
   },
   {
     "id": "llm-primary-death-increment",
@@ -176,7 +228,9 @@
     },
     "expected_decision": "apply",
     "expected_behavior": "LLM distinguishes absolute death count from increment. Guard applies deterministic absolute update only when it is consistent.",
-    "must_not_do": ["double_count_as_increment"]
+    "must_not_do": [
+      "double_count_as_increment"
+    ]
   },
   {
     "id": "llm-primary-boss-cleared-vague",
@@ -189,9 +243,14 @@
       "boss_cleared": true
     },
     "expected_decision": "apply",
-    "acceptable_decisions": ["apply", "ask_clarification"],
+    "acceptable_decisions": [
+      "apply",
+      "ask_clarification"
+    ],
     "expected_behavior": "Guard can apply boss_cleared only when current context makes the reference clear; otherwise it asks clarification.",
-    "must_not_do": ["clear_unknown_boss_without_context"]
+    "must_not_do": [
+      "clear_unknown_boss_without_context"
+    ]
   },
   {
     "id": "llm-primary-next-run-guide-only",
@@ -206,7 +265,10 @@
     },
     "expected_decision": "candidate_only",
     "expected_behavior": "Confirmed voice text uses LLM-primary extraction, but guide_request should not mutate boss or death count.",
-    "must_not_do": ["change_current_boss", "increment_death_count"]
+    "must_not_do": [
+      "change_current_boss",
+      "increment_death_count"
+    ]
   },
   {
     "id": "llm-primary-catalog-miss",
@@ -220,9 +282,15 @@
       "freeform": true
     },
     "expected_decision": "ask_clarification",
-    "acceptable_decisions": ["ask_clarification", "candidate_only"],
+    "acceptable_decisions": [
+      "ask_clarification",
+      "candidate_only"
+    ],
     "expected_behavior": "LLM can produce an unknown freeform entity, but missing catalog grounding lowers apply confidence.",
-    "must_not_do": ["invent_catalog_id", "apply_unknown_entity_as_canonical"]
+    "must_not_do": [
+      "invent_catalog_id",
+      "apply_unknown_entity_as_canonical"
+    ]
   },
   {
     "id": "llm-primary-invalid-json-no-state",
@@ -232,7 +300,13 @@
     "precondition": "LLM provider returns invalid JSON after recovery attempts",
     "expected_decision": "no_op",
     "expected_behavior": "Invalid JSON fails schema validation, writes no state, and records a safe trace failure.",
-    "forbidden_trace_content": ["raw_llm_json", "raw prompt", "API key", ".env", "full local path"]
+    "forbidden_trace_content": [
+      "raw_llm_json",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "llm-primary-timeout-rule-fallback",
@@ -241,9 +315,15 @@
     "input": "我在打玛尔基特",
     "precondition": "LLM provider times out and a deterministic exact rule / catalog match exists",
     "expected_decision": "fallback_to_rule",
-    "acceptable_decisions": ["fallback_to_rule", "no_op"],
+    "acceptable_decisions": [
+      "fallback_to_rule",
+      "no_op"
+    ],
     "expected_behavior": "Rule fallback is allowed only after LLM unavailability and must trace fallback reason. Fallback still passes guard.",
-    "must_not_do": ["hide_provider_timeout", "treat_rule_confidence_as_llm_confidence"]
+    "must_not_do": [
+      "hide_provider_timeout",
+      "treat_rule_confidence_as_llm_confidence"
+    ]
   },
   {
     "id": "llm-primary-timeout-switch-negation-no-old-target-fallback",
@@ -252,9 +332,16 @@
     "input": "我现在不打女武神了，换去打玛尔基特。",
     "precondition": "Current boss is Malenia, LLM provider times out, and deterministic rules would otherwise match the old negated target first",
     "expected_decision": "no_op",
-    "acceptable_decisions": ["no_op", "ask_clarification"],
+    "acceptable_decisions": [
+      "no_op",
+      "ask_clarification"
+    ],
     "expected_behavior": "Provider timeout is shown in safe trace, but rule fallback does not write the negated previous target back as current boss.",
-    "must_not_do": ["fallback_to_negated_old_target", "hide_provider_timeout", "treat_rule_confidence_as_llm_confidence"]
+    "must_not_do": [
+      "fallback_to_negated_old_target",
+      "hide_provider_timeout",
+      "treat_rule_confidence_as_llm_confidence"
+    ]
   },
   {
     "id": "llm-primary-rule-and-llm-agree",
@@ -273,9 +360,15 @@
     "input": "我在打玛莲妮亚",
     "precondition": "Rule exact match suggests a different entity than LLM candidate because of ASR ambiguity",
     "expected_decision": "ask_clarification",
-    "acceptable_decisions": ["ask_clarification", "candidate_only"],
+    "acceptable_decisions": [
+      "ask_clarification",
+      "candidate_only"
+    ],
     "expected_behavior": "Guard surfaces the conflict safely and does not silently overwrite current context.",
-    "must_not_do": ["rule_overrides_llm_without_guard", "llm_overrides_rule_without_trace"]
+    "must_not_do": [
+      "rule_overrides_llm_without_guard",
+      "llm_overrides_rule_without_trace"
+    ]
   },
   {
     "id": "llm-primary-all-input-sources",
@@ -285,7 +378,10 @@
     "precondition": "All user input sources are available",
     "expected_decision": "source_calibrated",
     "expected_behavior": "Typed text, voice_confirmed, and voice_direct all enter LLM-primary extraction. Source only adjusts reliability, confidence, and trace.",
-    "must_not_do": ["voice_only_llm_path", "typed_text_rule_first_primary_path"]
+    "must_not_do": [
+      "voice_only_llm_path",
+      "typed_text_rule_first_primary_path"
+    ]
   },
   {
     "id": "llm-primary-memory-candidate-hint-safe",
@@ -300,7 +396,10 @@
     },
     "expected_decision": "no_op",
     "expected_behavior": "Game context extraction does not write long-term memory. Any memory candidate must go through pending memory confirmation in a separate module.",
-    "must_not_do": ["direct_memory_write", "game_context_memory_merge"]
+    "must_not_do": [
+      "direct_memory_write",
+      "game_context_memory_merge"
+    ]
   },
   {
     "id": "llm-primary-proactive-not-triggered",
@@ -313,7 +412,10 @@
     },
     "expected_decision": "candidate_only",
     "expected_behavior": "Extraction candidate can update game-session context only if guard allows, but it cannot directly schedule proactive. Proactive Safe Gating remains the only proactive trigger path.",
-    "must_not_do": ["direct_proactive_trigger", "bypass_proactive_cooldown"]
+    "must_not_do": [
+      "direct_proactive_trigger",
+      "bypass_proactive_cooldown"
+    ]
   },
   {
     "id": "llm-primary-trace-privacy",
@@ -338,7 +440,18 @@
       "safe_trace_summary"
     ],
     "expected_behavior": "Debug / Game workspace / Event Stream show safe trace summaries only.",
-    "forbidden_trace_content": ["full transcript", "full user input", "raw prompt", "raw LLM JSON", "API key", ".env", "full local path", "stdout", "stderr", "full assistant reply"]
+    "forbidden_trace_content": [
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_USER_INPUT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER"
+    ]
   },
   {
     "id": "llm-primary-voice-confirmed-source",
@@ -348,7 +461,10 @@
     "precondition": "Voice transcript is placed in the input and the user explicitly clicks send",
     "expected_decision": "apply",
     "expected_behavior": "Confirmed voice transcript enters the same LLM-primary path with input_source=voice_confirmed and can update current boss through deterministic guard.",
-    "must_not_do": ["treat_confirmed_voice_as_direct_auto_send", "hide_source_metadata"]
+    "must_not_do": [
+      "treat_confirmed_voice_as_direct_auto_send",
+      "hide_source_metadata"
+    ]
   },
   {
     "id": "llm-primary-voice-direct-source",
@@ -358,7 +474,11 @@
     "precondition": "Direct Conversation Mode is explicitly enabled and transcript auto-send succeeds",
     "expected_decision": "apply",
     "expected_behavior": "Direct voice transcript enters normal chat flow with input_source=voice_direct; guard trace is visible and direct conversation still speaks according to Voice Profile.",
-    "must_not_do": ["bypass_chat_flow", "write_state_before_guard", "leak_full_transcript_to_event_stream"]
+    "must_not_do": [
+      "bypass_chat_flow",
+      "write_state_before_guard",
+      "leak_full_transcript_to_event_stream"
+    ]
   },
   {
     "id": "llm-primary-low-confidence-no-op",
@@ -367,9 +487,15 @@
     "input": "那个东西又寄了",
     "precondition": "LLM returns low confidence candidate with weak grounding",
     "expected_decision": "candidate_only",
-    "acceptable_decisions": ["candidate_only", "no_op"],
+    "acceptable_decisions": [
+      "candidate_only",
+      "no_op"
+    ],
     "expected_behavior": "Low confidence candidate is observable but does not change game state.",
-    "must_not_do": ["apply_low_confidence_boss", "invent_catalog_alias"]
+    "must_not_do": [
+      "apply_low_confidence_boss",
+      "invent_catalog_alias"
+    ]
   },
   {
     "id": "llm-primary-medium-confidence-candidate-only",
@@ -379,7 +505,9 @@
     "precondition": "LLM proposes Tree Sentinel with medium confidence and no rule agreement",
     "expected_decision": "candidate_only",
     "expected_behavior": "Medium confidence unknown-alias candidate remains candidate-only unless grounding or rule agreement raises apply confidence.",
-    "must_not_do": ["silently_apply_medium_unknown_alias"]
+    "must_not_do": [
+      "silently_apply_medium_unknown_alias"
+    ]
   },
   {
     "id": "llm-primary-shadow-boundary-not-writing",
@@ -389,7 +517,11 @@
     "precondition": "Legacy Shadow Mode also observes a candidate",
     "expected_decision": "candidate_only",
     "expected_behavior": "Shadow candidate remains observability-only. Only LLM-primary guard apply path can write state.",
-    "must_not_do": ["shadow_event_writes_game_state", "shadow_event_writes_memory", "shadow_event_triggers_proactive"]
+    "must_not_do": [
+      "shadow_event_writes_game_state",
+      "shadow_event_writes_memory",
+      "shadow_event_triggers_proactive"
+    ]
   },
   {
     "id": "llm-primary-event-stream-safe-summary",
@@ -397,9 +529,21 @@
     "input_source": "voice_direct",
     "input": "我换去打玛尔基特了",
     "precondition": "Debug Event Stream is open after a guarded apply",
-    "expected_trace_fields": ["input_source", "llm_guard_decision", "llm_guard_summary", "applied_updates"],
+    "expected_trace_fields": [
+      "input_source",
+      "llm_guard_decision",
+      "llm_guard_summary",
+      "applied_updates"
+    ],
     "expected_behavior": "Event Stream shows safe LLM-primary / guard summary, applied update labels, and no raw prompt or transcript.",
-    "forbidden_trace_content": ["full transcript", "raw prompt", "raw LLM JSON", "API key", ".env", "full local path"]
+    "forbidden_trace_content": [
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "llm-primary-game-workspace-update-visible",
@@ -409,7 +553,9 @@
     "precondition": "Game workspace Current Context is visible or opened after chat",
     "expected_decision": "apply",
     "expected_behavior": "After deterministic state apply, Game workspace displays current boss and session state consistently with Debug trace.",
-    "must_not_do": ["debug_trace_updates_but_game_workspace_stale"]
+    "must_not_do": [
+      "debug_trace_updates_but_game_workspace_stale"
+    ]
   },
   {
     "id": "llm-primary-old-flow-no-crash",
@@ -418,9 +564,15 @@
     "input": "我现在卡在玛尔基特",
     "precondition": "Provider is unavailable or LLM-primary is disabled for compatibility",
     "expected_decision": "fallback_to_rule",
-    "acceptable_decisions": ["fallback_to_rule", "apply"],
+    "acceptable_decisions": [
+      "fallback_to_rule",
+      "apply"
+    ],
     "expected_behavior": "Existing rule-supported flow does not crash and still provides safe state updates when LLM-primary cannot run.",
-    "must_not_do": ["break_rule_fallback", "block_chat_reply"]
+    "must_not_do": [
+      "break_rule_fallback",
+      "block_chat_reply"
+    ]
   },
   {
     "id": "llm-primary-v1-0-2-minimal-updates-schema",
@@ -429,9 +581,17 @@
     "input": "我换去打玛尔基特了。",
     "precondition": "LLM returns minimal v1.0.2 JSON with is_game_related, intent, confidence, updates, and safe_trace_summary only",
     "expected_decision": "apply",
-    "expected_trace_fields": ["llm_schema_valid", "primary_extractor", "guard_final_decision", "applied_by"],
+    "expected_trace_fields": [
+      "llm_schema_valid",
+      "primary_extractor",
+      "guard_final_decision",
+      "applied_by"
+    ],
     "expected_behavior": "Missing optional fields do not fail schema; guard applies Margit through LLM-primary rather than rule fallback.",
-    "must_not_do": ["require_all_optional_fields", "fallback_to_rule_when_llm_candidate_valid"]
+    "must_not_do": [
+      "require_all_optional_fields",
+      "fallback_to_rule_when_llm_candidate_valid"
+    ]
   },
   {
     "id": "llm-primary-v1-0-2-json-recovery",
@@ -440,9 +600,18 @@
     "input": "我换去打玛尔基特了。",
     "precondition": "LLM returns fenced JSON, prose-wrapped JSON, or an array whose first item is the JSON object",
     "expected_decision": "apply",
-    "expected_trace_fields": ["json_recovery_stage", "llm_schema_valid"],
+    "expected_trace_fields": [
+      "json_recovery_stage",
+      "llm_schema_valid"
+    ],
     "expected_behavior": "Safe parser recovers the first JSON object, validates schema, and does not expose raw provider text.",
-    "forbidden_trace_content": ["raw LLM JSON", "raw prompt", "API key", ".env", "full local path"]
+    "forbidden_trace_content": [
+      "RAW_JSON_MARKER",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "llm-primary-v1-0-2-compat-retry-success",
@@ -451,9 +620,17 @@
     "input": "我换去打玛尔基特了。",
     "precondition": "First primary attempt returns invalid JSON, compat retry without response_format returns valid minimal JSON",
     "expected_decision": "apply",
-    "expected_trace_fields": ["first_attempt_failed", "compat_retry_used", "compat_retry_succeeded", "llm_provider_status"],
+    "expected_trace_fields": [
+      "first_attempt_failed",
+      "compat_retry_used",
+      "compat_retry_succeeded",
+      "llm_provider_status"
+    ],
     "expected_behavior": "Trace shows first_attempt_failed=invalid_json and compat_retry_succeeded=true; final apply is still LLM-primary.",
-    "must_not_do": ["silently_fallback_to_rule", "hide_compat_retry"]
+    "must_not_do": [
+      "silently_fallback_to_rule",
+      "hide_compat_retry"
+    ]
   },
   {
     "id": "llm-primary-v1-0-2-ultra-compact-retry-success",
@@ -462,9 +639,19 @@
     "input": "我现在不打女武神了，换去打玛尔基特。",
     "precondition": "First primary attempt and compat retry both return invalid or truncated JSON; ultra-compact retry returns valid minimal JSON",
     "expected_decision": "apply",
-    "expected_trace_fields": ["first_attempt_failed", "compat_retry_used", "compat_retry_succeeded", "ultra_compact_used", "json_recovery_stage"],
+    "expected_trace_fields": [
+      "first_attempt_failed",
+      "compat_retry_used",
+      "compat_retry_succeeded",
+      "ultra_compact_used",
+      "json_recovery_stage"
+    ],
     "expected_behavior": "Trace shows the third recovery stage was used; final state is still applied by LLM-primary and switches to Margit.",
-    "must_not_do": ["fallback_to_rule_before_ultra_retry", "hide_ultra_compact_retry", "apply_negated_old_target"]
+    "must_not_do": [
+      "fallback_to_rule_before_ultra_retry",
+      "hide_ultra_compact_retry",
+      "apply_negated_old_target"
+    ]
   },
   {
     "id": "llm-primary-v1-0-2-schema-invalid",
@@ -473,10 +660,20 @@
     "input": "我换去打玛尔基特了。",
     "precondition": "LLM returns valid JSON but an unsafe schema value that cannot be normalized",
     "expected_decision": "no_op",
-    "acceptable_decisions": ["no_op", "fallback_to_rule"],
-    "expected_trace_fields": ["llm_provider_status", "llm_schema_valid", "compat_retry_used"],
+    "acceptable_decisions": [
+      "no_op",
+      "fallback_to_rule"
+    ],
+    "expected_trace_fields": [
+      "llm_provider_status",
+      "llm_schema_valid",
+      "compat_retry_used"
+    ],
     "expected_behavior": "Trace distinguishes schema_error from invalid_json; fallback, if any, is explicit rule fallback and not primary.",
-    "must_not_do": ["label_schema_error_as_primary_success", "leak_raw_schema_payload"]
+    "must_not_do": [
+      "label_schema_error_as_primary_success",
+      "leak_raw_schema_payload"
+    ]
   },
   {
     "id": "llm-primary-v1-0-2-fallback-trace-explicit",
@@ -485,8 +682,17 @@
     "input": "我现在卡在玛尔基特",
     "precondition": "Primary invalid JSON and exact safe rule fallback applies",
     "expected_decision": "fallback_to_rule",
-    "expected_trace_fields": ["primary_extractor", "primary_status", "fallback_extractor", "guard_final_decision", "applied_by"],
+    "expected_trace_fields": [
+      "primary_extractor",
+      "primary_status",
+      "fallback_extractor",
+      "guard_final_decision",
+      "applied_by"
+    ],
     "expected_behavior": "Trace shows primary_extractor=llm, fallback_extractor=rule, guard_final_decision=fallback_to_rule, and applied_by=rule_fallback.",
-    "must_not_do": ["show_only_source_rule", "pretend_rule_fallback_is_llm_primary"]
+    "must_not_do": [
+      "show_only_source_rule",
+      "pretend_rule_fallback_is_llm_primary"
+    ]
   }
 ]

@@ -441,14 +441,14 @@ def test_secret_memory_acknowledgement_retries_without_secret_leak(tmp_path: Pat
 
     agent = DialogueAgent()
     agent.store = ConversationStore(tmp_path / "conversations")
-    provider = _PromptCapturingProvider(["我不会保存 sk-test-secret。", "这类内容不能留下。"])
+    provider = _PromptCapturingProvider(["我不会保存 token=TEST_SECRET_PLACEHOLDER。", "这类内容不能留下。"])
     agent.provider = provider
 
-    response = agent.chat(ChatRequest(message="记住我的 API key 是 sk-test-secret。", session_id="memory-ack-secret"))
+    response = agent.chat(ChatRequest(message="记住我的 token=TEST_SECRET_PLACEHOLDER。", session_id="memory-ack-secret"))
 
     assert provider.calls == 2
     assert response.memory_update.status == "none"
-    assert "sk-test-secret" not in response.reply
+    assert "TEST_SECRET_PLACEHOLDER" not in response.reply
     assert_no_memory_mechanics(response.reply)
 
 

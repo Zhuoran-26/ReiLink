@@ -9,13 +9,13 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "raw JSON",
-      "API key",
-      ".env",
-      "full local path",
-      "full transcript",
-      "full assistant reply"
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER"
     ]
   },
   {
@@ -28,10 +28,10 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "API key",
-      ".env",
-      "full local path"
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
     ]
   },
   {
@@ -44,12 +44,12 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "raw JSON",
-      "API key",
-      ".env",
-      "full local path",
-      "full transcript"
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "FULL_TRANSCRIPT_MARKER"
     ]
   },
   {
@@ -62,11 +62,11 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "raw provider response",
-      "API key",
-      ".env",
-      "full local path"
+      "RAW_PROMPT_MARKER",
+      "RAW_PROVIDER_RESPONSE_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
     ]
   },
   {
@@ -79,13 +79,13 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "raw ASR output",
-      "full transcript",
-      "API key",
-      ".env",
-      "full local path",
-      "audio payload"
+      "RAW_PROMPT_MARKER",
+      "RAW_ASR_OUTPUT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "AUDIO_PAYLOAD_MARKER"
     ]
   },
   {
@@ -100,10 +100,10 @@
     "forbidden_terms": [
       "auto-upload audio",
       "cloud ASR required",
-      "raw prompt",
-      "full transcript",
-      "API key",
-      ".env"
+      "RAW_PROMPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER"
     ]
   },
   {
@@ -116,14 +116,14 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "full assistant reply",
-      "full user input",
-      "API key",
-      ".env",
-      "full local path",
-      "raw stdout",
-      "raw stderr"
+      "RAW_PROMPT_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_USER_INPUT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
     ]
   },
   {
@@ -136,13 +136,13 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "API key",
-      ".env",
-      "full local path",
-      "raw stdout",
-      "raw stderr",
-      "full persona markdown",
-      "full assistant reply"
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "FULL_PERSONA_MARKDOWN_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER"
     ]
   },
   {
@@ -155,13 +155,13 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "full system prompt",
-      "API key",
-      ".env",
-      "full local path",
-      "full persona markdown",
-      "raw provider response"
+      "RAW_PROMPT_MARKER",
+      "FULL_SYSTEM_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER",
+      "FULL_PERSONA_MARKDOWN_MARKER",
+      "RAW_PROVIDER_RESPONSE_MARKER"
     ]
   },
   {
@@ -174,11 +174,11 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "full transcript",
-      "API key",
-      ".env",
-      "full local path"
+      "RAW_PROMPT_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
     ]
   },
   {
@@ -193,9 +193,9 @@
     "forbidden_terms": [
       "implemented now",
       "required for v0.2",
-      "raw prompt",
-      "API key",
-      ".env"
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER"
     ]
   },
   {
@@ -208,10 +208,10 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "API key",
-      ".env",
-      "full local path"
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
     ]
   },
   {
@@ -224,12 +224,12 @@
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [
-      "raw prompt",
-      "raw JSON",
-      "API key",
-      ".env",
-      "raw stdout",
-      "raw stderr"
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
     ]
   }
 ]

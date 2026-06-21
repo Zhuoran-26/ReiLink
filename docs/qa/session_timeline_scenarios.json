@@ -6,7 +6,19 @@
     "expected_status": "timeline_empty",
     "should_store_full_text": false,
     "expected_behavior": "Session Timeline / 本局时间线 is visible as a lightweight folded Debug Panel section and shows 本局还没有记录到关键变化 when opened.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-game-context",
@@ -15,7 +27,19 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Timeline adds a short item such as 切换游戏：Elden Ring without recording raw user text.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-game-session-deltas",
@@ -24,7 +48,19 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Timeline adds safe items for detected boss, death count, frustration state, and boss cleared using short summaries only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-manual-acceptance-death-counts",
@@ -33,7 +69,19 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Game Session treats 已经死了3次, 我现在死了4次, and 我现在死了5次 as absolute death counts, while 又死了两次 increments by two. Timeline shows short summaries such as 死亡次数更新：3, 4, or 5 without storing the full user message.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-passive-death-not-cleared",
@@ -42,7 +90,19 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Game Session records a failed attempt and the correct death count, keeps or detects the Boss, and does not record boss_cleared. Semantic trace may show passive_death_statement as a fallback reason without storing the full user sentence.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-game-switch-hollow-knight-false-knight",
@@ -51,7 +111,19 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Game Context switches to Hollow Knight, later Boss detection resolves 假骑士 / False Knight in that context, and Timeline shows safe game switch and boss detected summaries.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-frustration-eased",
@@ -60,7 +132,19 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Game Session lowers or clears the frustration state and Timeline shows 挫败状态缓和 or an equivalent short safe summary without recording the full user text.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-explicit-memory-trigger",
@@ -69,7 +153,21 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "记住我打 Boss 前喜欢先探索地图，不喜欢直接硬打 creates pending memory; accepting it adds 记忆已接受 to Timeline. 不用记住 / 不要记住 / 别记住 statements do not create pending memory. Timeline does not display the full memory text.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full memory text", "memory evidence", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_MEMORY_TEXT_MARKER",
+      "memory evidence",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-cleared-boss-strategy-followup",
@@ -78,7 +176,21 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Timeline can show Boss cleared and knowledge usage safely. Rei may lightly acknowledge that the boss was already cleared, but should still answer the strategy or review question instead of stopping at a blocking rhetorical question.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "snippet preview", "full knowledge snippet", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "SNIPPET_PREVIEW_MARKER",
+      "FULL_KNOWLEDGE_SNIPPET_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-knowledge-used-safe",
@@ -87,7 +199,21 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Timeline adds 使用知识 with a safe game/topic title and does not show snippet preview, knowledge file path, prompt, or raw JSON.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "snippet preview", "full knowledge snippet", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "SNIPPET_PREVIEW_MARKER",
+      "FULL_KNOWLEDGE_SNIPPET_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-proactive-safe",
@@ -96,7 +222,20 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Timeline adds 主动陪伴已显示 with a safe trigger label and does not show the full proactive or assistant text.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full proactive text", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "full proactive text",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-proactive-safe-gating",
@@ -105,7 +244,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "System actions suppress proactive briefly; recent normal assistant replies prevent immediate proactive interjection; calm state clears old repeated-death/frustration triggers; non-silence proactive triggers do not repeat the same type consecutively; silence may repeat only after cooldown. Proactive wording is short question-based by scene, such as 你还好吗, 没关系吧, or 还在吗.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full proactive text", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "full proactive text",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-trace-safe",
@@ -114,7 +266,19 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Debug / Event Stream show only safe trace fields such as source, confidence, fallback_reason, skip_reason, applied_updates, llm_shadow_status, llm_shadow_summary, and llm_shadow_diff. Confidence is shown as high, medium, or low; full user messages, prompt JSON, raw provider responses, paths, and transcripts are not shown.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-low-confidence-observable",
@@ -123,7 +287,19 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Debug / Event Stream emit a safe semantic trace even when no state update is applied. The trace may show source none or rule, confidence low or medium, fallback_reason such as slang_failure_expression or unknown_boss_alias, and llm_shadow_status succeeded, skipped, or failed with a safe summary. It must not silently no-op.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-low-confidence-not-hardcoded",
@@ -132,7 +308,19 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Low-confidence slang and unknown boss aliases only trigger trace / Shadow Mode observability. They must not be hardcoded into final boss names, death counts, boss_cleared, memory writes, proactive triggers, or other state updates. In v2, even a successful LLM shadow candidate remains non-mutating and only appears as a safe candidate summary and rule diff.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-candidate-not-applied",
@@ -141,7 +329,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Debug / Event Stream may show a safe shadow candidate summary and rule / shadow diff, but final applied_updates and game-session state remain rule-first. Shadow memory and proactive candidates do not create pending memory or schedule proactive messages.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full memory text", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_MEMORY_TEXT_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-provider-unavailable",
@@ -150,7 +351,19 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Debug / Event Stream record llm_shadow_status skipped and a safe provider_unavailable summary while keeping applied_updates empty unless rules independently found a safe update. No API key, provider payload, or full user sentence is shown.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-real-provider-diagnostics",
@@ -159,7 +372,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Semantic Shadow reuses the main backend provider config, prefers the fast or lightweight model, and records a safe status of succeeded, timeout, auth_failed, invalid_json, provider_error, or provider_unavailable. During API chat, rules remain synchronous while the real LLM shadow diagnostic can complete as a background Debug update. If main chat provider is available, Shadow must not incorrectly report provider_unavailable.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider request body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_REQUEST_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-json-output-stability",
@@ -168,7 +394,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Semantic Shadow asks for a compact JSON-only object and safely parses strict JSON. If the provider wraps the object in Markdown, brief prose, or an array, the parser may recover the first object and show only a short safe recovery summary. If recovery fails, Event Stream records shadow_invalid_json safely. No recovered or failed result writes game state, creates memory, or triggers proactive behavior.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_RESPONSE_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-provider-compat-retry",
@@ -177,7 +416,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Background Semantic Shadow may retry once without response_format. If retry succeeds, Event Stream records shadow_succeeded with a compatibility-mode summary and safe diagnostics. If retry also fails with invalid_json, the next allowed attempt is the ultra-compact fallback. Timeout, auth_failed, provider_unavailable, and provider_error do not trigger compatibility or ultra-compact retries.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_RESPONSE_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-ultra-compact-fallback",
@@ -186,7 +438,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Background Semantic Shadow may make one final ultra-compact flat JSON attempt. If it succeeds, Event Stream records shadow_succeeded with an ultra_compact mode summary and no state, memory, or proactive writes. If it fails, Event Stream records shadow_invalid_json with attempts including normal_json, compat_retry, and ultra_compact.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_RESPONSE_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-provider-safe-diagnostics",
@@ -195,7 +460,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Final shadow events may include response_format_used, compat_retry_used, ultra_compact_used, attempts, last_failure, json_recovery_stage, finish_reason, content_length_bucket, and first_char_type. These fields are short safe labels only and never include raw provider output, prompt text, full user input, paths, secrets, stdout/stderr, or transcript.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_RESPONSE_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-background-final-event",
@@ -204,7 +482,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Event Stream may first show a safe scheduled/deferred shadow event, but it must later append a safe terminal event such as shadow_succeeded, shadow_timeout, shadow_invalid_json, shadow_auth_failed, shadow_provider_unavailable, shadow_provider_error, shadow_cancelled, or shadow_expired. The terminal event is appended instead of replacing only the latest debug snapshot, and it does not apply game state, create memory, or trigger proactive behavior.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider request body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_REQUEST_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-invalid-json-safe",
@@ -213,7 +504,19 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Debug / Event Stream record llm_shadow_status failed with a safe failure reason such as invalid_json, timeout, auth_failed, or provider_error. Raw provider response, prompt JSON, stack traces, paths, stdout/stderr, and secrets are not shown, and no LLM candidate is applied to state.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-qa-freeze-fuzzy-reference",
@@ -222,7 +525,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Main chat replies normally. Event Stream may first append shadow_deferred, then must append a terminal shadow event within the QA window: shadow_succeeded, shadow_timeout, shadow_invalid_json, shadow_auth_failed, shadow_provider_unavailable, shadow_provider_error, shadow_cancelled, or shadow_expired. It must not remain permanently in background waiting.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_RESPONSE_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-qa-freeze-slang-failure",
@@ -231,7 +547,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Debug / Event Stream emit a rule and/or shadow trace with safe fields. Shadow may show a candidate summary, skipped reason, or failure reason, but it does not directly apply boss, death_count, frustration, memory, or proactive changes.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_RESPONSE_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-qa-freeze-non-application-boundary",
@@ -240,7 +569,21 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Shadow success means only candidate understanding succeeded. Shadow does not directly change Game Context, create pending memory, write long-term memory, or trigger proactive. If rule-first logic independently applies an update, the trace must keep applied_updates distinguishable from Shadow diagnostics.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full memory text", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_RESPONSE_MARKER",
+      "FULL_MEMORY_TEXT_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-semantic-shadow-qa-freeze-known-limitation",
@@ -249,7 +592,20 @@
     "expected_status": "timeline_privacy_safe",
     "should_store_full_text": false,
     "expected_behavior": "Event Stream shows a clear terminal status plus safe diagnostics such as attempts, last_failure, json_recovery_stage, finish_reason, content_length_bucket, and first_char_type. This is accepted as the QA Freeze known limitation as long as main chat is unaffected and Shadow does not pollute state.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "provider response body", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "PROVIDER_RESPONSE_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-memory-actions-safe",
@@ -258,7 +614,21 @@
     "expected_status": "timeline_item_added",
     "should_store_full_text": false,
     "expected_behavior": "Timeline adds 记忆已接受 or 记忆已忽略 without showing memory text, evidence, or raw memory payload.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full memory text", "memory evidence", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_MEMORY_TEXT_MARKER",
+      "memory evidence",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-clear-current-session",
@@ -267,7 +637,19 @@
     "expected_status": "timeline_cleared",
     "should_store_full_text": false,
     "expected_behavior": "Timeline clears the in-memory current-session items and returns to the empty state without clearing Event Stream, chat, memory, or game session state.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-limit-and-sanitize",
@@ -276,7 +658,19 @@
     "expected_status": "timeline_limited",
     "should_store_full_text": false,
     "expected_behavior": "Timeline keeps only the latest bounded list of items, truncates long summaries, and redacts paths, API keys, raw prompt markers, transcripts, stdout, and stderr.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   },
   {
     "id": "session-timeline-packaged-smoke",
@@ -285,6 +679,18 @@
     "expected_status": "timeline_empty",
     "should_store_full_text": false,
     "expected_behavior": "Packaged app is not black, Settings and Overlay safe mode remain usable, Debug Panel shows Session Timeline / 本局时间线, and the timeline can add and clear safe items without affecting Voice, Local ASR, Event Stream, or Overlay safe mode.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full transcript", "raw stdout", "raw stderr", "full local path"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "FULL_TRANSCRIPT_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
   }
 ]

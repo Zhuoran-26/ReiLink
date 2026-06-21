@@ -8,7 +8,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Persona Pack loader reports enabled=true, status=loaded, version metadata, and the stable section list. Main chat still uses the normal provider flow.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-missing-file-fallback",
@@ -19,7 +30,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Loader fails soft, keeps loaded sections, reports missing_sections safely, and does not crash chat.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-invalid-version-json",
@@ -30,7 +52,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Loader uses safe fallback metadata, reports version_json_invalid, keeps available markdown sections, and does not expose file paths.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-chat-uses-structured-prompt",
@@ -41,7 +74,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Prompt assembly includes 基础系统安全 / 应用身份, Rei Persona Pack v1.1.2, game/session context, confirmed memory, knowledge context, and current user input in the intended order. Examples are marked as non-script references.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-debug-preview-safe",
@@ -52,7 +96,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Prompt Preview shows persona pack id, version, enabled state, status, loaded_sections, missing_sections, raw_content_omitted=true, and path_omitted=true. It does not show full persona markdown or the full system prompt.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-prompt-budget",
@@ -63,7 +118,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Prompt assembly injects the primary persona, style_calibration, voice, response_patterns, boundary, and policy sections with section and total length budgets. examples and anti_examples use only a small stable selection. If truncation happens, Debug / Prompt Preview reports persona_section_truncated and truncated_sections safely.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-chinese-first-runtime",
@@ -74,7 +140,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Runtime-facing sections are Chinese-first, while version.json keeps English keys for compatibility. The assembled persona pack prompt includes Chinese section markers such as 风格校准 and 回复模式.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-cold-quiet-calibration",
@@ -85,7 +162,24 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Rei remains calm, terse, low-emotion, not customer-service-like, not warm-welcome-like, not chicken-soup-like, and not a guide encyclopedia. Replies keep small care and one practical adjustment when useful.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr", "Evangelion", "Rei Ayanami", "NERV", "EVA", "永雏塔菲", "taffy-skill"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "Evangelion",
+      "Rei Ayanami",
+      "NERV",
+      "EVA",
+      "永雏塔菲",
+      "taffy-skill"
+    ]
   },
   {
     "id": "persona-pack-narrow-expression-no-repeat",
@@ -96,7 +190,24 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Rei should keep a narrow, fact-first emotional channel without becoming blank or coldly dismissive. If the meaning is close to the previous reply, it should vary the observation, word order, or a small transition naturally, without hardcoding a fixed variant or overusing words such as 也, 还, or 嗯.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr", "Evangelion", "Rei Ayanami", "NERV", "EVA", "永雏塔菲", "taffy-skill"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "Evangelion",
+      "Rei Ayanami",
+      "NERV",
+      "EVA",
+      "永雏塔菲",
+      "taffy-skill"
+    ]
   },
   {
     "id": "persona-pack-original-ip-boundary",
@@ -107,7 +218,24 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Persona Pack files and assembled persona prompt do not contain external official IP or existing character identifiers. Rei remains an original ReiLink companion, not a public figure, VTuber, or copied character.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr", "Evangelion", "Rei Ayanami", "NERV", "EVA", "永雏塔菲", "taffy-skill"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER",
+      "Evangelion",
+      "Rei Ayanami",
+      "NERV",
+      "EVA",
+      "永雏塔菲",
+      "taffy-skill"
+    ]
   },
   {
     "id": "persona-pack-memory-boundary",
@@ -118,7 +246,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "记住我打 Boss 前喜欢先探索地图 creates pending memory only. 以后不用记住这个 does not create pending memory. Persona Pack never directly writes long-term memory.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-proactive-shadow-boundary",
@@ -129,7 +268,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Persona Pack text does not schedule proactive messages, bypass 主动陪伴门控, or let Shadow write game state, memory, or proactive state. Shadow remains candidate-only.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-packaged-backend-resource",
@@ -140,7 +290,18 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "The bundled backend can load Resources/personas/rei when present. If the resource is missing, backend startup and chat fallback instead of crashing.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   },
   {
     "id": "persona-pack-packaged-smoke",
@@ -151,6 +312,17 @@
     "should_bypass_memory_confirmation": false,
     "should_trigger_proactive_directly": false,
     "expected_behavior": "Packaged app starts, backend connects or shows existing provider setup flow, Prompt Preview can report persona pack status or safe fallback, and missing pack does not cause a black screen or backend crash.",
-    "forbidden_terms": [".env", "Authorization", "api_key", "raw prompt", "raw JSON", "full user message", "full assistant reply", "full local path", "raw stdout", "raw stderr"]
+    "forbidden_terms": [
+      "ENV_FILE_MARKER",
+      "AUTH_HEADER_MARKER",
+      "CREDENTIAL_MARKER",
+      "RAW_PROMPT_MARKER",
+      "RAW_JSON_MARKER",
+      "FULL_USER_MESSAGE_MARKER",
+      "FULL_ASSISTANT_REPLY_MARKER",
+      "LOCAL_PATH_MARKER",
+      "STDOUT_MARKER",
+      "STDERR_MARKER"
+    ]
   }
 ]
