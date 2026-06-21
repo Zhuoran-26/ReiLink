@@ -1,7 +1,9 @@
 import { eventBus } from "./eventBus";
+import { systemSpeechSynthesisStrategy, type TtsSpeakSource, type TtsStrategy, type TtsStrategyId } from "./ttsStrategy";
+import type { VoiceSpokenReplyMode } from "./voiceProfile";
 
 export type VoiceStopReason = "user_stop" | "new_message" | "disabled" | "unmount" | "new_reply";
-export type VoiceSpeakSource = "assistant_reply" | "test_voice";
+export type VoiceSpeakSource = TtsSpeakSource;
 
 export type VoiceOutputStatus = {
   active: boolean;
@@ -11,15 +13,24 @@ export type VoiceOutputStatus = {
   hasVoices: boolean;
   hasChineseVoice: boolean;
   selectedVoiceLanguage: string | null;
+  strategyId: TtsStrategyId;
+  strategyLabel: string;
+  strategyDescription: string;
 };
 
 type VoiceOutputListener = (status: VoiceOutputStatus) => void;
-type VoiceSpeakOptions = { rate?: number; volume?: number; source?: VoiceSpeakSource };
+type VoiceSpeakOptions = {
+  rate?: number;
+  volume?: number;
+  source?: VoiceSpeakSource;
+  profile?: VoiceSpokenReplyMode;
+};
 
 type ActiveSpeech = {
-  utterance: SpeechSynthesisUtterance;
   characterCount: number;
   source: VoiceSpeakSource;
+  profile: VoiceSpokenReplyMode;
+  strategyId: TtsStrategyId;
   stopped: boolean;
   started: boolean;
   startTimer: number | null;
@@ -43,41 +54,28 @@ const reasonText = (reason: string) => {
   return labels[reason] ?? "播放失败";
 };
 
-const clamp = (value: number | undefined, min: number, max: number, fallback: number) => {
-  if (typeof value !== "number" || Number.isNaN(value)) return fallback;
-  return Math.min(max, Math.max(min, value));
-};
-
-const isChineseVoice = (voice: SpeechSynthesisVoice) => voice.lang.toLowerCase().startsWith("zh");
-
-const voicePriority = (voice: SpeechSynthesisVoice) => {
-  const language = voice.lang.toLowerCase();
-  if (language === "zh-cn") return 0;
-  if (language === "zh-hans") return 1;
-  if (language.startsWith("zh-")) return 2;
-  if (language.startsWith("zh")) return 3;
-  return 4;
-};
-
 export class VoiceOutputController {
   private activeSpeech: ActiveSpeech | null = null;
   private listeners = new Set<VoiceOutputListener>();
   private lastError: string | null = null;
-  private voices: SpeechSynthesisVoice[] = [];
-  private voicesChangedListenerBound = false;
   private lastUnavailableEventAt = 0;
 
+  constructor(private readonly strategy: TtsStrategy = systemSpeechSynthesisStrategy) {}
+
   getStatus(): VoiceOutputStatus {
-    this.prepareVoices();
-    const selectedVoice = this.selectVoice();
+    this.strategy.prepare(() => this.notify());
+    const strategyStatus = this.strategy.getStatus();
     return {
       active: Boolean(this.activeSpeech),
       phase: this.activeSpeech ? (this.activeSpeech.started ? "playing" : "starting") : "idle",
-      available: this.isAvailable(),
+      available: strategyStatus.available,
       lastError: this.lastError,
-      hasVoices: this.voices.length > 0,
-      hasChineseVoice: this.voices.some(isChineseVoice),
-      selectedVoiceLanguage: selectedVoice?.lang ?? null
+      hasVoices: strategyStatus.hasVoices,
+      hasChineseVoice: strategyStatus.hasChineseVoice,
+      selectedVoiceLanguage: strategyStatus.selectedVoiceLanguage,
+      strategyId: this.strategy.id,
+      strategyLabel: this.strategy.label,
+      strategyDescription: this.strategy.description
     };
   }
 
@@ -94,85 +92,28 @@ export class VoiceOutputController {
     if (!safeText) return false;
     const characterCount = safeText.length;
     const source = options.source ?? "assistant_reply";
-    this.prepareVoices();
-    if (!this.isAvailable()) {
+    const profile = options.profile ?? "full";
+    this.strategy.prepare(() => this.notify());
+    if (!this.strategy.isAvailable()) {
       this.lastError = "当前环境不支持语音输出。";
-      this.emitUnavailable(characterCount, source);
+      this.emitUnavailable(characterCount, source, profile);
       this.notify();
       return false;
     }
 
     this.stop("new_reply");
 
-    const utterance = new window.SpeechSynthesisUtterance(safeText);
-    utterance.rate = clamp(options.rate, 0.7, 1.3, 1);
-    utterance.volume = clamp(options.volume, 0, 1, 1);
-    const selectedVoice = this.selectVoice();
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
-    }
-    utterance.lang = selectedVoice?.lang ?? "zh-CN";
     const activeSpeech: ActiveSpeech = {
-      utterance,
       characterCount,
       source,
+      profile,
+      strategyId: this.strategy.id,
       stopped: false,
       started: false,
       startTimer: null
     };
     this.activeSpeech = activeSpeech;
     this.lastError = null;
-
-    utterance.onstart = () => {
-      if (this.activeSpeech !== activeSpeech || activeSpeech.stopped) return;
-      activeSpeech.started = true;
-      this.clearStartTimer(activeSpeech);
-      eventBus.emit({
-        type: "tts_started",
-        timestamp: now(),
-        character_count: characterCount,
-        source
-      });
-      this.notify();
-    };
-
-    utterance.onend = () => {
-      if (this.activeSpeech !== activeSpeech || activeSpeech.stopped) return;
-      this.clearStartTimer(activeSpeech);
-      this.activeSpeech = null;
-      if (!activeSpeech.started) {
-        this.lastError = reasonText("start_timeout");
-        eventBus.emit({
-          type: "tts_error",
-          timestamp: now(),
-          character_count: characterCount,
-          reason: "start_timeout",
-          status: this.lastError,
-          source
-        });
-        this.notify();
-        return;
-      }
-      eventBus.emit({ type: "tts_completed", timestamp: now(), character_count: characterCount, source });
-      this.notify();
-    };
-
-    utterance.onerror = (event) => {
-      if (this.activeSpeech !== activeSpeech || activeSpeech.stopped) return;
-      this.clearStartTimer(activeSpeech);
-      this.activeSpeech = null;
-      const reason = event.error || "speech_error";
-      this.lastError = reasonText(reason);
-      eventBus.emit({
-        type: "tts_error",
-        timestamp: now(),
-        character_count: characterCount,
-        reason,
-        status: this.lastError,
-        source
-      });
-      this.notify();
-    };
 
     this.notify();
     activeSpeech.startTimer = window.setTimeout(() => {
@@ -185,30 +126,100 @@ export class VoiceOutputController {
         character_count: characterCount,
         reason: "start_timeout",
         status: this.lastError,
-        source
+        source,
+        profile,
+        strategy_id: activeSpeech.strategyId
       });
       this.notify();
     }, START_TIMEOUT_MS);
-    try {
-      if (window.speechSynthesis.paused && typeof window.speechSynthesis.resume === "function") {
-        window.speechSynthesis.resume();
+
+    const attempt = this.strategy.speak({
+      text: safeText,
+      rate: options.rate,
+      volume: options.volume,
+      source,
+      profile,
+      onStart: () => {
+        if (this.activeSpeech !== activeSpeech || activeSpeech.stopped) return;
+        activeSpeech.started = true;
+        this.clearStartTimer(activeSpeech);
+        eventBus.emit({
+          type: "tts_started",
+          timestamp: now(),
+          character_count: characterCount,
+          source,
+          profile,
+          strategy_id: activeSpeech.strategyId
+        });
+        this.notify();
+      },
+      onEnd: () => {
+        if (this.activeSpeech !== activeSpeech || activeSpeech.stopped) return;
+        this.clearStartTimer(activeSpeech);
+        this.activeSpeech = null;
+        if (!activeSpeech.started) {
+          this.lastError = reasonText("start_timeout");
+          eventBus.emit({
+            type: "tts_error",
+            timestamp: now(),
+            character_count: characterCount,
+            reason: "start_timeout",
+            status: this.lastError,
+            source,
+            profile,
+            strategy_id: activeSpeech.strategyId
+          });
+          this.notify();
+          return;
+        }
+        eventBus.emit({
+          type: "tts_completed",
+          timestamp: now(),
+          character_count: characterCount,
+          source,
+          profile,
+          strategy_id: activeSpeech.strategyId
+        });
+        this.notify();
+      },
+      onError: (reason) => {
+        if (this.activeSpeech !== activeSpeech || activeSpeech.stopped) return;
+        this.clearStartTimer(activeSpeech);
+        this.activeSpeech = null;
+        this.lastError = reasonText(reason);
+        eventBus.emit({
+          type: "tts_error",
+          timestamp: now(),
+          character_count: characterCount,
+          reason,
+          status: this.lastError,
+          source,
+          profile,
+          strategy_id: activeSpeech.strategyId
+        });
+        this.notify();
       }
-      window.speechSynthesis.speak(utterance);
-    } catch {
+    });
+
+    if (!attempt.ok) {
       this.clearStartTimer(activeSpeech);
       this.activeSpeech = null;
-      this.lastError = reasonText("speech_error");
+      const reason = attempt.errorReason ?? "speech_error";
+      this.lastError = reasonText(reason);
       eventBus.emit({
         type: "tts_error",
         timestamp: now(),
         character_count: characterCount,
-        reason: "speech_error",
+        reason,
         status: this.lastError,
-        source
+        source,
+        profile,
+        strategy_id: activeSpeech.strategyId
       });
       this.notify();
       return false;
     }
+
     return true;
   }
 
@@ -218,13 +229,15 @@ export class VoiceOutputController {
     activeSpeech.stopped = true;
     this.clearStartTimer(activeSpeech);
     this.activeSpeech = null;
-    window.speechSynthesis?.cancel();
+    this.strategy.stop();
     eventBus.emit({
       type: "tts_stopped",
       timestamp: now(),
       character_count: activeSpeech.characterCount,
       reason,
-      source: activeSpeech.source
+      source: activeSpeech.source,
+      profile: activeSpeech.profile,
+      strategy_id: activeSpeech.strategyId
     });
     this.notify();
   }
@@ -237,51 +250,11 @@ export class VoiceOutputController {
     this.activeSpeech = null;
     this.lastError = null;
     this.listeners.clear();
-    this.voices = [];
-    this.voicesChangedListenerBound = false;
     this.lastUnavailableEventAt = 0;
+    this.strategy.resetForTest();
   }
 
-  private isAvailable() {
-    return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-  }
-
-  private prepareVoices() {
-    if (!this.isAvailable()) return;
-    this.refreshVoices();
-    if (this.voicesChangedListenerBound) return;
-    const synthesis = window.speechSynthesis;
-    const onVoicesChanged = () => {
-      this.refreshVoices();
-      this.notify();
-    };
-    if (typeof synthesis.addEventListener === "function") {
-      synthesis.addEventListener("voiceschanged", onVoicesChanged);
-      this.voicesChangedListenerBound = true;
-      return;
-    }
-    synthesis.onvoiceschanged = onVoicesChanged;
-    this.voicesChangedListenerBound = true;
-  }
-
-  private refreshVoices() {
-    if (!this.isAvailable()) {
-      this.voices = [];
-      return;
-    }
-    try {
-      this.voices = window.speechSynthesis.getVoices?.() ?? [];
-    } catch {
-      this.voices = [];
-    }
-  }
-
-  private selectVoice() {
-    if (this.voices.length === 0) return undefined;
-    return [...this.voices].sort((left, right) => voicePriority(left) - voicePriority(right))[0];
-  }
-
-  private emitUnavailable(characterCount: number, source: VoiceSpeakSource) {
+  private emitUnavailable(characterCount: number, source: VoiceSpeakSource, profile: VoiceSpokenReplyMode) {
     const currentTime = Date.now();
     if (currentTime - this.lastUnavailableEventAt < 3000) return;
     this.lastUnavailableEventAt = currentTime;
@@ -291,7 +264,9 @@ export class VoiceOutputController {
       character_count: characterCount,
       reason: "unavailable",
       status: reasonText("unavailable"),
-      source
+      source,
+      profile,
+      strategy_id: this.strategy.id
     });
   }
 

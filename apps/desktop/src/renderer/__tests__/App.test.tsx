@@ -4344,8 +4344,8 @@ describe("App", () => {
       expect.arrayContaining([
         expect.objectContaining({ type: "voice_profile_applied", spoken_mode: "brief", source: "direct_conversation" }),
         expect.objectContaining({ type: "voice_reply_spoken_excerpt_created", spoken_character_count: 11, original_character_count: 16 }),
-        expect.objectContaining({ type: "voice_reply_auto_speak_started", character_count: 11, spoken_mode: "brief", sentence_count: 2 }),
-        expect.objectContaining({ type: "tts_started", source: "assistant_reply" })
+        expect.objectContaining({ type: "voice_reply_auto_speak_started", character_count: 11, spoken_mode: "brief", sentence_count: 2, strategy_id: "system_speech_synthesis" }),
+        expect.objectContaining({ type: "tts_started", source: "direct_conversation", profile: "brief", strategy_id: "system_speech_synthesis" })
       ])
     );
 
@@ -5175,17 +5175,58 @@ describe("App", () => {
     render(
       <EventStreamPanel
         events={[
-          { type: "tts_started", timestamp: new Date().toISOString(), character_count: 16 },
-          { type: "tts_completed", timestamp: new Date().toISOString(), character_count: 16, source: "test_voice" },
-          { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "user_stop" },
-          { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "new_message" },
-          { type: "tts_stopped", timestamp: new Date().toISOString(), character_count: 16, reason: "disabled" },
+          {
+            type: "tts_started",
+            timestamp: new Date().toISOString(),
+            character_count: 16,
+            source: "assistant_reply",
+            profile: "full",
+            strategy_id: "system_speech_synthesis"
+          },
+          {
+            type: "tts_completed",
+            timestamp: new Date().toISOString(),
+            character_count: 16,
+            source: "test_voice",
+            profile: "full",
+            strategy_id: "system_speech_synthesis"
+          },
+          {
+            type: "tts_stopped",
+            timestamp: new Date().toISOString(),
+            character_count: 16,
+            reason: "user_stop",
+            source: "direct_conversation",
+            profile: "brief",
+            strategy_id: "system_speech_synthesis"
+          },
+          {
+            type: "tts_stopped",
+            timestamp: new Date().toISOString(),
+            character_count: 16,
+            reason: "new_message",
+            source: "direct_conversation",
+            profile: "brief",
+            strategy_id: "system_speech_synthesis"
+          },
+          {
+            type: "tts_stopped",
+            timestamp: new Date().toISOString(),
+            character_count: 16,
+            reason: "disabled",
+            source: "assistant_reply",
+            profile: "silent",
+            strategy_id: "system_speech_synthesis"
+          },
           {
             type: "tts_error",
             timestamp: new Date().toISOString(),
             character_count: 16,
             reason: "unavailable",
-            status: "当前环境不支持"
+            status: "当前环境不支持",
+            source: "test_voice",
+            profile: "full",
+            strategy_id: "system_speech_synthesis"
           },
           {
             type: "voice_profile_applied",
@@ -5218,7 +5259,9 @@ describe("App", () => {
             timestamp: new Date().toISOString(),
             character_count: 24,
             spoken_mode: "brief",
-            sentence_count: 2
+            sentence_count: 2,
+            source: "direct_conversation",
+            strategy_id: "system_speech_synthesis"
           }
         ]}
         open
@@ -5230,7 +5273,11 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("语音开始播放");
     expect(eventStream).toHaveTextContent("语音播放完成");
     expect(eventStream).toHaveTextContent("语音已停止");
+    expect(eventStream).toHaveTextContent("System Speech Synthesis");
+    expect(eventStream).toHaveTextContent("普通回复");
+    expect(eventStream).toHaveTextContent("直接对话");
     expect(eventStream).toHaveTextContent("测试语音");
+    expect(eventStream).toHaveTextContent("全文播报");
     expect(eventStream).toHaveTextContent("新消息打断");
     expect(eventStream).toHaveTextContent("已关闭");
     expect(eventStream).toHaveTextContent("语音播放失败");

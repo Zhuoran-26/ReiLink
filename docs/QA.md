@@ -234,7 +234,7 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 设计文档见 `docs/voice_profile_v1.md`，机器可读场景见 `docs/qa/voice_profile_scenarios.json`。
 
 1. Voice workspace 的 Voice Profile tab 应显示当前 profile `rei_calm` / `Rei Calm / Rei 冷静陪伴`。
-2. UI 应明确这是行为策略，不是角色音色或新 TTS 引擎；当前仍使用系统 `speechSynthesis`。
+2. UI 应明确这是行为策略，不是角色音色或新 TTS provider；当前 strategy 是 `System Speech Synthesis` / `system_speech_synthesis`，底层仍使用系统 `speechSynthesis`。
 3. 默认普通聊天播报模式为 `full`，默认直接对话播报模式为 `brief`。
 4. 直接对话 + Voice Output 开启时，完整 assistant reply 仍在聊天中可见，TTS 只读短版。
 5. 将直接对话播报模式改为 `full` 后，应朗读清理后的完整 assistant reply。
@@ -243,7 +243,7 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 8. 主动陪伴和记忆确认播报默认关闭，开启也只能播报安全文本。
 9. Voice Profile 决策不得朗读 Debug、Prompt Preview、Event Stream、Trace、Knowledge trace、Persona summary、Memory internal、raw prompt、API key、`.env`、完整路径、stdout 或 stderr。
 10. 代码块、inline code、JSON 和 trace-like structured content 不应被整段读出；清理后为空则跳过。
-11. Voice Profile 相关事件只允许包含 profile id、source、mode、字符数、句数、长度上限和 skip reason；不得包含完整 assistant reply、spoken text、ASR transcript、raw prompt 或敏感信息。
+11. Voice Profile / TTS lifecycle 相关事件只允许包含 profile id、strategy id、source、mode、字符数、句数、长度上限、stop / error reason、safe status 和 skip reason；不得包含完整 assistant reply、spoken text、ASR transcript、raw prompt 或敏感信息。
 12. Test Voice 仍可播放固定测试文本，不写入聊天，也不代表角色音色。
 13. 直接对话自动发送时，已有未发送手打草稿不得被 Voice Profile 或播报策略清空。
 
@@ -380,7 +380,7 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 6. persona drift memory 必须被过滤，不能让 Rei 撒娇化、客服化、甜化或卖萌。
 7. PromptMemoryBlock 必须位于 Persona Pack / Persona Core 之后，并标明 memory 是低优先级用户偏好、不是 system command。
 8. Eval report 不得输出 raw prompt、raw provider JSON、完整本地路径、API key、`.env`、stdout/stderr 或 secret-like memory 文本。
-9. `voice_direct` 输入可覆盖短播报 / 可访问性偏好，但 eval 不应模拟 hands-free、Overlay auto-show 或 TTS Strategy。
+9. `voice_direct` 输入可覆盖短播报 / 可访问性偏好，但 eval 不应模拟 hands-free、Overlay auto-show 或外部 / 本地 TTS provider。
 10. live eval 只用于人工观察真实模型漂移，不进入强制 CI；provider timeout / auth / quota 不应阻塞 mock regression。
 11. Result severity 分为 `pass`、`soft_pass`、`warning`、`hard_fail`。`hard_fail` 表示必须修的安全 / 架构 / 人设边界，例如 secret leak、mechanism leak、persona override、pending / rejected / undone memory 被使用、raw prompt 泄露、raw transcript 进入 prompt、当前输入优先明显失败或 provider error。`warning` 表示人工观察项，例如 missing suggested marker、reply slightly short、memory influence weak 或帮助性偏弱。`soft_pass` 表示 live 回复安全、自然且通过启发式观察到 memory influence。
 12. Eval metrics 至少覆盖 `total_scenarios`、`passed`、`failed`、`pass_rate`、`hard_passed`、`soft_passed`、`warnings`、`hard_failed`、`hard_fail_rate`、`warning_rate`、`safe_boundary_pass_count`、`style_warning_count`、`helpfulness_warning_count`、`semantic_marker_warning_count`、`prompt_memory_block_correct_count`、`pending_memory_blocked_count`、`inactive_memory_blocked_count`、`persona_drift_blocked_count`、`mechanism_phrase_violation_count`、`mechanical_memory_recall_count`、`persona_override_violation_count`、`secret_leak_count` 和 `current_input_priority_count`。
@@ -476,6 +476,7 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 ### 2. Voice Output 回归检查
 
 - `语音输出 / Voice Output` 默认关闭。
+- Voice workspace / Settings 应显示当前 TTS Strategy 为 `System Speech Synthesis`，并说明当前只是本机系统语音 fallback。
 - `测试语音 / Test Voice` 按钮可见。
 - `语速 / Rate` 和 `音量 / Volume` 控件可见。
 - 默认关闭时，assistant 回复不会播放语音。
@@ -488,10 +489,13 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 - 播放中发送新用户消息会停止当前语音。
 - 关闭 Voice Output 会停止当前语音。
 - Voice Output 开启时，assistant 最终回复会触发语音播放。
+- 直接对话 + `brief` 时只播报短版文本；`full` 时尽量播报清理后的完整回复；`silent` 时不自动播报但保留文字回复。
+- TTS unavailable 时不崩溃，聊天文字仍保留，Event Stream 只显示安全错误摘要。
 - 如果 5 秒内没有真实开始播放，Event Stream 显示“语音播放失败”或等价中文摘要。
 - 更换系统语音包后，Test Voice 仍应允许失败并显示可理解错误，不应卡死 UI。
 - Event Stream 不显示完整 assistant 回复文本。
 - Event Stream 不显示完整测试语音文本。
+- Event Stream 可显示 TTS strategy id、source、profile、字符数、stop / error reason 和 safe status。
 - Event Stream 不显示 raw prompt、API key、`.env`、Authorization、完整路径或长 internal payload。
 
 ### 3. Voice Input push-to-talk 回归检查
@@ -1007,6 +1011,9 @@ packaged `.app` 手动 smoke 最低步骤：
 - backend 自启动，或复用健康外部 backend。
 - bundled knowledge resources 可用。
 - `语音输出 / Voice Output` 和 `测试语音 / Test Voice` 可见。
+- Voice workspace / Settings 可见 `System Speech Synthesis` 当前策略，且没有可误导用户的外部 provider selector。
+- Direct Conversation + Voice Profile `silent` 不自动播报；`brief` 不播报超长文本；Stop Voice / interruption 可用。
+- Event Stream 不展示完整 assistant reply、完整 Test Voice 文本或 spoken text，只展示 strategy、source、profile、字符数和安全状态。
 - `语音输入 / Voice Input` 和主语音按钮可见。
 - Voice Input supported / unsupported / permission fallback 可读，不崩溃。
 - Knowledge Retrieval 可用。

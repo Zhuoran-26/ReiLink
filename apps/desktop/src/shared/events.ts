@@ -1,6 +1,10 @@
 import type { AudioConversionStatusValue } from "./api";
 import type { OverlayMessageSource, OverlayPosition } from "./overlay";
 
+export type TtsEventSource = "assistant_reply" | "direct_conversation" | "test_voice";
+export type TtsEventProfile = "full" | "brief" | "silent";
+export type TtsEventStrategyId = "system_speech_synthesis";
+
 export type ReiLinkEvent =
   | { type: "user_message_sent"; timestamp: string; text: string; source?: "text" | "voice_confirmed" | "voice_direct"; character_count?: number }
   | { type: "assistant_reply_started"; timestamp: string; message_id?: string }
@@ -99,10 +103,10 @@ export type ReiLinkEvent =
   | { type: "overlay_visibility_suppressed"; timestamp: string; reason: "main_window_active" }
   | { type: "overlay_content_updated"; timestamp: string; source?: OverlayMessageSource; character_count: number; message_count: number }
   | { type: "overlay_error"; timestamp: string; reason: string }
-  | { type: "tts_started"; timestamp: string; character_count: number; source?: "assistant_reply" | "test_voice" }
-  | { type: "tts_completed"; timestamp: string; character_count: number; source?: "assistant_reply" | "test_voice" }
-  | { type: "tts_stopped"; timestamp: string; character_count?: number; reason?: string; source?: "assistant_reply" | "test_voice" }
-  | { type: "tts_error"; timestamp: string; character_count?: number; reason?: string; status?: string; source?: "assistant_reply" | "test_voice" }
+  | { type: "tts_started"; timestamp: string; character_count: number; source?: TtsEventSource; profile?: TtsEventProfile; strategy_id?: TtsEventStrategyId }
+  | { type: "tts_completed"; timestamp: string; character_count: number; source?: TtsEventSource; profile?: TtsEventProfile; strategy_id?: TtsEventStrategyId }
+  | { type: "tts_stopped"; timestamp: string; character_count?: number; reason?: string; source?: TtsEventSource; profile?: TtsEventProfile; strategy_id?: TtsEventStrategyId }
+  | { type: "tts_error"; timestamp: string; character_count?: number; reason?: string; status?: string; source?: TtsEventSource; profile?: TtsEventProfile; strategy_id?: TtsEventStrategyId }
   | { type: "voice_input_started"; timestamp: string; language?: string }
   | { type: "voice_input_completed"; timestamp: string; character_count: number; is_final?: boolean; language?: string }
   | { type: "voice_input_stopped"; timestamp: string; character_count?: number; reason?: string; status?: string; language?: string }
@@ -122,7 +126,7 @@ export type ReiLinkEvent =
   | { type: "voice_profile_applied"; timestamp: string; profile_id: "rei_calm"; spoken_mode: "full" | "brief" | "silent"; source: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; max_spoken_chars: number; max_spoken_sentences: number }
   | { type: "voice_reply_spoken_excerpt_created"; timestamp: string; spoken_mode: "full" | "brief" | "silent"; original_character_count: number; spoken_character_count: number; sentence_count: number; reason?: string }
   | { type: "voice_reply_speak_skipped"; timestamp: string; reason: string; spoken_mode?: "full" | "brief" | "silent"; source?: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; original_character_count?: number }
-  | { type: "voice_reply_auto_speak_started"; timestamp: string; character_count: number; spoken_mode?: "full" | "brief" | "silent"; sentence_count?: number }
+  | { type: "voice_reply_auto_speak_started"; timestamp: string; character_count: number; spoken_mode?: "full" | "brief" | "silent"; sentence_count?: number; source?: "direct_conversation"; strategy_id?: TtsEventStrategyId }
   | { type: "audio_capture_started"; timestamp: string; duration_ms?: number }
   | { type: "audio_capture_completed"; timestamp: string; duration_ms: number; size_bytes: number; mime_type?: string }
   | { type: "audio_capture_stopped"; timestamp: string; reason?: string; duration_ms?: number }

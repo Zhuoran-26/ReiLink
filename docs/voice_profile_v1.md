@@ -1,8 +1,8 @@
 # Voice Profile v1
 
-Updated: 2026-06-17
+Updated: 2026-06-22
 
-Status: implemented as a behavior policy. Voice Profile v1 decides whether an assistant reply may be spoken and whether it is spoken as full, brief, or silent. It does not add a new TTS engine, character voice, voice clone, wake-word mode, or hands-free loop.
+Status: implemented as a behavior policy and wired through TTS Strategy Spike v0. Voice Profile v1 decides whether an assistant reply may be spoken and whether it is spoken as full, brief, or silent. TTS Strategy v0 currently exposes only the local `system_speech_synthesis` fallback around renderer-side `speechSynthesis`; it does not add an external provider, local model provider, character voice, voice clone, wake-word mode, or hands-free loop.
 
 ## Current Profile
 
@@ -15,7 +15,16 @@ Status: implemented as a behavior policy. Voice Profile v1 decides whether an as
 - Max brief length: 2 sentences / 120 characters by default.
 - Debug speaking: disabled.
 - Starting a new recording interrupts active TTS.
-- Test Voice remains available and uses the system `speechSynthesis` voice.
+- Test Voice remains available and uses the `system_speech_synthesis` strategy backed by system `speechSynthesis`.
+
+## TTS Strategy v0
+
+- Strategy id: `system_speech_synthesis`.
+- Strategy role: local fallback around browser / Electron system `speechSynthesis`.
+- The strategy owns speak / stop / availability fallback; Voice Output owns lifecycle status and safe Event Stream summaries.
+- The Voice workspace displays the current strategy as `System Speech Synthesis`.
+- Future local TTS, external TTS, and character voice providers are not implemented.
+- No audio is uploaded by this layer, and no external TTS API key is introduced.
 
 ## Spoken Modes
 
@@ -62,12 +71,15 @@ Voice Profile events may include:
 - profile id,
 - source,
 - spoken mode,
+- TTS strategy id,
 - max character / sentence limits,
 - original and spoken character counts,
 - sentence count,
 - skip reason.
 
 Voice Profile events must not include full assistant text, spoken text, prompt text, ASR transcript, secrets, raw logs, or full local paths.
+
+TTS lifecycle events may include strategy id, source, profile, character count, stop reason, unavailable / error reason, and a short status string. They must not include the full assistant reply, Test Voice text, spoken text, prompt text, ASR transcript, persona markdown, `.env`, API keys, raw provider responses, stdout, stderr, or full local paths.
 
 ## UI Surface
 
@@ -78,7 +90,7 @@ The Voice workspace `Voice Profile` tab shows:
 - max spoken length,
 - proactive and memory speaking toggles,
 - never-spoken categories,
-- `speechSynthesis` caveat,
+- current `System Speech Synthesis` strategy and `speechSynthesis` caveat,
 - explicit note that this is not a character voice.
 
 The full reply remains in chat regardless of spoken mode.
