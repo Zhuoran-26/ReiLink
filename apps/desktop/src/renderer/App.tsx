@@ -157,6 +157,7 @@ type WorkspaceTab = {
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
 const VOICE_DIRECT_MIN_AUTO_SEND_DURATION_MS = 800;
 const VOICE_DIRECT_MIN_AUTO_SEND_CHARS = 4;
+const VOICE_AUTO_SENDING_VISIBLE_MS = 900;
 const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
 const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
   home: "Home / Chat",
@@ -1153,6 +1154,12 @@ const voiceStopReasonText = (reason?: string) => {
   return labels[reason] ?? debugText(reason);
 };
 
+const ttsStopStatusText = (status?: Extract<ReiLinkEvent, { type: "tts_stopped" }>["status"]) => {
+  if (status === "interrupted") return "已打断";
+  if (status === "stopped") return "已停止";
+  return "";
+};
+
 const voiceInputReasonText = (reason?: string, status?: string) => {
   if (status) return status;
   const labels: Record<string, string> = {
@@ -1278,7 +1285,7 @@ const voiceInteractionModeText = (mode: AppSettings["voice_interaction_mode"]) =
   mode === "direct_conversation" ? "直接对话" : "确认后发送";
 
 const voiceInteractionModeDescription = (mode: AppSettings["voice_interaction_mode"]) =>
-  mode === "direct_conversation" ? "转写后会自动发送。" : "转写后需要确认发送。";
+  mode === "direct_conversation" ? "主动录音完成后会自动发送；不会常驻监听。" : "转写先进输入框，需要你确认发送。";
 
 const voiceSpeakSourceText = (source?: VoiceReplySpeakSource) => {
   const labels: Record<VoiceReplySpeakSource, string> = {
@@ -1516,7 +1523,7 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "tts_completed":
       return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_stopped":
-      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", voiceStopReasonText(event.reason)].filter(Boolean).join(" / ");
+      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", ttsStopStatusText(event.status), voiceStopReasonText(event.reason)].filter(Boolean).join(" / ");
     case "tts_error":
       return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", event.status ? debugText(event.status) : debugText(event.reason)].filter(Boolean).join(" / ");
     case "voice_input_started":
@@ -1534,9 +1541,10 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "voice_direct_mode_disabled":
       return "直接对话模式已关闭";
     case "voice_transcription_auto_sent":
-      return [`语音文本 ${event.character_count} 字`, event.provider ? debugText(event.provider) : ""].filter(Boolean).join(" / ");
+      return [event.source === "direct_conversation" ? "直接对话" : "", `语音文本 ${event.character_count} 字`, event.provider ? debugText(event.provider) : ""].filter(Boolean).join(" / ");
     case "voice_transcription_auto_send_blocked":
       return [
+        event.source === "direct_conversation" ? "直接对话" : "",
         directVoiceAutoSendBlockSummary(event.reason),
         `识别文本 ${event.character_count} 字`,
         event.duration_ms ? `${event.duration_ms} ms` : "",
@@ -2027,18 +2035,18 @@ const appendTranscriptToInput = (current: string, transcript: string) => {
 
 const directVoiceAutoSendBlockReasonText = (reason: VoiceDirectAutoSendBlockReason) => {
   const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
-    short_recording: "这句太短了。可以再说一次，或确认后发送。",
-    short_transcript: "识别结果太短了。可以再说一次，或确认后发送。",
-    partial_transcript: "这句像是还没说完。可以再说一次，或确认后发送。"
+    short_recording: "这段录音太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    short_transcript: "识别结果太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    partial_transcript: "这句像是还没说完，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。"
   };
   return labels[reason];
 };
 
 const directVoiceAutoSendBlockSummary = (reason: VoiceDirectAutoSendBlockReason) => {
   const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
-    short_recording: "录音过短，已改为确认发送",
-    short_transcript: "识别文本过短，已改为确认发送",
-    partial_transcript: "疑似半句，已改为确认发送"
+    short_recording: "录音过短，未自动发送",
+    short_transcript: "识别文本过短，未自动发送",
+    partial_transcript: "疑似半句，未自动发送"
   };
   return labels[reason];
 };
@@ -2388,6 +2396,7 @@ export function App() {
   const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>(() => voiceInput.getStatus());
   const [voiceTranscriptReady, setVoiceTranscriptReady] = useState<{ source: MainVoiceInputProvider; characterCount: number } | null>(null);
   const [voiceAutoSendBlockedHint, setVoiceAutoSendBlockedHint] = useState("");
+  const [voiceAutoSendingActive, setVoiceAutoSendingActive] = useState(false);
   const [voiceAssistantTurnActive, setVoiceAssistantTurnActive] = useState(false);
   const [voiceTransientState, setVoiceTransientState] = useState<VoiceTransientState>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
@@ -2410,6 +2419,7 @@ export function App() {
   const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
   const proactiveSuppressedUntilRef = useRef(0);
   const voiceInterruptedTimerRef = useRef<number | null>(null);
+  const voiceAutoSendingTimerRef = useRef<number | null>(null);
 
   const suppressProactiveAfterSystemAction = useCallback(() => {
     proactiveSuppressedUntilRef.current = Date.now() + PROACTIVE_SYSTEM_ACTION_SUPPRESSION_MS;
@@ -2421,25 +2431,48 @@ export function App() {
     voiceInterruptedTimerRef.current = null;
   }, []);
 
+  const clearVoiceAutoSendingTimer = useCallback(() => {
+    if (voiceAutoSendingTimerRef.current === null) return;
+    window.clearTimeout(voiceAutoSendingTimerRef.current);
+    voiceAutoSendingTimerRef.current = null;
+  }, []);
+
+  const showVoiceAutoSending = useCallback(() => {
+    clearVoiceAutoSendingTimer();
+    setVoiceAutoSendingActive(true);
+    voiceAutoSendingTimerRef.current = window.setTimeout(() => {
+      voiceAutoSendingTimerRef.current = null;
+      setVoiceAutoSendingActive(false);
+    }, VOICE_AUTO_SENDING_VISIBLE_MS);
+  }, [clearVoiceAutoSendingTimer]);
+
+  const clearVoiceAutoSending = useCallback(() => {
+    clearVoiceAutoSendingTimer();
+    setVoiceAutoSendingActive(false);
+  }, [clearVoiceAutoSendingTimer]);
+
   const clearVoiceTransientState = useCallback(() => {
     clearVoiceInterruptedTimer();
+    clearVoiceAutoSending();
     setVoiceTransientState(null);
     setVoiceAutoSendBlockedHint("");
-  }, [clearVoiceInterruptedTimer]);
+  }, [clearVoiceAutoSending, clearVoiceInterruptedTimer]);
 
   const setVoiceInterrupted = useCallback(() => {
     clearVoiceInterruptedTimer();
+    clearVoiceAutoSending();
     setVoiceTransientState({ kind: "interrupted" });
     voiceInterruptedTimerRef.current = window.setTimeout(() => {
       voiceInterruptedTimerRef.current = null;
       setVoiceTransientState((current) => current?.kind === "interrupted" ? null : current);
     }, 1400);
-  }, [clearVoiceInterruptedTimer]);
+  }, [clearVoiceAutoSending, clearVoiceInterruptedTimer]);
 
   const setVoiceError = useCallback((message = "语音没有接上。可以再试一次。") => {
     clearVoiceInterruptedTimer();
+    clearVoiceAutoSending();
     setVoiceTransientState({ kind: "error", message });
-  }, [clearVoiceInterruptedTimer]);
+  }, [clearVoiceAutoSending, clearVoiceInterruptedTimer]);
 
   const markVoiceTranscriptReady = useCallback((source: MainVoiceInputProvider, transcript: string) => {
     const characterCount = transcript.trim().length;
@@ -3288,7 +3321,21 @@ export function App() {
 
   function handleRecognizedVoiceTranscript(source: MainVoiceInputProvider, transcript: string, options: { durationMs?: number } = {}) {
     const trimmedTranscript = transcript.trim();
-    if (!trimmedTranscript) return;
+    if (!trimmedTranscript) {
+      setVoiceError("没听清，可以再说一次。");
+      if (appSettings.voice_interaction_mode === "direct_conversation") {
+        eventBus.emit({
+          type: "voice_transcription_auto_send_blocked",
+          timestamp: eventTimestamp(),
+          character_count: 0,
+          provider: source === "unavailable" ? undefined : source,
+          source: "direct_conversation",
+          reason: "short_transcript",
+          duration_ms: options.durationMs
+        });
+      }
+      return;
+    }
     if (appSettings.voice_interaction_mode === "direct_conversation") {
       const blockReason = directVoiceAutoSendBlockReason(trimmedTranscript, options.durationMs);
       if (blockReason) {
@@ -3300,6 +3347,7 @@ export function App() {
           timestamp: eventTimestamp(),
           character_count: trimmedTranscript.length,
           provider: source === "unavailable" ? undefined : source,
+          source: "direct_conversation",
           reason: blockReason,
           duration_ms: options.durationMs
         });
@@ -3307,6 +3355,7 @@ export function App() {
       }
       clearVoiceTransientState();
       clearVoiceTranscriptReady();
+      showVoiceAutoSending();
       void submitChatMessage(trimmedTranscript, {
         clearInput: false,
         voiceTranscript: {
@@ -3358,7 +3407,7 @@ export function App() {
         void api.transcribeLocalAsr(recording.blob, recording.durationMs, LOCAL_ASR_UI_LANGUAGE)
           .then((result) => {
             setLocalAsrTranscriptionResult(result);
-            if (result.status === "local_asr_transcription_succeeded" && result.transcript.trim()) {
+            if (result.status === "local_asr_transcription_succeeded") {
               handleRecognizedVoiceTranscript("local_asr", result.transcript, { durationMs: result.duration_ms });
               eventBus.emit({
                 type: "local_asr_transcription_completed",
@@ -3638,8 +3687,11 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    return () => clearVoiceInterruptedTimer();
-  }, [clearVoiceInterruptedTimer]);
+    return () => {
+      clearVoiceInterruptedTimer();
+      clearVoiceAutoSendingTimer();
+    };
+  }, [clearVoiceAutoSendingTimer, clearVoiceInterruptedTimer]);
 
   useEffect(() => {
     if (!voiceStatus.lastError) return;
@@ -3829,7 +3881,9 @@ export function App() {
         ? "voice_confirmed"
         : "text";
     if (sendingVoiceTranscript) {
-      clearVoiceTransientState();
+      clearVoiceInterruptedTimer();
+      setVoiceTransientState(null);
+      setVoiceAutoSendBlockedHint("");
       setVoiceAssistantTurnActive(true);
     }
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed, createdAt: new Date().toISOString() };
@@ -3848,7 +3902,8 @@ export function App() {
         type: "voice_transcription_auto_sent",
         timestamp: userMessage.createdAt,
         character_count: voiceTranscript.characterCount,
-        provider: voiceTranscript.source === "unavailable" ? undefined : voiceTranscript.source
+        provider: voiceTranscript.source === "unavailable" ? undefined : voiceTranscript.source,
+        source: "direct_conversation"
       });
     }
     eventBus.emit({
@@ -3984,6 +4039,7 @@ export function App() {
     } finally {
       setSending(false);
       setVoiceAssistantTurnActive(false);
+      clearVoiceAutoSending();
     }
   };
 
@@ -4359,7 +4415,11 @@ export function App() {
     voiceDirectConversationEnabled &&
     localAsrTranscriptionPhase === "idle" &&
     localAsrTranscriptionResult?.status === "local_asr_transcription_succeeded"
-      ? "转写完成，已自动发送"
+      ? voiceAutoSendBlockedHint
+        ? "转写完成，等待确认发送"
+        : localAsrTranscriptionResult.transcript.trim()
+          ? "转写完成，已自动发送"
+          : "没有识别到可用文本"
       : baseMainVoiceInputStatus;
   const mainVoiceInputDisabled = mainVoiceInputUsesLocalAsr
     ? localAsrTranscriptionButtonDisabled
@@ -4384,6 +4444,7 @@ export function App() {
   const resolvedVoiceConversationState = resolveVoiceConversationState({
     transcribing: localAsrTranscriptionPhase === "transcribing",
     listening: localAsrTranscriptionPhase === "recording" || voiceInputStatus.phase !== "idle",
+    autoSending: voiceAutoSendingActive,
     assistantThinking: voiceAssistantTurnActive && sending,
     speaking: voiceStatus.active,
     interrupted: voiceTransientState?.kind === "interrupted",
@@ -4393,7 +4454,7 @@ export function App() {
   const voiceConversationState = {
     ...resolvedVoiceConversationState,
     description:
-      voiceDirectConversationEnabled && ["idle", "transcribing"].includes(resolvedVoiceConversationState.state)
+      voiceDirectConversationEnabled && resolvedVoiceConversationState.state === "idle"
         ? voiceInteractionModeHint
         : resolvedVoiceConversationState.description
   };
@@ -4882,7 +4943,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 </span>
                 <span>模式：{voiceInteractionModeLabel}</span>
                 {voiceDirectConversationEnabled && !voiceAutoSendBlockedHint && (
-                  <span className="voiceStateNotice">转写后会自动发送</span>
+                  <span className="voiceStateNotice">主动录音后自动发送，不会常驻监听</span>
                 )}
                 {voiceConversationState.state === "ready_to_send" && (
                   <span className="voiceStateNotice">{voiceConfirmSendText}</span>

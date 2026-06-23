@@ -297,6 +297,7 @@ export class VoiceOutputController {
       timestamp: now(),
       character_count: activeSpeech.characterCount,
       reason,
+      status: reason === "user_stop" ? "interrupted" : "stopped",
       source: activeSpeech.source,
       profile: activeSpeech.profile,
       strategy_id: activeSpeech.strategyId,

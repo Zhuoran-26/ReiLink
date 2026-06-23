@@ -2,7 +2,7 @@
 
 Updated: 2026-06-23
 
-Status: v2.1 implemented with Voice Profile v1 behavior policy, TTS Strategy Spike v0, TTS Provider Registry / Capability Surface v0, and v2.1.1-style Direct Conversation partial-transcript protection. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, TTS interruption, speaking / listening mutual exclusion, short / partial transcript auto-send guard, rule-based spoken reply selection, a `system_speech_synthesis` strategy around renderer-side `speechSynthesis`, and a read-only TTS provider capability surface. This does not implement hands-free listening, real external / local TTS providers, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
+Status: v2.1 implemented with Voice Profile v1 behavior policy, TTS Strategy Spike v0, TTS Provider Registry / Capability Surface v0, v2.1.1-style Direct Conversation partial-transcript protection, and Direct Conversation UX Polish v0. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, visible auto-send / interrupted / recoverable error feedback, TTS interruption, speaking / listening mutual exclusion, short / empty / partial transcript auto-send guard, rule-based spoken reply selection, a `system_speech_synthesis` strategy around renderer-side `speechSynthesis`, and a read-only TTS provider capability surface. This does not implement hands-free listening, real external / local TTS providers, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
 
 ## Purpose
 
@@ -23,7 +23,7 @@ The goal is a calmer game companion loop, not a voice assistant that constantly 
 
 Implemented today:
 
-- Voice v2.1 resolves `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error` from current renderer voice signals.
+- Voice v2.1 resolves `idle`, `listening`, `transcribing`, `auto_sending`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error` from current renderer voice signals.
 - Home / Chat shows compact Chinese-first Voice v2 state near the composer without hiding normal text input.
 - Voice workspace Conversation tab shows state, mode, transcript confirmation, output status, interruption and privacy boundaries.
 - Voice interaction mode is explicit: `confirm_send` is the default, and `direct_conversation` is opt-in.
@@ -32,14 +32,14 @@ Implemented today:
 - Audio is sent only to the local backend.
 - Under `confirm_send`, transcript fills the chat input and is not auto-sent.
 - Under `direct_conversation`, the transcript is auto-sent through the existing chat flow after the user actively starts and stops a recording round.
-- Under `direct_conversation`, very short recordings, very short transcripts, or obvious partial phrases are not auto-sent; they enter `ready_to_send` with a safe prompt to retry or confirm.
+- Under `direct_conversation`, very short recordings, very short transcripts, empty transcripts, or obvious partial phrases are not auto-sent; short / partial transcripts enter `ready_to_send`, and empty transcripts show a safe retry prompt.
 - Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, game context, Semantic Extraction, or proactive behavior.
 - Voice Output uses TTS Strategy v0 through TTS Provider Registry v0; the only enabled and selectable provider is `system_speech_synthesis`, backed by renderer-side `speechSynthesis`.
 - Voice Output displays provider status, privacy boundary, capability summary, fallback summary, and disabled Local TTS / External TTS placeholders.
 - Voice Output can be enabled, tested, stopped, and tuned with rate / volume; in `direct_conversation`, assistant replies are spoken automatically only when Voice Output is enabled.
 - Voice Profile v1 is a behavior policy, not a character voice: profile `rei_calm` decides full / brief / silent spoken reply mode, max spoken length, conservative proactive / memory speaking defaults, and never-spoken internal content.
 - Direct Conversation defaults to brief spoken replies while the full assistant reply remains visible in chat. Normal chat defaults to full spoken reply when Voice Output is enabled.
-- Starting voice input stops active TTS first, and Stop Voice enters a short interrupted state.
+- Starting voice input stops active TTS first, and Stop Voice enters a short interrupted state with visible stopped feedback.
 
 Voice v2 should build on these boundaries instead of bypassing them.
 
@@ -114,8 +114,8 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 - Implemented explicit opt-in.
 - Requires a visible mode indicator and a clear off switch.
 - Still requires a user gesture for each recording round; it is not hands-free, wake-word, or always-on listening.
-- Auto-sends only non-empty ASR transcripts through the normal chat request path.
-- Does not auto-send transcripts that look too short or partial. Those transcripts are placed in the input and require confirmation.
+- Auto-sends only non-empty, guard-passing ASR transcripts through the normal chat request path.
+- Does not auto-send transcripts that are empty, too short, too short as recordings, or likely partial. Short / partial transcripts are placed in the input and require confirmation; empty transcripts show a retry prompt without changing the input.
 - Does not write memory directly; any memory still goes through the existing confirmation flow after the normal chat turn.
 - Does not bypass normal chat, retrieval, or game-state safety checks after the text is sent.
 - Does not leak the full transcript into Event Stream, Debug, Raw JSON, Prompt Preview, or Overlay.
@@ -153,6 +153,7 @@ Recommended states:
 | `idle` | Voice loop is available but inactive. | App start, stop, completion, or recovery. | User starts recording or TTS starts after an assistant reply. |
 | `listening` | User-triggered recording is active. | Push-to-talk or click-to-record begins. | User stops, max duration, mic error, or recording failure. |
 | `transcribing` | Local ASR is processing the captured audio. | Recording finished and Local ASR request starts. | Transcript ready, no text, timeout, or ASR error. |
+| `auto_sending` | A Direct Conversation transcript passed guard and is being sent into the normal chat path. | ASR succeeds, Direct Conversation is enabled, and guard passes. | Assistant request is in progress, assistant reply arrives, provider error, or timeout. |
 | `ready_to_send` | Transcript is available for confirmation. | ASR succeeds under confirm-send. | User sends, edits, clears, records again, or switches mode. |
 | `assistant_thinking` | A confirmed or directly sent transcript is in the normal chat request path. | User sends transcript or Direct Conversation auto-send fires. | Assistant final reply, provider error, cancellation, or timeout. |
 | `speaking` | TTS is playing a safe assistant reply. | Final assistant reply arrives and Voice Output is enabled. | TTS completes, user stops, user starts recording, or TTS error. |
@@ -164,7 +165,8 @@ Recommended states:
 - `idle -> listening`: only after a user gesture.
 - `listening -> transcribing`: only after audio capture completes.
 - `transcribing -> ready_to_send`: ASR succeeds and send policy is `confirm_send`.
-- `transcribing -> assistant_thinking`: ASR succeeds, send policy is explicit `direct_conversation`, and partial-transcript guard passes.
+- `transcribing -> auto_sending`: ASR succeeds, send policy is explicit `direct_conversation`, and transcript guard passes.
+- `auto_sending -> assistant_thinking`: the normal chat request remains in progress after the auto-send handoff.
 - `transcribing -> ready_to_send`: ASR succeeds but Direct Conversation guard blocks auto-send because the recording or transcript is too short or likely partial.
 - `ready_to_send -> assistant_thinking`: user confirms by sending.
 - `assistant_thinking -> speaking`: assistant final reply exists and Voice Output is enabled.
@@ -181,7 +183,8 @@ Recommended states:
 - Entering `speaking` must require no active recording.
 - `transcribing` must not write prompt, memory, retrieval, game context, or proactive state.
 - `ready_to_send` must not write prompt, memory, retrieval, game context, or proactive state.
-- `assistant_thinking` only starts after a confirmed send or explicit Direct Conversation auto-send.
+- `auto_sending` must be short-lived and only start after explicit Direct Conversation auto-send.
+- `assistant_thinking` only starts after a confirmed send or explicit Direct Conversation auto-send handoff.
 - `interrupted` is a user action summary, not an error by itself.
 
 ## Transcript Policy
@@ -201,7 +204,7 @@ After confirmation or Direct Conversation auto-send:
 - The text enters the existing chat flow as normal user input.
 - Existing Memory Candidate guard, knowledge retrieval, game context, Semantic Extraction, and proactive gates continue to apply. Explicit memory can show a non-blocking undo hint; implicit candidates still require later confirmation.
 - Voice should not introduce a separate memory or game-state path.
-- Direct Conversation events may show mode, provider, and character count, but not the full transcript.
+- Direct Conversation events may show mode, source, provider, status, guard reason, duration, and character count, but not the full transcript.
 
 Current semantic extraction direction:
 
@@ -212,7 +215,7 @@ Current semantic extraction direction:
 
 Empty or low-confidence transcript:
 
-- Return to `idle` or `ready_to_send` with a safe message such as `没有识别到可用文本`.
+- Return to `idle`, `error`, or `ready_to_send` with a safe message such as `没听清，可以再说一次` / `没有识别到可用文本`.
 - Do not auto-send empty text.
 - Do not overwrite existing unsent chat draft unless the user explicitly accepts replacement.
 
@@ -243,7 +246,7 @@ TTS interruption:
 - Stop active TTS when the user starts recording.
 - Stop active TTS when the user clicks Stop Voice.
 - Do not replay interrupted speech automatically.
-- Record a safe lifecycle summary such as `语音播放已停止`, without full reply text.
+- Record a safe lifecycle summary such as `播报已停止`, `已打断`, provider, source, profile, and character count, without full reply text or spoken text.
 
 ## Game-Mode Behavior
 

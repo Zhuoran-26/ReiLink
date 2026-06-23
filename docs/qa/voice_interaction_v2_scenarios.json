@@ -4,7 +4,7 @@
     "category": "voice_interaction_v2_spec",
     "precondition": "Voice Interaction v2.1 documentation is reviewed",
     "action": "Read the spec and QA scenarios",
-    "expected": "The implementation includes the Voice v2 state model, confirm-send default, opt-in Direct Conversation Mode, compact state UI, Conversation state panel, TTS interruption, and speaking / listening mutual exclusion.",
+    "expected": "The implementation includes the Voice v2 state model, confirm-send default, opt-in Direct Conversation Mode, compact state UI, Conversation state panel, visible auto_sending / interrupted / error feedback, TTS interruption, and speaking / listening mutual exclusion.",
     "implemented_in_v21": true,
     "must_not_implement": [
       "auto-send default",
@@ -70,8 +70,8 @@
     "category": "voice_interaction_v2_transcript_policy",
     "precondition": "Direct Conversation Mode is enabled and Web Speech returns a final transcript",
     "action": "Complete a user-triggered Web Speech recording",
-    "expected_state": "assistant_thinking",
-    "expected": "The transcript is sent through the existing chat endpoint without requiring a second send click.",
+    "expected_state": "auto_sending",
+    "expected": "The transcript is sent through the existing chat endpoint without requiring a second send click, then proceeds to assistant_thinking if the request is still in flight.",
     "implemented_in_v21": true,
     "must_not_bypass": [
       "normal_chat_request",
@@ -86,8 +86,8 @@
     "category": "voice_interaction_v2_transcript_policy",
     "precondition": "Direct Conversation Mode is enabled and Local ASR returns a transcript",
     "action": "Complete a user-triggered Local ASR recording",
-    "expected_state": "assistant_thinking",
-    "expected": "The transcript is sent through the existing chat endpoint after local transcription succeeds.",
+    "expected_state": "auto_sending",
+    "expected": "The transcript is sent through the existing chat endpoint after local transcription succeeds, then proceeds to assistant_thinking if the request is still in flight.",
     "implemented_in_v21": true,
     "should_upload_audio": false,
     "must_not_bypass": [
@@ -96,6 +96,56 @@
       "knowledge_gating",
       "game_context_safety",
       "persona_guardrails"
+    ]
+  },
+  {
+    "id": "voice-v21-direct-conversation-empty-local-asr-guard",
+    "category": "voice_interaction_v2_transcript_policy",
+    "precondition": "Direct Conversation Mode is enabled and Local ASR succeeds with an empty transcript",
+    "action": "Complete a user-triggered Local ASR recording",
+    "expected_state": "error",
+    "expected": "The app shows a short retry prompt such as 没听清，可以再说一次, does not auto-send, leaves the chat input unchanged, and records only source, provider, guard reason, duration, and 0 characters.",
+    "implemented_in_v21": true,
+    "should_auto_send": false,
+    "must_not_trigger": [
+      "chat_request",
+      "memory_write",
+      "pending_memory",
+      "prompt_injection",
+      "game_context_extraction",
+      "proactive"
+    ],
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
+  },
+  {
+    "id": "voice-v21-direct-conversation-short-transcript-guard",
+    "category": "voice_interaction_v2_transcript_policy",
+    "precondition": "Direct Conversation Mode is enabled and ASR returns a too-short or likely partial transcript",
+    "action": "Complete a user-triggered Web Speech or Local ASR recording",
+    "expected_state": "ready_to_send",
+    "expected": "The app does not auto-send, places the transcript in the input when text exists, asks the user to retry or confirm manually, and records only source, provider, guard reason, duration, and character count.",
+    "implemented_in_v21": true,
+    "should_auto_send": false,
+    "must_not_trigger": [
+      "chat_request",
+      "memory_write",
+      "pending_memory",
+      "prompt_injection",
+      "game_context_extraction",
+      "proactive"
+    ],
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
     ]
   },
   {
@@ -259,7 +309,7 @@
     "precondition": "Voice state is speaking",
     "action": "User clicks Stop Voice",
     "expected_state": "interrupted",
-    "expected": "Speech stops and Event Stream records only a safe lifecycle summary.",
+    "expected": "Speech stops, stopped / interrupted feedback is visible, and Event Stream records only a safe lifecycle summary.",
     "implemented_in_v21": true,
     "forbidden_terms": [
       "FULL_ASSISTANT_REPLY_MARKER",
@@ -428,7 +478,7 @@
     "category": "voice_interaction_v2_overlay",
     "precondition": "A later Overlay task chooses to show Voice state",
     "action": "Display Voice state in Overlay",
-    "expected": "Overlay shows only low-risk state such as listening, transcribing, ready to confirm, speaking, interrupted, direct mode enabled, or error.",
+    "expected": "Overlay shows only low-risk state such as listening, transcribing, auto_sending, ready to confirm, speaking, interrupted, direct mode enabled, or error.",
     "implemented_in_v21": false,
     "must_not_show": [
       "full transcript",

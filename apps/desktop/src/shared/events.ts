@@ -107,7 +107,7 @@ export type ReiLinkEvent =
   | { type: "overlay_error"; timestamp: string; reason: string }
   | { type: "tts_started"; timestamp: string; character_count: number; source?: TtsEventSource; profile?: TtsEventProfile; strategy_id?: TtsEventStrategyId; provider_id?: TtsEventProviderId; provider_status?: TtsEventProviderStatus; provider_fallback_used?: boolean }
   | { type: "tts_completed"; timestamp: string; character_count: number; source?: TtsEventSource; profile?: TtsEventProfile; strategy_id?: TtsEventStrategyId; provider_id?: TtsEventProviderId; provider_status?: TtsEventProviderStatus; provider_fallback_used?: boolean }
-  | { type: "tts_stopped"; timestamp: string; character_count?: number; reason?: string; source?: TtsEventSource; profile?: TtsEventProfile; strategy_id?: TtsEventStrategyId; provider_id?: TtsEventProviderId; provider_status?: TtsEventProviderStatus; provider_fallback_used?: boolean }
+  | { type: "tts_stopped"; timestamp: string; character_count?: number; reason?: string; status?: "interrupted" | "stopped"; source?: TtsEventSource; profile?: TtsEventProfile; strategy_id?: TtsEventStrategyId; provider_id?: TtsEventProviderId; provider_status?: TtsEventProviderStatus; provider_fallback_used?: boolean }
   | { type: "tts_error"; timestamp: string; character_count?: number; reason?: string; status?: string; source?: TtsEventSource; profile?: TtsEventProfile; strategy_id?: TtsEventStrategyId; provider_id?: TtsEventProviderId; provider_status?: TtsEventProviderStatus; provider_fallback_used?: boolean }
   | { type: "voice_input_started"; timestamp: string; language?: string }
   | { type: "voice_input_completed"; timestamp: string; character_count: number; is_final?: boolean; language?: string }
@@ -116,12 +116,13 @@ export type ReiLinkEvent =
   | { type: "voice_input_unavailable"; timestamp: string; reason?: string; status?: string; language?: string }
   | { type: "voice_direct_mode_enabled"; timestamp: string }
   | { type: "voice_direct_mode_disabled"; timestamp: string }
-  | { type: "voice_transcription_auto_sent"; timestamp: string; character_count: number; provider?: "local_asr" | "web_speech" }
+  | { type: "voice_transcription_auto_sent"; timestamp: string; character_count: number; provider?: "local_asr" | "web_speech"; source?: "direct_conversation" }
   | {
       type: "voice_transcription_auto_send_blocked";
       timestamp: string;
       character_count: number;
       provider?: "local_asr" | "web_speech";
+      source?: "direct_conversation";
       reason: "short_recording" | "short_transcript" | "partial_transcript";
       duration_ms?: number;
     }

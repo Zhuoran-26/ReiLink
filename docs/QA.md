@@ -138,8 +138,9 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 6. UI 不提供可用的 provider 切换入口。
 7. 非法 provider id、disabled provider 或 non-selectable provider 必须安全回退到 `System Speech Synthesis`，不能调用未实现 provider。
 8. Event Stream 可以显示 provider id 对应的人类可读 label、provider status、fallback 标记、source、profile 和 character count。
-9. Event Stream 不显示完整 assistant reply、spoken text、Test Voice 文本、raw prompt、persona markdown、API key、`.env`、本地模型路径、完整本地路径或 raw config。
-10. Direct Conversation 的自动播报、Stop Voice、full / brief / silent Voice Profile 行为保持原有回归结果。
+9. Stop Voice 后 Event Stream 可以显示安全状态，例如 `已打断` / `已停止`、provider、source、profile 和 stop 摘要，但不得显示 spoken text。
+10. Event Stream 不显示完整 assistant reply、spoken text、Test Voice 文本、raw prompt、persona markdown、API key、`.env`、本地模型路径、完整本地路径或 raw config。
+11. Direct Conversation 的自动播报、Stop Voice、full / brief / silent Voice Profile 行为保持原有回归结果。
 
 ### 1.6 Rei Persona Pack v1.1.2 回归检查
 
@@ -177,7 +178,7 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 3. Memory 应有独立普通用户入口，承接 pending、confirmed、ignored、search、sources 和后续 session archive。
 4. Game 应有独立普通用户入口，承接 current game、boss、session state、knowledge availability 和 manual control。
 5. Voice 应有独立一级入口；当前是 Local ASR transcript-first 默认 + Voice Output + Voice v2.1 直接对话显式 opt-in + Voice Profile v1 行为策略，hands-free、角色 TTS / 角色音色和 Overlay voice state 仍只做未来规划。
-6. Voice 未来状态至少覆盖 idle、listening、transcribing、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
+6. Voice 当前状态至少覆盖 idle、listening、transcribing、auto_sending、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
 7. Overlay 应有独立入口，但 macOS auto-show 仍是 fail-closed safe mode；不要把它描述为完整可用的游戏 HUD。
 8. Developer / Debug 应与普通体验分离，承接 Event Stream、Prompt Preview、LLM Primary / Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status。
 9. Prompt Preview / Debug 不得显示 raw prompt、API key、`.env`、完整路径、stdout/stderr、完整 persona markdown、完整 assistant reply、完整 user input 或完整 ASR transcript。
@@ -226,21 +227,25 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 1. Voice v2 默认仍是 confirm-send：ASR transcript 进入 ready-to-send 状态，用户确认后才进入 chat flow。
 2. 直接对话模式必须默认关闭，只能由用户在 Voice workspace Conversation 中显式切换到 `直接对话`；不得因开启 Local ASR、Voice Output 或打开 Voice workspace 自动启用。
 3. 直接对话模式开启后，ASR transcript 转写成功会自动进入现有 chat flow；不得绕过 Memory Candidate guard、knowledge gating、game context safety、persona guardrails 或 provider error handling。显式记忆可显示非阻塞撤销提示，隐式候选仍待确认。
-4. 直接对话模式下，录音过短、transcript 太短或疑似半句时不得自动发送；应进入 `ready_to_send`，提示“这句太短了。可以再说一次。”或等价安全文案。
-5. 被 partial guard 拦下的 transcript 不写 memory、不触发 proactive、不进入 game context / Semantic Extraction，Event Stream 只能显示 provider、字符数、时长和阻断原因。
+4. 直接对话模式下，录音过短、transcript 太短、空 transcript 或疑似半句时不得自动发送；短 / 半句 transcript 应进入 `ready_to_send`，空 transcript 应显示“没听清，可以再说一次”或等价安全文案。
+5. 被 guard 拦下的 transcript 不写 memory、不触发 proactive、不进入 game context / Semantic Extraction，Event Stream 只能显示 `source=direct_conversation`、provider、字符数、时长和阻断原因。
 6. 直接对话不是 hands-free：每一轮仍需要用户主动点击或按住语音输入；当前不做 wake word、不做后台常驻监听、不做自动下一轮录音。
 7. Voice Output 开启时，直接对话的 assistant 最终回复默认短版播报，完整回复仍显示在聊天里；Voice Output 关闭时只显示文字回复。
 8. Stop Voice 能打断直接对话后的 TTS；用户开始新一轮录音时应先停止正在播放的 TTS。
-9. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
+9. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`auto_sending`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
 10. `listening` 和 `speaking` 必须互斥。
 11. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
-12. 直接对话的 Event Stream / Debug / Raw JSON / Prompt Preview / Overlay 只能显示 mode、provider、字符数、句数、长度上限、跳过原因和生命周期摘要；不得显示完整 transcript、raw prompt、完整 assistant reply、spoken text、路径、API key、`.env`、stdout 或 stderr。
+12. 直接对话的 Event Stream / Debug / Raw JSON / Prompt Preview / Overlay 只能显示 mode、source、provider、status、profile、字符数、句数、长度上限、跳过原因和生命周期摘要；不得显示完整 transcript、raw prompt、完整 assistant reply、spoken text、路径、API key、`.env`、stdout 或 stderr。
 13. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、LLM Primary / Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
 14. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
 15. Voice workspace 的 Conversation tab 应承接状态、确认发送 / 直接对话切换、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置，Output tab 应说明直接对话 + Voice Output 的默认短版自动播报关系。
 16. Home / Chat 输入区应显示紧凑 voice state 和当前模式，但不得清空未发送草稿或隐藏普通文本输入。
 17. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
 18. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
+19. Home / Chat 直聊状态应明确显示当前模式；直接对话开启时应说明主动录音后自动发送且不会常驻监听。
+20. Direct Conversation 自动发送时应短暂显示 `auto_sending` / “正在发送给 Rei”；后续等待回复可进入 assistant_thinking。
+21. Stop Voice 在 Home / Chat 和 Voice workspace 中应可见；点击后应尽量打断播报，并显示“播报已停止”或等价安全文案。
+22. Packaged `.app` smoke 应覆盖主聊天无回退、Voice workspace provider 显示、Confirm / Direct 边界、空 / 短 transcript guard、Stop Voice stopped / interrupted 可见、Voice Profile full / brief / silent 和 Event Stream 脱敏。
 
 ### 1.11 Voice Profile v1 人工验收
 

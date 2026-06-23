@@ -15,6 +15,7 @@ Status: implemented as a behavior policy and wired through TTS Strategy Spike v0
 - Max brief length: 2 sentences / 120 characters by default.
 - Debug speaking: disabled.
 - Starting a new recording interrupts active TTS.
+- Stop Voice interrupts active TTS and shows a short stopped / interrupted state.
 - Test Voice remains available and uses the `system_speech_synthesis` provider backed by system `speechSynthesis`.
 
 ## TTS Provider Registry v0
@@ -88,7 +89,7 @@ Voice Profile events may include:
 
 Voice Profile events must not include full assistant text, spoken text, prompt text, ASR transcript, secrets, raw logs, or full local paths.
 
-TTS lifecycle events may include strategy id, provider id, provider status, provider fallback flag, source, profile, character count, stop reason, unavailable / error reason, and a short status string. They must not include the full assistant reply, Test Voice text, spoken text, prompt text, ASR transcript, persona markdown, `.env`, API keys, raw provider responses, raw config, local model paths, stdout, stderr, or full local paths.
+TTS lifecycle events may include strategy id, provider id, provider status, provider fallback flag, source, profile, character count, stop reason, safe stop status such as `interrupted` / `stopped`, unavailable / error reason, and a short status string. They must not include the full assistant reply, Test Voice text, spoken text, prompt text, ASR transcript, persona markdown, `.env`, API keys, raw provider responses, raw config, local model paths, stdout, stderr, or full local paths.
 
 ## UI Surface
 
@@ -101,5 +102,6 @@ The Voice workspace `Voice Profile` tab shows:
 - never-spoken categories,
 - current `System Speech Synthesis` provider and `speechSynthesis` caveat,
 - explicit note that this is not a character voice.
+- Stop Voice / interrupted feedback that confirms playback was stopped without exposing spoken text.
 
 The full reply remains in chat regardless of spoken mode.
