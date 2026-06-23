@@ -1,8 +1,8 @@
 # Voice Profile v1
 
-Updated: 2026-06-22
+Updated: 2026-06-23
 
-Status: implemented as a behavior policy and wired through TTS Strategy Spike v0. Voice Profile v1 decides whether an assistant reply may be spoken and whether it is spoken as full, brief, or silent. TTS Strategy v0 currently exposes only the local `system_speech_synthesis` fallback around renderer-side `speechSynthesis`; it does not add an external provider, local model provider, character voice, voice clone, wake-word mode, or hands-free loop.
+Status: implemented as a behavior policy and wired through TTS Strategy Spike v0 plus TTS Provider Registry / Capability Surface v0. Voice Profile v1 decides whether an assistant reply may be spoken and whether it is spoken as full, brief, or silent. TTS Provider Registry v0 currently exposes only the local `system_speech_synthesis` fallback around renderer-side `speechSynthesis`; it reserves disabled metadata for future local / external providers but does not add a real external provider, local model provider, character voice, voice clone, wake-word mode, or hands-free loop.
 
 ## Current Profile
 
@@ -15,16 +15,22 @@ Status: implemented as a behavior policy and wired through TTS Strategy Spike v0
 - Max brief length: 2 sentences / 120 characters by default.
 - Debug speaking: disabled.
 - Starting a new recording interrupts active TTS.
-- Test Voice remains available and uses the `system_speech_synthesis` strategy backed by system `speechSynthesis`.
+- Test Voice remains available and uses the `system_speech_synthesis` provider backed by system `speechSynthesis`.
 
-## TTS Strategy v0
+## TTS Provider Registry v0
 
-- Strategy id: `system_speech_synthesis`.
-- Strategy role: local fallback around browser / Electron system `speechSynthesis`.
-- The strategy owns speak / stop / availability fallback; Voice Output owns lifecycle status and safe Event Stream summaries.
-- The Voice workspace displays the current strategy as `System Speech Synthesis`.
+- Current provider id: `system_speech_synthesis`.
+- Current provider role: local fallback around browser / Electron system `speechSynthesis`.
+- The underlying strategy owns speak / stop / availability fallback; Voice Output owns lifecycle status and safe Event Stream summaries.
+- The Voice workspace displays the current provider as `System Speech Synthesis`.
+- Provider status is `available` when `speechSynthesis` and `SpeechSynthesisUtterance` exist, otherwise `unavailable`.
+- Current capabilities: local system voice, no provider streaming, no character voice, no network requirement, no API key, supports stop / interrupt.
+- Reserved provider ids: `local_tts` and `external_tts`.
+- `local_tts` is disabled, not selectable, and `not_implemented`.
+- `external_tts` is disabled, not selectable, and `not_configured`.
 - Future local TTS, external TTS, and character voice providers are not implemented.
-- No audio is uploaded by this layer, and no external TTS API key is introduced.
+- No audio is uploaded by this layer, no external TTS API key is introduced, and no local model path is read.
+- Unknown or disabled provider ids safely fall back to `system_speech_synthesis`; if system speech is unavailable, Voice Output emits a safe unavailable event and keeps the reply as text.
 
 ## Spoken Modes
 
@@ -72,6 +78,9 @@ Voice Profile events may include:
 - source,
 - spoken mode,
 - TTS strategy id,
+- TTS provider id,
+- TTS provider status,
+- TTS provider fallback flag,
 - max character / sentence limits,
 - original and spoken character counts,
 - sentence count,
@@ -79,7 +88,7 @@ Voice Profile events may include:
 
 Voice Profile events must not include full assistant text, spoken text, prompt text, ASR transcript, secrets, raw logs, or full local paths.
 
-TTS lifecycle events may include strategy id, source, profile, character count, stop reason, unavailable / error reason, and a short status string. They must not include the full assistant reply, Test Voice text, spoken text, prompt text, ASR transcript, persona markdown, `.env`, API keys, raw provider responses, stdout, stderr, or full local paths.
+TTS lifecycle events may include strategy id, provider id, provider status, provider fallback flag, source, profile, character count, stop reason, unavailable / error reason, and a short status string. They must not include the full assistant reply, Test Voice text, spoken text, prompt text, ASR transcript, persona markdown, `.env`, API keys, raw provider responses, raw config, local model paths, stdout, stderr, or full local paths.
 
 ## UI Surface
 
@@ -90,7 +99,7 @@ The Voice workspace `Voice Profile` tab shows:
 - max spoken length,
 - proactive and memory speaking toggles,
 - never-spoken categories,
-- current `System Speech Synthesis` strategy and `speechSynthesis` caveat,
+- current `System Speech Synthesis` provider and `speechSynthesis` caveat,
 - explicit note that this is not a character voice.
 
 The full reply remains in chat regardless of spoken mode.

@@ -1,8 +1,8 @@
 # Voice Interaction v2 Spec
 
-Updated: 2026-06-22
+Updated: 2026-06-23
 
-Status: v2.1 implemented with Voice Profile v1 behavior policy, TTS Strategy Spike v0, and v2.1.1-style Direct Conversation partial-transcript protection. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, TTS interruption, speaking / listening mutual exclusion, short / partial transcript auto-send guard, rule-based spoken reply selection, and a `system_speech_synthesis` strategy around renderer-side `speechSynthesis`. This does not implement hands-free listening, external / local TTS providers, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
+Status: v2.1 implemented with Voice Profile v1 behavior policy, TTS Strategy Spike v0, TTS Provider Registry / Capability Surface v0, and v2.1.1-style Direct Conversation partial-transcript protection. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, TTS interruption, speaking / listening mutual exclusion, short / partial transcript auto-send guard, rule-based spoken reply selection, a `system_speech_synthesis` strategy around renderer-side `speechSynthesis`, and a read-only TTS provider capability surface. This does not implement hands-free listening, real external / local TTS providers, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
 
 ## Purpose
 
@@ -34,7 +34,8 @@ Implemented today:
 - Under `direct_conversation`, the transcript is auto-sent through the existing chat flow after the user actively starts and stops a recording round.
 - Under `direct_conversation`, very short recordings, very short transcripts, or obvious partial phrases are not auto-sent; they enter `ready_to_send` with a safe prompt to retry or confirm.
 - Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, game context, Semantic Extraction, or proactive behavior.
-- Voice Output uses TTS Strategy v0; the only current strategy is `system_speech_synthesis`, backed by renderer-side `speechSynthesis`.
+- Voice Output uses TTS Strategy v0 through TTS Provider Registry v0; the only enabled and selectable provider is `system_speech_synthesis`, backed by renderer-side `speechSynthesis`.
+- Voice Output displays provider status, privacy boundary, capability summary, fallback summary, and disabled Local TTS / External TTS placeholders.
 - Voice Output can be enabled, tested, stopped, and tuned with rate / volume; in `direct_conversation`, assistant replies are spoken automatically only when Voice Output is enabled.
 - Voice Profile v1 is a behavior policy, not a character voice: profile `rei_calm` decides full / brief / silent spoken reply mode, max spoken length, conservative proactive / memory speaking defaults, and never-spoken internal content.
 - Direct Conversation defaults to brief spoken replies while the full assistant reply remains visible in chat. Normal chat defaults to full spoken reply when Voice Output is enabled.
@@ -63,7 +64,7 @@ Voice v2 should build on these boundaries instead of bypassing them.
 - Do not enable hands-free or wake-word listening by default.
 - Do not add cloud ASR or commercial ASR.
 - Do not bundle whisper binaries, model files, or ffmpeg.
-- Do not add an external TTS provider, local TTS provider, TTS API key, audio upload path, or character voice.
+- Do not add a real external TTS provider, real local TTS provider, TTS API key, audio upload path, or character voice. Provider registry metadata may reserve future ids only when they remain disabled and non-selectable.
 - Do not make Voice automatically write memory.
 - Do not let Voice automatically trigger proactive behavior.
 - Do not restore Overlay auto-show.
@@ -77,7 +78,7 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 | --- | --- | --- | --- |
 | Input trigger | Push-to-talk / click-to-record | Hands-free / auto-listen later | Hands-free must remain off until a separate task defines permission, timeout, and game-mode risk. |
 | Send policy | Confirm-send | Direct Conversation as explicit opt-in | Confirm-send keeps current safety. Direct Conversation must never be implied by enabling ASR or Voice Output. |
-| Output policy | Voice Output off; when enabled normal chat defaults to full and Direct Conversation defaults to brief through `system_speech_synthesis` | User-configured full / brief / silent; future provider selection only after a separate gated task | TTS should speak assistant content only, never Debug, Prompt Preview, trace, raw internals, secrets, paths, or full structured output. |
+| Output policy | Voice Output off; when enabled normal chat defaults to full and Direct Conversation defaults to brief through `system_speech_synthesis` | User-configured full / brief / silent; future provider selection only after a separate gated task | TTS should speak assistant content only, never Debug, Prompt Preview, trace, raw internals, secrets, paths, or full structured output. TTS Provider Registry v0 is metadata only for future local / external provider ids. |
 
 ### Input Modes
 
@@ -295,7 +296,11 @@ Output tab should keep:
 - Test Voice,
 - rate and volume,
 - stop voice,
-- system voice availability.
+- system voice availability,
+- current TTS Provider as `System Speech Synthesis`,
+- provider status and capabilities,
+- provider privacy and fallback summaries,
+- disabled Local TTS / External TTS placeholders.
 - Direct Conversation note: if Voice Output is enabled, Rei speaks a brief reply by default after completion; otherwise the reply remains text-only.
 
 Voice Profile tab now shows:
@@ -305,7 +310,7 @@ Voice Profile tab now shows:
 - max spoken characters and sentences,
 - conservative proactive and memory speaking toggles,
 - never-spoken categories,
-- current `System Speech Synthesis` strategy and `speechSynthesis` caveat,
+- current `System Speech Synthesis` provider and `speechSynthesis` caveat,
 - no character voice claim.
 
 ### Home / Chat
@@ -349,7 +354,7 @@ All errors should be short, Chinese-first, and safe.
 | TTS unavailable | `语音播放不可用` | `error` or text-only fallback | Keep text reply. |
 | Provider timeout | `回复超时，请稍后再试` | `error` | Do not replay or auto-send again. |
 
-Event Stream and Debug may show safe status codes, duration buckets, char counts, MIME summary, and safe basenames. They must not show full transcript, audio data, raw subprocess output, raw provider response, raw prompt, secrets, or full paths.
+Event Stream and Debug may show safe status codes, duration buckets, char counts, MIME summary, safe basenames, TTS provider id / status, and TTS fallback flags. They must not show full transcript, spoken text, audio data, raw subprocess output, raw provider response, raw prompt, secrets, raw config, model paths, or full paths.
 
 ## Privacy And Safety
 

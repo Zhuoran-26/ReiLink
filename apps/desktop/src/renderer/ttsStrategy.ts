@@ -1,4 +1,5 @@
 import type { VoiceSpokenReplyMode } from "./voiceProfile";
+import { getSystemTtsProviderDescriptor, SYSTEM_TTS_PROVIDER_ID } from "./ttsProviderRegistry";
 
 export type TtsStrategyId = "system_speech_synthesis";
 export type TtsSpeakSource = "assistant_reply" | "direct_conversation" | "test_voice";
@@ -55,9 +56,9 @@ const voicePriority = (voice: SpeechSynthesisVoice) => {
 };
 
 export class SystemSpeechSynthesisStrategy implements TtsStrategy {
-  id: TtsStrategyId = "system_speech_synthesis";
-  label = "System Speech Synthesis";
-  description = "本机系统语音 fallback";
+  id: TtsStrategyId = SYSTEM_TTS_PROVIDER_ID;
+  label = getSystemTtsProviderDescriptor().label;
+  description = getSystemTtsProviderDescriptor().description;
 
   private voices: SpeechSynthesisVoice[] = [];
   private voicesChangedListenerBound = false;

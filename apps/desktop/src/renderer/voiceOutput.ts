@@ -1,4 +1,13 @@
 import { eventBus } from "./eventBus";
+import {
+  buildTtsProviderRegistry,
+  resolveTtsProvider,
+  SYSTEM_TTS_PROVIDER_ID,
+  type TtsProviderCapability,
+  type TtsProviderDescriptor,
+  type TtsProviderId,
+  type TtsProviderStatus
+} from "./ttsProviderRegistry";
 import { systemSpeechSynthesisStrategy, type TtsSpeakSource, type TtsStrategy, type TtsStrategyId } from "./ttsStrategy";
 import type { VoiceSpokenReplyMode } from "./voiceProfile";
 
@@ -16,6 +25,16 @@ export type VoiceOutputStatus = {
   strategyId: TtsStrategyId;
   strategyLabel: string;
   strategyDescription: string;
+  providerId: TtsProviderId;
+  providerLabel: string;
+  providerStatus: TtsProviderStatus;
+  providerDescription: string;
+  providerPrivacySummary: string;
+  providerFallbackSummary: string;
+  providerCapability: TtsProviderCapability;
+  providerFallbackUsed: boolean;
+  providerFallbackReason: string | null;
+  providers: TtsProviderDescriptor[];
 };
 
 type VoiceOutputListener = (status: VoiceOutputStatus) => void;
@@ -31,6 +50,9 @@ type ActiveSpeech = {
   source: VoiceSpeakSource;
   profile: VoiceSpokenReplyMode;
   strategyId: TtsStrategyId;
+  providerId: TtsProviderId;
+  providerStatus: TtsProviderStatus;
+  providerFallbackUsed: boolean;
   stopped: boolean;
   started: boolean;
   startTimer: number | null;
@@ -60,11 +82,17 @@ export class VoiceOutputController {
   private lastError: string | null = null;
   private lastUnavailableEventAt = 0;
 
-  constructor(private readonly strategy: TtsStrategy = systemSpeechSynthesisStrategy) {}
+  constructor(
+    private readonly strategy: TtsStrategy = systemSpeechSynthesisStrategy,
+    private readonly requestedProviderId: string | null = SYSTEM_TTS_PROVIDER_ID
+  ) {}
 
   getStatus(): VoiceOutputStatus {
     this.strategy.prepare(() => this.notify());
     const strategyStatus = this.strategy.getStatus();
+    const providers = buildTtsProviderRegistry(strategyStatus.available);
+    const providerResolution = resolveTtsProvider(this.requestedProviderId, providers);
+    const provider = providerResolution.provider;
     return {
       active: Boolean(this.activeSpeech),
       phase: this.activeSpeech ? (this.activeSpeech.started ? "playing" : "starting") : "idle",
@@ -75,7 +103,17 @@ export class VoiceOutputController {
       selectedVoiceLanguage: strategyStatus.selectedVoiceLanguage,
       strategyId: this.strategy.id,
       strategyLabel: this.strategy.label,
-      strategyDescription: this.strategy.description
+      strategyDescription: this.strategy.description,
+      providerId: provider.id,
+      providerLabel: provider.label,
+      providerStatus: provider.status,
+      providerDescription: provider.description,
+      providerPrivacySummary: provider.privacySummary,
+      providerFallbackSummary: provider.fallbackSummary,
+      providerCapability: provider.capability,
+      providerFallbackUsed: providerResolution.fallbackUsed,
+      providerFallbackReason: providerResolution.fallbackReason,
+      providers
     };
   }
 
@@ -94,9 +132,12 @@ export class VoiceOutputController {
     const source = options.source ?? "assistant_reply";
     const profile = options.profile ?? "full";
     this.strategy.prepare(() => this.notify());
-    if (!this.strategy.isAvailable()) {
+    const providers = buildTtsProviderRegistry(this.strategy.isAvailable());
+    const providerResolution = resolveTtsProvider(this.requestedProviderId, providers);
+    const provider = providerResolution.provider;
+    if (provider.id !== SYSTEM_TTS_PROVIDER_ID || provider.status !== "available" || !this.strategy.isAvailable()) {
       this.lastError = "当前环境不支持语音输出。";
-      this.emitUnavailable(characterCount, source, profile);
+      this.emitUnavailable(characterCount, source, profile, provider, providerResolution.fallbackUsed);
       this.notify();
       return false;
     }
@@ -108,6 +149,9 @@ export class VoiceOutputController {
       source,
       profile,
       strategyId: this.strategy.id,
+      providerId: provider.id,
+      providerStatus: provider.status,
+      providerFallbackUsed: providerResolution.fallbackUsed,
       stopped: false,
       started: false,
       startTimer: null
@@ -128,7 +172,10 @@ export class VoiceOutputController {
         status: this.lastError,
         source,
         profile,
-        strategy_id: activeSpeech.strategyId
+        strategy_id: activeSpeech.strategyId,
+        provider_id: activeSpeech.providerId,
+        provider_status: activeSpeech.providerStatus,
+        provider_fallback_used: activeSpeech.providerFallbackUsed
       });
       this.notify();
     }, START_TIMEOUT_MS);
@@ -149,7 +196,10 @@ export class VoiceOutputController {
           character_count: characterCount,
           source,
           profile,
-          strategy_id: activeSpeech.strategyId
+          strategy_id: activeSpeech.strategyId,
+          provider_id: activeSpeech.providerId,
+          provider_status: activeSpeech.providerStatus,
+          provider_fallback_used: activeSpeech.providerFallbackUsed
         });
         this.notify();
       },
@@ -167,7 +217,10 @@ export class VoiceOutputController {
             status: this.lastError,
             source,
             profile,
-            strategy_id: activeSpeech.strategyId
+            strategy_id: activeSpeech.strategyId,
+            provider_id: activeSpeech.providerId,
+            provider_status: activeSpeech.providerStatus,
+            provider_fallback_used: activeSpeech.providerFallbackUsed
           });
           this.notify();
           return;
@@ -178,7 +231,10 @@ export class VoiceOutputController {
           character_count: characterCount,
           source,
           profile,
-          strategy_id: activeSpeech.strategyId
+          strategy_id: activeSpeech.strategyId,
+          provider_id: activeSpeech.providerId,
+          provider_status: activeSpeech.providerStatus,
+          provider_fallback_used: activeSpeech.providerFallbackUsed
         });
         this.notify();
       },
@@ -195,7 +251,10 @@ export class VoiceOutputController {
           status: this.lastError,
           source,
           profile,
-          strategy_id: activeSpeech.strategyId
+          strategy_id: activeSpeech.strategyId,
+          provider_id: activeSpeech.providerId,
+          provider_status: activeSpeech.providerStatus,
+          provider_fallback_used: activeSpeech.providerFallbackUsed
         });
         this.notify();
       }
@@ -214,7 +273,10 @@ export class VoiceOutputController {
         status: this.lastError,
         source,
         profile,
-        strategy_id: activeSpeech.strategyId
+        strategy_id: activeSpeech.strategyId,
+        provider_id: activeSpeech.providerId,
+        provider_status: activeSpeech.providerStatus,
+        provider_fallback_used: activeSpeech.providerFallbackUsed
       });
       this.notify();
       return false;
@@ -237,7 +299,10 @@ export class VoiceOutputController {
       reason,
       source: activeSpeech.source,
       profile: activeSpeech.profile,
-      strategy_id: activeSpeech.strategyId
+      strategy_id: activeSpeech.strategyId,
+      provider_id: activeSpeech.providerId,
+      provider_status: activeSpeech.providerStatus,
+      provider_fallback_used: activeSpeech.providerFallbackUsed
     });
     this.notify();
   }
@@ -254,7 +319,13 @@ export class VoiceOutputController {
     this.strategy.resetForTest();
   }
 
-  private emitUnavailable(characterCount: number, source: VoiceSpeakSource, profile: VoiceSpokenReplyMode) {
+  private emitUnavailable(
+    characterCount: number,
+    source: VoiceSpeakSource,
+    profile: VoiceSpokenReplyMode,
+    provider: TtsProviderDescriptor,
+    providerFallbackUsed: boolean
+  ) {
     const currentTime = Date.now();
     if (currentTime - this.lastUnavailableEventAt < 3000) return;
     this.lastUnavailableEventAt = currentTime;
@@ -266,7 +337,10 @@ export class VoiceOutputController {
       status: reasonText("unavailable"),
       source,
       profile,
-      strategy_id: this.strategy.id
+      strategy_id: this.strategy.id,
+      provider_id: provider.id,
+      provider_status: provider.status,
+      provider_fallback_used: providerFallbackUsed
     });
   }
 

@@ -1977,6 +1977,15 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "语音输出" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
     expect(panel).toHaveTextContent("默认短版播报");
+    expect(panel).toHaveTextContent("当前 TTS Provider");
+    expect(panel).toHaveTextContent("System Speech Synthesis");
+    expect(panel).toHaveTextContent("Provider 能力");
+    expect(panel).toHaveTextContent("不上传音频");
+    expect(panel).toHaveTextContent("不支持角色音色");
+    expect(panel).toHaveTextContent("不支持 provider streaming");
+    expect(panel).toHaveTextContent("Local TTS");
+    expect(panel).toHaveTextContent("External TTS");
+    expect(panel).toHaveTextContent("不可选择");
     await openWorkspaceTab("Voice Profile");
     expect(await screen.findByRole("heading", { name: "Voice Profile" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("Rei Calm / Rei 冷静陪伴");
@@ -1986,7 +1995,7 @@ describe("App", () => {
     expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("直接对话");
     expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("短版播报");
     expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("永不播报");
-    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("speechSynthesis");
+    expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("System Speech Synthesis");
 
     panel = await openWorkspace("Overlay");
     expect(await screen.findByRole("heading", { name: "Safe Mode" })).toBeInTheDocument();
@@ -2052,7 +2061,7 @@ describe("App", () => {
     expect(profilePanel).toHaveTextContent("主动陪伴播报");
     expect(profilePanel).toHaveTextContent("记忆确认播报");
     expect(profilePanel).toHaveTextContent("API key / .env / raw prompt");
-    expect(profilePanel).toHaveTextContent("speechSynthesis");
+    expect(profilePanel).toHaveTextContent("System Speech Synthesis");
 
     await userEvent.selectOptions(screen.getByLabelText("普通聊天播报模式"), "brief");
     await waitFor(() =>
@@ -5181,7 +5190,10 @@ describe("App", () => {
             character_count: 16,
             source: "assistant_reply",
             profile: "full",
-            strategy_id: "system_speech_synthesis"
+            strategy_id: "system_speech_synthesis",
+            provider_id: "system_speech_synthesis",
+            provider_status: "available",
+            provider_fallback_used: false
           },
           {
             type: "tts_completed",
@@ -5189,7 +5201,10 @@ describe("App", () => {
             character_count: 16,
             source: "test_voice",
             profile: "full",
-            strategy_id: "system_speech_synthesis"
+            strategy_id: "system_speech_synthesis",
+            provider_id: "system_speech_synthesis",
+            provider_status: "available",
+            provider_fallback_used: false
           },
           {
             type: "tts_stopped",
@@ -5198,7 +5213,10 @@ describe("App", () => {
             reason: "user_stop",
             source: "direct_conversation",
             profile: "brief",
-            strategy_id: "system_speech_synthesis"
+            strategy_id: "system_speech_synthesis",
+            provider_id: "system_speech_synthesis",
+            provider_status: "available",
+            provider_fallback_used: false
           },
           {
             type: "tts_stopped",
@@ -5207,7 +5225,10 @@ describe("App", () => {
             reason: "new_message",
             source: "direct_conversation",
             profile: "brief",
-            strategy_id: "system_speech_synthesis"
+            strategy_id: "system_speech_synthesis",
+            provider_id: "system_speech_synthesis",
+            provider_status: "available",
+            provider_fallback_used: false
           },
           {
             type: "tts_stopped",
@@ -5216,7 +5237,10 @@ describe("App", () => {
             reason: "disabled",
             source: "assistant_reply",
             profile: "silent",
-            strategy_id: "system_speech_synthesis"
+            strategy_id: "system_speech_synthesis",
+            provider_id: "system_speech_synthesis",
+            provider_status: "available",
+            provider_fallback_used: false
           },
           {
             type: "tts_error",
@@ -5226,7 +5250,10 @@ describe("App", () => {
             status: "当前环境不支持",
             source: "test_voice",
             profile: "full",
-            strategy_id: "system_speech_synthesis"
+            strategy_id: "system_speech_synthesis",
+            provider_id: "system_speech_synthesis",
+            provider_status: "unavailable",
+            provider_fallback_used: false
           },
           {
             type: "voice_profile_applied",
@@ -5261,7 +5288,10 @@ describe("App", () => {
             spoken_mode: "brief",
             sentence_count: 2,
             source: "direct_conversation",
-            strategy_id: "system_speech_synthesis"
+            strategy_id: "system_speech_synthesis",
+            provider_id: "system_speech_synthesis",
+            provider_status: "available",
+            provider_fallback_used: false
           }
         ]}
         open
@@ -5274,6 +5304,7 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("语音播放完成");
     expect(eventStream).toHaveTextContent("语音已停止");
     expect(eventStream).toHaveTextContent("System Speech Synthesis");
+    expect(eventStream).toHaveTextContent("可用");
     expect(eventStream).toHaveTextContent("普通回复");
     expect(eventStream).toHaveTextContent("直接对话");
     expect(eventStream).toHaveTextContent("测试语音");

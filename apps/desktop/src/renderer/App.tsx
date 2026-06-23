@@ -57,7 +57,13 @@ import {
   SetupStatus,
   UserProfileMemory
 } from "../shared/api";
-import type { ReiLinkEvent, TtsEventSource, TtsEventStrategyId } from "../shared/events";
+import type {
+  ReiLinkEvent,
+  TtsEventProviderId,
+  TtsEventProviderStatus,
+  TtsEventSource,
+  TtsEventStrategyId
+} from "../shared/events";
 import {
   normalizeOverlayConfig,
   OVERLAY_DEFAULT_MESSAGE_COUNT,
@@ -79,6 +85,7 @@ import {
 } from "./sessionTimeline";
 import { voiceInput, type VoiceInputStatus } from "./voiceInput";
 import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
+import type { TtsProviderCapability, TtsProviderDescriptor, TtsProviderStatus } from "./ttsProviderRegistry";
 import {
   buildSpokenAssistantReply,
   VOICE_DEBUG_SPEAKING_ALLOWED,
@@ -1216,6 +1223,50 @@ const ttsStrategyText = (strategyId?: TtsEventStrategyId) => {
   return strategyId ? labels[strategyId] ?? debugText(strategyId) : "";
 };
 
+const ttsProviderText = (providerId?: TtsEventProviderId) => {
+  const labels: Record<TtsEventProviderId, string> = {
+    system_speech_synthesis: "System Speech Synthesis",
+    local_tts: "Local TTS",
+    external_tts: "External TTS"
+  };
+  return providerId ? labels[providerId] ?? debugText(providerId) : "";
+};
+
+const ttsProviderStatusText = (status?: TtsProviderStatus | TtsEventProviderStatus) => {
+  const labels: Record<TtsProviderStatus, string> = {
+    available: "可用",
+    unavailable: "不可用",
+    not_configured: "未配置",
+    not_implemented: "未实现"
+  };
+  return status ? labels[status] ?? debugText(status) : "";
+};
+
+const ttsProviderSelectableText = (provider: TtsProviderDescriptor) =>
+  provider.enabled && provider.selectable ? "可选择" : "不可选择";
+
+const ttsProviderCapabilityText = (capability: TtsProviderCapability) =>
+  [
+    capability.localOnly ? "本机系统语音" : "非本机 provider",
+    capability.localOnly && !capability.requiresNetwork ? "不上传音频" : "",
+    capability.supportsInterrupt ? "支持停止 / 打断" : "不支持停止 / 打断",
+    capability.customVoice ? "支持自定义或角色音色" : "不支持角色音色",
+    capability.streaming ? "支持 provider streaming" : "不支持 provider streaming",
+    capability.requiresApiKey ? "需要 API key" : "不需要 API key"
+  ].filter(Boolean).join("；");
+
+const ttsProviderEventText = (
+  providerId: TtsEventProviderId | undefined,
+  providerStatus: TtsEventProviderStatus | undefined,
+  providerFallbackUsed: boolean | undefined,
+  strategyId: TtsEventStrategyId | undefined
+) =>
+  [
+    providerId ? ttsProviderText(providerId) : ttsStrategyText(strategyId),
+    providerStatus ? ttsProviderStatusText(providerStatus) : "",
+    providerFallbackUsed ? "已回退" : ""
+  ].filter(Boolean).join(" / ");
+
 const voiceEventSourceText = (source?: TtsEventSource) => {
   if (source === "test_voice") return "测试语音";
   if (source === "direct_conversation") return "直接对话";
@@ -1461,13 +1512,13 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "overlay_error":
       return sanitizeOverlayText(event.reason, 48);
     case "tts_started":
-      return [ttsStrategyText(event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", `${event.character_count} 字`].filter(Boolean).join(" / ");
+      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_completed":
-      return [ttsStrategyText(event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", `${event.character_count} 字`].filter(Boolean).join(" / ");
+      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_stopped":
-      return [ttsStrategyText(event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", voiceStopReasonText(event.reason)].filter(Boolean).join(" / ");
+      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", voiceStopReasonText(event.reason)].filter(Boolean).join(" / ");
     case "tts_error":
-      return [ttsStrategyText(event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", event.status ? debugText(event.status) : debugText(event.reason)].filter(Boolean).join(" / ");
+      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", event.status ? debugText(event.status) : debugText(event.reason)].filter(Boolean).join(" / ");
     case "voice_input_started":
       return [event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ") || "正在听";
     case "voice_input_completed":
@@ -1517,7 +1568,7 @@ const eventSummary = (event: ReiLinkEvent) => {
         `自动播报 ${event.character_count} 字`,
         event.spoken_mode ? voiceSpokenModeText(event.spoken_mode) : "",
         event.sentence_count ? `${event.sentence_count} 句` : "",
-        ttsStrategyText(event.strategy_id)
+        ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id)
       ].filter(Boolean).join(" / ");
     case "audio_capture_started":
       return `最长 ${event.duration_ms ?? 0} ms`;
@@ -1662,6 +1713,41 @@ const voicePhaseText = (status: VoiceOutputStatus) => {
   if (status.phase === "playing") return "正在播放";
   return "已停止";
 };
+
+function TtsProviderSurface({ voiceStatus }: { voiceStatus: VoiceOutputStatus }) {
+  const futureProviders = voiceStatus.providers.filter((provider) => provider.id !== voiceStatus.providerId);
+  return (
+    <>
+      <div className="settingRow static">
+        <span>当前 TTS Provider</span>
+        <strong>{voiceStatus.providerLabel}</strong>
+      </div>
+      <div className="settingRow static">
+        <span>Provider 状态</span>
+        <strong>{ttsProviderStatusText(voiceStatus.providerStatus)}</strong>
+      </div>
+      <p className="settingHint">
+        {voiceStatus.providerDescription}。{voiceStatus.providerPrivacySummary}
+      </p>
+      <p className="settingHint">Provider 能力：{ttsProviderCapabilityText(voiceStatus.providerCapability)}。</p>
+      <p className="settingHint">{voiceStatus.providerFallbackSummary}</p>
+      {voiceStatus.providerFallbackUsed && (
+        <p className="settingHint">请求的 TTS provider 已回退到 System Speech Synthesis。</p>
+      )}
+      {futureProviders.map((provider) => (
+        <div className="settingRow static" key={provider.id}>
+          <span>{provider.label}</span>
+          <strong>
+            {ttsProviderStatusText(provider.status)} / {ttsProviderSelectableText(provider)}
+          </strong>
+        </div>
+      ))}
+      <p className="settingHint">
+        Local TTS 和 External TTS 当前只是未来 provider 占位信息；不会选择、不会调用本地路径、不会保存 API key，也不会发起网络请求。
+      </p>
+    </>
+  );
+}
 
 const voiceInputPhaseText = (status: VoiceInputStatus) => {
   if (!status.supported) return "当前运行环境不支持本地语音识别";
@@ -3857,6 +3943,7 @@ export function App() {
             profile: speakDecision.spokenMode
           });
           if (voiceTranscript?.mode === "direct_conversation" && speakingStarted) {
+            const ttsStatus = voiceOutput.getStatus();
             eventBus.emit({
               type: "voice_reply_auto_speak_started",
               timestamp: eventTimestamp(),
@@ -3864,7 +3951,10 @@ export function App() {
               spoken_mode: speakDecision.spokenMode,
               sentence_count: speakDecision.sentenceCount,
               source: "direct_conversation",
-              strategy_id: voiceOutput.getStatus().strategyId
+              strategy_id: ttsStatus.strategyId,
+              provider_id: ttsStatus.providerId,
+              provider_status: ttsStatus.providerStatus,
+              provider_fallback_used: ttsStatus.providerFallbackUsed
             });
           }
           if (sendingVoiceTranscript && !speakingStarted) {
@@ -5765,13 +5855,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                  当前状态：{appSettings.voice_output === "on" ? "已开启" : "已关闭"}；本地语音：
 	                  {voiceStatus.available ? "可用" : "不可用"}。
 	                </p>
-	                <div className="settingRow static">
-	                  <span>当前 TTS Strategy</span>
-	                  <strong>{voiceStatus.strategyLabel}</strong>
-	                </div>
-	                <p className="settingHint">
-	                  {voiceStatus.strategyDescription}。当前不接入角色音色、本地 TTS provider 或外部 TTS provider。
-	                </p>
+	                <TtsProviderSurface voiceStatus={voiceStatus} />
 	                <p className="settingHint">播放状态：{voicePhaseText(voiceStatus)}。</p>
 	                {voiceStatus.available && (
 	                  <p className="settingHint">
@@ -5853,8 +5937,12 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                  <strong>{VOICE_PROFILE_LABEL}</strong>
 	                </div>
 	                <div className="settingRow static">
-	                  <span>当前 TTS Strategy</span>
-	                  <strong>{voiceStatus.strategyLabel}</strong>
+	                  <span>当前 TTS Provider</span>
+	                  <strong>{voiceStatus.providerLabel}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>Provider 状态</span>
+	                  <strong>{ttsProviderStatusText(voiceStatus.providerStatus)}</strong>
 	                </div>
 	                <p className="settingHint">{VOICE_PROFILE_DESCRIPTION} 这不是角色音色，也不声明真人或角色声音。</p>
 	                <div className="settingRow static">
@@ -6479,13 +6567,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   当前状态：{appSettings.voice_output === "on" ? "已开启" : "已关闭"}；本地语音：
                   {voiceStatus.available ? "可用" : "不可用"}。
                 </p>
-                <div className="settingRow static">
-                  <span>当前 TTS Strategy</span>
-                  <strong>{voiceStatus.strategyLabel}</strong>
-                </div>
-                <p className="settingHint">
-                  {voiceStatus.strategyDescription}。当前不接入角色音色、本地 TTS provider 或外部 TTS provider。
-                </p>
+                <TtsProviderSurface voiceStatus={voiceStatus} />
                 <p className="settingHint">播放状态：{voicePhaseText(voiceStatus)}。</p>
                 {voiceStatus.available && (
                   <p className="settingHint">

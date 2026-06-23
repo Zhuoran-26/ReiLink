@@ -128,6 +128,19 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 9. accepted memory 才进入 prompt。
 10. proactive 内容不进入 memory。
 
+#### E. TTS Provider Registry / Capability Surface
+
+1. Voice Output 显示当前 TTS Provider 为 `System Speech Synthesis`。
+2. Provider 状态显示为可用；缺少 `speechSynthesis` 的环境应显示不可用且不崩溃。
+3. Provider 能力显示本机系统语音、不上传音频、支持停止 / 打断、不支持角色音色、不支持 provider streaming。
+4. `Local TTS` 显示为未实现 / 不可选择。
+5. `External TTS` 显示为未配置 / 不可选择。
+6. UI 不提供可用的 provider 切换入口。
+7. 非法 provider id、disabled provider 或 non-selectable provider 必须安全回退到 `System Speech Synthesis`，不能调用未实现 provider。
+8. Event Stream 可以显示 provider id 对应的人类可读 label、provider status、fallback 标记、source、profile 和 character count。
+9. Event Stream 不显示完整 assistant reply、spoken text、Test Voice 文本、raw prompt、persona markdown、API key、`.env`、本地模型路径、完整本地路径或 raw config。
+10. Direct Conversation 的自动播报、Stop Voice、full / brief / silent Voice Profile 行为保持原有回归结果。
+
 ### 1.6 Rei Persona Pack v1.1.2 回归检查
 
 本节用于 Persona Pack v1.1.2。它不表示用户自定义角色、Live2D、TTS 音色或 persona 自动学习已开始。
@@ -476,7 +489,9 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 ### 2. Voice Output 回归检查
 
 - `语音输出 / Voice Output` 默认关闭。
-- Voice workspace / Settings 应显示当前 TTS Strategy 为 `System Speech Synthesis`，并说明当前只是本机系统语音 fallback。
+- Voice workspace / Settings 应显示当前 TTS Provider 为 `System Speech Synthesis`，状态为可用或安全不可用，并说明当前只是本机系统语音 fallback。
+- Voice workspace / Settings 应显示 provider 能力：本机系统语音、不上传音频、支持停止 / 打断、不支持角色音色、不支持 provider streaming。
+- Local TTS / External TTS 只能显示为 disabled / 不可选择占位，不应触发本地路径、API key、网络请求或外部 provider 调用。
 - `测试语音 / Test Voice` 按钮可见。
 - `语速 / Rate` 和 `音量 / Volume` 控件可见。
 - 默认关闭时，assistant 回复不会播放语音。
