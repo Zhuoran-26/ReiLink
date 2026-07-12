@@ -1,5 +1,7 @@
 # Voice Input v2 Local ASR Feasibility Spike
 
+Document status: historical / superseded for product behavior. This file remains design background for the Local ASR transport and subprocess boundary. Current interaction policy is defined by `docs/voice_interaction_v2_spec.md`, current release gates by `docs/release_voice_v2_2_hardening_checklist.md`, and current machine-readable coverage by `docs/qa/voice_v2_2_release_matrix.json`.
+
 ## Current stage conclusion / 当前阶段结论
 
 Local ASR v1 is no longer only a feasibility spike. The original spike remains useful design background, but the implemented product path now includes Settings persistence, backend resolved config, audio conversion, main chat voice-button integration, Simplified Chinese transcript cleanup, and packaged-app manual validation.
@@ -9,12 +11,12 @@ Current release state:
 - Local ASR can be configured from Settings without relying on shell env.
 - Saved Local ASR settings live in the backend user data directory, not in the repo or `.app`.
 - The main chat voice button prefers Local ASR when ready and falls back safely otherwise.
-- Transcript only fills the input and is never auto-sent.
+- `confirm_send` remains the default and fills the input for review. Explicit Voice v2.2 Direct Conversation can auto-send only after a user-triggered recording passes deterministic guards.
 - Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, or game context.
 - Debug Panel, Event Stream, and Raw JSON show safe summaries instead of full paths, raw subprocess output, or full transcript.
 - Real manual validation has passed for packaged `.app` startup, backend auto-start, Settings persistence, restart persistence, Check Local ASR, main chat voice availability, and privacy surfaces.
 
-Future Local ASR changes should start from the release regression checklist in [`docs/QA.md`](QA.md) and the machine-readable scenarios in [`docs/qa/voice_input_local_asr_scenarios.json`](qa/voice_input_local_asr_scenarios.json).
+Future Local ASR changes should start from the Voice v2.2 release checklist in [`docs/release_voice_v2_2_hardening_checklist.md`](release_voice_v2_2_hardening_checklist.md), the release matrix in [`docs/qa/voice_v2_2_release_matrix.json`](qa/voice_v2_2_release_matrix.json), and the component scenarios in [`docs/qa/voice_input_local_asr_scenarios.json`](qa/voice_input_local_asr_scenarios.json).
 
 ## 1.1 当前 Web Speech Recognition 结论
 

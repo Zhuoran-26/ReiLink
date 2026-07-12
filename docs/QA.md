@@ -132,7 +132,7 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 
 1. Voice Output 显示当前 TTS Provider 为 `System Speech Synthesis`。
 2. Provider 状态显示为可用；缺少 `speechSynthesis` 的环境应显示不可用且不崩溃。
-3. Provider 能力显示本机系统语音、不上传音频、支持停止 / 打断、不支持角色音色、不支持 provider streaming。
+3. Provider 能力显示系统语音、ReiLink 不接外部 TTS API、支持停止 / 打断、不支持角色音色、不支持 provider streaming。
 4. `Local TTS` 显示为未实现 / 不可选择。
 5. `External TTS` 显示为未配置 / 不可选择。
 6. UI 不提供可用的 provider 切换入口。
@@ -169,7 +169,7 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 
 ### 1.7 UI/UX Information Architecture v0 人工验收
 
-本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认当前 Voice 已接入 Voice v2.1 + Voice Profile v1：默认确认发送、显式 opt-in 直接对话和规则化 full / brief / silent 播报策略。不表示 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
+本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认当前 Voice 已接入 Voice v2.2 + Voice Profile v1：默认确认发送、显式 opt-in 直接对话和规则化 full / brief / silent 播报策略。不表示 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
 
 机器可读场景见 `docs/qa/ui_ux_information_architecture_scenarios.json`。
 
@@ -177,7 +177,7 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 2. 左侧定位应是 workspace launcher，不只是页面 anchor。
 3. Memory 应有独立普通用户入口，承接 pending、confirmed、ignored、search、sources 和后续 session archive。
 4. Game 应有独立普通用户入口，承接 current game、boss、session state、knowledge availability 和 manual control。
-5. Voice 应有独立一级入口；当前是 Local ASR transcript-first 默认 + Voice Output + Voice v2.1 直接对话显式 opt-in + Voice Profile v1 行为策略，hands-free、角色 TTS / 角色音色和 Overlay voice state 仍只做未来规划。
+5. Voice 应有独立一级入口；当前是 Local ASR transcript-first 默认 + Voice Output + Voice v2.2 直接对话显式 opt-in + Voice Profile v1 行为策略，hands-free、角色 TTS / 角色音色和 Overlay voice state 仍只做未来规划。
 6. Voice 当前状态至少覆盖 idle、listening、transcribing、auto_sending、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
 7. Overlay 应有独立入口，但 macOS auto-show 仍是 fail-closed safe mode；不要把它描述为完整可用的游戏 HUD。
 8. Developer / Debug 应与普通体验分离，承接 Event Stream、Prompt Preview、LLM Primary / Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status。
@@ -218,41 +218,49 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 5. Future / Avatar workspace 中 Avatar 与 Presentation Policy tabs 显示不同 placeholder，且不加载 Live2D runtime、Avatar 资源或 presentation layer 行为。
 6. 切换任意 workspace tab 不应清空聊天历史或未发送输入；切换到其他 workspace 后，该 workspace 的上次 active tab 可独立保留，不污染其他 workspace。
 7. Close button 与 Escape 关闭 workspace 仍有效；v0.1 的 tabs 不遮挡、body 内部滚动隔离、小窗口 hit-testing 要继续通过。
-8. 本轮接入 Voice v2.1 直接对话显式 opt-in 和 Voice Profile v1 行为策略；仍不实现 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D。
+8. 当前接入 Voice v2.2 直接对话显式 opt-in 和 Voice Profile v1 行为策略；仍不实现 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D。
 
-### 1.10 Voice Interaction v2.1 Direct Conversation Mode 人工验收
+### 1.10 Voice v2.2 Release Hardening 人工验收
 
-设计文档见 `docs/voice_interaction_v2_spec.md`，机器可读场景见 `docs/qa/voice_interaction_v2_scenarios.json`。本节验收 Voice v2 state machine、默认确认发送、显式 opt-in 直接对话和 Voice Profile v1 brief 默认；不表示 hands-free、角色 TTS / 角色音色或 Overlay voice state 已实现。
+当前规格见 `docs/voice_interaction_v2_spec.md`，可复用 release gate 见 `docs/release_voice_v2_2_hardening_checklist.md`。`docs/qa/voice_v2_2_release_matrix.json` 是 release-level 索引，将以下 30 条门禁映射到 `voice_interaction_v2_scenarios.json`、`voice_profile_scenarios.json`、`voice_input_scenarios.json`、`voice_input_local_asr_scenarios.json` 和自动化测试；component suite 保留详细步骤，不在 release matrix 机械复制。当前状态必须统一为 `idle`、`listening`、`transcribing`、`auto_sending`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
 
-1. Voice v2 默认仍是 confirm-send：ASR transcript 进入 ready-to-send 状态，用户确认后才进入 chat flow。
-2. 直接对话模式必须默认关闭，只能由用户在 Voice workspace Conversation 中显式切换到 `直接对话`；不得因开启 Local ASR、Voice Output 或打开 Voice workspace 自动启用。
-3. 直接对话模式开启后，ASR transcript 转写成功会自动进入现有 chat flow；不得绕过 Memory Candidate guard、knowledge gating、game context safety、persona guardrails 或 provider error handling。显式记忆可显示非阻塞撤销提示，隐式候选仍待确认。
-4. 直接对话模式下，录音过短、transcript 太短、空 transcript 或疑似半句时不得自动发送；短 / 半句 transcript 应进入 `ready_to_send`，空 transcript 应显示“没听清，可以再说一次”或等价安全文案。
-5. 被 guard 拦下的 transcript 不写 memory、不触发 proactive、不进入 game context / Semantic Extraction，Event Stream 只能显示 `source=direct_conversation`、provider、字符数、时长和阻断原因。
-6. 直接对话不是 hands-free：每一轮仍需要用户主动点击或按住语音输入；当前不做 wake word、不做后台常驻监听、不做自动下一轮录音。
-7. Voice Output 开启时，直接对话的 assistant 最终回复默认短版播报，完整回复仍显示在聊天里；Voice Output 关闭时只显示文字回复。
-8. Stop Voice 能打断直接对话后的 TTS；用户开始新一轮录音时应先停止正在播放的 TTS。
-9. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`auto_sending`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
-10. `listening` 和 `speaking` 必须互斥。
-11. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
-12. 直接对话的 Event Stream / Debug / Raw JSON / Prompt Preview / Overlay 只能显示 mode、source、provider、status、profile、字符数、句数、长度上限、跳过原因和生命周期摘要；不得显示完整 transcript、raw prompt、完整 assistant reply、spoken text、路径、API key、`.env`、stdout 或 stderr。
-13. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、LLM Primary / Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
-14. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
-15. Voice workspace 的 Conversation tab 应承接状态、确认发送 / 直接对话切换、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置，Output tab 应说明直接对话 + Voice Output 的默认短版自动播报关系。
-16. Home / Chat 输入区应显示紧凑 voice state 和当前模式，但不得清空未发送草稿或隐藏普通文本输入。
-17. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
-18. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
-19. Home / Chat 直聊状态应明确显示当前模式；直接对话开启时应说明主动录音后自动发送且不会常驻监听。
-20. Direct Conversation 自动发送时应短暂显示 `auto_sending` / “正在发送给 Rei”；后续等待回复可进入 assistant_thinking。
-21. Stop Voice 在 Home / Chat 和 Voice workspace 中应可见；点击后应尽量打断播报，并显示“播报已停止”或等价安全文案。
-22. Packaged `.app` smoke 应覆盖主聊天无回退、Voice workspace provider 显示、Confirm / Direct 边界、空 / 短 transcript guard、Stop Voice stopped / interrupted 可见、Voice Profile full / brief / silent 和 Event Stream 脱敏。
+1. 普通文本聊天不受 Voice interaction mode、Voice Output 或 Voice Profile 设置影响。
+2. Voice Output 关闭时，普通聊天和 Direct Conversation 都只保留文字回复，不自动播报。
+3. Test Voice 只能由显式操作触发，不写聊天，也不代表角色音色。
+4. Test Voice 播放时，Stop Voice 能取消播放并显示 stopped / interrupted 反馈。
+5. Local ASR 未配置时显示安全中文提示，不启动转写、不暴露 binary / model 完整路径。
+6. 普通语音模式默认 `confirm_send`；transcript 可编辑并等待用户确认。
+7. Direct Conversation 必须显式开启；用户主动录音且 guard 通过后才自动发送。
+8. 关闭 Direct Conversation 后，下一轮恢复 confirm-send，不残留 auto-send。
+9. 空 transcript 不发送，输入框不被污染，并显示可恢复提示。
+10. 短 transcript 不自动发送，保留为可确认文本。
+11. 短录音不自动发送，即使识别到了非空文本。
+12. 命中 deterministic partial guard 的疑似半句不自动发送。
+13. 任何 guard 阻断都不写 long-term / pending memory，不进入 prompt 或 Semantic Extraction。
+14. 任何 guard 阻断都不触发 proactive，也不发起 chat request。
+15. `assistant_thinking` 只在确认发送或 Direct Conversation auto-send handoff 后出现；`auto_sending` 应短暂可见并能恢复。
+16. `speaking` 只在 TTS active 时出现；`listening` 与 `speaking` 必须互斥。
+17. Stop Voice 或开始新录音会停止当前播报，进入可恢复 `interrupted` / stopped 反馈且不自动重播。
+18. TTS unavailable 不影响文字回复，也不调用 disabled provider。
+19. `full` 播报清理后的完整 assistant reply，同时保留聊天文字。
+20. `brief` 使用 deterministic 句数 / 字数限制，不额外调用 LLM。
+21. `silent` 不自动播报，但保留完整文字回复和安全 skip metadata。
+22. `system_speech_synthesis` 是唯一 enabled / selectable provider。
+23. `local_tts` 是 disabled / `not_implemented` placeholder；`external_tts` 是 disabled / `not_configured` placeholder，均不可选择。
+24. 非法、disabled 或不可选择 provider 会安全 fallback 到 System Speech Synthesis；系统语音 unavailable 时安全 no-op。
+25. Event Stream payload 和 UI 都不保存或显示完整 transcript，包括 confirm-send 后的 voice-origin user event。
+26. Event Stream payload 和 UI 都不保存或显示完整 assistant reply。
+27. Event Stream payload 和 UI 都不保存或显示 spoken text 或 Test Voice 固定文本。
+28. Voice / TTS 事件不得包含 raw prompt、persona markdown、`.env`、API key、Authorization、完整本地路径、raw stdout / stderr、raw ASR output、raw provider config 或 raw JSON dump。
+29. Packaged app 退出后不得残留由 app 启动的 bundled backend 进程。
+30. Packaged smoke 应确认 app 非黑屏、backend connected、普通聊天、Voice workspace、Local ASR 配置入口、confirm / Direct 边界、guard、Voice Profile、Test / Stop Voice、Provider Registry、Event Stream、Settings 和 Debug 无明显回归。
 
 ### 1.11 Voice Profile v1 人工验收
 
 设计文档见 `docs/voice_profile_v1.md`，机器可读场景见 `docs/qa/voice_profile_scenarios.json`。
 
 1. Voice workspace 的 Voice Profile tab 应显示当前 profile `rei_calm` / `Rei Calm / Rei 冷静陪伴`。
-2. UI 应明确这是行为策略，不是角色音色或新 TTS provider；当前 strategy 是 `System Speech Synthesis` / `system_speech_synthesis`，底层仍使用系统 `speechSynthesis`。
+2. UI 应明确这是行为策略，不是角色音色或新 TTS provider；当前 strategy 是 `System Speech Synthesis` / `system_speech_synthesis`，底层使用平台 `speechSynthesis`。ReiLink 不接外部 TTS API / key，但不对平台未公开内部实现作承诺。
 3. 默认普通聊天播报模式为 `full`，默认直接对话播报模式为 `brief`。
 4. 直接对话 + Voice Output 开启时，完整 assistant reply 仍在聊天中可见，TTS 只读短版。
 5. 将直接对话播报模式改为 `full` 后，应朗读清理后的完整 assistant reply。
@@ -264,6 +272,11 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 11. Voice Profile / TTS lifecycle 相关事件只允许包含 profile id、strategy id、source、mode、字符数、句数、长度上限、stop / error reason、safe status 和 skip reason；不得包含完整 assistant reply、spoken text、ASR transcript、raw prompt 或敏感信息。
 12. Test Voice 仍可播放固定测试文本，不写入聊天，也不代表角色音色。
 13. 直接对话自动发送时，已有未发送手打草稿不得被 Voice Profile 或播报策略清空。
+14. Test Voice 播放开始后，Stop Voice 应取消播放，并只记录 provider、status、source、profile、字数和 stopped / interrupted 原因。
+15. TTS unavailable 时完整文字回复仍应显示，且不得尝试 Local TTS / External TTS placeholder。
+16. System Speech Synthesis 应是唯一 enabled / selectable provider。
+17. Local TTS 应显示未实现 / 不可选择；External TTS 应显示未配置或未实现 / 不可选择。
+18. 非法或 disabled provider id 应安全 fallback；如果系统语音也不可用，则保持文字回复并 no-op。
 
 ### 1.12 LLM-primary Guarded Extraction v1.0.3 Pilot 人工验收
 
@@ -495,7 +508,7 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 
 - `语音输出 / Voice Output` 默认关闭。
 - Voice workspace / Settings 应显示当前 TTS Provider 为 `System Speech Synthesis`，状态为可用或安全不可用，并说明当前只是本机系统语音 fallback。
-- Voice workspace / Settings 应显示 provider 能力：本机系统语音、不上传音频、支持停止 / 打断、不支持角色音色、不支持 provider streaming。
+- Voice workspace / Settings 应显示 provider 能力：系统语音、ReiLink 不接外部 TTS API、支持停止 / 打断、不支持角色音色、不支持 provider streaming。
 - Local TTS / External TTS 只能显示为 disabled / 不可选择占位，不应触发本地路径、API key、网络请求或外部 provider 调用。
 - `测试语音 / Test Voice` 按钮可见。
 - `语速 / Rate` 和 `音量 / Volume` 控件可见。

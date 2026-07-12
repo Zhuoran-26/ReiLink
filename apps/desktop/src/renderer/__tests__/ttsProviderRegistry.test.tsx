@@ -19,7 +19,7 @@ describe("ttsProviderRegistry", () => {
       status: "available",
       enabled: true,
       selectable: true,
-      privacySummary: expect.stringContaining("不上传音频")
+      privacySummary: expect.stringContaining("ReiLink 不接外部 TTS API")
     });
     expect(systemProvider?.capability).toMatchObject({
       streaming: false,

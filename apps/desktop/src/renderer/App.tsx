@@ -1255,7 +1255,7 @@ const ttsProviderSelectableText = (provider: TtsProviderDescriptor) =>
 const ttsProviderCapabilityText = (capability: TtsProviderCapability) =>
   [
     capability.localOnly ? "本机系统语音" : "非本机 provider",
-    capability.localOnly && !capability.requiresNetwork ? "不上传音频" : "",
+    capability.localOnly && !capability.requiresNetwork ? "ReiLink 不接外部 TTS API" : "",
     capability.supportsInterrupt ? "支持停止 / 打断" : "不支持停止 / 打断",
     capability.customVoice ? "支持自定义或角色音色" : "不支持角色音色",
     capability.streaming ? "支持 provider streaming" : "不支持 provider streaming",
@@ -3909,7 +3909,7 @@ export function App() {
     eventBus.emit({
       type: "user_message_sent",
       timestamp: userMessage.createdAt,
-      text: voiceTranscript?.autoSent ? "" : trimmed,
+      text: sendingVoiceTranscript ? "" : trimmed,
       source: chatInputSource,
       character_count: sendingVoiceTranscript ? voiceTranscript?.characterCount ?? trimmed.length : undefined
     });
@@ -4546,7 +4546,7 @@ export function App() {
     app: `本地保存到 settings.json，不包含密钥。自动游戏检测当前为${debugText(appSettings.auto_game_detection)}。`,
     provider: "模型配置只显示 provider、模型名和 API Key 加载状态，不显示 .env 或密钥原文。",
     privacy: "本地数据操作保持显式按钮；显式记忆可撤销，隐式候选仍需确认。",
-    advanced: "高级设置复用现有功能入口；Voice v2.1 只提供主动开启的直接对话，不实现 hands-free、常驻监听或 Overlay auto-show。"
+    advanced: "高级设置复用现有功能入口；Voice v2.2 只提供主动开启的直接对话，不实现 hands-free、常驻监听或 Overlay auto-show。"
   } as Record<string, string>)[activeWorkspaceTab] || "本地保存到 settings.json，不包含密钥。";
 
   const openWorkspace = useCallback((workspaceId: WorkspaceId, tabId?: string) => {
@@ -4935,7 +4935,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               </button>
               <div className={`voiceInputInlineStatus voiceState-${voiceConversationState.tone}`} role="status">
                 <span>
-                  Voice v2.1：{voiceConversationState.label}。{voiceConversationState.description}
+                  Voice v2.2：{voiceConversationState.label}。{voiceConversationState.description}
                 </span>
                 <span>
                   语音输入：{mainVoiceInputStatus}
@@ -5515,10 +5515,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             <section className="infoCard" aria-label="语音对话">
               <div className="cardHeader">
                 <Mic size={17} />
-                <h2>Voice v2.1 对话状态</h2>
+                <h2>Voice v2.2 对话状态</h2>
               </div>
               <p className="settingHint">
-                Voice v2.1 已接入可选直接对话模式；默认仍是确认后发送。直接对话不是常驻监听，每轮仍需你主动点击录音。
+                Voice v2.2 已接入可选直接对话模式；默认仍是确认后发送。直接对话不是常驻监听，每轮仍需你主动点击录音。
               </p>
               <div className="voiceModeControl" role="group" aria-label="直接对话模式">
                 <span>当前模式</span>
@@ -5549,7 +5549,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   : "关闭时：转写后会先进入输入框，仍需你确认发送；未确认 transcript 不进入 memory、prompt、retrieval 或 game context。"}
                 音频仍只在本地处理。
               </p>
-              <div className={`voiceStatePanel voiceState-${voiceConversationState.tone}`} role="status" aria-label="Voice v2.1 状态">
+              <div className={`voiceStatePanel voiceState-${voiceConversationState.tone}`} role="status" aria-label="Voice v2.2 状态">
                 <div>
                   <span>当前状态</span>
                   <strong>{voiceConversationState.label}</strong>
@@ -7659,11 +7659,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <h3>语音输入</h3>
                     <dl className="debugFacts">
                       <div>
-                        <dt>Voice v2.1 状态</dt>
+                        <dt>Voice v2.2 状态</dt>
                         <dd>{voiceConversationState.label}</dd>
                       </div>
                       <div>
-                        <dt>Voice v2.1 模式</dt>
+                        <dt>Voice v2.2 模式</dt>
                         <dd>{appSettings.voice_interaction_mode}</dd>
                       </div>
                       <div>

@@ -1,0 +1,193 @@
+{
+  "suite": "reilink_voice_v2_2_release",
+  "status": "current",
+  "updated": "2026-07-12",
+  "purpose": "Release-level index for Voice v2.2. Detailed setup and steps stay in the component suites referenced below; this matrix maps the release requirements without duplicating those scenarios.",
+  "component_suites": [
+    {
+      "path": "docs/qa/voice_interaction_v2_scenarios.json",
+      "role": "cross-feature state, transcript policy, Direct Conversation, interruption, and event privacy",
+      "status": "current"
+    },
+    {
+      "path": "docs/qa/voice_profile_scenarios.json",
+      "role": "full, brief, silent, Test Voice, TTS availability, and provider registry",
+      "status": "current"
+    },
+    {
+      "path": "docs/qa/voice_input_scenarios.json",
+      "role": "Web Speech capability and confirm-send input fallback",
+      "status": "current_component_suite"
+    },
+    {
+      "path": "docs/qa/voice_input_local_asr_scenarios.json",
+      "role": "Local ASR configuration, local transport, cleanup, packaged runtime, and process exit",
+      "status": "current_component_suite"
+    }
+  ],
+  "release_gates": [
+    {
+      "id": "voice-v22-release-chat-and-explicit-output",
+      "requirements": {
+        "1": "Normal typed chat is unaffected by Voice settings.",
+        "2": "Voice Output off does not auto-speak.",
+        "3": "Test Voice can be explicitly triggered.",
+        "4": "Test Voice can be stopped."
+      },
+      "scenario_refs": [
+        "voice-v22-normal-text-chat-unaffected",
+        "voice-v22-direct-conversation-output-off",
+        "voice-profile-v1-test-voice",
+        "voice-profile-v1-test-voice-stop"
+      ],
+      "automated_test_refs": [
+        "App > sends chat and renders user plus assistant messages",
+        "App > does not speak assistant replies when Voice Output is disabled",
+        "App > plays a test voice from Settings without writing chat",
+        "App > stops active speech from the Stop Voice control"
+      ]
+    },
+    {
+      "id": "voice-v22-release-input-and-mode-policy",
+      "requirements": {
+        "5": "Local ASR unconfigured state fails safely.",
+        "6": "Normal voice mode waits for confirmation.",
+        "7": "Direct Conversation auto-sends after an explicit recording round.",
+        "8": "Disabling Direct Conversation restores confirm-send."
+      },
+      "scenario_refs": [
+        "voice-v2-error-local-asr-not-configured",
+        "voice-v22-default-confirm-send",
+        "voice-v22-direct-conversation-local-asr-auto-send",
+        "voice-v22-direct-conversation-disable-restores-confirm-send"
+      ],
+      "automated_test_refs": [
+        "App > shows Local ASR not configured status in Voice Input settings",
+        "App > fills final Voice Input transcript into the input without auto sending",
+        "App > auto sends a Local ASR transcript in Direct Conversation Mode without leaking the transcript to Event Stream",
+        "App > defaults Direct Conversation Mode off and persists explicit opt-in"
+      ]
+    },
+    {
+      "id": "voice-v22-release-auto-send-guards",
+      "requirements": {
+        "9": "Empty transcript is not sent.",
+        "10": "Short transcript is not auto-sent.",
+        "11": "Short recording is not auto-sent.",
+        "12": "Likely partial transcript is not auto-sent.",
+        "13": "Guarded input does not write memory.",
+        "14": "Guarded input does not trigger proactive behavior."
+      },
+      "scenario_refs": [
+        "voice-v22-direct-conversation-empty-local-asr-guard",
+        "voice-v22-direct-conversation-short-transcript-guard",
+        "voice-v22-direct-conversation-short-recording-guard",
+        "voice-v22-direct-conversation-partial-transcript-guard"
+      ],
+      "automated_test_refs": [
+        "App > keeps empty Direct Conversation Local ASR transcripts out of chat and Event Stream text",
+        "App > blocks short Web Speech transcripts from auto sending in Direct Conversation Mode",
+        "App > blocks short Local ASR recordings from auto sending in Direct Conversation Mode",
+        "App > blocks likely partial transcripts from Direct Conversation auto-send"
+      ]
+    },
+    {
+      "id": "voice-v22-release-state-and-interruption",
+      "requirements": {
+        "15": "assistant_thinking begins only after a confirmed or direct send.",
+        "16": "speaking reflects active TTS playback.",
+        "17": "Stop enters visible interrupted or stopped feedback."
+      },
+      "scenario_refs": [
+        "voice-v2-state-ready-to-thinking",
+        "voice-v22-direct-conversation-output-on",
+        "voice-v2-stop-voice-interrupted",
+        "voice-v2-speaking-interrupted-by-recording"
+      ],
+      "automated_test_refs": [
+        "App > enters assistant_thinking only after a ready voice transcript is confirmed",
+        "App > auto speaks direct conversation replies when Voice Output is enabled and can stop playback",
+        "App > stops active Voice Output when Voice Input starts"
+      ]
+    },
+    {
+      "id": "voice-v22-release-profile-and-fallback",
+      "requirements": {
+        "18": "TTS unavailable keeps the text reply.",
+        "19": "full profile speaks the sanitized full reply.",
+        "20": "brief profile uses deterministic limits without another LLM call.",
+        "21": "silent profile keeps text and does not speak."
+      },
+      "scenario_refs": [
+        "voice-profile-v1-tts-unavailable-keeps-text",
+        "voice-profile-v1-normal-full-default",
+        "voice-profile-v1-direct-brief-default",
+        "voice-profile-v1-direct-silent-configurable"
+      ],
+      "automated_test_refs": [
+        "App > does not crash and shows a readable status when local TTS is unavailable",
+        "voice profile policy > allows full assistant replies in normal chat",
+        "voice profile policy > uses brief mode by default for direct conversation replies",
+        "voice profile policy > skips speech in silent mode"
+      ]
+    },
+    {
+      "id": "voice-v22-release-provider-registry",
+      "requirements": {
+        "22": "System Speech Synthesis is the only selectable provider.",
+        "23": "Local TTS and External TTS are disabled placeholders.",
+        "24": "Invalid or disabled provider ids safely fall back or no-op."
+      },
+      "scenario_refs": [
+        "tts-provider-registry-v0-system-only-selectable",
+        "tts-provider-registry-v0-placeholders-disabled",
+        "tts-provider-registry-v0-invalid-provider-fallback"
+      ],
+      "automated_test_refs": [
+        "ttsProviderRegistry > keeps only the system provider enabled and selectable",
+        "ttsProviderRegistry > reserves local and external providers as disabled future metadata",
+        "ttsProviderRegistry > falls back safely when an illegal provider id is requested",
+        "VoiceOutputController provider resolution > reports system provider unavailable without calling speech synthesis"
+      ]
+    },
+    {
+      "id": "voice-v22-release-event-privacy",
+      "requirements": {
+        "25": "Event Stream does not retain a full transcript.",
+        "26": "Event Stream does not retain a full assistant reply.",
+        "27": "Event Stream does not retain spoken text.",
+        "28": "Event Stream does not retain raw prompt, environment files, credentials, authorization data, or local paths."
+      },
+      "scenario_refs": [
+        "voice-v22-direct-conversation-event-privacy",
+        "voice-v22-confirmed-transcript-event-privacy",
+        "voice-profile-v1-event-privacy",
+        "local-asr-transcribe-event-stream-no-transcript",
+        "local-asr-settings-debug-raw-privacy"
+      ],
+      "automated_test_refs": [
+        "App > auto sends a Local ASR transcript in Direct Conversation Mode without leaking the transcript to Event Stream",
+        "App > fills final Voice Input transcript into the input without auto sending",
+        "App > keeps full direct conversation text visible while speaking only the brief excerpt",
+        "App > shows TTS lifecycle summaries without full assistant text in Event Stream"
+      ]
+    },
+    {
+      "id": "voice-v22-release-packaged-runtime",
+      "requirements": {
+        "29": "Exiting the packaged app leaves no bundled backend process.",
+        "30": "Voice workspace, Settings, Debug, and normal chat have no obvious UI regression."
+      },
+      "scenario_refs": [
+        "local-asr-backend-no-residual-process",
+        "voice-local-asr-regression-freeze",
+        "ia-voice-v2-2-current-boundary-clear"
+      ],
+      "manual_required": true,
+      "manual_refs": [
+        "docs/release_voice_v2_2_hardening_checklist.md#3-manual-smoke",
+        "docs/release_voice_v2_2_hardening_checklist.md#4-packaged-app-regression"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 # ReiLink Voice Interaction MVP
 
-Draft release notes for the Voice Interaction MVP stage on `dev/codex-reilink`.
+Document status: historical release-note snapshot, superseded by `docs/releases/reilink-voice-v2.2.md`. The implementation details below describe the earlier MVP stage and are not the source of truth for current Direct Conversation, Voice Profile, or TTS Provider Registry behavior.
+
+Draft release notes for the earlier Voice Interaction MVP stage on `dev/codex-reilink`.
 
 ## Highlights
 
@@ -25,7 +27,7 @@ Draft release notes for the Voice Interaction MVP stage on `dev/codex-reilink`.
 - ReiLink does not download or bundle whisper/model/ffmpeg assets.
 - Packaged `.app` users should prefer Settings persistence because shell environment propagation can differ from dev startup.
 
-## Known Limitations
+## Limitations At The MVP Snapshot
 
 - System TTS is not character-grade voice acting.
 - Names such as "Rei" and some tone/phrasing may sound unnatural with system voices.

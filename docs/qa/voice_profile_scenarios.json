@@ -15,6 +15,44 @@
     ]
   },
   {
+    "id": "tts-provider-registry-v0-system-only-selectable",
+    "category": "tts_provider_registry_v0",
+    "precondition": "Voice workspace Output tab is open and system speech synthesis is available",
+    "action": "Inspect the current provider and provider capability surface",
+    "expected": "system_speech_synthesis is the only enabled and selectable provider. The UI describes ReiLink's own integration boundary without promising undocumented platform transport behavior.",
+    "implemented_in_v1": true,
+    "selectable_provider_ids": [
+      "system_speech_synthesis"
+    ]
+  },
+  {
+    "id": "tts-provider-registry-v0-placeholders-disabled",
+    "category": "tts_provider_registry_v0",
+    "precondition": "Voice workspace Output tab is open",
+    "action": "Inspect Local TTS and External TTS entries",
+    "expected": "local_tts is not_implemented and external_tts is not_configured; both are disabled and not selectable, and neither starts a provider request.",
+    "implemented_in_v1": true,
+    "must_not_trigger": [
+      "local_tts_runtime",
+      "external_tts_request",
+      "api_key_setup",
+      "audio_upload"
+    ]
+  },
+  {
+    "id": "tts-provider-registry-v0-invalid-provider-fallback",
+    "category": "tts_provider_registry_v0",
+    "precondition": "An unknown, disabled, or non-selectable provider id is resolved",
+    "action": "Resolve the provider and attempt safe playback",
+    "expected": "Resolution falls back to system_speech_synthesis with fallback metadata. If system speech is unavailable, playback safely no-ops and the text reply remains visible.",
+    "implemented_in_v1": true,
+    "must_not_trigger": [
+      "unknown_provider_call",
+      "disabled_provider_call",
+      "network_request"
+    ]
+  },
+  {
     "id": "voice-profile-v1-direct-brief-default",
     "category": "voice_profile_v1_output_policy",
     "precondition": "Direct Conversation Mode and Voice Output are enabled with default settings",
@@ -105,6 +143,31 @@
     "action": "Click Test Voice",
     "expected": "The fixed test voice plays through system speechSynthesis without writing chat content or implying a character voice.",
     "implemented_in_v1": true
+  },
+  {
+    "id": "voice-profile-v1-test-voice-stop",
+    "category": "voice_profile_v1_ui",
+    "precondition": "Test Voice playback has started",
+    "action": "Click Stop Voice",
+    "expected": "Playback is cancelled, the UI briefly shows stopped or interrupted feedback, and the TTS event stores only safe lifecycle metadata and character count.",
+    "implemented_in_v1": true,
+    "must_not_store": [
+      "test_voice_text",
+      "spoken_text",
+      "raw_provider_config"
+    ]
+  },
+  {
+    "id": "voice-profile-v1-tts-unavailable-keeps-text",
+    "category": "voice_profile_v1_output_policy",
+    "precondition": "Voice Output is enabled but system speech synthesis is unavailable",
+    "action": "Complete a normal or Direct Conversation assistant reply",
+    "expected": "The full text reply remains visible, speech safely no-ops, and the UI plus Event Stream show only a short unavailable summary.",
+    "implemented_in_v1": true,
+    "must_preserve": [
+      "full_chat_reply",
+      "normal_chat_flow"
+    ]
   },
   {
     "id": "voice-profile-v1-draft-preservation",

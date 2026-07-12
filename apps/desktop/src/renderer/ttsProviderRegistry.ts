@@ -39,7 +39,7 @@ const SYSTEM_TTS_PROVIDER: TtsProviderDescriptor = {
   enabled: true,
   selectable: true,
   description: "本机系统语音 fallback",
-  privacySummary: "使用本机系统语音，不上传音频，不需要 API key。",
+  privacySummary: "由系统提供语音能力；ReiLink 不接外部 TTS API，也不配置 TTS API key。",
   fallbackSummary: "默认 provider；不可用时保留文字回复并安全 no-op。",
   capability: {
     streaming: false,

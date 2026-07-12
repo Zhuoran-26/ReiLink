@@ -23,7 +23,7 @@ ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona +
 - [功能矩阵](#功能矩阵)
 - [架构概览](#架构概览)
 - [Agent 回答链路](#agent-回答链路)
-- [Voice Interaction MVP](#voice-interaction-mvp)
+- [Voice Interaction v2.2](#voice-interaction-v22)
 - [Knowledge Retrieval / 本地知识检索](#knowledge-retrieval--本地知识检索)
 - [Local-first 与隐私边界](#local-first-与隐私边界)
 - [快速开始](#快速开始)
@@ -42,16 +42,16 @@ ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona +
 - companion 保持低情绪、低打扰、短句风格；
 - 本地知识只在相关时提供事实上下文，不把回复变成 wiki dump；
 - 记忆必须经过用户确认；
-- 语音输入是 transcript-first，可编辑、可删除、确认后才发送；
+- 语音输入默认是 transcript-first 确认发送；用户显式开启 Direct Conversation 后，主动录音通过 guard 才会自动发送；
 - 用户数据、设置、知识包和音频处理尽量保留在本机。
 
 当前项目面向本地演示、作品集展示和 runtime / product iteration，不是正式商业安装包。
 
 ## 当前状态
 
-- 当前开发里程碑：**v0.2-pre.4 Context & Memory release hardening**。
+- 当前开发里程碑：**Voice v2.2 release hardening**。
 - `dev/codex-reilink` 分支包含最新 Voice / Local ASR / Knowledge Retrieval / Context & Memory 进展。
-- 当前开发线已完成：Voice Output、Local ASR 语音输入、主聊天语音按钮、Local ASR Settings 持久化、Knowledge Retrieval、Candidate Memory、Memory Retrieval、Session Archive Runtime、Archive Search 与 Archive-to-Memory Candidate Bridge。
+- 当前开发线已完成：Voice v2.2（confirm-send、Direct Conversation、Voice Profile、TTS Strategy / Provider Registry）、Local ASR、Knowledge Retrieval、Candidate Memory、Memory Retrieval、Session Archive Runtime、Archive Search 与 Archive-to-Memory Candidate Bridge。
 - 公开 release tag 可能滞后于当前 dev 分支；GitHub 更新、release tag、push、merge 仍需要人工 review 后进行。
 - macOS packaged app 已做多轮 smoke，但项目仍处于 pre-release。
 
@@ -66,8 +66,8 @@ ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona +
 - Game Context：当前游戏、Boss、进度、挫败状态和手动当前游戏覆盖。
 - 本地知识包：包含 [Elden Ring sample knowledge](data/knowledge/games/elden_ring) 与 [Hollow Knight sample knowledge](data/knowledge/games/hollow_knight)。
 - Knowledge Retrieval v1：本地 keyword retrieval、top-k snippets、grounding / gating、显式游戏名切换和闲聊隔离。
-- Voice Output MVP：系统 TTS，可选开启，安全 Event Stream 生命周期摘要。
-- Voice Input MVP：用户配置 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) compatible binary、model 和 [ffmpeg](https://ffmpeg.org/) compatible converter 后走 Local ASR。
+- Voice v2.2：默认 confirm-send、显式 Direct Conversation、九态状态机、Voice Profile full / brief / silent、可打断系统 TTS 与安全 Event Stream 生命周期摘要。
+- Voice Input：用户配置 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) compatible binary、model 和 [ffmpeg](https://ffmpeg.org/) compatible converter 后走 Local ASR；不接 cloud ASR。
 - Event Stream / Debug Panel：展示安全摘要，不展示 raw prompt、API key、完整路径或完整 transcript。
 - macOS packaged app runtime foundation：bundled backend binary、bundled knowledge resources、用户数据写到 app 外部。
 
@@ -81,8 +81,9 @@ ReiLink 不是通用 chatbot，也不是攻略站。最终回复仍由 persona +
 | Game Context | Boss / deaths / frustration / session | MVP | Rule-first，必要时结合 LLM semantic fallback。 |
 | Knowledge Retrieval | 本地 keyword retrieval | MVP | 暂无 embeddings / vector DB / hybrid retrieval。 |
 | Session Archive | 最近会话 safe summary | MVP | 手动归档、搜索、删除、清空和显式候选扫描；不保存 raw prompt / transcript。 |
-| Voice Output | 系统 TTS | MVP | 可选开启，不是角色级配音。 |
-| Voice Input | Local ASR | MVP | 需要用户手动配置 binary / model / converter。 |
+| Voice Interaction | confirm-send + Direct Conversation | v2.2 | Direct Conversation 需显式开启且每轮主动录音；不是 hands-free。 |
+| Voice Output | System Speech Synthesis + Voice Profile | v2.2 | full / brief / silent；唯一 selectable provider 是系统语音，不是角色级配音。 |
+| Voice Input | Local ASR | MVP | 需要用户手动配置 binary / model / converter；音频只交给本机 backend。 |
 | Event Stream | 安全生命周期事件 | 已完成 | 不显示 raw prompt、API key、完整路径、完整 transcript。 |
 | Packaging | macOS `.app` | MVP | 用户数据写在 `.app` 外部；当前为未签名本地构建。 |
 | Overlay | macOS safe mode | MVP / 冻结 | Foundation 已有；auto-show 故意 fail-closed。 |
@@ -133,7 +134,7 @@ flowchart LR
   UserData -. "本地保存" .-> Runtime
 ```
 
-Renderer 负责用户交互、语音录制、系统 TTS 和安全事件展示。Backend 负责 Agent runtime、knowledge retrieval、memory、game context、model routing、Local ASR subprocess 边界和用户数据目录。Local ASR settings 保存在 Local User Data 中；Local ASR 使用短时 temporary audio files，默认处理后清理。transcript 只回填输入框，不会自动进入 memory、prompt、knowledge retrieval 或 game context。Local-first 指本地用户数据、本地记忆、本地设置、本地知识包、音频处理和 Local ASR 优先保存在本机；LLM 推理目前仍可通过用户配置的 DeepSeek-compatible provider 完成。
+Renderer 负责用户交互、语音录制、Voice 状态、系统 TTS 和安全事件展示。Backend 负责 Agent runtime、knowledge retrieval、memory、game context、model routing、Local ASR subprocess 边界和用户数据目录。Local ASR settings 保存在 Local User Data 中；Local ASR 使用短时 temporary audio files，默认处理后清理。默认模式下 transcript 只回填输入框；显式 Direct Conversation 仅在用户主动录音且 guard 通过后进入同一 chat flow。未确认或被 guard 阻断的 transcript 不进入 memory、prompt、knowledge retrieval、game context 或 proactive。Local-first 指本地用户数据、本地记忆、本地设置、本地知识包、音频处理和 Local ASR 优先保存在本机；LLM 推理目前仍可通过用户配置的 DeepSeek-compatible provider 完成。
 
 ## Agent 回答链路
 
@@ -166,61 +167,58 @@ flowchart TD
 
 Prompt 会同时使用 persona、confirmed memory、当前回合上下文和相关 knowledge snippets。Memory 不会自动写入；knowledge 只有相关时注入；闲聊不会强行触发 retrieval；Event Stream 只展示安全摘要。
 
-## Voice Interaction MVP
+## Voice Interaction v2.2
 
-ReiLink 的 Voice Interaction MVP 是保守路线：可选语音输出、用户触发语音输入、transcript-first 确认发送。它不是完整自然语音助手。
-
-### Voice Output
-
-- 使用本机系统 `speechSynthesis`。
-- 可选开启，默认关闭。
-- 不接商业 TTS provider。
-- 支持 Test Voice、rate、volume、Stop Voice。
-- Event Stream 只记录安全生命周期摘要。
-- 已知限制：声音不够角色化，可能念错 Rei 或游戏专有名词。
+Voice v2.2 是用户主动触发的语音对话基础层，不是完整实时语音 Agent。默认仍是 `confirm_send`；Direct Conversation 必须显式开启，而且每一轮都需要用户主动录音，不会常驻监听，也没有 wake word。
 
 ### Voice Input / Local ASR
 
-- Web Speech fallback 在 Electron packaged app 中不可靠。
-- Local ASR 是当前稳定主路径。
-- 用户在 Settings 配置 ASR binary、model 和 converter。
-- transcript 只填入输入框，用户确认后才发送。
-- 不上传音频到云 ASR。
-- 默认不保存音频。
-- 不做 wake word / continuous listening。
-- 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context extraction。
+- Local ASR 是当前稳定主路径，Web Speech 只作环境允许时的 fallback。
+- 用户在 Settings 配置 ASR binary、model 和 converter；ReiLink 不内置这些第三方文件。
+- Renderer 把短音频交给本机 backend，backend 调用本地 ASR 并清理临时文件；没有 cloud ASR 路径。
+- `confirm_send`：transcript 进入可编辑输入框，用户确认后发送。
+- `direct_conversation`：用户主动录音结束后，空文本、短文本、短录音和疑似半句先被 guard；只有通过后才自动进入现有 chat flow。
+- 未确认或被 guard 阻断的 transcript 不写 memory、不触发 proactive，也不进入 prompt、retrieval、game context 或 Semantic Extraction。
+
+### State / Direct Conversation
+
+当前状态统一为 `idle`、`listening`、`transcribing`、`auto_sending`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。录音与播报互斥；开始新录音或点击 Stop Voice 会尽量打断当前播报。
+
+### Voice Output / Profile
+
+- 当前唯一 enabled / selectable provider 是 `system_speech_synthesis`，由平台 `speechSynthesis` 提供能力。
+- Local TTS 是 `not_implemented` placeholder；External TTS 是 disabled / `not_configured` placeholder，均不可选择。
+- Voice Profile `rei_calm` 默认普通聊天 `full`、Direct Conversation `brief`，也支持 `silent`；brief 是 deterministic 截取，不额外调用 LLM。
+- `silent` 只关闭自动播报，完整文字回复仍保留。Test Voice 是独立的显式操作，不等同于自动回复播报。
+- ReiLink 不接外部 TTS API、不配置 TTS API key；平台 `speechSynthesis` 的内部实现由操作系统 / runtime 决定。
 
 ```mermaid
 sequenceDiagram
   participant User as 用户
   participant UI as Renderer
-  participant Backend as FastAPI Backend
-  participant Settings as Local ASR Settings
-  participant Converter as Audio Converter
-  participant ASR as Local ASR Binary
+  participant Backend as 本机 Backend
+  participant ASR as Local ASR
+  participant Chat as 现有 Chat Flow
 
-  User->>UI: 点击主聊天语音按钮
-  UI->>UI: 录制短音频
-  UI->>Backend: 上传 audio blob
-  Backend->>Settings: 解析 ASR / model / converter 配置
-  Backend->>Backend: 写入临时音频
-  alt WebM / Ogg 输入
-    Backend->>Converter: 转换为 16kHz mono WAV
-    Converter-->>Backend: 返回 WAV
-  end
+  User->>UI: 主动开始并结束录音
+  UI->>Backend: 本机传递短音频
   Backend->>ASR: 本地转写
-  ASR-->>Backend: transcript output
-  Backend->>Backend: 清理临时文件
-  Backend-->>UI: 返回安全 transcript response
-  UI->>UI: 填入可编辑输入框
-  User->>UI: 用户确认后手动发送
+  ASR-->>UI: transcript
+  alt confirm_send
+    UI->>UI: 填入输入框，等待确认
+    User->>Chat: 确认发送
+  else direct_conversation 且 guard 通过
+    UI->>Chat: 自动发送
+  else guard 阻断
+    UI->>UI: 等待确认或提示重试
+  end
+  Chat-->>UI: 文字回复
+  opt Voice Output 开启且 profile 非 silent
+    UI->>UI: 系统语音播报，可停止
+  end
 ```
 
-在用户确认发送前，transcript 不会进入 memory、prompt、knowledge retrieval 或 game context extraction。
-
-如果 ASR 未配置、converter 未配置、转写失败、超时或没有文本，流程会安全失败：不会自动发送，不会写入 memory / prompt / retrieval / game context，Event Stream / Debug 只显示安全摘要。
-
-详细配置见 [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md)，发布回归见 [`docs/QA.md`](docs/QA.md)。
+Voice / TTS Event Stream 只保留类型、来源、provider / status / profile、guard 原因和长度等安全元数据，不保留完整 transcript、assistant reply 或 spoken text。详细规格见 [`docs/voice_interaction_v2_spec.md`](docs/voice_interaction_v2_spec.md)，发布门禁见 [`docs/release_voice_v2_2_hardening_checklist.md`](docs/release_voice_v2_2_hardening_checklist.md)。
 
 ## Knowledge Retrieval / 本地知识检索
 
@@ -243,7 +241,7 @@ sequenceDiagram
 - Pending memory 必须由用户确认。
 - Session Archive 只保存 safe summaries；Archive Search 不进 prompt，Archive-to-Memory Bridge 只创建待确认候选。
 - Local ASR 音频是短时临时文件，处理后清理。
-- Event Stream / Debug / Raw JSON 不展示 raw prompt、完整 transcript、raw subprocess output、API key、完整本地路径、audio content 或 base64 audio。
+- Voice / TTS Event Stream 不保存完整 transcript、assistant reply 或 spoken text；Debug / Raw JSON 也不展示 raw prompt、raw subprocess output、API key、Authorization、完整本地路径、audio content 或 base64 audio。
 - Local-first 指本地数据、本地设置、本地知识包和本地 ASR 优先留在本机；不代表当前所有 LLM 推理都离线。
 
 ## 快速开始
@@ -325,13 +323,19 @@ packaged resources 是只读资源。memory、session、settings、logs 和 Loca
 | --- | --- |
 | [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) | 当前项目状态与范围。 |
 | [`docs/QA.md`](docs/QA.md) | 手动 QA 与 release regression checklist。 |
+| [`docs/release_voice_v2_2_hardening_checklist.md`](docs/release_voice_v2_2_hardening_checklist.md) | 当前 Voice v2.2 自动化、手动与 packaged release gate。 |
+| [`docs/releases/reilink-voice-v2.2.md`](docs/releases/reilink-voice-v2.2.md) | Voice v2.2 release note 草稿。 |
+| [`docs/voice_interaction_v2_spec.md`](docs/voice_interaction_v2_spec.md) | 当前 Voice v2.2 状态机与 Direct Conversation 规格。 |
+| [`docs/voice_profile_v1.md`](docs/voice_profile_v1.md) | 当前 full / brief / silent 播报策略。 |
+| [`docs/tts_provider_registry.md`](docs/tts_provider_registry.md) | 当前 TTS provider 能力与 placeholder 边界。 |
+| [`docs/qa/voice_v2_2_release_matrix.json`](docs/qa/voice_v2_2_release_matrix.json) | Voice v2.2 release gate 到 component QA / 自动化测试的机器可读映射。 |
 | [`docs/release_context_memory_hardening_checklist.md`](docs/release_context_memory_hardening_checklist.md) | Context & Memory release hardening checklist。 |
 | [`docs/releases/reilink-v0.2-pre.4-context-memory.md`](docs/releases/reilink-v0.2-pre.4-context-memory.md) | Context & Memory v0.2-pre.4 release notes 草稿。 |
 | [`docs/memory_architecture_v0.md`](docs/memory_architecture_v0.md) | Memory 分层、Candidate Memory、Retrieval 和 archive bridge 边界。 |
 | [`docs/session_archive_v1_architecture.md`](docs/session_archive_v1_architecture.md) | Session Archive / Search / Archive-to-Memory Bridge 架构。 |
 | [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) | 真实 Local ASR 配置与 smoke flow。 |
-| [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Local ASR 设计背景与实现说明。 |
-| [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Voice Interaction MVP release notes 草稿。 |
+| [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Historical Local ASR spike；当前状态以 Voice v2.2 spec 为准。 |
+| [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Historical Voice MVP release note；已被 v2.2 草稿取代。 |
 | [`docs/qa/retrieval_scenarios.json`](docs/qa/retrieval_scenarios.json) | Knowledge Retrieval 机器可读回归场景。 |
 | [`docs/qa/voice_input_scenarios.json`](docs/qa/voice_input_scenarios.json) | Voice Input fallback 机器可读回归场景。 |
 | [`docs/qa/voice_input_local_asr_scenarios.json`](docs/qa/voice_input_local_asr_scenarios.json) | Local ASR release regression 场景。 |
@@ -354,6 +358,7 @@ packaged resources 是只读资源。memory、session、settings、logs 和 Loca
 ### v0.2.x Stabilization
 
 - Context & Memory release hardening。
+- Voice v2.2 release hardening 与 QA consolidation。
 - Packaged app smoke coverage for user-visible runtime changes。
 - Local ASR setup helper and accuracy / timeout tuning。
 - More robust QA regression flows。
@@ -385,7 +390,8 @@ packaged resources 是只读资源。memory、session、settings、logs 和 Loca
 - 不内置 whisper binary、model、ffmpeg 或第三方可执行文件。
 - 系统 TTS 可能不够自然，也不是角色级配音。
 - Local ASR 准确率取决于模型大小、麦克风、环境噪音和硬件性能。
-- 不做 wake word / continuous listening。
+- Voice v2.2 不是 hands-free / always-listening Agent；不做 wake word、speaker diarization 或自动下一轮录音。
+- 尚未实现 local neural TTS、external / streaming TTS provider、custom character voice、voice cloning 或 cloud audio upload。
 - Overlay auto-show 仍处于 macOS fail-closed safe mode。
 - 还没有 Live2D。
 - 还没有 embedding / vector DB / hybrid retrieval、semantic archive search、prompt archive retrieval 或外部 memory provider。

@@ -89,12 +89,12 @@
     ]
   },
   {
-    "id": "ia-voice-future-direct-conversation-clear",
+    "id": "ia-voice-v2-2-current-boundary-clear",
     "category": "voice_ia",
     "precondition": "The Voice module is presented in docs or UI Surface v0 copy",
-    "input": "Read Voice planning or open Voice workspace",
+    "input": "Read the current Voice specification or open Voice workspace",
     "expected_surface": "Voice workspace",
-    "expected_behavior": "Voice clearly distinguishes current transcript-first Local ASR from the future direct spoken conversation loop with idle, listening, transcribing, ready_to_send, assistant_thinking, speaking, interrupted, and error states.",
+    "expected_behavior": "Voice v2.2 clearly distinguishes default confirm-send from opt-in Direct Conversation auto-send and exposes idle, listening, transcribing, auto_sending, ready_to_send, assistant_thinking, speaking, interrupted, and error states. Direct Conversation still requires a user gesture for every round and is not hands-free or always listening.",
     "should_show_debug_by_default": false,
     "should_preserve_chat_input": true,
     "forbidden_terms": [

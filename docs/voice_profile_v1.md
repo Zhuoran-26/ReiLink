@@ -1,8 +1,10 @@
 # Voice Profile v1
 
-Updated: 2026-06-23
+Updated: 2026-07-12
 
-Status: implemented as a behavior policy and wired through TTS Strategy Spike v0 plus TTS Provider Registry / Capability Surface v0. Voice Profile v1 decides whether an assistant reply may be spoken and whether it is spoken as full, brief, or silent. TTS Provider Registry v0 currently exposes only the local `system_speech_synthesis` fallback around renderer-side `speechSynthesis`; it reserves disabled metadata for future local / external providers but does not add a real external provider, local model provider, character voice, voice clone, wake-word mode, or hands-free loop.
+Document status: current component specification for Voice v2.2.
+
+Status: implemented as a behavior policy and wired through TTS Strategy v0 plus TTS Provider Registry / Capability Surface v0. Voice Profile v1 decides whether an assistant reply may be spoken and whether it is spoken as full, brief, or silent. TTS Provider Registry v0 currently exposes only the system-provided `system_speech_synthesis` strategy around renderer-side `speechSynthesis`; it reserves disabled metadata for future local / external providers but does not add a real external provider, local model provider, character voice, voice clone, wake-word mode, or hands-free loop.
 
 ## Current Profile
 
@@ -17,20 +19,22 @@ Status: implemented as a behavior policy and wired through TTS Strategy Spike v0
 - Starting a new recording interrupts active TTS.
 - Stop Voice interrupts active TTS and shows a short stopped / interrupted state.
 - Test Voice remains available and uses the `system_speech_synthesis` provider backed by system `speechSynthesis`.
+- Test Voice is an explicit user action. It does not represent automatic assistant-reply policy and does not write a chat message.
+- TTS unavailable never removes the full text reply.
 
 ## TTS Provider Registry v0
 
 - Current provider id: `system_speech_synthesis`.
-- Current provider role: local fallback around browser / Electron system `speechSynthesis`.
+- Current provider role: system-provided fallback around browser / Electron `speechSynthesis`.
 - The underlying strategy owns speak / stop / availability fallback; Voice Output owns lifecycle status and safe Event Stream summaries.
 - The Voice workspace displays the current provider as `System Speech Synthesis`.
 - Provider status is `available` when `speechSynthesis` and `SpeechSynthesisUtterance` exist, otherwise `unavailable`.
-- Current capabilities: local system voice, no provider streaming, no character voice, no network requirement, no API key, supports stop / interrupt.
+- Current capabilities: system-provided speech, no provider streaming, no character voice, no ReiLink-configured network provider, no TTS API key, supports stop / interrupt.
 - Reserved provider ids: `local_tts` and `external_tts`.
 - `local_tts` is disabled, not selectable, and `not_implemented`.
 - `external_tts` is disabled, not selectable, and `not_configured`.
 - Future local TTS, external TTS, and character voice providers are not implemented.
-- No audio is uploaded by this layer, no external TTS API key is introduced, and no local model path is read.
+- ReiLink passes selected text to the platform `speechSynthesis` implementation. This layer does not call an external TTS endpoint, configure a TTS API key, upload an audio file, or read a local TTS model path; it makes no broader claim about undocumented platform internals.
 - Unknown or disabled provider ids safely fall back to `system_speech_synthesis`; if system speech is unavailable, Voice Output emits a safe unavailable event and keeps the reply as text.
 
 ## Spoken Modes
@@ -53,6 +57,7 @@ Status: implemented as a behavior policy and wired through TTS Strategy Spike v0
 - Skip speech.
 - Keep the assistant reply visible in chat.
 - Emit only safe skip metadata.
+- This controls automatic assistant-reply speech; an explicit Test Voice action remains separate.
 
 ## Never Spoken
 

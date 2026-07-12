@@ -1,8 +1,10 @@
-# Voice Interaction v2 Spec
+# Voice Interaction v2.2 Spec
 
-Updated: 2026-06-23
+Updated: 2026-07-12
 
-Status: v2.1 implemented with Voice Profile v1 behavior policy, TTS Strategy Spike v0, TTS Provider Registry / Capability Surface v0, v2.1.1-style Direct Conversation partial-transcript protection, and Direct Conversation UX Polish v0. The renderer now has a typed Voice v2 conversation state model, Home / Chat compact state display, Voice workspace Conversation state panel, confirm-send transcript flow, opt-in Direct Conversation Mode, visible auto-send / interrupted / recoverable error feedback, TTS interruption, speaking / listening mutual exclusion, short / empty / partial transcript auto-send guard, rule-based spoken reply selection, a `system_speech_synthesis` strategy around renderer-side `speechSynthesis`, and a read-only TTS provider capability surface. This does not implement hands-free listening, real external / local TTS providers, character voice, Overlay auto-show, memory architecture, Live2D, or vision.
+Document status: current.
+
+Status: Voice v2.2 is the release-hardening baseline for the implemented Voice v2 state model, confirm-send default, opt-in Direct Conversation, Voice Profile v1, TTS Strategy v0, TTS Provider Registry v0, Direct Conversation guards, visible auto-send / interrupted / recoverable error feedback, and Event Stream privacy. It does not implement hands-free listening, wake word, real external / local TTS providers, character voice, Overlay Voice state, Live2D, or vision.
 
 ## Purpose
 
@@ -23,13 +25,13 @@ The goal is a calmer game companion loop, not a voice assistant that constantly 
 
 Implemented today:
 
-- Voice v2.1 resolves `idle`, `listening`, `transcribing`, `auto_sending`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error` from current renderer voice signals.
+- Voice v2.2 resolves `idle`, `listening`, `transcribing`, `auto_sending`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error` from current renderer voice signals.
 - Home / Chat shows compact Chinese-first Voice v2 state near the composer without hiding normal text input.
 - Voice workspace Conversation tab shows state, mode, transcript confirmation, output status, interruption and privacy boundaries.
 - Voice interaction mode is explicit: `confirm_send` is the default, and `direct_conversation` is opt-in.
 - Local ASR v1 can record and transcribe after a user gesture.
 - ASR uses user-configured local binaries, model files, and optional converter paths.
-- Audio is sent only to the local backend.
+- Captured audio is transferred only to ReiLink's local backend for Local ASR; ReiLink does not add a cloud ASR upload path.
 - Under `confirm_send`, transcript fills the chat input and is not auto-sent.
 - Under `direct_conversation`, the transcript is auto-sent through the existing chat flow after the user actively starts and stops a recording round.
 - Under `direct_conversation`, very short recordings, very short transcripts, empty transcripts, or obvious partial phrases are not auto-sent; short / partial transcripts enter `ready_to_send`, and empty transcripts show a safe retry prompt.
@@ -320,7 +322,7 @@ Voice Profile tab now shows:
 
 The chat input area should show compact Voice state:
 
-- idle / listening / transcribing / ready / thinking / speaking / error,
+- idle / listening / transcribing / auto-sending / ready / thinking / speaking / interrupted / error,
 - a mic control,
 - a stop control when listening or speaking,
 - transcript ready state when confirmation is needed,
@@ -363,10 +365,9 @@ Event Stream and Debug may show safe status codes, duration buckets, char counts
 
 Voice v2 keeps these fixed boundaries:
 
-- Audio is not uploaded to external services.
+- ReiLink does not send captured audio to an external ASR service.
 - ASR remains local unless a future task explicitly changes scope.
-- Audio is not persisted after transcription.
-- Temp files are cleaned after success, failure, or timeout.
+- ReiLink has no durable audio-retention feature; temporary files are scheduled for cleanup after success, failure, or timeout, with cleanup status reported safely.
 - Unconfirmed transcript stays outside memory, prompt, retrieval, game context, Semantic Extraction, and proactive behavior.
 - Voice never bypasses Memory Candidate guard.
 - Voice does not create a separate proactive trigger path.
@@ -376,7 +377,7 @@ Voice v2 keeps these fixed boundaries:
 
 ## Implementation Handoff
 
-Foundation and v2.1 Direct Conversation completed in the renderer:
+Voice v2.2 foundation and Direct Conversation are completed in the renderer:
 
 1. Typed Voice v2 state model.
 2. Renderer coordination across Web Speech, Local ASR, send confirmation, Voice Output, and interruption.
@@ -399,14 +400,14 @@ Required verification for implementation tasks should include desktop automated 
 
 ## QA Coverage
 
-Machine-readable scenarios live in `docs/qa/voice_interaction_v2_scenarios.json`.
+The release-level coverage index lives in `docs/qa/voice_v2_2_release_matrix.json`. Detailed cross-feature scenarios live in `docs/qa/voice_interaction_v2_scenarios.json`; Voice Profile / provider scenarios and lower-level input suites remain component references instead of being duplicated here.
 
 Manual acceptance for this spec:
 
 1. Confirm-send is the default.
 2. Direct Conversation is visible opt-in and never implied by enabling ASR or Voice Output.
 3. Direct Conversation still requires a user gesture for each recording round; hands-free / auto-listen remains future-only and not default.
-4. The state machine covers `idle`, `listening`, `transcribing`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`.
+4. The state machine covers `idle`, `listening`, `transcribing`, `auto_sending`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`.
 5. Listening and speaking are mutually exclusive.
 6. Starting recording interrupts active TTS.
 7. Unconfirmed transcript has no memory, prompt, retrieval, game context, Semantic Extraction, or proactive side effect.

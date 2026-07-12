@@ -1,6 +1,8 @@
 # TTS Provider Registry v0
 
-Updated: 2026-06-23
+Updated: 2026-07-12
+
+Document status: current component specification for Voice v2.2.
 
 Status: implemented as renderer-side provider metadata and capability surface. The only enabled and selectable provider is `system_speech_synthesis`, backed by Electron / browser `speechSynthesis`. `local_tts` and `external_tts` are reserved descriptors only; they are disabled, not selectable, and do not call any local model path, API key, network service, or external runtime.
 
@@ -55,8 +57,8 @@ Capability flags:
 - Enabled: yes.
 - Selectable: yes.
 - Status: `available` when renderer `speechSynthesis` and `SpeechSynthesisUtterance` exist; otherwise `unavailable`.
-- Capabilities: local system voice, no provider streaming, no character voice, no network requirement, no API key, supports stop / interrupt.
-- Privacy: no audio upload and no external TTS API.
+- Capabilities: system-provided speech, no provider streaming, no character voice, no ReiLink-configured network provider, no TTS API key, and Stop / interrupt support.
+- Privacy: ReiLink passes the selected text to the platform `speechSynthesis` implementation. ReiLink itself does not call an external TTS endpoint, configure a TTS API key, or upload an audio file. This is an application integration boundary, not a claim about undocumented platform internals.
 
 `local_tts`
 
@@ -129,8 +131,8 @@ They must not include:
 
 - No real local TTS integration.
 - No real external TTS integration.
-- No API key setup.
-- No audio upload.
+- No TTS API key setup.
+- No ReiLink-managed text or audio upload to a TTS provider.
 - No character voice or voice clone.
 - No provider streaming.
 - No change to Direct Conversation reply selection.
