@@ -566,6 +566,15 @@ export type GameSessionDebugResponse = {
     is_fresh: boolean;
     freshness: string;
   } | null;
+  discussion_target?: {
+    entity_id: string;
+    name: string;
+    entity_type: "boss";
+    intent: string;
+    updated_at: string;
+    confidence: number;
+    source: string;
+  } | null;
   last_boss: string | null;
   last_attempted_boss: string | null;
   last_cleared_boss: string | null;
@@ -620,6 +629,13 @@ export type SemanticExtractionDebugResponse = {
   applied_by?: string | null;
   confidence?: "high" | "medium" | "low";
   applied_updates?: string[];
+  rejected_updates?: string[];
+  grounding_status?: string | null;
+  grounding_match_type?: string | null;
+  extracted_entity?: string | null;
+  normalized_entity?: string | null;
+  canonical_entity?: string | null;
+  canonical_display_name?: string | null;
   extraction_trace?: {
     primary_extractor?: string | null;
     primary_status?: string | null;
@@ -632,6 +648,13 @@ export type SemanticExtractionDebugResponse = {
     skip_reason?: string | null;
     parse_error?: string | null;
     applied_updates: string[];
+    rejected_updates?: string[];
+    grounding_status?: string | null;
+    grounding_match_type?: string | null;
+    extracted_entity?: string | null;
+    normalized_entity?: string | null;
+    canonical_entity?: string | null;
+    canonical_display_name?: string | null;
     llm_shadow_status?: "skipped" | "succeeded" | "failed";
     llm_shadow_confidence?: "high" | "medium" | "low";
     llm_shadow_summary?: string | null;
@@ -696,6 +719,13 @@ export type SemanticShadowEvent = {
   skip_reason?: string | null;
   parse_error?: string | null;
   applied_updates?: string[];
+  rejected_updates?: string[];
+  provider_status?: string | null;
+  schema_valid?: boolean | null;
+  grounding_status?: string | null;
+  grounding_match_type?: string | null;
+  canonical_entity?: string | null;
+  canonical_display_name?: string | null;
   llm_shadow_status?: "skipped" | "succeeded" | "failed";
   llm_shadow_confidence?: "high" | "medium" | "low";
   llm_shadow_summary?: string | null;

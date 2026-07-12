@@ -354,6 +354,7 @@ const emptyChatDebug: ChatDebugResponse = {
 const emptyGameSessionDebug: GameSessionDebugResponse = {
   current_game: null,
   current_boss: null,
+  discussion_target: null,
   last_boss: null,
   last_attempted_boss: null,
   last_cleared_boss: null,
@@ -687,6 +688,7 @@ const labelMap: Record<string, string> = {
   cooldown_remaining_seconds: "冷却剩余",
   coverage: "覆盖范围",
   current_boss: "当前 Boss",
+  discussion_target: "讨论目标",
   current_game: "当前游戏",
   current_session: "当前会话",
   current_session_context: "当前会话",
@@ -767,6 +769,13 @@ const labelMap: Record<string, string> = {
   fallback_extractor: "Fallback extractor",
   guard_final_decision: "最终判定",
   applied_by: "应用来源",
+  rejected_updates: "未应用字段",
+  grounding_status: "Grounding 状态",
+  grounding_match_type: "Grounding 匹配",
+  extracted_entity: "提取实体",
+  normalized_entity: "归一实体",
+  canonical_entity: "Canonical ID",
+  canonical_display_name: "Canonical 名称",
   first_attempt_failed: "首次失败",
   compat_retry_used: "Compat retry",
   compat_retry_succeeded: "Compat 结果",
@@ -1332,6 +1341,48 @@ const semanticGuardDecisionText = (decision?: string | null) => {
   return labels[decision ?? ""] ?? debugText(decision);
 };
 
+const gameActivityText = (activity?: unknown) => {
+  const labels: Record<string, string> = {
+    boss_attempt: "挑战中",
+    boss_failed: "挑战失败",
+    boss_cleared: "已通过",
+    boss_switching: "切换目标",
+    guide_request: "询问攻略",
+    game_discussion: "讨论游戏",
+    route_or_location: "查找路线",
+    build_or_equipment: "调整配装",
+    unclear_boss_reference: "Boss 指代待确认",
+    boss_history_query: "回顾挑战",
+    frustration_calm: "状态缓和"
+  };
+  const value = String(activity ?? "");
+  return labels[value] ?? debugText(activity);
+};
+
+const bossFreshnessText = (freshness?: unknown) => {
+  const labels: Record<string, string> = {
+    fresh: "新鲜",
+    weak: "待确认",
+    stale: "已过期",
+    none: "无"
+  };
+  const value = String(freshness ?? "");
+  return labels[value] ?? debugText(freshness);
+};
+
+const bossHistoryStatusText = (status?: unknown) => {
+  const labels: Record<string, string> = {
+    current: "当前挑战",
+    attempted: "尝试过",
+    failed: "挑战失败",
+    cleared: "已通过",
+    abandoned: "已放弃",
+    mentioned: "提到过"
+  };
+  const value = String(status ?? "");
+  return labels[value] ?? debugText(status);
+};
+
 const semanticShadowEventStatusText = (status?: string | null) => {
   const labels: Record<string, string> = {
     shadow_deferred: "LLM 影子识别已调度",
@@ -1463,11 +1514,16 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [
         `语义识别：${debugText(event.source)}`,
         debugText(event.confidence),
+        event.provider_status ? `Provider：${debugText(event.provider_status)}` : "",
+        event.schema_valid != null ? `Schema：${event.schema_valid ? "有效" : "无效"}` : "",
+        event.grounding_status ? `Grounding：${debugText(event.grounding_status)}` : "",
+        event.canonical_entity ? `实体：${debugText(event.canonical_entity)}` : "",
         event.shadow_event_status ? semanticShadowEventStatusText(event.shadow_event_status) : "",
         event.fallback_reason ? `原因：${debugText(event.fallback_reason)}` : "",
         event.skip_reason && event.skip_reason !== "no_semantic_signal" ? `跳过：${debugText(event.skip_reason)}` : "",
         event.parse_error ? `错误：${debugText(event.parse_error)}` : "",
         event.applied_updates?.length ? debugText(event.applied_updates) : "",
+        event.rejected_updates?.length ? `未应用：${debugText(event.rejected_updates)}` : "",
         event.llm_guard_decision ? `Guard：${semanticGuardDecisionText(event.llm_guard_decision)}` : "",
         event.llm_guard_summary ? sanitizeSessionTimelineText(event.llm_guard_summary, 96) : "",
         event.llm_shadow_status ? `影子：${semanticShadowStatusText(event.llm_shadow_status)}` : "",
@@ -1478,7 +1534,8 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [
         debugText(event.game),
         debugText(event.current_boss),
-        debugText(event.activity),
+        event.discussion_target ? `讨论 ${debugText(event.discussion_target)}` : "",
+        gameActivityText(event.activity),
         typeof event.death_count === "number" ? `死亡 ${event.death_count}` : "",
         typeof event.frustration_count === "number" ? `挫败 ${event.frustration_count}` : "",
         event.last_cleared_boss ? `通过 ${debugText(event.last_cleared_boss)}` : ""
@@ -2588,9 +2645,11 @@ export function App() {
 
   const emitGameSessionChanged = useCallback((currentGameSession: GameSessionDebugResponse) => {
     const currentBoss = currentGameSession.current_boss?.name;
+    const discussionTarget = currentGameSession.discussion_target?.name;
     const signature = eventSignature(
       currentGameSession.current_game,
       currentBoss,
+      discussionTarget,
       currentGameSession.current_activity,
       currentGameSession.death_count,
       currentGameSession.frustration_count,
@@ -2603,6 +2662,7 @@ export function App() {
       timestamp: eventTimestamp(),
       game: currentGameSession.current_game ?? undefined,
       current_boss: currentBoss,
+      discussion_target: discussionTarget,
       activity: currentGameSession.current_activity ?? undefined,
       death_count: currentGameSession.death_count,
       frustration_count: currentGameSession.frustration_count,
@@ -2687,6 +2747,11 @@ export function App() {
     const skipReason = trace?.skip_reason ?? debug.skip_reason ?? null;
     const parseError = trace?.parse_error ?? debug.parse_error ?? null;
     const appliedUpdates = trace?.applied_updates ?? debug.applied_updates ?? [];
+    const rejectedUpdates = trace?.rejected_updates ?? debug.rejected_updates ?? [];
+    const groundingStatus = trace?.grounding_status ?? debug.grounding_status ?? null;
+    const groundingMatchType = trace?.grounding_match_type ?? debug.grounding_match_type ?? null;
+    const canonicalEntity = trace?.canonical_entity ?? debug.canonical_entity ?? null;
+    const canonicalDisplayName = trace?.canonical_display_name ?? debug.canonical_display_name ?? null;
     const shadowStatus = trace?.llm_shadow_status ?? debug.llm_shadow_status ?? null;
     const shadowConfidence = trace?.llm_shadow_confidence ?? debug.llm_shadow_confidence ?? null;
     const shadowSummary = trace?.llm_shadow_summary ?? debug.llm_shadow_summary ?? null;
@@ -2723,6 +2788,10 @@ export function App() {
       skipReason,
       parseError,
       appliedUpdates,
+      rejectedUpdates,
+      groundingStatus,
+      groundingMatchType,
+      canonicalEntity,
       shadowStatus,
       shadowConfidence,
       shadowSummary,
@@ -2753,6 +2822,13 @@ export function App() {
       skip_reason: skipReason,
       parse_error: parseError,
       applied_updates: appliedUpdates,
+      rejected_updates: rejectedUpdates,
+      provider_status: debug.llm_provider_status ?? null,
+      schema_valid: debug.llm_schema_valid ?? null,
+      grounding_status: groundingStatus,
+      grounding_match_type: groundingMatchType,
+      canonical_entity: canonicalEntity,
+      canonical_display_name: canonicalDisplayName,
       llm_shadow_status: shadowStatus ?? undefined,
       llm_shadow_confidence: shadowConfidence ?? undefined,
       llm_shadow_summary: shadowSummary,
@@ -2787,6 +2863,13 @@ export function App() {
         skip_reason: event.skip_reason ?? null,
         parse_error: event.parse_error ?? null,
         applied_updates: event.applied_updates ?? [],
+        rejected_updates: event.rejected_updates ?? [],
+        provider_status: event.provider_status ?? null,
+        schema_valid: event.schema_valid ?? null,
+        grounding_status: event.grounding_status ?? null,
+        grounding_match_type: event.grounding_match_type ?? null,
+        canonical_entity: event.canonical_entity ?? null,
+        canonical_display_name: event.canonical_display_name ?? null,
         llm_shadow_status: event.llm_shadow_status,
         llm_shadow_confidence: event.llm_shadow_confidence,
         llm_shadow_summary: event.llm_shadow_summary ?? null,
@@ -4197,6 +4280,7 @@ export function App() {
   const gameStateSummary = {
     current_game: firstDefined(promptGameState.current_game, gameSessionDebug.current_game),
     current_boss: firstDefined(promptGameState.current_boss, gameSessionDebug.current_boss),
+    discussion_target: firstDefined(promptGameState.discussion_target, gameSessionDebug.discussion_target),
     current_activity: firstDefined(promptGameState.current_activity, gameSessionDebug.current_activity),
     freshness: firstDefined(promptGameState.freshness, gameSessionDebug.current_boss?.freshness),
     death_count: firstDefined(promptGameState.death_count, gameSessionDebug.death_count),
@@ -6370,8 +6454,28 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <dd>{semanticSummary(semanticDebug.rule_grounding)}</dd>
                 </div>
                 <div>
+                  <dt>{formatDebugLabel("grounding_status")}</dt>
+                  <dd>{debugText(semanticDebug.grounding_status)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("grounding_match_type")}</dt>
+                  <dd>{debugText(semanticDebug.grounding_match_type)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("canonical_entity")}</dt>
+                  <dd>{debugText(semanticDebug.canonical_entity)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("canonical_display_name")}</dt>
+                  <dd>{debugText(semanticDebug.canonical_display_name)}</dd>
+                </div>
+                <div>
                   <dt>{formatDebugLabel("applied_updates")}</dt>
                   <dd>{debugText(semanticDebug.applied_updates)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("rejected_updates")}</dt>
+                  <dd>{debugText(semanticDebug.rejected_updates)}</dd>
                 </div>
                 <div>
                   <dt>{formatDebugLabel("parse_error")}</dt>
@@ -7389,12 +7493,16 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <dd>{debugText(gameSessionDebug.current_boss?.name)}</dd>
               </div>
               <div>
+                <dt>{formatDebugLabel("discussion_target")}</dt>
+                <dd>{debugText(gameSessionDebug.discussion_target?.name)}</dd>
+              </div>
+              <div>
                 <dt>{formatDebugLabel("freshness")}</dt>
-                <dd>{debugText(gameSessionDebug.current_boss?.freshness)}</dd>
+                <dd>{bossFreshnessText(gameSessionDebug.current_boss?.freshness)}</dd>
               </div>
               <div>
                 <dt>{formatDebugLabel("activity")}</dt>
-                <dd>{debugText(gameSessionDebug.current_activity)}</dd>
+                <dd>{gameActivityText(gameSessionDebug.current_activity)}</dd>
               </div>
               <div>
                 <dt>{formatDebugLabel("last_attempted")}</dt>
@@ -7416,7 +7524,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             <ul className="debugList compact" aria-label="Boss 记录">
               {recentBossHistory.map((boss, index) => (
                 <li key={`${boss.name}-${boss.status}-${index}`}>
-                  {boss.name} / {debugText(boss.status)} / {debugText(boss.freshness)}
+                  {boss.name} / {bossHistoryStatusText(boss.status)} / {bossFreshnessText(boss.freshness)}
                 </li>
               ))}
               {recentBossHistory.length === 0 && <li>无</li>}
@@ -8140,6 +8248,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{debugText(semanticDebug.applied_updates)}</dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("rejected_updates")}</dt>
+                        <dd>{debugText(semanticDebug.rejected_updates)}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("latest_user_message")}</dt>
                         <dd>{debugText(semanticDebug.latest_user_message)}</dd>
                       </div>
@@ -8154,6 +8266,22 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>
                           {semanticSummary(semanticDebug.rule_grounding)}
                         </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("grounding_status")}</dt>
+                        <dd>{debugText(semanticDebug.grounding_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("grounding_match_type")}</dt>
+                        <dd>{debugText(semanticDebug.grounding_match_type)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("canonical_entity")}</dt>
+                        <dd>{debugText(semanticDebug.canonical_entity)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("canonical_display_name")}</dt>
+                        <dd>{debugText(semanticDebug.canonical_display_name)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("rule_confidence")}</dt>

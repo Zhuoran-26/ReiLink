@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.modules.elden_ring_knowledge.terminology import normalize_terminology
+from app.modules.game_context.entity_registry import find_boss_mentions
 
 
 @dataclass
@@ -78,11 +79,16 @@ class EldenRingKnowledge:
     def _terms(query: str) -> set[str]:
         lower = query.lower()
         aliases = {
-            "margit": ["margit", "玛尔基特", "瑪爾基特", "恶兆妖鬼", "惡兆妖鬼", "恶兆", "惡兆"],
             "史东薇尔": ["stormveil", "史东薇尔", "史東薇爾"],
             "build": ["build", "加点", "加點", "武器", "装备", "裝備", "配装", "配裝"],
         }
         terms: set[str] = set()
+        for grounding in find_boss_mentions(query):
+            if not grounding.entity:
+                continue
+            terms.add(grounding.entity.canonical_id)
+            terms.add(grounding.entity.display_name.lower())
+            terms.update(alias.lower() for alias in grounding.entity.aliases)
         for canonical, values in aliases.items():
             if any(value in lower for value in values):
                 terms.add(canonical)

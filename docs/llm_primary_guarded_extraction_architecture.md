@@ -2,7 +2,7 @@
 
 Updated: 2026-06-18
 
-Status: implemented pilot, updated in v1.0.3. ReiLink now has a foreground LLM-primary semantic reader for chat input when an LLM provider is configured, followed by tolerant-but-safe JSON/schema validation and deterministic guard. v1.0.3 keeps the LLM primary for semantic understanding, hardens live-provider JSON/schema reliability, and separates formal game state writes from candidate understanding for guide-only, descriptive, nickname, low-certainty, and uncertain-confirmation cases. This pilot does not add embeddings, vector databases, UI confirmation popups, Candidate Memory, or a full pending-candidate runtime, and it does not change memory, proactive, persona, voice core behavior, or Overlay runtime boundaries.
+Status: implemented pilot, updated with the canonical game-entity regression fix documented in `docs/game_entity_extraction_regression.md`. ReiLink now has a foreground LLM-primary semantic reader for chat input when an LLM provider is configured, followed by tolerant-but-safe JSON/schema validation, registry grounding, and deterministic guard. Formal current-Boss state remains separate from guide-only `discussion_target`, descriptive/nickname candidates, low-certainty entities, and uncertain confirmations. This pilot does not add embeddings, vector databases, UI confirmation popups, Candidate Memory, or a full pending-candidate runtime, and it does not change memory, proactive, persona, voice core behavior, or Overlay runtime boundaries.
 
 ## Purpose
 
@@ -97,9 +97,9 @@ Input
 Important invariants:
 
 - Typed text uses the same LLM-primary extraction path as voice.
-- `voice_confirmed` and `voice_direct` differ only in source reliability, trace, and guard thresholds.
+- `voice_confirmed` and `voice_direct` differ in send timing and safe source metadata, not post-submit entity or guard semantics.
 - Direct Conversation auto-send still enters the normal chat flow and the same extraction pipeline.
-- Confirm-send voice input has higher source reliability than direct voice because the user confirmed or edited the transcript.
+- Empty, short, partial, or too-short-recording Voice input is blocked before chat submission; once submitted, the same text has the same candidate, canonical grounding, guard, and state result.
 - Rules do not overwrite LLM semantic confidence. They can raise or lower grounding / context confidence through explicit guard logic.
 - Low confidence writes nothing.
 - Conflicts are not silently overwritten.
@@ -201,7 +201,7 @@ The schema distinguishes:
 - `current_target_candidate`
 - `boss_switched`
 
-For `不打女武神了，换去打玛尔基特`, rules may ground that `女武神` and `玛尔基特` are known entities, but guard should apply the LLM's `new_current_target=margit` when confidence and grounding are sufficient. Guide-only mentions such as `玛尔基特那边怎么打来着` should remain `candidate_only` / `ask_clarification` and must not switch current boss unless the user explicitly says they are now fighting or switching to that boss.
+For `不打女武神了，换去打玛尔基特`, rules may ground that `女武神` and `玛尔基特` are known entities, but guard should apply the LLM's `new_current_target=margit` when confidence and grounding are sufficient. A grounded guide-only mention such as `玛尔基特那边怎么打来着` may apply to session-level `discussion_target`, but it must not switch `current_boss` unless the user explicitly says they are now fighting or switching to that boss.
 
 For voice sources, the LLM may recover likely ASR near-misses into canonical candidates, such as `马尔吉特 -> margit` or `女巫神 -> malenia`, but uncertain candidates should become `ask_clarification` / `candidate_only` rather than silent no-op or unsafe writes.
 
@@ -271,7 +271,7 @@ Diagnostics must never include raw prompts, raw provider responses, raw JSON, AP
 Candidate handling rules:
 
 - Exact / canonical entity with an explicit state-change action can `apply`.
-- Guide-only / strategy request becomes `candidate_only`; it may set `guide_request` and `guide_entity`, but must not switch `current_boss`.
+- A grounded guide-only / strategy request may apply `discussion_target`; it must not switch `current_boss`, increment counters, enter memory/archive, or trigger proactive behavior.
 - Descriptive / nickname / low-certainty entity, such as "那个骑马金甲大哥" or "那个金甲的", becomes `candidate_only` or `ask_clarification` unless current context already confirms the same boss.
 - `voice_direct` does not bypass the guard; ambiguous voice candidates remain confirmation-needed.
 - Harmless `current_game` updates are separated from risky updates such as `current_boss`, `death_count`, `last_cleared_boss`, and `current_activity=boss_attempt|boss_failed|boss_cleared`.
@@ -397,7 +397,7 @@ context_confidence
   - unresolved conflict severity
 
 apply_confidence
-  = calibrated combination of semantic, grounding, context, source reliability, and risk policy
+  = calibrated combination of semantic, grounding, context, and risk policy
 ```
 
 Dimensions:
@@ -407,10 +407,7 @@ Dimensions:
 - Evidence strength.
 - Context consistency.
 - Catalog grounding.
-- Source reliability:
-  - `text`: high.
-  - `voice_confirmed`: high-medium because the transcript was user-confirmed or edited.
-  - `voice_direct`: medium because ASR uncertainty remains.
+- Submitted source metadata: `text`, `voice_confirmed`, or `voice_direct`; it is observable but does not alter post-submit guard thresholds.
 - Conflict severity.
 - Ambiguity count.
 - Extraction stability, future optional.
@@ -420,7 +417,7 @@ Rules:
 
 - Rule exact match may raise `grounding_confidence`.
 - Catalog match may raise `grounding_confidence`.
-- Voice ASR source lowers source reliability unless the user confirmed it.
+- Voice ASR uncertainty is handled by pre-submit guards; submitted text is source-equivalent.
 - Explicit switch phrases such as `我现在换到 X` raise `context_confidence`.
 - Conflict with current boss does not automatically mean low confidence; the user may be switching boss.
 - Vague reference such as `玛尔基特那边怎么打来着` may be guide intent, not boss switch.
@@ -513,7 +510,7 @@ All user input sources enter the same LLM-primary architecture:
 - Confirmed voice transcript: `source = voice_confirmed`.
 - Direct voice transcript: `source = voice_direct`.
 
-Source affects reliability, confidence calibration, and trace. It does not decide whether the LLM path runs.
+Source is safe trace/privacy metadata. It does not decide whether the LLM path runs or change post-submit candidate, canonical grounding, guard, or apply behavior.
 
 Direct Conversation rules:
 
@@ -521,7 +518,7 @@ Direct Conversation rules:
 - The same LLM-primary extraction pipeline runs.
 - Memory confirmation is still required.
 - Proactive is not triggered by extraction candidates.
-- ASR uncertainty lowers source reliability and can lead to `ask_clarification` or `candidate_only`.
+- Ambiguous content can still lead to `ask_clarification` or `candidate_only`, but the same content gets the same decision for all submitted sources.
 
 There must not be a split design where voice uses LLM but typed text remains rule-first.
 
@@ -651,7 +648,7 @@ Use `--allow-failures` only when observing provider drift without wanting a non-
 
 The runner reuses the runtime `extract_semantics` path and `GameSessionStore`; it does not copy extraction business logic into a second ruleset. For each scenario it compares the guarded decision and state delta against expected results, applies only `final_decision.game_event`, and keeps raw provider JSON / raw prompts / secrets out of the report.
 
-Fixed scenarios cover typed text, `voice_confirmed`, `voice_direct`, ASR-like variants, slang, guide-only references, descriptive / nickname candidates, current-context alias apply, uncertain / weak / clear confirmation, correction, boss set / switch, switch negation, death count absolute / increment, boss clear, harmless game-context update, rule conflict, invalid JSON, schema invalid, compat retry, ultra-compact retry, low-confidence candidate-only, and memory-sensitive boundaries.
+Fixed scenarios cover typed text, `voice_confirmed`, `voice_direct`, the same Margit failure across all three submitted sources, canonical aliases, ASR-like variants, slang, guide discussion targets, historical mentions, descriptive / nickname candidates, current-context alias apply, uncertain / weak / clear confirmation, correction, Boss set / switch, Margit-to-Godrick switch negation, death count absolute / increment, Boss clear, harmless game-context update, non-game no-op, rule conflict, invalid JSON, schema invalid, compat retry, ultra-compact retry, low-confidence candidate-only, and memory-sensitive boundaries.
 
 Metrics include total / passed / failed / pass_rate, LLM-primary success count, schema valid count, invalid_json count, schema_invalid count, fallback-to-rule count, compat retry count, ultra-compact retry count, wrong apply count, missed apply count, wrong risky apply count, missed risky apply count, harmless extra update count, and correct candidate-only count.
 
@@ -663,7 +660,7 @@ Known v0 limits:
 - Live mode is a drift / observation tool and can fail because of auth, timeout, quota, or provider output variance.
 - The runner applies only the guarded semantic event to isolate LLM-primary extraction from later raw-message rule re-interpretation.
 - v1.0.3 does not implement persistent pending-candidate runtime, UI confirmation popups, or Candidate Memory. Pending candidate semantics are represented in extraction result, trace, and eval only.
-- Some ASR near-miss guide requests may still be blocked by upstream gating before the LLM path; v1.0.3 treats "no wrong state write" as acceptable until alias / gating expansion is separately scoped.
+- General multi-turn coreference remains bounded. Existing recent session focus can resolve a safe explicit Boss follow-up, but unresolved pronouns do not become formal canonical state.
 
 ### Phase 4: Multi-game Catalog Expansion
 

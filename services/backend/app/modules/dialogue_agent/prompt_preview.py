@@ -86,6 +86,7 @@ def build_prompt_preview(session_id: str = "default") -> dict[str, Any]:
             "game_state_summary": {
                 "current_game": game_debug.get("current_game"),
                 "current_boss": game_debug.get("current_boss"),
+                "discussion_target": game_debug.get("discussion_target"),
                 "current_activity": game_debug.get("current_activity"),
                 "freshness": (game_debug.get("current_boss") or {}).get("freshness") or "none",
                 "death_count": game_debug.get("death_count"),

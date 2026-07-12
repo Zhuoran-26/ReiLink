@@ -57,6 +57,13 @@ export type ReiLinkEvent =
       skip_reason?: string | null;
       parse_error?: string | null;
       applied_updates?: string[];
+      rejected_updates?: string[];
+      provider_status?: string | null;
+      schema_valid?: boolean | null;
+      grounding_status?: string | null;
+      grounding_match_type?: string | null;
+      canonical_entity?: string | null;
+      canonical_display_name?: string | null;
       llm_shadow_status?: "skipped" | "succeeded" | "failed";
       llm_shadow_confidence?: "high" | "medium" | "low";
       llm_shadow_summary?: string | null;
@@ -88,6 +95,7 @@ export type ReiLinkEvent =
       timestamp: string;
       game?: string;
       current_boss?: string;
+      discussion_target?: string;
       activity?: string;
       death_count?: number;
       frustration_count?: number;

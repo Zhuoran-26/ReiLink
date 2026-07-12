@@ -54,6 +54,13 @@ def test_extraction_eval_scenarios_cover_required_input_sources_and_cases():
         "extraction-eval-clear-confirm-trace-only",
         "extraction-eval-correction-replaces-old-candidate",
         "extraction-eval-harmless-game-context-not-risky",
+        "extraction-eval-regression-margit-failure-text",
+        "extraction-eval-regression-margit-failure-voice-confirmed",
+        "extraction-eval-regression-margit-failure-voice-direct",
+        "extraction-eval-regression-margit-guide-discussion-target",
+        "extraction-eval-regression-switch-margit-to-godrick",
+        "extraction-eval-regression-historical-margit-no-progress",
+        "extraction-eval-regression-non-game-no-context-change",
     } <= ids
 
 
@@ -85,6 +92,11 @@ def test_extraction_eval_result_shape_is_stable_and_safe():
         "fallback_extractor",
         "applied_by",
         "candidate_boss",
+        "grounding_status",
+        "grounding_match_type",
+        "canonical_entity",
+        "canonical_display_name",
+        "rejected_updates",
         "candidate_event",
         "candidate_confidence",
         "candidate_reason",

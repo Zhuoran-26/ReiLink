@@ -211,7 +211,7 @@ After confirmation or Direct Conversation auto-send:
 Current semantic extraction direction:
 
 - `text`, `voice_confirmed`, and `voice_direct` use the same LLM-primary guarded extraction architecture when the provider is configured.
-- Voice source should affect source reliability, ASR uncertainty, confidence, and safe trace, but should not create a separate game-context writer.
+- Voice source affects send timing and safe trace metadata, but once text is submitted it must not change extraction candidate, canonical grounding, guard, or game-context apply behavior.
 - Direct Conversation auto-send must still route through deterministic guard decisions before any game context update.
 - Architecture details live in `docs/llm_primary_guarded_extraction_architecture.md`; Voice itself still does not write game context, memory, or proactive state.
 

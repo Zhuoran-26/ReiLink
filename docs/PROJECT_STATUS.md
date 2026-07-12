@@ -2,7 +2,7 @@
 
 ## 中文
 
-Updated: 2026-07-12
+Updated: 2026-07-13
 
 ### 当前阶段
 
@@ -43,7 +43,7 @@ dev/codex-reilink
 - Settings Panel。
 - Game Session State。
 - Semantic Extraction，包含 LLM-primary Guarded Extraction v1 pilot、rule fallback、LLM Shadow Mode audit 与安全 trace 可观察性。
-- LLM-primary Guarded Extraction v1 pilot：typed text、confirm-send voice transcript 和 direct conversation voice transcript 进入同一 foreground semantic reader；Pydantic schema validation 和 deterministic guard 只允许低风险 game context 字段落地，memory / proactive / persona 不由该路径写入。v1.0.3 进一步区分 `apply`、`candidate_only`、`ask_clarification`、`no_op`，把 guide-only、描述性 / 低确定性实体和不确定确认留在 candidate / trace 层而不污染正式 game state。Extraction Eval Runner v0 已提供固定 mock 回归和可选 live provider 入口。
+- LLM-primary Guarded Extraction v1 pilot：typed text、confirm-send voice transcript 和 direct conversation voice transcript 真正提交后进入同一 foreground semantic reader；Pydantic schema validation、canonical entity registry 和 deterministic guard 只允许安全 game context 字段落地，memory / proactive / persona 不由该路径写入。当前已修复 `玛尔吉特` semantic gate 回归并补齐 `godrick` canonical grounding；明确挑战可更新 formal Boss state，攻略实体只写 session-level `discussion_target`，历史提及保持 candidate-only。Extraction Eval Runner 已提供 33 条固定 mock 回归和可选 live provider 入口。
 - Pending Memory confirmation。
 - Candidate Memory v1：复用现有 pending memory API / UI，新增 MemoryCandidate schema、safe summary、guard reason、expiry、text / voice_confirmed / voice_direct 来源、assistant / proactive 来源阻断、敏感 secret 阻断、人设漂移阻断、accept / ignore 到可见长期记忆的最小运行时。
 - Hermes-style Memory Architecture v0：文档化 Working Context、Game Session State、Session Timeline、Memory Candidate、Long-term Memory、Retrieved Memory、Prompt Memory Block、Persona Core 与 Candidate Game Understanding 的边界，配套 memory architecture QA scenarios；Session Archive v1 Architecture / Runtime / Search v1 已补齐为安全会话历史摘要与本地搜索层，Archive-to-Memory Candidate Bridge v0 只在用户显式扫描后从 safe summaries 生成待确认候选，仍不实现向量库、prompt archive retrieval 或外部 memory framework。
@@ -284,7 +284,7 @@ git diff --check: passed
 
 ## English
 
-Updated: 2026-06-23
+Updated: 2026-07-13
 
 ### Current Stage
 
@@ -325,7 +325,7 @@ This file records stage-level status only: MVP v0.1.1 has been published as the 
 - Settings Panel.
 - Game Session State.
 - Semantic Extraction with LLM-primary Guarded Extraction v1 pilot, rule fallback, LLM Shadow Mode audit, and privacy-safe trace observability.
-- LLM-primary Guarded Extraction v1 pilot: typed text, confirm-send voice transcript, and direct-conversation voice transcript enter the same foreground semantic reader; Pydantic schema validation and deterministic guard only allow low-risk game context fields to apply, while memory / proactive / persona remain out of this write path. v1.0.3 adds compact live-provider reliability hardening, safe parse diagnostics, candidate-only handling for guide/descriptive/uncertain inputs, confirmation-intent tracing, and explicit risky-vs-harmless eval metrics. Extraction Eval Runner v0 now covers fixed mock scenarios and an optional live-provider entrypoint.
+- LLM-primary Guarded Extraction v1 pilot: typed text, confirm-send voice transcript, and direct-conversation voice transcript share one post-submit semantic pipeline. Pydantic schema validation, a constrained canonical entity registry, and deterministic guard keep memory / proactive / persona out of this write path. The current regression fix restores `玛尔吉特 -> margit`, adds `godrick` grounding, applies guide entities only to session-level `discussion_target`, blocks historical progress writes, and expands the fixed mock eval to 33 scenarios plus optional live-provider drift checks.
 - Pending Memory confirmation.
 - Candidate Memory v1: reuses the existing pending memory API / UI while adding a MemoryCandidate schema, safe summaries, guard reasons, expiry, text / voice_confirmed / voice_direct source metadata, assistant / proactive source blocking, secret blocking, persona-drift blocking, and accept / ignore flow into visible long-term memory.
 - Hermes-style Memory Architecture v0: documents the boundaries between Working Context, Game Session State, Session Timeline, Memory Candidate, Long-term Memory, Retrieved Memory, Prompt Memory Block, Persona Core, and Candidate Game Understanding, with memory architecture QA scenarios. Session Archive v1 Architecture / Runtime / Search v1 plus Archive-to-Memory Candidate Bridge v0 now cover safe session history summaries, local archive search, and explicit safe-summary scanning into pending candidates; vector search, prompt archive retrieval, search auto-candidates, and external memory frameworks remain out of scope.

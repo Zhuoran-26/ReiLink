@@ -626,7 +626,7 @@ def test_persona_memory_regression_scenarios_file_is_valid_json():
 def test_extraction_eval_scenarios_file_is_valid_json():
     scenarios = _load_extraction_eval_scenarios()
 
-    assert 15 <= len(scenarios) <= 30
+    assert 15 <= len(scenarios) <= 40
 
 
 def test_memory_architecture_scenarios_file_is_valid_json():
@@ -820,6 +820,13 @@ def test_extraction_eval_scenarios_have_required_fields():
         "extraction-eval-clear-confirm-trace-only",
         "extraction-eval-correction-replaces-old-candidate",
         "extraction-eval-harmless-game-context-not-risky",
+        "extraction-eval-regression-margit-failure-text",
+        "extraction-eval-regression-margit-failure-voice-confirmed",
+        "extraction-eval-regression-margit-failure-voice-direct",
+        "extraction-eval-regression-margit-guide-discussion-target",
+        "extraction-eval-regression-switch-margit-to-godrick",
+        "extraction-eval-regression-historical-margit-no-progress",
+        "extraction-eval-regression-non-game-no-context-change",
     } <= ids
     assert {"text", "voice_confirmed", "voice_direct"} <= {item.get("input_source") for item in scenarios}
     for item in scenarios:

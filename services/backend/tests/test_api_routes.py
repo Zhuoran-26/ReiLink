@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -457,6 +458,7 @@ def test_debug_game_session_routes():
         "last_boss",
         "last_attempted_boss",
         "last_cleared_boss",
+        "discussion_target",
         "boss_history",
         "death_count",
         "frustration_count",
@@ -706,6 +708,11 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
             "source",
             "confidence",
             "applied_updates",
+            "rejected_updates",
+            "grounding_status",
+            "grounding_match_type",
+            "canonical_entity",
+            "canonical_display_name",
             "extraction_trace",
             "skip_reason",
             "why_pending_created",
@@ -744,6 +751,29 @@ def test_chat_accepts_voice_direct_input_source_in_semantic_debug():
     data = response.json()
     assert data["input_source"] == "voice_direct"
     assert {"llm_primary_status", "llm_provider_status", "llm_schema_valid", "rule_grounding"} <= data.keys()
+
+
+@pytest.mark.parametrize("input_source", ["text", "voice_confirmed", "voice_direct"])
+def test_submitted_sources_share_margit_failure_pipeline(input_source):
+    client.post("/api/debug/game-session/reset")
+    payload = {
+        "message": "我刚才打玛尔吉特又失败了",
+        "session_id": f"api-margit-regression-{input_source}",
+    }
+    if input_source != "text":
+        payload["input_source"] = input_source
+
+    response = client.post("/api/chat", json=payload)
+
+    assert response.status_code == 200
+    state = client.get("/api/debug/game-session").json()
+    trace = client.get("/api/debug/semantic-extraction/latest").json()
+    assert state["current_boss"]["name"] == "恶兆妖鬼 Margit"
+    assert state["last_attempted_boss"] == "恶兆妖鬼 Margit"
+    assert state["current_activity"] == "boss_failed"
+    assert trace["canonical_entity"] == "margit"
+    assert trace["grounding_status"] == "matched"
+    assert trace["extraction_trace"]["applied_updates"] == ["boss_failed", "boss_detected"]
 
 
 def test_semantic_shadow_events_endpoint_returns_final_events_without_secrets(monkeypatch):

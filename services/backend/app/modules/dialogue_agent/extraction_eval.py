@@ -107,6 +107,7 @@ def _run_scenario(scenario: dict[str, Any], *, provider_mode: str) -> dict[str, 
         "actual_decision": actual["decision"],
         "expected_applied_updates": expected.get("applied_updates", []),
         "actual_applied_updates": actual["applied_updates"],
+        "rejected_updates": actual["rejected_updates"],
         "expected_state": _expected_state_summary(expected),
         "actual_state": actual["state"],
         "expected_state_delta": expected.get("state_delta", {}),
@@ -126,6 +127,10 @@ def _run_scenario(scenario: dict[str, Any], *, provider_mode: str) -> dict[str, 
         "fallback_extractor": actual["fallback_extractor"],
         "applied_by": actual["applied_by"],
         "candidate_boss": actual["candidate_boss"],
+        "grounding_status": actual["grounding_status"],
+        "grounding_match_type": actual["grounding_match_type"],
+        "canonical_entity": actual["canonical_entity"],
+        "canonical_display_name": actual["canonical_display_name"],
         "candidate_event": actual["candidate_event"],
         "candidate_confidence": actual["candidate_confidence"],
         "candidate_reason": actual["candidate_reason"],
@@ -199,6 +204,7 @@ def _actual_result(
         "decision": str(trace.get("final_decision") or debug.get("guard_final_decision") or debug.get("llm_guard_decision") or "no_op"),
         "event_type": str(final_event.get("type") or "none"),
         "applied_updates": _safe_string_list(trace.get("applied_updates") or debug.get("applied_updates") or []),
+        "rejected_updates": _safe_string_list(trace.get("rejected_updates") or debug.get("rejected_updates") or []),
         "primary_extractor": trace.get("primary_extractor") or debug.get("primary_extractor"),
         "primary_status": trace.get("primary_status") or debug.get("primary_status") or debug.get("llm_primary_status"),
         "provider_status": provider_status or None,
@@ -220,6 +226,10 @@ def _actual_result(
         "guide_only_entity": (llm_shadow.get("guide_only_entity") or {}).get("value"),
         "guide_entity": (llm_shadow.get("guide_entity") or llm_shadow.get("guide_only_entity") or {}).get("value"),
         "candidate_boss": (llm_shadow.get("candidate_boss") or {}).get("value"),
+        "grounding_status": trace.get("grounding_status") or debug.get("grounding_status"),
+        "grounding_match_type": trace.get("grounding_match_type") or debug.get("grounding_match_type"),
+        "canonical_entity": trace.get("canonical_entity") or debug.get("canonical_entity"),
+        "canonical_display_name": trace.get("canonical_display_name") or debug.get("canonical_display_name"),
         "candidate_event": llm_shadow.get("candidate_event"),
         "candidate_confidence": llm_shadow.get("candidate_confidence"),
         "candidate_reason": llm_shadow.get("candidate_reason"),
@@ -250,6 +260,10 @@ def _evaluate_scenario(expected: dict[str, Any], actual: dict[str, Any]) -> list
         ("guide_request", "guide_request"),
         ("guide_only_entity", "guide_only_entity"),
         ("guide_entity", "guide_entity"),
+        ("grounding_status", "grounding_status"),
+        ("grounding_match_type", "grounding_match_type"),
+        ("canonical_entity", "canonical_entity"),
+        ("canonical_display_name", "canonical_display_name"),
         ("candidate_boss", "candidate_boss"),
         ("candidate_event", "candidate_event"),
         ("candidate_confidence", "candidate_confidence"),
@@ -316,6 +330,8 @@ def _compare_state_expectations(expected: dict[str, Any], actual: dict[str, Any]
             failures.append(f"{key} expected {expected[key]!r} got {state.get(key)!r}")
     if "last_cleared_boss" in expected and expected["last_cleared_boss"] != "__any__" and _normalize_optional(expected["last_cleared_boss"]) != _normalize_optional(state["last_cleared_boss"]):
         failures.append(f"last_cleared_boss expected {expected['last_cleared_boss']!r} got {state['last_cleared_boss']!r}")
+    if "discussion_target" in expected and expected["discussion_target"] != "__any__" and _normalize_optional(expected["discussion_target"]) != _normalize_optional(state["discussion_target"]):
+        failures.append(f"discussion_target expected {expected['discussion_target']!r} got {state['discussion_target']!r}")
 
 
 def _eval_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -440,9 +456,11 @@ def _game_status(scenario: dict[str, Any]) -> dict[str, Any]:
 
 def _state_snapshot(debug_state: dict[str, Any]) -> dict[str, Any]:
     current_boss = debug_state.get("current_boss") if isinstance(debug_state.get("current_boss"), dict) else None
+    discussion_target = debug_state.get("discussion_target") if isinstance(debug_state.get("discussion_target"), dict) else None
     return {
         "current_game": debug_state.get("current_game"),
         "current_boss": current_boss.get("name") if current_boss else None,
+        "discussion_target": discussion_target.get("name") if discussion_target else None,
         "death_count": int(debug_state.get("death_count") or 0),
         "frustration_count": int(debug_state.get("frustration_count") or 0),
         "last_cleared_boss": debug_state.get("last_cleared_boss"),
@@ -491,7 +509,15 @@ def _parse_diagnostic(debug: dict[str, Any], llm_shadow: dict[str, Any]) -> str 
 
 
 def _expected_state_summary(expected: dict[str, Any]) -> dict[str, Any]:
-    keys = ("current_game", "current_boss", "death_count", "frustration_count", "last_cleared_boss", "current_activity")
+    keys = (
+        "current_game",
+        "current_boss",
+        "discussion_target",
+        "death_count",
+        "frustration_count",
+        "last_cleared_boss",
+        "current_activity",
+    )
     return {key: expected[key] for key in keys if key in expected}
 
 

@@ -285,27 +285,27 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 1. 文档应明确 rule-first 的早期优势：可预测、易测、少量游戏稳定、不依赖 provider。
 2. 文档应明确 rule-first 的扩展瓶颈：多游戏 alias 爆炸、ASR 近音错字、规则 no-op 不等于语义不可理解、规则 confidence 不等于语义正确概率。
 3. 新架构必须是 LLM-primary semantic reader + schema validation + deterministic guard apply；LLM 不得直接写 game context。
-4. typed text、voice_confirmed 和 voice_direct 都应进入同一 LLM-primary extraction pipeline；source 只影响 reliability / confidence / trace。
+4. typed text、voice_confirmed 和 voice_direct 真正提交后都应进入同一 LLM-primary extraction pipeline；source 只作为发送阶段与 privacy / trace metadata，不得改变同一句已提交文本的 candidate、canonical entity、guard 或 state apply。
 5. 规则层应降级为 grounding、sanity check、cross-check、fallback、regression comparison 或 emergency no-provider mode。
 6. 文档应给出 pilot candidate schema，覆盖 minimal `updates` 形状以及兼容的 game、boss、death_count、frustration、boss_cleared、guide_request、strategy_request、candidate_boss、candidate_event、candidate_game、candidate_confidence、candidate_reason、needs_confirmation、guide_entity、confirmation_intent、memory/proactive blocked fields 和 safe reasoning summary。
 7. schema 应区分 guide request 与 current boss report，也应区分 formal game state、candidate understanding、temporary game state 与 long-term memory candidate。
 8. 新 confidence 机制应至少拆分 semantic_confidence、grounding_confidence、context_confidence 和 apply_confidence。
 9. LLM self-confidence 不能单独决定 apply；rule exact match / catalog match 只能作为 grounding 支持。
-10. voice_direct 应因 ASR uncertainty 降低 source reliability；用户确认后的 voice_confirmed reliability 应更高。
+10. Voice 的空文本、极短文本、极短录音和 partial transcript uncertainty 应在提交前 guard；一旦 voice_direct 或 voice_confirmed 已提交，不能再因 source 单独降低 apply 结果。
 11. conflict with current boss 不应自动 no-op；显式 switch phrase 可以提高 context confidence。
 12. 当前 Boss 为女武神时，输入 `我现在不打女武神了，换去打玛尔基特。`、`先不打女武神了，我换去玛尔基特。` 或 `从女武神换到玛尔基特。` 应切换到玛尔基特；规则不得因先命中女武神而保留旧 boss。
 13. `我换去打马尔吉特了`、`我现在去打女巫神了` 等 voice_direct ASR 错字应产生 LLM candidate / apply / clarification trace；不得静默显示 no semantic signal。
 14. Guard decisions 应覆盖 `apply`、`ask_clarification`、`candidate_only`、`no_op` 和 `fallback_to_rule`；`candidate_only` 可以用于当轮回复 / trace / 后续确认，但不得写正式状态。
 15. low confidence、invalid JSON、schema invalid、provider timeout、unsafe、uncertain confirmation 或 memory-sensitive 输入不得写 state；fallback 只允许 exact safe rule evidence，不得把 switch / negation 中的旧目标写回当前 Boss。
-16. Exact / canonical entity 搭配明确动作可以 `apply`；guide-only / strategy request 应 `candidate_only` 且不切 Boss；descriptive / nickname / low-certainty entity 默认只能 `candidate_only` 或 `ask_clarification`，除非当前上下文已有同一个 confirmed boss。
+16. Exact / canonical entity 搭配明确动作可以 `apply`；guide-only / strategy request 可以 `apply` 到 session-level `discussion_target`，但不得切换 `current_boss`；descriptive / nickname / low-certainty entity 默认只能 `candidate_only` 或 `ask_clarification`，除非当前上下文已有同一个 confirmed boss。
 17. Confirmation intent 应覆盖 `confirm`、`deny`、`correct`、`uncertain`、`unrelated`、`unknown`。v1.0.3 不实现完整 pending runtime，但 extraction result / trace / eval 必须显示这些字段；`uncertain` 不应正式 apply，`correct` + exact new target 可由 deterministic guard 应用新目标。
 18. `用于 Rei 回复` 不等于 `写入正式状态`：LLM 可以大胆理解候选，例如“那个骑马金甲大哥”可能是大树守卫，但 guard 必须谨慎写 `current_boss` / `death_count` / `last_cleared_boss` / 高风险 `current_activity`。
 19. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
 20. LLM extraction 不得直接写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须交给独立 Memory Candidate guard。显式记忆由 memory 模块决定是否可撤销 auto-save，隐式候选仍进入 pending confirmation。
 21. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
-22. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding、applied updates、primary_extractor、fallback_extractor、applied_by、candidate_boss、candidate_event、candidate_confidence、candidate_reason、needs_confirmation、guide_request、guide_entity、confirmation_intent、first_attempt_failed、compat_retry_used / succeeded、ultra_compact_used、json_recovery_stage 和 safe parse diagnostic。
+22. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding、grounding status / match type、canonical entity、applied / rejected updates、primary_extractor、fallback_extractor、applied_by、candidate_boss、candidate_event、candidate_confidence、candidate_reason、needs_confirmation、guide_request、guide_entity、confirmation_intent、first_attempt_failed、compat_retry_used / succeeded、ultra_compact_used、json_recovery_stage 和 safe parse diagnostic。
 23. 手测 `我现在在打玛尔基特` 应能在 Game workspace 更新 current boss，并在 Debug / Event Stream 看到 `llm_primary` / `apply` 或 provider unavailable 时的 `fallback_to_rule` 安全 trace。
-24. 手测当前 Boss 为 Malenia 时输入 `玛尔基特那边怎么打来着`，不得切换 current boss；Debug / Event Stream 应显示 candidate-only / guide-only、`guide_entity=margit` 或等价安全判定。
+24. 手测当前 Boss 为 Malenia 时输入 `玛尔吉特怎么打` 或 `玛尔基特那边怎么打来着`，不得切换 current boss；Game workspace 应显示 Margit discussion target 与中文活动文案，Debug / Event Stream 应显示 `guide_entity=margit`、discussion-target apply 和 current-boss rejection。
 25. 手测 `那个骑马金甲大哥又寄了` / `我去打那个金甲的` 在无 confirmed current boss 时不得写 current_boss / death_count；在 current_boss 已是大树守卫时，失败事件可以指代当前 boss 并 apply。
 26. 手测 pending candidate 后输入 `有可能是大树守卫吧？我没看清名字，死太快了` 或 `名字太长我没记住，但是也许是吧？` 应显示 `confirmation_intent=uncertain` 且不正式 apply；输入 `对，就是它` 应显示 confirm intent，但 v1.0.3 若未实现 pending runtime，则只 trace 不写正式状态；输入 `不是，是玛尔基特` 可以 apply 新 exact target。
 27. 手测 Direct Conversation Mode 下 `我换去打玛尔基特了`，chat flow、source `voice_direct`、guard trace、current boss 更新和语音播报策略都应保持正常；voice_direct 模糊实体不应绕过 guard。
@@ -315,7 +315,7 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 31. 可选 live provider 漂移检查使用 `python scripts/run_extraction_eval.py --provider live`；如只想观察 provider 漂移且不让失败阻塞脚本，可加 `--allow-failures`。live eval 依赖当前 provider 配置，不作为 CI 必需项，也不应因 provider timeout / auth / quota 影响 mock regression。
 32. Eval report 至少包含 total / passed / failed / pass_rate、LLM-primary success、schema_valid、invalid_json、schema_invalid、fallback_to_rule、compat retry、ultra-compact retry、wrong_apply、missed_apply、wrong_risky_apply、missed_risky_apply、harmless_extra_update 和 correct candidate-only 指标。
 33. Eval result 应逐条输出 scenario id、input_source、expected / actual decision、expected / actual state、state delta、risky_state_delta、harmless_state_delta、parse_diagnostic、primary_extractor、primary_status、provider_status、schema_valid、retry flags、fallback_extractor、applied_by、candidate fields、confirmation_intent、pass 和 failure_reason。
-34. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、boss set / switch、switch negation、guide-only 不切换、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict、low-confidence candidate-only、uncertain confirmation 和 harmless game-detected-only update。
+34. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、`玛尔吉特` 三来源失败等价性、canonical aliases、Boss set / switch、Margit -> Godrick switch negation、guide-only discussion target 不切换、historical mention no progress、non-game no context change、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict、low-confidence candidate-only、uncertain confirmation 和 harmless game-detected-only update。
 35. Eval runner 应复用 `extract_semantics` 与 `GameSessionStore`，只应用 guarded `final_decision.game_event`，避免把 runner 变成第二套 extraction 规则。
 36. Eval report 和 pytest 输出不得包含 raw prompt、raw provider JSON、API key、`.env`、完整本地路径、stdout / stderr 或完整 transcript。Candidate Memory v1 已在正常 chat / memory flow 中接住 pending candidate runtime；extraction eval runner 本身仍只验证 extraction result / trace / eval 层，不创建 UI 弹窗。
 

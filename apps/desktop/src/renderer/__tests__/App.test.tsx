@@ -379,6 +379,7 @@ const gameSessionDebug = {
     is_fresh: true,
     freshness: "fresh"
   },
+  discussion_target: null,
   last_boss: "恶兆妖鬼 Margit",
   last_attempted_boss: "恶兆妖鬼 Margit",
   last_cleared_boss: null,
@@ -3037,11 +3038,23 @@ describe("App", () => {
       source: "llm_primary",
       confidence: "high",
       applied_updates: ["boss_switched", "boss_detected"],
+      rejected_updates: [],
+      grounding_status: "matched",
+      grounding_match_type: "exact_alias",
+      canonical_entity: "margit",
+      canonical_display_name: "恶兆妖鬼 Margit",
+      llm_provider_status: "succeeded",
+      llm_schema_valid: true,
       extraction_trace: {
         ...semanticExtractionDebug.extraction_trace,
         source: "llm_primary",
         confidence: "high",
         applied_updates: ["boss_switched", "boss_detected"],
+        rejected_updates: [],
+        grounding_status: "matched",
+        grounding_match_type: "exact_alias",
+        canonical_entity: "margit",
+        canonical_display_name: "恶兆妖鬼 Margit",
         llm_guard_decision: "apply",
         llm_guard_reason: "high_confidence_grounded_candidate",
         llm_guard_summary: "LLM 主识别候选通过 guard"
@@ -3077,6 +3090,10 @@ describe("App", () => {
     const eventStream = screen.getByText("事件流 / Event Stream").closest("details");
     await waitFor(() => expect(eventStream).toHaveTextContent("Guard：已应用"));
     expect(eventStream).toHaveTextContent("LLM 主识别候选通过 guard");
+    expect(eventStream).toHaveTextContent("Provider：已完成");
+    expect(eventStream).toHaveTextContent("Schema：有效");
+    expect(eventStream).toHaveTextContent("Grounding：matched");
+    expect(eventStream).toHaveTextContent("实体：margit");
     expect(eventStream).not.toHaveTextContent(privateTranscript);
   });
 
@@ -6205,6 +6222,8 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "游戏状态" })).toBeInTheDocument();
     expect(screen.getAllByText("当前游戏").length).toBeGreaterThan(0);
     expect(screen.getByText("当前 Boss")).toBeInTheDocument();
+    expect(screen.getByText("讨论目标")).toBeInTheDocument();
+    expect(screen.getByText("挑战中")).toBeInTheDocument();
 
     await openDebugWorkspace();
     expect(await screen.findByRole("button", { name: /调试面板/i })).toHaveAttribute("aria-expanded", "true");
@@ -6224,6 +6243,37 @@ describe("App", () => {
     await openMemoryWorkspace();
     expect(await screen.findByRole("heading", { name: "待确认记忆" })).toBeInTheDocument();
     expect(screen.getByText("玩家不喜欢长篇攻略")).toBeInTheDocument();
+  });
+
+  it("renders discussion targets and localized activity without leaking internal enums", async () => {
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/debug/game-session")) {
+        return Promise.resolve(Response.json({
+          ...gameSessionDebug,
+          current_boss: null,
+          discussion_target: {
+            entity_id: "margit",
+            name: "恶兆妖鬼 Margit",
+            entity_type: "boss",
+            intent: "guide_request",
+            updated_at: new Date().toISOString(),
+            confidence: 0.95,
+            source: "semantic_extraction"
+          },
+          current_activity: "game_discussion"
+        }));
+      }
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await openGameWorkspace();
+
+    const panel = await screen.findByRole("region", { name: "游戏状态" });
+    expect(panel).toHaveTextContent("恶兆妖鬼 Margit");
+    expect(panel).toHaveTextContent("讨论游戏");
+    expect(panel).not.toHaveTextContent("game_discussion");
   });
 
   it("shows idle game detector state", async () => {
