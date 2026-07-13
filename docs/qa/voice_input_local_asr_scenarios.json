@@ -1900,5 +1900,123 @@
       "RAW_PROMPT_MARKER",
       "long internal payload"
     ]
+  },
+  {
+    "id": "local-asr-main-capture-user-stop-final-chunk",
+    "category": "voice_input_local_asr",
+    "precondition": "Main Local ASR recording is active and the user clicks stop while MediaRecorder still has a final chunk to emit",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Renderer records user_stop, waits for final dataavailable and stop, constructs the complete Blob, then starts Local ASR and creates an unsent draft.",
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
+  },
+  {
+    "id": "local-asr-main-capture-natural-pause",
+    "category": "voice_input_local_asr",
+    "precondition": "The user speaks a normal long sentence with a short natural pause before manually stopping",
+    "expected_status": "local_asr_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Recording remains active through the pause because main capture has no VAD or silence timeout and does not stop at the old 3 or 5 second boundary.",
+    "forbidden_terms": [
+      "silence detection active",
+      "VAD active",
+      "FULL_TRANSCRIPT_MARKER",
+      "AUDIO_CONTENT_MARKER"
+    ]
+  },
+  {
+    "id": "local-asr-main-capture-max-duration",
+    "category": "voice_input_local_asr",
+    "precondition": "Main Local ASR reaches the 30 second safety limit",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "UI explains the max-duration stop, final audio is collected, transcript quality is suspected_partial, and Direct Conversation does not auto-send.",
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
+  },
+  {
+    "id": "local-asr-main-capture-cancelled",
+    "category": "voice_input_local_asr",
+    "precondition": "Main Local ASR recording is active and the user clicks cancel",
+    "expected_status": "local_asr_ready",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Renderer records cancelled, discards chunks, does not call Local ASR, preserves the input, and returns to idle.",
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "BASE64_AUDIO_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
+  },
+  {
+    "id": "local-asr-confirm-send-partial-draft",
+    "category": "voice_input_local_asr",
+    "precondition": "Confirm-send receives the suspected partial transcript 我现在不打玛尔",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The exact text remains editable and unsent with a check, edit, or re-record warning; no semantic extraction or Game Context update runs.",
+    "forbidden_terms": [
+      "silent transcript rewrite",
+      "automatic boss update",
+      "AUDIO_CONTENT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
+  },
+  {
+    "id": "local-asr-direct-partial-blocked",
+    "category": "voice_input_local_asr",
+    "precondition": "Direct Conversation receives the suspected partial transcript 我现在不打玛尔",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The draft enters the input, quality is suspected_partial, send_decision is blocked, and no chat or game flow starts.",
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
+  },
+  {
+    "id": "local-asr-confirm-send-plausible-wrong-draft",
+    "category": "voice_input_local_asr",
+    "precondition": "Confirm-send receives a plausible-length but incorrect transcript such as 我现在不打猫耳机做了去打机",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "Renderer preserves the exact ASR draft, asks the user to check it, and never rewrites it from historical boss state or assistant output.",
+    "forbidden_terms": [
+      "silent transcript rewrite",
+      "automatic boss update",
+      "AUDIO_CONTENT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
+  },
+  {
+    "id": "local-asr-mode-switch-keeps-draft",
+    "category": "voice_input_local_asr",
+    "precondition": "An unsent confirm-send transcript draft exists while the user toggles Direct Conversation on and off",
+    "expected_status": "local_asr_transcription_succeeded",
+    "should_auto_send": false,
+    "should_upload_audio": false,
+    "expected_behavior": "The existing draft remains in the input and is not sent; disabling Direct Conversation restores confirm-send for the next recording.",
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "AUDIO_CONTENT_MARKER",
+      "FULL_AUDIO_PATH_MARKER"
+    ]
   }
 ]

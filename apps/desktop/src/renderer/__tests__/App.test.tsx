@@ -3820,8 +3820,8 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local Transcribe Recording" }));
 
     await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(simplifiedTranscript));
-    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写完成");
-    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写完成，请确认后发送");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写草稿待检查");
+    expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("转写草稿已在输入框，尚未发送");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("语言：zh");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("已规范为简体中文");
     expect(screen.getByRole("group", { name: "语音输入设置" })).toHaveTextContent("临时音频已清理：是");
@@ -4002,6 +4002,9 @@ describe("App", () => {
     await waitFor(() => expect(eventStream).toHaveTextContent("本地语音识别开始"));
     expect(eventStream).toHaveTextContent("本地语音识别完成");
     expect(eventStream).toHaveTextContent(`${privateTranscript.length} 字`);
+    expect(eventStream).toHaveTextContent("用户停止");
+    expect(eventStream).toHaveTextContent("质量检查通过");
+    expect(eventStream).toHaveTextContent("可编辑草稿，尚未发送");
     expect(eventStream).toHaveTextContent("语言：zh");
     expect(eventStream).toHaveTextContent("已规范为简体中文");
     expect(eventStream).toHaveTextContent("音频已转换为 WAV");
@@ -4142,14 +4145,14 @@ describe("App", () => {
     expect(audioMock.getUserMedia).toHaveBeenCalledWith({ audio: true });
     expect(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" })).toBeEnabled();
     expect(screen.getByText(/Voice v2.2：正在录音/)).toBeInTheDocument();
-    expect(screen.getByText("语音输入：正在录音")).toBeInTheDocument();
+    expect(screen.getByText(/语音输入：正在录音，点击麦克风结束/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
 
     await waitFor(() => expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript));
-    expect(screen.getByText(/Voice v2.2：已识别，等待发送/)).toBeInTheDocument();
-    expect(screen.getByText(`${privateTranscript.length} 字已在输入框，仍需点击发送。`)).toBeInTheDocument();
-    expect(screen.getByText("语音输入：转写完成，请确认后发送")).toBeInTheDocument();
+    expect(screen.getByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
+    expect(screen.getAllByText(`${privateTranscript.length} 字转写草稿已在输入框，尚未发送。请检查内容，也可以重新录音。`).length).toBeGreaterThan(0);
+    expect(screen.getByText("语音输入：转写草稿已进入输入框，尚未发送")).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/voice-input/local-asr/transcribe"),
       expect.objectContaining({ method: "POST", body: expect.any(FormData) })
@@ -4175,7 +4178,7 @@ describe("App", () => {
 
     await openDebugWorkspace();
     expect(screen.getByText("主输入提供方").closest("div")).toHaveTextContent("local_asr");
-    expect(screen.getByText("主输入状态").closest("div")).toHaveTextContent("转写完成，请确认后发送");
+    expect(screen.getByText("主输入状态").closest("div")).toHaveTextContent("转写草稿已进入输入框，尚未发送");
     const rawJson = screen.getByText("原始 JSON").closest("details");
     expect(rawJson).not.toBeNull();
     expect(rawJson).toHaveTextContent("main_provider");
@@ -4211,7 +4214,7 @@ describe("App", () => {
       resolveTranscribe?.(Response.json(localAsrTranscriptionResponseStore));
     });
 
-    await waitFor(() => expect(screen.getByText(/Voice v2.2：已识别，等待发送/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument());
     expect(screen.getByLabelText("聊天输入")).toHaveValue(localAsrTranscriptionResponseStore.transcript);
   });
 
@@ -4239,7 +4242,7 @@ describe("App", () => {
     });
 
     expect(await screen.findByText(/Voice v2.2：已转写，正在发送给 Rei/)).toBeInTheDocument();
-    expect(screen.queryByText(/Voice v2.2：已识别，等待发送/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Voice v2.2：转写草稿，尚未发送/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toHaveValue("保留的手打草稿");
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/chat"),
@@ -4283,7 +4286,7 @@ describe("App", () => {
       recognition.instances[0].emitResult("我想", true);
     });
 
-    expect(await screen.findByText(/Voice v2.2：已识别，等待发送/)).toBeInTheDocument();
+    expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toHaveValue("我想");
     expect(screen.getByText("识别结果太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。")).toBeInTheDocument();
     expect(chatCalls).toHaveLength(0);
@@ -4305,7 +4308,7 @@ describe("App", () => {
     appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
-    const partialTranscript = "现在帮我";
+    const partialTranscript = "我现在不打玛尔";
     const chatCalls: RequestInit[] = [];
     vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -4323,7 +4326,7 @@ describe("App", () => {
       recognition.instances[0].emitResult(partialTranscript, true);
     });
 
-    expect(await screen.findByText(/Voice v2.2：已识别，等待发送/)).toBeInTheDocument();
+    expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toHaveValue(partialTranscript);
     expect(screen.getByText("这句像是还没说完，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。")).toBeInTheDocument();
     expect(chatCalls).toHaveLength(0);
@@ -4334,7 +4337,10 @@ describe("App", () => {
           provider: "web_speech",
           source: "direct_conversation",
           reason: "partial_transcript",
-          character_count: partialTranscript.length
+          character_count: partialTranscript.length,
+          transcript_quality: "suspected_partial",
+          send_decision: "blocked",
+          interaction_mode: "direct_conversation"
         })
       ])
     );
@@ -4373,7 +4379,7 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
 
     expect(await screen.findByText(/Voice v2.2：语音暂时不可用/)).toBeInTheDocument();
-    expect(screen.getByText(/没听清，可以再说一次。/)).toBeInTheDocument();
+    expect(screen.getByText(/没有识别到有效内容，请重新录音。/)).toBeInTheDocument();
     expect(screen.getByText("语音输入：没有识别到可用文本")).toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toHaveValue("");
     expect(chatCalls).toHaveLength(0);
@@ -4414,7 +4420,7 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
 
     expect(await screen.findByText("别急着翻滚。先看动作。再试一次。")).toBeInTheDocument();
-    expect(screen.queryByText(/Voice v2.2：已识别，等待发送/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Voice v2.2：转写草稿，尚未发送/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toHaveValue("");
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/chat"),
@@ -4435,7 +4441,15 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent(".env");
     expect(eventBus.getRecentEvents(30)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: "voice_transcription_auto_sent", provider: "local_asr", source: "direct_conversation" })
+        expect.objectContaining({
+          type: "voice_transcription_auto_sent",
+          provider: "local_asr",
+          source: "direct_conversation",
+          capture_stop_reason: "user_stop",
+          transcript_quality: "acceptable",
+          send_decision: "auto_send_allowed",
+          interaction_mode: "direct_conversation"
+        })
       ])
     );
     expect(JSON.stringify(eventBus.getRecentEvents(30))).not.toContain(privateTranscript);
@@ -4467,7 +4481,7 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
     await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
 
-    expect(await screen.findByText(/Voice v2.2：已识别，等待发送/)).toBeInTheDocument();
+    expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toHaveValue(privateTranscript);
     expect(screen.getByText("这段录音太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。")).toBeInTheDocument();
     expect(chatCalls).toHaveLength(0);
@@ -4482,7 +4496,15 @@ describe("App", () => {
     expect(eventStream).not.toHaveTextContent(privateTranscript);
     expect(eventBus.getRecentEvents(30)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: "voice_transcription_auto_send_blocked", provider: "local_asr", source: "direct_conversation", reason: "short_recording" })
+        expect.objectContaining({
+          type: "voice_transcription_auto_send_blocked",
+          provider: "local_asr",
+          source: "direct_conversation",
+          reason: "short_recording",
+          capture_stop_reason: "user_stop",
+          transcript_quality: "short_recording",
+          send_decision: "blocked"
+        })
       ])
     );
     expect(eventBus.getRecentEvents(30)).not.toEqual(
@@ -4492,6 +4514,141 @@ describe("App", () => {
         expect.objectContaining({ type: "proactive_message_shown" })
       ])
     );
+  });
+
+  it("cancels Local ASR recording without transcription, input changes, or sending", async () => {
+    setLocalAsrReady();
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    fireEvent.change(screen.getByLabelText("聊天输入"), { target: { value: "保留的手动草稿" } });
+    vi.mocked(fetch).mockClear();
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    expect(screen.getByRole("button", { name: "取消本次录音 / Cancel Recording" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "取消本次录音 / Cancel Recording" }));
+
+    expect(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" })).toBeEnabled();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("保留的手动草稿");
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("/api/voice-input/local-asr/transcribe"))).toBe(false);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("/api/chat"))).toBe(false);
+    expect(eventBus.getRecentEvents(20)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "audio_capture_stopped", reason: "cancelled" })])
+    );
+    expect(eventBus.getRecentEvents(20).some((event) => event.type === "local_asr_transcription_started")).toBe(false);
+  });
+
+  it("keeps a plausible but incorrect transcript editable and supports re-recording", async () => {
+    setLocalAsrReady();
+    const incorrectTranscript = "我现在不打猫耳机做了去打机";
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript: incorrectTranscript,
+      transcript_char_count: incorrectTranscript.length,
+      duration_ms: 3100
+    };
+    const audioMock = installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+    fireEvent.change(screen.getByLabelText("聊天输入"), { target: { value: "保留前缀" } });
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue(`保留前缀 ${incorrectTranscript}`);
+    expect(screen.getByText(/请检查内容，也可以重新录音/)).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
+
+    await userEvent.click(screen.getByRole("button", { name: "清空草稿并重新录音 / Re-record" }));
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("保留前缀");
+    expect(audioMock.recorder.instances).toHaveLength(2);
+    expect(await screen.findByRole("button", { name: "取消本次录音 / Cancel Recording" })).toBeEnabled();
+  });
+
+  it("marks max-duration Local ASR capture as partial and blocks Direct Conversation auto-send", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+    setLocalAsrReady();
+    const transcript = "我准备继续挑战下一个目标";
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript,
+      transcript_char_count: transcript.length,
+      duration_ms: 30_000
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    act(() => {
+      audioCapture.stop("max_duration");
+    });
+
+    expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
+    expect(screen.getByText("录音结束：达到最长录音时间")).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue(transcript);
+    expect(screen.getByText("这句像是还没说完，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。")).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "audio_capture_completed", stop_reason: "max_duration" }),
+        expect.objectContaining({
+          type: "voice_transcription_auto_send_blocked",
+          capture_stop_reason: "max_duration",
+          transcript_quality: "suspected_partial",
+          send_decision: "blocked"
+        })
+      ])
+    );
+  });
+
+  it("keeps an existing confirm-send draft unsent across interaction mode switches", async () => {
+    installMediaDevicesMock("prompt");
+    const recognition = installSpeechRecognitionMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "开始语音 / Start Voice" }));
+    act(() => {
+      recognition.instances[0].emitResult("这是一条尚未发送的转写草稿", true);
+    });
+    expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
+
+    const panel = await openWorkspace("语音");
+    await userEvent.click(within(panel).getByRole("button", { name: "直接对话" }));
+    await waitFor(() => expect(appSettingsStore.voice_interaction_mode).toBe("direct_conversation"));
+    await userEvent.click(within(panel).getByRole("button", { name: "确认后发送" }));
+    await waitFor(() => expect(appSettingsStore.voice_interaction_mode).toBe("confirm_send"));
+
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("这是一条尚未发送的转写草稿");
+    expect(screen.getByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
+  });
+
+  it("falls back to confirm-send when Direct Conversation is disabled during Local ASR capture", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+    setLocalAsrReady();
+    const transcript = "模式切换期间保留为待确认草稿";
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript,
+      transcript_char_count: transcript.length,
+      duration_ms: 2600
+    };
+    installAudioCaptureMock();
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    const panel = await openWorkspace("语音");
+    await userEvent.click(within(panel).getByRole("button", { name: "确认后发送" }));
+    await waitFor(() => expect(appSettingsStore.voice_interaction_mode).toBe("confirm_send"));
+    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+    expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue(transcript);
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
   });
 
   it("auto speaks direct conversation replies when Voice Output is enabled and can stop playback", async () => {
@@ -4899,7 +5056,7 @@ describe("App", () => {
       recognition.instances[0].emitResult("帮我看一下路线", true);
     });
 
-    expect(screen.getByText(/Voice v2.2：已识别，等待发送/)).toBeInTheDocument();
+    expect(screen.getByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/chat"), expect.objectContaining({ method: "POST" }));
 
     await userEvent.click(screen.getByRole("button", { name: /发送/i }));

@@ -1,10 +1,10 @@
 # Voice Interaction v2.2 Spec
 
-Updated: 2026-07-12
+Updated: 2026-07-13
 
 Document status: current.
 
-Status: Voice v2.2 is the release-hardening baseline for the implemented Voice v2 state model, confirm-send default, opt-in Direct Conversation, Voice Profile v1, TTS Strategy v0, TTS Provider Registry v0, Direct Conversation guards, visible auto-send / interrupted / recoverable error feedback, and Event Stream privacy. It does not implement hands-free listening, wake word, real external / local TTS providers, character voice, Overlay Voice state, Live2D, or vision.
+Status: Voice v2.2 is the release-hardening baseline for the implemented Voice v2 state model, stable MediaRecorder capture, confirm-send draft UX, opt-in Direct Conversation, Voice Profile v1, TTS Strategy v0, TTS Provider Registry v0, transcript quality guards, visible auto-send / interrupted / recoverable error feedback, and Event Stream privacy. It does not implement streaming ASR, silence detection / VAD, hands-free listening, wake word, full duplex, real external / local TTS providers, character voice, Overlay Voice state, Live2D, or vision.
 
 ## Purpose
 
@@ -30,11 +30,14 @@ Implemented today:
 - Voice workspace Conversation tab shows state, mode, transcript confirmation, output status, interruption and privacy boundaries.
 - Voice interaction mode is explicit: `confirm_send` is the default, and `direct_conversation` is opt-in.
 - Local ASR v1 can record and transcribe after a user gesture.
+- Main Local ASR capture uses browser `MediaRecorder`. It does not use Web Audio API analysis, VAD, or silence detection.
+- Recording is click-to-record: the user normally stops it. A 30-second timer is only a safety limit, is visible near expiry, and must not be described as silence detection.
+- User stop and max-duration stop wait for the recorder's final `dataavailable` event and subsequent `stop` event before constructing the Blob and starting ASR. Cancellation discards chunks and does not invoke ASR.
 - ASR uses user-configured local binaries, model files, and optional converter paths.
 - Captured audio is transferred only to ReiLink's local backend for Local ASR; ReiLink does not add a cloud ASR upload path.
-- Under `confirm_send`, transcript fills the chat input and is not auto-sent.
+- Under `confirm_send`, transcript fills the chat input as an editable, unsent draft. It is not a claim that the LLM understood the user or that Game Context changed.
 - Under `direct_conversation`, the transcript is auto-sent through the existing chat flow after the user actively starts and stops a recording round.
-- Under `direct_conversation`, very short recordings, very short transcripts, empty transcripts, or obvious partial phrases are not auto-sent; short / partial transcripts enter `ready_to_send`, and empty transcripts show a safe retry prompt.
+- Under `direct_conversation`, very short recordings, very short transcripts, empty transcripts, suspected truncation / partial phrases, or mechanically suspicious noise outputs are not auto-sent; non-empty blocked transcripts enter `ready_to_send`, and empty transcripts show a safe retry prompt.
 - Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, game context, Semantic Extraction, or proactive behavior.
 - Voice Output uses TTS Strategy v0 through TTS Provider Registry v0; the only enabled and selectable provider is `system_speech_synthesis`, backed by renderer-side `speechSynthesis`.
 - Voice Output displays provider status, privacy boundary, capability summary, fallback summary, and disabled Local TTS / External TTS placeholders.
@@ -65,6 +68,7 @@ Voice v2 should build on these boundaries instead of bypassing them.
 - Do not imply direct conversation from enabling ASR, Voice Output, or opening Voice workspace.
 - Do not enable hands-free or wake-word listening by default.
 - Do not add cloud ASR or commercial ASR.
+- Do not add streaming ASR, realtime transcript transport, WebSocket voice pipelines, full duplex, or a timer disguised as VAD.
 - Do not bundle whisper binaries, model files, or ffmpeg.
 - Do not add a real external TTS provider, real local TTS provider, TTS API key, audio upload path, or character voice. Provider registry metadata may reserve future ids only when they remain disabled and non-selectable.
 - Do not make Voice automatically write memory.
@@ -92,7 +96,7 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 
 `click_to_record`
 
-- User clicks once to begin and clicks again to stop, with a maximum duration.
+- User clicks once to begin and clicks again to stop. Main Local ASR has a 30-second safety limit; the separate Audio Capture probe remains a 3-second test.
 - Useful when holding a key is inconvenient.
 - Still requires a visible listening state and a safe timeout.
 
@@ -108,7 +112,8 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 
 - Default policy.
 - ASR transcript enters `ready_to_send`.
-- The user can edit, delete, or send it.
+- The user can edit, delete, re-record, or send it.
+- The transcript is an ASR draft, not semantic understanding, an LLM result, or a Game Context update.
 - Until the user sends, the transcript remains outside memory, prompt, retrieval, game context, Semantic Extraction, and proactive checks.
 
 `direct_conversation`
@@ -117,7 +122,7 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 - Requires a visible mode indicator and a clear off switch.
 - Still requires a user gesture for each recording round; it is not hands-free, wake-word, or always-on listening.
 - Auto-sends only non-empty, guard-passing ASR transcripts through the normal chat request path.
-- Does not auto-send transcripts that are empty, too short, too short as recordings, or likely partial. Short / partial transcripts are placed in the input and require confirmation; empty transcripts show a retry prompt without changing the input.
+- Does not auto-send transcripts that are empty, too short, too short as recordings, likely partial / max-duration truncated, or mechanically suspicious. Non-empty blocked transcripts are placed in the input and require confirmation; empty transcripts show a retry prompt without changing the input.
 - Does not write memory directly; any memory still goes through the existing confirmation flow after the normal chat turn.
 - Does not bypass normal chat, retrieval, or game-state safety checks after the text is sent.
 - Does not leak the full transcript into Event Stream, Debug, Raw JSON, Prompt Preview, or Overlay.
@@ -156,7 +161,7 @@ Recommended states:
 | `listening` | User-triggered recording is active. | Push-to-talk or click-to-record begins. | User stops, max duration, mic error, or recording failure. |
 | `transcribing` | Local ASR is processing the captured audio. | Recording finished and Local ASR request starts. | Transcript ready, no text, timeout, or ASR error. |
 | `auto_sending` | A Direct Conversation transcript passed guard and is being sent into the normal chat path. | ASR succeeds, Direct Conversation is enabled, and guard passes. | Assistant request is in progress, assistant reply arrives, provider error, or timeout. |
-| `ready_to_send` | Transcript is available for confirmation. | ASR succeeds under confirm-send. | User sends, edits, clears, records again, or switches mode. |
+| `ready_to_send` | An editable transcript draft is available and remains unsent. | ASR succeeds under confirm-send, or Direct Conversation guard blocks a non-empty transcript. | User sends, edits, clears, records again, or switches mode. |
 | `assistant_thinking` | A confirmed or directly sent transcript is in the normal chat request path. | User sends transcript or Direct Conversation auto-send fires. | Assistant final reply, provider error, cancellation, or timeout. |
 | `speaking` | TTS is playing a safe assistant reply. | Final assistant reply arrives and Voice Output is enabled. | TTS completes, user stops, user starts recording, or TTS error. |
 | `interrupted` | Speaking or listening was intentionally stopped. | User presses stop, starts recording during TTS, or cancels recording. | Return to `idle`, `listening`, or `ready_to_send` depending on remaining transcript. |
@@ -165,7 +170,7 @@ Recommended states:
 ### Transition Rules
 
 - `idle -> listening`: only after a user gesture.
-- `listening -> transcribing`: only after audio capture completes.
+- `listening -> transcribing`: only after user / max-duration stop and final audio chunk collection complete.
 - `transcribing -> ready_to_send`: ASR succeeds and send policy is `confirm_send`.
 - `transcribing -> auto_sending`: ASR succeeds, send policy is explicit `direct_conversation`, and transcript guard passes.
 - `auto_sending -> assistant_thinking`: the normal chat request remains in progress after the auto-send handoff.

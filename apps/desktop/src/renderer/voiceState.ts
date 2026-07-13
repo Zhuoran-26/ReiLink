@@ -49,8 +49,8 @@ const VOICE_STATE_META: Record<VoiceConversationState, Omit<VoiceConversationSna
     tone: "active"
   },
   ready_to_send: {
-    label: "已识别，等待发送",
-    description: "文本已在输入框，请确认后发送。",
+    label: "转写草稿，尚未发送",
+    description: "请检查或修改输入框内容，也可以重新录音。",
     tone: "ready"
   },
   assistant_thinking: {

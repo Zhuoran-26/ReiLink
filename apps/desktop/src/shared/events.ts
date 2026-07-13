@@ -6,6 +6,21 @@ export type TtsEventProfile = "full" | "brief" | "silent";
 export type TtsEventStrategyId = "system_speech_synthesis";
 export type TtsEventProviderId = "system_speech_synthesis" | "local_tts" | "external_tts";
 export type TtsEventProviderStatus = "available" | "unavailable" | "not_configured" | "not_implemented";
+export type VoiceCaptureStopReason = "user_stop" | "max_duration" | "cancelled" | "error";
+export type VoiceTranscriptQuality =
+  | "acceptable"
+  | "empty"
+  | "too_short"
+  | "short_recording"
+  | "suspected_partial"
+  | "suspicious";
+export type VoiceSendDecision = "editable_draft" | "blocked" | "auto_send_allowed";
+export type VoiceInteractionModeEvent = "confirm_send" | "direct_conversation";
+export type VoiceAutoSendBlockReason =
+  | "short_recording"
+  | "short_transcript"
+  | "partial_transcript"
+  | "suspicious_transcript";
 
 export type ReiLinkEvent =
   | { type: "user_message_sent"; timestamp: string; text: string; source?: "text" | "voice_confirmed" | "voice_direct"; character_count?: number }
@@ -136,26 +151,50 @@ export type ReiLinkEvent =
   | { type: "voice_input_unavailable"; timestamp: string; reason?: string; status?: string; language?: string }
   | { type: "voice_direct_mode_enabled"; timestamp: string }
   | { type: "voice_direct_mode_disabled"; timestamp: string }
-  | { type: "voice_transcription_auto_sent"; timestamp: string; character_count: number; provider?: "local_asr" | "web_speech"; source?: "direct_conversation" }
+  | {
+      type: "voice_transcription_auto_sent";
+      timestamp: string;
+      character_count: number;
+      provider?: "local_asr" | "web_speech";
+      source?: "direct_conversation";
+      capture_stop_reason?: VoiceCaptureStopReason;
+      transcript_quality?: VoiceTranscriptQuality;
+      send_decision?: VoiceSendDecision;
+      interaction_mode?: VoiceInteractionModeEvent;
+    }
   | {
       type: "voice_transcription_auto_send_blocked";
       timestamp: string;
       character_count: number;
       provider?: "local_asr" | "web_speech";
       source?: "direct_conversation";
-      reason: "short_recording" | "short_transcript" | "partial_transcript";
+      reason: VoiceAutoSendBlockReason;
       duration_ms?: number;
+      capture_stop_reason?: VoiceCaptureStopReason;
+      transcript_quality?: VoiceTranscriptQuality;
+      send_decision?: VoiceSendDecision;
+      interaction_mode?: VoiceInteractionModeEvent;
     }
   | { type: "voice_profile_applied"; timestamp: string; profile_id: "rei_calm"; spoken_mode: "full" | "brief" | "silent"; source: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; max_spoken_chars: number; max_spoken_sentences: number }
   | { type: "voice_reply_spoken_excerpt_created"; timestamp: string; spoken_mode: "full" | "brief" | "silent"; original_character_count: number; spoken_character_count: number; sentence_count: number; reason?: string }
   | { type: "voice_reply_speak_skipped"; timestamp: string; reason: string; spoken_mode?: "full" | "brief" | "silent"; source?: "assistant_reply" | "direct_conversation" | "proactive" | "memory_prompt" | "debug"; original_character_count?: number }
   | { type: "voice_reply_auto_speak_started"; timestamp: string; character_count: number; spoken_mode?: "full" | "brief" | "silent"; sentence_count?: number; source?: "direct_conversation"; strategy_id?: TtsEventStrategyId; provider_id?: TtsEventProviderId; provider_status?: TtsEventProviderStatus; provider_fallback_used?: boolean }
-  | { type: "audio_capture_started"; timestamp: string; duration_ms?: number }
-  | { type: "audio_capture_completed"; timestamp: string; duration_ms: number; size_bytes: number; mime_type?: string }
-  | { type: "audio_capture_stopped"; timestamp: string; reason?: string; duration_ms?: number }
+  | { type: "audio_capture_started"; timestamp: string; duration_ms?: number; max_duration_ms?: number }
+  | { type: "audio_capture_completed"; timestamp: string; duration_ms: number; size_bytes: number; mime_type?: string; stop_reason: VoiceCaptureStopReason }
+  | { type: "audio_capture_stopped"; timestamp: string; reason?: VoiceCaptureStopReason; duration_ms?: number }
   | { type: "audio_capture_error"; timestamp: string; reason?: string; status?: string }
   | { type: "audio_temp_file_cleaned"; timestamp: string; duration_ms?: number; size_bytes?: number; mime_type?: string; temporary_file_cleaned: boolean }
-  | { type: "local_asr_transcription_started"; timestamp: string; duration_ms?: number; size_bytes?: number; mime_type?: string; status?: string; language?: string }
+  | {
+      type: "local_asr_transcription_started";
+      timestamp: string;
+      duration_ms?: number;
+      size_bytes?: number;
+      mime_type?: string;
+      status?: string;
+      language?: string;
+      capture_stop_reason?: VoiceCaptureStopReason;
+      interaction_mode?: VoiceInteractionModeEvent;
+    }
   | {
       type: "local_asr_transcription_completed";
       timestamp: string;
@@ -177,6 +216,10 @@ export type ReiLinkEvent =
       temporary_converted_cleaned?: boolean;
       binary_name?: string;
       model_name?: string;
+      capture_stop_reason?: VoiceCaptureStopReason;
+      transcript_quality?: VoiceTranscriptQuality;
+      send_decision?: VoiceSendDecision;
+      interaction_mode?: VoiceInteractionModeEvent;
     }
   | {
       type: "local_asr_transcription_error";
@@ -200,6 +243,10 @@ export type ReiLinkEvent =
       temporary_converted_cleaned?: boolean;
       binary_name?: string;
       model_name?: string;
+      capture_stop_reason?: VoiceCaptureStopReason;
+      transcript_quality?: VoiceTranscriptQuality;
+      send_decision?: VoiceSendDecision;
+      interaction_mode?: VoiceInteractionModeEvent;
     };
 
 export type ReiLinkEventType = ReiLinkEvent["type"];

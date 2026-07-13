@@ -62,7 +62,11 @@ import type {
   TtsEventProviderId,
   TtsEventProviderStatus,
   TtsEventSource,
-  TtsEventStrategyId
+  TtsEventStrategyId,
+  VoiceAutoSendBlockReason,
+  VoiceCaptureStopReason,
+  VoiceSendDecision,
+  VoiceTranscriptQuality
 } from "../shared/events";
 import {
   normalizeOverlayConfig,
@@ -100,6 +104,11 @@ import {
   type VoiceSpeakSkippedReason
 } from "./voiceProfile";
 import { resolveVoiceConversationState } from "./voiceState";
+import {
+  assessVoiceTranscript,
+  autoSendBlockReasonForQuality,
+  type VoiceTranscriptAssessment
+} from "./voiceTranscriptQuality";
 
 type Message = {
   id: string;
@@ -140,8 +149,21 @@ type VoiceTranscriptSendOptions = {
   mode: AppSettings["voice_interaction_mode"];
   autoSent?: boolean;
   characterCount: number;
+  captureStopReason?: VoiceCaptureStopReason;
+  transcriptQuality: VoiceTranscriptQuality;
+  sendDecision: VoiceSendDecision;
 };
-type VoiceDirectAutoSendBlockReason = "short_recording" | "short_transcript" | "partial_transcript";
+type VoiceTranscriptReady = {
+  source: MainVoiceInputProvider;
+  characterCount: number;
+  inputBeforeTranscript: string;
+  captureStopReason?: VoiceCaptureStopReason;
+  quality: VoiceTranscriptQuality;
+  sendDecision: VoiceSendDecision;
+};
+type VoiceTranscriptHandling = VoiceTranscriptAssessment & {
+  interactionMode: AppSettings["voice_interaction_mode"];
+};
 type LocalAsrSettingsDraft = {
   local_asr_binary_path: string;
   local_asr_model_path: string;
@@ -155,9 +177,9 @@ type WorkspaceTab = {
 };
 
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
-const VOICE_DIRECT_MIN_AUTO_SEND_DURATION_MS = 800;
-const VOICE_DIRECT_MIN_AUTO_SEND_CHARS = 4;
+const AUDIO_CAPTURE_PROBE_DURATION_MS = 3000;
 const VOICE_AUTO_SENDING_VISIBLE_MS = 900;
+const VOICE_CAPTURE_LIMIT_WARNING_MS = 5000;
 const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
 const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
   home: "Home / Chat",
@@ -1207,10 +1229,32 @@ const audioCaptureReasonText = (reason?: string, status?: string) => {
     recording_failed: "录音失败",
     user_stop: "用户停止",
     max_duration: "达到最长录音时间",
-    unmount: "窗口关闭"
+    cancelled: "用户取消",
+    error: "录音错误"
   };
   if (!reason && !status) return "无";
   return labels[reason ?? ""] ?? debugText(status ?? reason);
+};
+
+const voiceTranscriptQualityText = (quality?: VoiceTranscriptQuality) => {
+  const labels: Record<VoiceTranscriptQuality, string> = {
+    acceptable: "质量检查通过",
+    empty: "没有有效内容",
+    too_short: "文本过短",
+    short_recording: "录音过短",
+    suspected_partial: "疑似不完整",
+    suspicious: "质量可疑"
+  };
+  return quality ? labels[quality] : "";
+};
+
+const voiceSendDecisionText = (decision?: VoiceSendDecision) => {
+  const labels: Record<VoiceSendDecision, string> = {
+    editable_draft: "可编辑草稿，尚未发送",
+    blocked: "已阻止发送",
+    auto_send_allowed: "允许自动发送"
+  };
+  return decision ? labels[decision] : "";
 };
 
 const audioBytesText = (sizeBytes: number) => {
@@ -1624,13 +1668,24 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "voice_direct_mode_disabled":
       return "直接对话模式已关闭";
     case "voice_transcription_auto_sent":
-      return [event.source === "direct_conversation" ? "直接对话" : "", `语音文本 ${event.character_count} 字`, event.provider ? debugText(event.provider) : ""].filter(Boolean).join(" / ");
+      return [
+        event.source === "direct_conversation" ? "直接对话" : "",
+        `语音文本 ${event.character_count} 字`,
+        voiceTranscriptQualityText(event.transcript_quality),
+        voiceSendDecisionText(event.send_decision),
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        event.provider ? debugText(event.provider) : ""
+      ].filter(Boolean).join(" / ");
     case "voice_transcription_auto_send_blocked":
       return [
         event.source === "direct_conversation" ? "直接对话" : "",
         directVoiceAutoSendBlockSummary(event.reason),
         `识别文本 ${event.character_count} 字`,
         event.duration_ms ? `${event.duration_ms} ms` : "",
+        voiceTranscriptQualityText(event.transcript_quality),
+        voiceSendDecisionText(event.send_decision),
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        event.interaction_mode ? voiceInteractionModeText(event.interaction_mode) : "",
         event.provider ? debugText(event.provider) : ""
       ].filter(Boolean).join(" / ");
     case "voice_profile_applied":
@@ -1662,9 +1717,14 @@ const eventSummary = (event: ReiLinkEvent) => {
         ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id)
       ].filter(Boolean).join(" / ");
     case "audio_capture_started":
-      return `最长 ${event.duration_ms ?? 0} ms`;
+      return `最长 ${event.max_duration_ms ?? event.duration_ms ?? 0} ms`;
     case "audio_capture_completed":
-      return [`${event.duration_ms} ms`, audioBytesText(event.size_bytes), audioFormatSummaryText(event.mime_type)].filter(Boolean).join(" / ");
+      return [
+        audioCaptureReasonText(event.stop_reason),
+        `${event.duration_ms} ms`,
+        audioBytesText(event.size_bytes),
+        audioFormatSummaryText(event.mime_type)
+      ].filter(Boolean).join(" / ");
     case "audio_capture_stopped":
       return [audioCaptureReasonText(event.reason), event.duration_ms ? `${event.duration_ms} ms` : ""].filter(Boolean).join(" / ");
     case "audio_capture_error":
@@ -1682,7 +1742,9 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.language ? `语言：${debugText(event.language)}` : "",
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
-        audioFormatSummaryText(event.mime_type)
+        audioFormatSummaryText(event.mime_type),
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        event.interaction_mode ? voiceInteractionModeText(event.interaction_mode) : ""
       ].filter(Boolean).join(" / ");
     case "local_asr_transcription_completed":
       return [
@@ -1697,7 +1759,11 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.converted_mime_type ? `转为 ${audioFormatSummaryText(event.converted_mime_type)}` : "",
         event.safe_converter_name ? `转换器：${debugText(event.safe_converter_name)}` : "",
         event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
-        event.model_name ? `模型：${debugText(event.model_name)}` : ""
+        event.model_name ? `模型：${debugText(event.model_name)}` : "",
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        voiceTranscriptQualityText(event.transcript_quality),
+        voiceSendDecisionText(event.send_decision),
+        event.interaction_mode ? voiceInteractionModeText(event.interaction_mode) : ""
       ].filter(Boolean).join(" / ");
     case "local_asr_transcription_error":
       return [
@@ -1713,7 +1779,11 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.converted_mime_type ? `转为 ${audioFormatSummaryText(event.converted_mime_type)}` : "",
         event.safe_converter_name ? `转换器：${debugText(event.safe_converter_name)}` : "",
         event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
-        event.model_name ? `模型：${debugText(event.model_name)}` : ""
+        event.model_name ? `模型：${debugText(event.model_name)}` : "",
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        voiceTranscriptQualityText(event.transcript_quality),
+        voiceSendDecisionText(event.send_decision),
+        event.interaction_mode ? voiceInteractionModeText(event.interaction_mode) : ""
       ].filter(Boolean).join(" / ");
     default:
       return "event";
@@ -1936,13 +2006,33 @@ const selectMainVoiceInputProvider = (
   return "unavailable";
 };
 
+const activeAudioCaptureStatusText = (captureStatus: AudioCaptureStatus, clockMs: number) => {
+  if (captureStatus.phase === "stopping") {
+    return captureStatus.lastStopReason === "max_duration"
+      ? "已达到最长录音时间，正在整理音频"
+      : "正在结束录音，等待音频完整收集";
+  }
+  const maxDurationMs = captureStatus.maxDurationMs ?? MAX_RECORDING_DURATION_MS;
+  const elapsedMs = captureStatus.startedAtMs === null ? 0 : Math.max(0, clockMs - captureStatus.startedAtMs);
+  const remainingMs = Math.max(0, maxDurationMs - elapsedMs);
+  if (remainingMs <= VOICE_CAPTURE_LIMIT_WARNING_MS) {
+    return `正在录音，还可录 ${Math.max(1, Math.ceil(remainingMs / 1000))} 秒`;
+  }
+  return `正在录音，点击麦克风结束（最长 ${Math.round(maxDurationMs / 1000)} 秒）`;
+};
+
 const mainVoiceInputLocalAsrStatusText = (
   phase: LocalAsrTranscriptionPhase,
   result: LocalAsrTranscriptionResponse | null,
-  captureStatus: AudioCaptureStatus
+  captureStatus: AudioCaptureStatus,
+  clockMs: number
 ) => {
-  if (phase === "recording") return "正在录音";
-  if (phase === "transcribing") return "正在本地转写";
+  if (phase === "recording") return activeAudioCaptureStatusText(captureStatus, clockMs);
+  if (phase === "transcribing") {
+    return captureStatus.lastStopReason === "max_duration"
+      ? "已达到最长录音时间，已开始转写"
+      : "正在本地转写";
+  }
   if (!captureStatus.supported) return "当前环境缺少麦克风录音能力";
   if (captureStatus.lastError) return captureStatus.lastError;
   if (!result) return "本地语音识别可用";
@@ -1953,7 +2043,7 @@ const mainVoiceInputLocalAsrStatusText = (
   const labels: Record<LocalAsrTranscriptionResponse["status"], string> = {
     local_asr_transcription_not_ready: "未配置本地 ASR",
     local_asr_transcription_started: "正在本地转写",
-    local_asr_transcription_succeeded: "转写完成，请确认后发送",
+    local_asr_transcription_succeeded: "转写草稿已进入输入框，尚未发送",
     local_asr_transcription_failed: "本地转写失败",
     local_asr_transcription_timed_out: "本地语音识别超时，可以尝试更小模型或更短录音",
     local_asr_transcription_no_text: "没有识别到可用文本",
@@ -1977,9 +2067,10 @@ const mainVoiceInputStatusText = (
   localStatus: LocalAsrStatus,
   localPhase: LocalAsrTranscriptionPhase,
   localResult: LocalAsrTranscriptionResponse | null,
-  captureStatus: AudioCaptureStatus
+  captureStatus: AudioCaptureStatus,
+  clockMs: number
 ) => {
-  if (provider === "local_asr") return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus);
+  if (provider === "local_asr") return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus, clockMs);
   if (provider === "web_speech") return voiceInputPhaseText(webSpeechStatus);
   return mainVoiceInputUnavailableStatusText(localStatus, webSpeechStatus);
 };
@@ -1997,11 +2088,12 @@ const mainVoiceInputButtonTitle = (
   localStatus: LocalAsrStatus,
   localPhase: LocalAsrTranscriptionPhase,
   localResult: LocalAsrTranscriptionResponse | null,
-  captureStatus: AudioCaptureStatus
+  captureStatus: AudioCaptureStatus,
+  clockMs: number
 ) => {
   if (provider === "local_asr") {
     if (localPhase === "recording") return "停止本地录音并开始转写";
-    return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus);
+    return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus, clockMs);
   }
   if (provider === "web_speech") return webSpeechStatus.phase === "idle" ? "开始语音输入" : "停止识别";
   return mainVoiceInputUnavailableStatusText(localStatus, webSpeechStatus);
@@ -2034,6 +2126,7 @@ const audioProbeStatusText = (
   result: AudioProbeResponse | null
 ) => {
   if (captureStatus.phase === "recording") return "正在录音";
+  if (captureStatus.phase === "stopping") return "正在结束录音";
   if (uploading) return "正在上传临时音频";
   if (!captureStatus.supported) return "当前环境不支持录音";
   if (captureStatus.lastError === "麦克风权限被拒绝") return "权限被拒绝";
@@ -2055,10 +2148,11 @@ const audioProbeStatusText = (
 
 const audioProbeHint = (captureStatus: AudioCaptureStatus, uploading: boolean, result: AudioProbeResponse | null) => {
   if (captureStatus.phase === "recording") return "正在录制短音频。不会转写，也不会自动发送。";
+  if (captureStatus.phase === "stopping") return "正在等待最后一段音频写入。";
   if (uploading) return "正在上传到本机后端做临时文件清理测试。";
   if (captureStatus.lastError) return captureStatus.lastError;
   if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
-  if (!result) return `只测试麦克风录音和临时文件清理，不做语音识别。最长 ${Math.round(MAX_RECORDING_DURATION_MS / 1000)} 秒。`;
+  if (!result) return `只测试麦克风录音和临时文件清理，不做语音识别。最长 ${Math.round(AUDIO_CAPTURE_PROBE_DURATION_MS / 1000)} 秒。`;
   return result.display_message;
 };
 
@@ -2066,17 +2160,20 @@ const localAsrTranscriptionStatusText = (
   phase: LocalAsrTranscriptionPhase,
   result: LocalAsrTranscriptionResponse | null,
   configReady: boolean,
-  captureStatus: AudioCaptureStatus
+  captureStatus: AudioCaptureStatus,
+  clockMs: number
 ) => {
-  if (phase === "recording") return "正在录音";
-  if (phase === "transcribing") return "正在本地转写";
+  if (phase === "recording") return activeAudioCaptureStatusText(captureStatus, clockMs);
+  if (phase === "transcribing") {
+    return captureStatus.lastStopReason === "max_duration" ? "达到最长时间，正在转写" : "正在本地转写";
+  }
   if (!configReady) return "配置未就绪";
   if (!captureStatus.supported) return "当前环境不支持录音";
   if (!result) return "未转写";
   const labels: Record<LocalAsrTranscriptionResponse["status"], string> = {
     local_asr_transcription_not_ready: "配置未就绪",
     local_asr_transcription_started: "正在本地转写",
-    local_asr_transcription_succeeded: "转写完成",
+    local_asr_transcription_succeeded: "转写草稿待检查",
     local_asr_transcription_failed: "转写失败",
     local_asr_transcription_timed_out: "转写超时",
     local_asr_transcription_no_text: "没有识别到可用文本",
@@ -2091,15 +2188,25 @@ const localAsrTranscriptionHint = (
   result: LocalAsrTranscriptionResponse | null,
   configReady: boolean,
   captureStatus: AudioCaptureStatus,
-  localStatus: LocalAsrStatus
+  localStatus: LocalAsrStatus,
+  clockMs: number,
+  transcriptReady?: VoiceTranscriptReady | null
 ) => {
-  if (phase === "recording") return "正在录制短音频。完成后会交给本机后端转写。";
-  if (phase === "transcribing") return "正在本机调用本地语音识别程序。不会自动发送。";
+  if (phase === "recording") return `${activeAudioCaptureStatusText(captureStatus, clockMs)}。说完后请主动停止；当前没有静音自动停止。`;
+  if (phase === "transcribing") {
+    return captureStatus.lastStopReason === "max_duration"
+      ? "已达到最长录音时间，正在本地转写。最终音频已完整收集。"
+      : "正在本机调用本地语音识别程序。确认后发送模式不会自动发送。";
+  }
   if (!configReady) return localStatus.display_message;
   if (captureStatus.lastError) return captureStatus.lastError;
   if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
-  if (!result) return "录音并转写会把识别文本填入输入框，发送前仍可编辑或删除。";
-  if (result.status === "local_asr_transcription_succeeded") return "转写完成，请确认后发送。文本已填入输入框，可编辑或删除，不会自动发送。";
+  if (!result) return `录音由你主动停止，最长 ${Math.round(MAX_RECORDING_DURATION_MS / 1000)} 秒。转写文本会作为可编辑草稿进入输入框。`;
+  if (result.status === "local_asr_transcription_succeeded") {
+    return transcriptReady
+      ? voiceTranscriptDraftHint(transcriptReady.quality, transcriptReady.characterCount)
+      : "转写完成。直接对话只有在质量检查通过后才会自动发送。";
+  }
   if (result.status === "local_asr_transcription_timed_out") return "本地语音识别超时，可以尝试更小模型或更短录音。不会自动发送。";
   if (result.conversion_status === "audio_conversion_not_configured") {
     return "当前录音格式需要转换为 WAV，尚未配置音频转换工具。不会上传音频，也不会自动发送。";
@@ -2116,39 +2223,33 @@ const appendTranscriptToInput = (current: string, transcript: string) => {
   return `${current.trimEnd()} ${text}`;
 };
 
-const directVoiceAutoSendBlockReasonText = (reason: VoiceDirectAutoSendBlockReason) => {
-  const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
+const directVoiceAutoSendBlockReasonText = (reason: VoiceAutoSendBlockReason) => {
+  const labels: Record<VoiceAutoSendBlockReason, string> = {
     short_recording: "这段录音太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
     short_transcript: "识别结果太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
-    partial_transcript: "这句像是还没说完，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。"
+    partial_transcript: "这句像是还没说完，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    suspicious_transcript: "这次转写质量可疑，先没有自动发送。请检查输入框内容或重新录音。"
   };
   return labels[reason];
 };
 
-const directVoiceAutoSendBlockSummary = (reason: VoiceDirectAutoSendBlockReason) => {
-  const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
+const directVoiceAutoSendBlockSummary = (reason: VoiceAutoSendBlockReason) => {
+  const labels: Record<VoiceAutoSendBlockReason, string> = {
     short_recording: "录音过短，未自动发送",
     short_transcript: "识别文本过短，未自动发送",
-    partial_transcript: "疑似半句，未自动发送"
+    partial_transcript: "疑似半句，未自动发送",
+    suspicious_transcript: "转写质量可疑，未自动发送"
   };
   return labels[reason];
 };
 
-const directVoiceAutoSendBlockReason = (transcript: string, durationMs?: number): VoiceDirectAutoSendBlockReason | null => {
-  const text = transcript.trim();
-  if (!text) return "short_transcript";
-  if (typeof durationMs === "number" && durationMs > 0 && durationMs < VOICE_DIRECT_MIN_AUTO_SEND_DURATION_MS) {
-    return "short_recording";
+const voiceTranscriptDraftHint = (quality: VoiceTranscriptQuality, characterCount: number) => {
+  if (quality === "short_recording") return "录音时间太短，请检查现有草稿或重新录音。文本尚未发送。";
+  if (quality === "too_short") return "转写内容较短，请检查、修改或重新录音。文本尚未发送。";
+  if (quality === "suspected_partial" || quality === "suspicious") {
+    return "转写可能不完整，请检查、修改或重新录音。文本尚未发送。";
   }
-  const compact = text.replace(/\s+/g, "");
-  if (compact.length <= VOICE_DIRECT_MIN_AUTO_SEND_CHARS - 1) return "short_transcript";
-  const partialEndMarkers = (
-    "我想,我现在,我現在,我换,我換,我换去,我換去,不打,先不打,去打,换到,換到,那个,那個,这个,這個,帮我,幫我"
-  ).split(",");
-  if (compact.length <= 8 && partialEndMarkers.some((marker) => compact.endsWith(marker))) {
-    return "partial_transcript";
-  }
-  return null;
+  return `${characterCount} 字转写草稿已在输入框，尚未发送。请检查内容，也可以重新录音。`;
 };
 
 const safeProviderDebug = (debug: ProviderDebugResponse) => {
@@ -2419,6 +2520,9 @@ export function App() {
   const [audioProbeUploading, setAudioProbeUploading] = useState(false);
   const [localAsrTranscriptionResult, setLocalAsrTranscriptionResult] = useState<LocalAsrTranscriptionResponse | null>(null);
   const [localAsrTranscriptionPhase, setLocalAsrTranscriptionPhase] = useState<LocalAsrTranscriptionPhase>("idle");
+  const [localAsrCaptureStopReason, setLocalAsrCaptureStopReason] = useState<VoiceCaptureStopReason | null>(null);
+  const [localAsrTranscriptAssessment, setLocalAsrTranscriptAssessment] = useState<VoiceTranscriptHandling | null>(null);
+  const [audioCaptureClockMs, setAudioCaptureClockMs] = useState(() => Date.now());
   const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
@@ -2477,7 +2581,7 @@ export function App() {
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
   const [voiceStatus, setVoiceStatus] = useState<VoiceOutputStatus>(() => voiceOutput.getStatus());
   const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>(() => voiceInput.getStatus());
-  const [voiceTranscriptReady, setVoiceTranscriptReady] = useState<{ source: MainVoiceInputProvider; characterCount: number } | null>(null);
+  const [voiceTranscriptReady, setVoiceTranscriptReady] = useState<VoiceTranscriptReady | null>(null);
   const [voiceAutoSendBlockedHint, setVoiceAutoSendBlockedHint] = useState("");
   const [voiceAutoSendingActive, setVoiceAutoSendingActive] = useState(false);
   const [voiceAssistantTurnActive, setVoiceAssistantTurnActive] = useState(false);
@@ -2503,6 +2607,7 @@ export function App() {
   const proactiveSuppressedUntilRef = useRef(0);
   const voiceInterruptedTimerRef = useRef<number | null>(null);
   const voiceAutoSendingTimerRef = useRef<number | null>(null);
+  const voiceInteractionModeRef = useRef<AppSettings["voice_interaction_mode"]>(appSettings.voice_interaction_mode);
 
   const suppressProactiveAfterSystemAction = useCallback(() => {
     proactiveSuppressedUntilRef.current = Date.now() + PROACTIVE_SYSTEM_ACTION_SUPPRESSION_MS;
@@ -2557,11 +2662,22 @@ export function App() {
     setVoiceTransientState({ kind: "error", message });
   }, [clearVoiceAutoSending, clearVoiceInterruptedTimer]);
 
-  const markVoiceTranscriptReady = useCallback((source: MainVoiceInputProvider, transcript: string) => {
-    const characterCount = transcript.trim().length;
-    if (characterCount <= 0) return;
+  const markVoiceTranscriptReady = useCallback((
+    source: MainVoiceInputProvider,
+    assessment: VoiceTranscriptAssessment,
+    inputBeforeTranscript: string,
+    captureStopReason?: VoiceCaptureStopReason
+  ) => {
+    if (assessment.characterCount <= 0) return;
     clearVoiceTransientState();
-    setVoiceTranscriptReady({ source, characterCount });
+    setVoiceTranscriptReady({
+      source,
+      characterCount: assessment.characterCount,
+      inputBeforeTranscript,
+      captureStopReason,
+      quality: assessment.quality,
+      sendDecision: assessment.sendDecision
+    });
   }, [clearVoiceTransientState]);
 
   const clearVoiceTranscriptReady = useCallback(() => {
@@ -2590,12 +2706,14 @@ export function App() {
   const startVoiceInput = () => {
     clearVoiceTransientState();
     clearVoiceTranscriptReady();
+    const interactionModeAtStart = voiceInteractionModeRef.current;
+    const inputBeforeTranscript = input;
     if (VOICE_INTERRUPT_ON_NEW_RECORDING && voiceOutput.getStatus().active) {
       stopVoiceOutput("user_stop");
     }
     const started = voiceInput.start({
       onFinalTranscript: (transcript) => {
-        handleRecognizedVoiceTranscript("web_speech", transcript);
+        handleRecognizedVoiceTranscript("web_speech", transcript, { interactionModeAtStart, inputBeforeTranscript });
       }
     });
     if (!started) {
@@ -3283,13 +3401,16 @@ export function App() {
       setLastError("");
       setLastRawError("");
       const updated = await api.updateSettings(patch);
-      setAppSettings((previous) =>
-        normalizeAppSettings(
+      setAppSettings((previous) => {
+        const nextSettings = normalizeAppSettings(
           updated,
           voiceSettingFallback(updated, previous, patch)
-        )
-      );
+        );
+        voiceInteractionModeRef.current = nextSettings.voice_interaction_mode;
+        return nextSettings;
+      });
       if (patch.voice_interaction_mode) {
+        if (patch.voice_interaction_mode === "confirm_send") setVoiceAutoSendBlockedHint("");
         eventBus.emit({
           type: patch.voice_interaction_mode === "direct_conversation" ? "voice_direct_mode_enabled" : "voice_direct_mode_disabled",
           timestamp: eventTimestamp()
@@ -3436,10 +3557,10 @@ export function App() {
       audioCapture.stop("user_stop");
       return;
     }
-    if (!audioCaptureStatus.supported || audioProbeUploading) return;
+    if (audioCaptureStatus.phase !== "idle" || !audioCaptureStatus.supported || audioProbeUploading) return;
     setAudioProbeResult(null);
     await audioCapture.start({
-      durationMs: 3000,
+      durationMs: AUDIO_CAPTURE_PROBE_DURATION_MS,
       onRecorded: (recording) => {
         setAudioProbeUploading(true);
         void api.probeAudio(recording.blob, recording.durationMs)
@@ -3476,11 +3597,34 @@ export function App() {
     });
   };
 
-  function handleRecognizedVoiceTranscript(source: MainVoiceInputProvider, transcript: string, options: { durationMs?: number } = {}) {
+  const resolvedCapturedVoiceMode = (modeAtStart: AppSettings["voice_interaction_mode"]) =>
+    modeAtStart === "direct_conversation" && voiceInteractionModeRef.current === "direct_conversation"
+      ? "direct_conversation"
+      : "confirm_send";
+
+  function handleRecognizedVoiceTranscript(
+    source: MainVoiceInputProvider,
+    transcript: string,
+    options: {
+      durationMs?: number;
+      captureStopReason?: VoiceCaptureStopReason;
+      interactionModeAtStart?: AppSettings["voice_interaction_mode"];
+      inputBeforeTranscript?: string;
+    } = {}
+  ): VoiceTranscriptHandling {
     const trimmedTranscript = transcript.trim();
-    if (!trimmedTranscript) {
-      setVoiceError("没听清，可以再说一次。");
-      if (appSettings.voice_interaction_mode === "direct_conversation") {
+    const modeAtStart = options.interactionModeAtStart ?? voiceInteractionModeRef.current;
+    const interactionMode: AppSettings["voice_interaction_mode"] = resolvedCapturedVoiceMode(modeAtStart);
+    const assessment = assessVoiceTranscript({
+      transcript,
+      interactionMode,
+      durationMs: options.durationMs,
+      captureStopReason: options.captureStopReason
+    });
+
+    if (assessment.quality === "empty") {
+      setVoiceError("没有识别到有效内容，请重新录音。");
+      if (interactionMode === "direct_conversation") {
         eventBus.emit({
           type: "voice_transcription_auto_send_blocked",
           timestamp: eventTimestamp(),
@@ -3488,16 +3632,20 @@ export function App() {
           provider: source === "unavailable" ? undefined : source,
           source: "direct_conversation",
           reason: "short_transcript",
-          duration_ms: options.durationMs
+          duration_ms: options.durationMs,
+          capture_stop_reason: options.captureStopReason,
+          transcript_quality: assessment.quality,
+          send_decision: assessment.sendDecision,
+          interaction_mode: interactionMode
         });
       }
-      return;
+      return { ...assessment, interactionMode };
     }
-    if (appSettings.voice_interaction_mode === "direct_conversation") {
-      const blockReason = directVoiceAutoSendBlockReason(trimmedTranscript, options.durationMs);
+    if (interactionMode === "direct_conversation") {
+      const blockReason = autoSendBlockReasonForQuality(assessment.quality);
       if (blockReason) {
         setInput((current) => appendTranscriptToInput(current, transcript));
-        markVoiceTranscriptReady(source, transcript);
+        markVoiceTranscriptReady(source, assessment, options.inputBeforeTranscript ?? "", options.captureStopReason);
         setVoiceAutoSendBlockedHint(directVoiceAutoSendBlockReasonText(blockReason));
         eventBus.emit({
           type: "voice_transcription_auto_send_blocked",
@@ -3506,9 +3654,13 @@ export function App() {
           provider: source === "unavailable" ? undefined : source,
           source: "direct_conversation",
           reason: blockReason,
-          duration_ms: options.durationMs
+          duration_ms: options.durationMs,
+          capture_stop_reason: options.captureStopReason,
+          transcript_quality: assessment.quality,
+          send_decision: assessment.sendDecision,
+          interaction_mode: interactionMode
         });
-        return;
+        return { ...assessment, interactionMode };
       }
       clearVoiceTransientState();
       clearVoiceTranscriptReady();
@@ -3519,13 +3671,17 @@ export function App() {
           source,
           mode: "direct_conversation",
           autoSent: true,
-          characterCount: trimmedTranscript.length
+          characterCount: trimmedTranscript.length,
+          captureStopReason: options.captureStopReason,
+          transcriptQuality: assessment.quality,
+          sendDecision: assessment.sendDecision
         }
       });
-      return;
+      return { ...assessment, interactionMode };
     }
     setInput((current) => appendTranscriptToInput(current, transcript));
-    markVoiceTranscriptReady(source, transcript);
+    markVoiceTranscriptReady(source, assessment, options.inputBeforeTranscript ?? "", options.captureStopReason);
+    return { ...assessment, interactionMode };
   }
 
   const runLocalAsrTranscription = async () => {
@@ -3541,16 +3697,21 @@ export function App() {
     ) {
       return;
     }
+    const interactionModeAtStart = voiceInteractionModeRef.current;
+    const inputBeforeTranscript = input;
     clearVoiceTransientState();
     clearVoiceTranscriptReady();
     if (voiceOutput.getStatus().active) {
       stopVoiceOutput("user_stop");
     }
     setLocalAsrTranscriptionResult(null);
+    setLocalAsrCaptureStopReason(null);
+    setLocalAsrTranscriptAssessment(null);
     setLocalAsrTranscriptionPhase("recording");
     const started = await audioCapture.start({
-      durationMs: 3000,
+      durationMs: MAX_RECORDING_DURATION_MS,
       onRecorded: (recording) => {
+        setLocalAsrCaptureStopReason(recording.stopReason);
         setLocalAsrTranscriptionPhase("transcribing");
         eventBus.emit({
           type: "local_asr_transcription_started",
@@ -3559,13 +3720,21 @@ export function App() {
           language: LOCAL_ASR_UI_LANGUAGE,
           duration_ms: recording.durationMs,
           size_bytes: recording.sizeBytes,
-          mime_type: recording.mimeType
+          mime_type: recording.mimeType,
+          capture_stop_reason: recording.stopReason,
+          interaction_mode: interactionModeAtStart
         });
         void api.transcribeLocalAsr(recording.blob, recording.durationMs, LOCAL_ASR_UI_LANGUAGE)
           .then((result) => {
             setLocalAsrTranscriptionResult(result);
             if (result.status === "local_asr_transcription_succeeded") {
-              handleRecognizedVoiceTranscript("local_asr", result.transcript, { durationMs: result.duration_ms });
+              const handling = handleRecognizedVoiceTranscript("local_asr", result.transcript, {
+                durationMs: result.duration_ms,
+                captureStopReason: recording.stopReason,
+                interactionModeAtStart,
+                inputBeforeTranscript
+              });
+              setLocalAsrTranscriptAssessment(handling);
               eventBus.emit({
                 type: "local_asr_transcription_completed",
                 timestamp: eventTimestamp(),
@@ -3586,14 +3755,32 @@ export function App() {
                 temporary_input_cleaned: result.temporary_input_cleaned,
                 temporary_converted_cleaned: result.temporary_converted_cleaned,
                 binary_name: result.binary_name ?? undefined,
-                model_name: result.model_name ?? undefined
+                model_name: result.model_name ?? undefined,
+                capture_stop_reason: recording.stopReason,
+                transcript_quality: handling.quality,
+                send_decision: handling.sendDecision,
+                interaction_mode: handling.interactionMode
               });
               return;
             }
+            const failedAssessment = assessVoiceTranscript({
+              transcript: result.transcript,
+              interactionMode: "confirm_send",
+              durationMs: result.duration_ms,
+              captureStopReason: recording.stopReason
+            });
+            const failedInteractionMode = resolvedCapturedVoiceMode(interactionModeAtStart);
+            setLocalAsrTranscriptAssessment({
+              ...failedAssessment,
+              sendDecision: "blocked",
+              interactionMode: failedInteractionMode
+            });
             setVoiceError(
-              result.conversion_status === "audio_conversion_not_configured"
+              result.status === "local_asr_transcription_no_text"
+                ? "没有识别到有效内容，请重新录音。"
+                : result.conversion_status === "audio_conversion_not_configured"
                 ? "本地语音识别暂不可用。请检查设置。"
-                : mainVoiceInputLocalAsrStatusText("idle", result, audioCaptureStatus)
+                : mainVoiceInputLocalAsrStatusText("idle", result, audioCaptureStatus, Date.now())
             );
             eventBus.emit({
               type: "local_asr_transcription_error",
@@ -3616,7 +3803,11 @@ export function App() {
               temporary_input_cleaned: result.temporary_input_cleaned,
               temporary_converted_cleaned: result.temporary_converted_cleaned,
               binary_name: result.binary_name ?? undefined,
-              model_name: result.model_name ?? undefined
+              model_name: result.model_name ?? undefined,
+              capture_stop_reason: recording.stopReason,
+              transcript_quality: failedAssessment.quality,
+              send_decision: "blocked",
+              interaction_mode: failedInteractionMode
             });
           })
           .catch(() => {
@@ -3636,6 +3827,12 @@ export function App() {
               model_name: localAsrStatus.safe_model_name
             };
             setLocalAsrTranscriptionResult(fallback);
+            setLocalAsrTranscriptAssessment({
+              characterCount: 0,
+              quality: "empty",
+              sendDecision: "blocked",
+              interactionMode: interactionModeAtStart
+            });
             setVoiceError("本地语音识别暂不可用。请检查设置。");
             eventBus.emit({
               type: "local_asr_transcription_error",
@@ -3657,7 +3854,11 @@ export function App() {
               temporary_input_cleaned: fallback.temporary_input_cleaned,
               temporary_converted_cleaned: fallback.temporary_converted_cleaned,
               binary_name: fallback.binary_name ?? undefined,
-              model_name: fallback.model_name ?? undefined
+              model_name: fallback.model_name ?? undefined,
+              capture_stop_reason: recording.stopReason,
+              transcript_quality: "empty",
+              send_decision: "blocked",
+              interaction_mode: interactionModeAtStart
             });
           })
           .finally(() => setLocalAsrTranscriptionPhase("idle"));
@@ -3666,6 +3867,25 @@ export function App() {
     if (!started) {
       setLocalAsrTranscriptionPhase("idle");
       setVoiceError(audioCapture.getStatus().lastError ?? "本地语音识别暂不可用。请检查设置。");
+    }
+  };
+
+  const cancelLocalAsrRecording = () => {
+    if (localAsrTranscriptionPhase !== "recording") return;
+    if (!audioCapture.cancel()) return;
+    setLocalAsrCaptureStopReason("cancelled");
+    setLocalAsrTranscriptionPhase("idle");
+    setVoiceTransientState(null);
+  };
+
+  const restartVoiceTranscription = () => {
+    if (!voiceTranscriptReady || localAsrTranscriptionPhase !== "idle") return;
+    setInput(voiceTranscriptReady.inputBeforeTranscript);
+    clearVoiceTranscriptReady();
+    if (mainVoiceInputProvider === "local_asr") {
+      void runLocalAsrTranscription();
+    } else if (mainVoiceInputProvider === "web_speech") {
+      startVoiceInput();
     }
   };
 
@@ -3836,12 +4056,28 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = audioCapture.subscribe(setAudioCaptureStatus);
+    const unsubscribe = audioCapture.subscribe((status) => {
+      setAudioCaptureStatus(status);
+      if (status.phase === "idle" && (status.lastStopReason === "cancelled" || status.lastStopReason === "error")) {
+        setLocalAsrTranscriptionPhase((current) => current === "recording" ? "idle" : current);
+      }
+    });
     return () => {
       unsubscribe();
-      audioCapture.stop("unmount");
+      audioCapture.cancel();
     };
   }, []);
+
+  useEffect(() => {
+    voiceInteractionModeRef.current = appSettings.voice_interaction_mode;
+  }, [appSettings.voice_interaction_mode]);
+
+  useEffect(() => {
+    if (audioCaptureStatus.phase !== "recording") return;
+    setAudioCaptureClockMs(Date.now());
+    const interval = window.setInterval(() => setAudioCaptureClockMs(Date.now()), 500);
+    return () => window.clearInterval(interval);
+  }, [audioCaptureStatus.phase]);
 
   useEffect(() => {
     return () => {
@@ -4027,7 +4263,10 @@ export function App() {
       ? {
           source: voiceTranscriptReady.source,
           mode: appSettings.voice_interaction_mode,
-          characterCount: Math.max(voiceTranscriptReady.characterCount, trimmed.length)
+          characterCount: Math.max(voiceTranscriptReady.characterCount, trimmed.length),
+          captureStopReason: voiceTranscriptReady.captureStopReason,
+          transcriptQuality: voiceTranscriptReady.quality,
+          sendDecision: voiceTranscriptReady.sendDecision
         }
       : null;
     const voiceTranscript = options.voiceTranscript ?? fallbackVoiceTranscript;
@@ -4060,7 +4299,11 @@ export function App() {
         timestamp: userMessage.createdAt,
         character_count: voiceTranscript.characterCount,
         provider: voiceTranscript.source === "unavailable" ? undefined : voiceTranscript.source,
-        source: "direct_conversation"
+        source: "direct_conversation",
+        capture_stop_reason: voiceTranscript.captureStopReason,
+        transcript_quality: voiceTranscript.transcriptQuality,
+        send_decision: voiceTranscript.sendDecision,
+        interaction_mode: voiceTranscript.mode
       });
     }
     eventBus.emit({
@@ -4545,6 +4788,7 @@ export function App() {
   const localAsrTranscriptionButtonDisabled = !localAsrConfigReady ||
     !audioCaptureStatus.supported ||
     audioProbeUploading ||
+    audioCaptureStatus.phase === "stopping" ||
     (audioCaptureStatus.phase !== "idle" && localAsrTranscriptionPhase !== "recording") ||
     localAsrTranscriptionPhase === "transcribing";
   const mainVoiceInputProvider = selectMainVoiceInputProvider(localAsrStatus, voiceInputStatus);
@@ -4567,14 +4811,17 @@ export function App() {
     localAsrStatus,
     localAsrTranscriptionPhase,
     localAsrTranscriptionResult,
-    audioCaptureStatus
+    audioCaptureStatus,
+    audioCaptureClockMs
   );
   const mainVoiceInputStatus =
     voiceDirectConversationEnabled &&
     localAsrTranscriptionPhase === "idle" &&
     localAsrTranscriptionResult?.status === "local_asr_transcription_succeeded"
       ? voiceAutoSendBlockedHint
-        ? "转写完成，等待确认发送"
+        ? "转写草稿待检查，尚未发送"
+        : voiceTranscriptReady
+          ? "转写草稿待检查，尚未发送"
         : localAsrTranscriptionResult.transcript.trim()
           ? "转写完成，已自动发送"
           : "没有识别到可用文本"
@@ -4596,7 +4843,8 @@ export function App() {
     localAsrStatus,
     localAsrTranscriptionPhase,
     localAsrTranscriptionResult,
-    audioCaptureStatus
+    audioCaptureStatus,
+    audioCaptureClockMs
   );
   const voiceErrorMessage = voiceTransientState?.kind === "error" ? voiceTransientState.message ?? "语音没有接上。可以再试一次。" : null;
   const resolvedVoiceConversationState = resolveVoiceConversationState({
@@ -4606,7 +4854,7 @@ export function App() {
     assistantThinking: voiceAssistantTurnActive && sending,
     speaking: voiceStatus.active,
     interrupted: voiceTransientState?.kind === "interrupted",
-    readyToSend: Boolean(voiceTranscriptReady && input.trim() && (!voiceDirectConversationEnabled || voiceAutoSendBlockedHint)),
+    readyToSend: Boolean(voiceTranscriptReady && input.trim()),
     errorMessage: voiceErrorMessage
   });
   const voiceConversationState = {
@@ -4617,7 +4865,7 @@ export function App() {
         : resolvedVoiceConversationState.description
   };
   const voiceConfirmSendText = voiceTranscriptReady
-    ? voiceAutoSendBlockedHint || `${voiceTranscriptReady.characterCount} 字已在输入框，仍需点击发送。`
+    ? voiceAutoSendBlockedHint || voiceTranscriptDraftHint(voiceTranscriptReady.quality, voiceTranscriptReady.characterCount)
     : "确认后发送，默认不自动发送。";
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
@@ -5100,6 +5348,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
                 </span>
                 <span>模式：{voiceInteractionModeLabel}</span>
+                {localAsrCaptureStopReason && localAsrTranscriptionPhase !== "recording" && (
+                  <span>录音结束：{audioCaptureReasonText(localAsrCaptureStopReason)}</span>
+                )}
                 {voiceDirectConversationEnabled && !voiceAutoSendBlockedHint && (
                   <span className="voiceStateNotice">主动录音后自动发送，不会常驻监听</span>
                 )}
@@ -5115,6 +5366,29 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   >
                     <VolumeX size={13} />
                     停止播放
+                  </button>
+                )}
+                {mainVoiceInputUsesLocalAsr && localAsrTranscriptionPhase === "recording" && audioCaptureStatus.phase === "recording" && (
+                  <button
+                    className="smallButton quiet voiceInlineStop"
+                    type="button"
+                    aria-label="取消本次录音 / Cancel Recording"
+                    onClick={cancelLocalAsrRecording}
+                  >
+                    <X size={13} />
+                    取消录音
+                  </button>
+                )}
+                {voiceConversationState.state === "ready_to_send" && (
+                  <button
+                    className="smallButton quiet voiceInlineStop"
+                    type="button"
+                    aria-label="清空草稿并重新录音 / Re-record"
+                    disabled={mainVoiceInputDisabled}
+                    onClick={restartVoiceTranscription}
+                  >
+                    <RefreshCw size={13} />
+                    重新录音
                   </button>
                 )}
               </div>
@@ -5736,6 +6010,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <dd>{mainVoiceInputStatus}</dd>
                 </div>
                 <div>
+                  <dt>最近录音结束</dt>
+                  <dd>{localAsrCaptureStopReason ? audioCaptureReasonText(localAsrCaptureStopReason) : "无"}</dd>
+                </div>
+                <div>
                   <dt>语音输出</dt>
                   <dd>{appSettings.voice_output === "on" ? "开启" : "关闭"} / {voicePhaseText(voiceStatus)}</dd>
                 </div>
@@ -5980,7 +6258,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                      localAsrTranscriptionPhase,
 	                      localAsrTranscriptionResult,
 	                      localAsrConfigReady,
-	                      audioCaptureStatus
+	                      audioCaptureStatus,
+	                      audioCaptureClockMs
 	                    )}
 	                  </strong>
 	                </div>
@@ -5990,7 +6269,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                    localAsrTranscriptionResult,
 	                    localAsrConfigReady,
 	                    audioCaptureStatus,
-	                    localAsrStatus
+	                    localAsrStatus,
+	                    audioCaptureClockMs,
+	                    voiceTranscriptReady
 	                  )}
 	                </p>
 	                {localAsrTranscriptionResult && (
@@ -6039,7 +6320,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                  className="smallButton quiet"
 	                  type="button"
 	                  aria-label={audioCaptureStatus.phase === "recording" ? "停止录音 / Stop Recording" : "测试录音 / Test Recording"}
-	                  disabled={audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
+	                  disabled={audioCaptureStatus.phase === "stopping" || audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
 	                  onClick={() => void runAudioCaptureProbe()}
 	                >
 	                  <Mic size={14} />
@@ -7125,7 +7406,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       localAsrTranscriptionPhase,
                       localAsrTranscriptionResult,
                       localAsrConfigReady,
-                      audioCaptureStatus
+                      audioCaptureStatus,
+                      audioCaptureClockMs
                     )}
                   </strong>
                 </div>
@@ -7135,7 +7417,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     localAsrTranscriptionResult,
                     localAsrConfigReady,
                     audioCaptureStatus,
-                    localAsrStatus
+                    localAsrStatus,
+                    audioCaptureClockMs,
+                    voiceTranscriptReady
                   )}
                 </p>
                 {localAsrTranscriptionResult && (
@@ -7184,7 +7468,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   className="smallButton quiet"
                   type="button"
                   aria-label={audioCaptureStatus.phase === "recording" ? "停止录音 / Stop Recording" : "测试录音 / Test Recording"}
-                  disabled={audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
+                  disabled={audioCaptureStatus.phase === "stopping" || audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
                   onClick={() => void runAudioCaptureProbe()}
                 >
                   <Mic size={14} />
@@ -8011,7 +8295,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             localAsrTranscriptionPhase,
                             localAsrTranscriptionResult,
                             localAsrConfigReady,
-                            audioCaptureStatus
+                            audioCaptureStatus,
+                            audioCaptureClockMs
                           )}
                         </dd>
                       </div>
@@ -8024,7 +8309,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                               localAsrTranscriptionResult,
                               localAsrConfigReady,
                               audioCaptureStatus,
-                              localAsrStatus
+                              localAsrStatus,
+                              audioCaptureClockMs,
+                              voiceTranscriptReady
                             )
                           )}
                         </dd>
@@ -8569,6 +8856,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                               web_speech_available: webSpeechVoiceInputAvailable(voiceInputStatus),
                               audio_capture_supported: audioCaptureStatus.supported,
                               audio_capture_phase: audioCaptureStatus.phase,
+                              audio_capture_stop_reason: localAsrCaptureStopReason,
+                              transcript_quality: localAsrTranscriptAssessment?.quality ?? null,
+                              send_decision: localAsrTranscriptAssessment?.sendDecision ?? null,
                               local_asr_transcription_phase: localAsrTranscriptionPhase,
                               local_asr_transcription_status: localAsrTranscriptionResult?.status ?? null,
                               local_asr_language: localAsrTranscriptionResult?.language ?? null,
@@ -8603,6 +8893,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             hands_free_enabled: false,
                             transcript_ready: Boolean(voiceTranscriptReady),
                             transcript_character_count: voiceTranscriptReady?.characterCount ?? 0,
+                            transcript_quality: voiceTranscriptReady?.quality ?? localAsrTranscriptAssessment?.quality ?? null,
+                            send_decision: voiceTranscriptReady?.sendDecision ?? localAsrTranscriptAssessment?.sendDecision ?? null,
+                            capture_stop_reason: voiceTranscriptReady?.captureStopReason ?? localAsrCaptureStopReason,
                             tts_active: voiceStatus.active,
                             tts_phase: voiceStatus.phase
                           },
@@ -8665,7 +8958,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                                   temporary_input_cleaned: localAsrTranscriptionResult.temporary_input_cleaned,
                                   temporary_converted_cleaned: localAsrTranscriptionResult.temporary_converted_cleaned,
                                   binary_name: localAsrTranscriptionResult.binary_name,
-                                  model_name: localAsrTranscriptionResult.model_name
+                                  model_name: localAsrTranscriptionResult.model_name,
+                                  capture_stop_reason: localAsrCaptureStopReason,
+                                  transcript_quality: localAsrTranscriptAssessment?.quality ?? null,
+                                  send_decision: localAsrTranscriptAssessment?.sendDecision ?? null,
+                                  interaction_mode: localAsrTranscriptAssessment?.interactionMode ?? null
                                 }
                               : null
                           },
@@ -8673,6 +8970,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             supported: audioCaptureStatus.supported,
                             phase: audioCaptureStatus.phase,
                             last_error: audioCaptureStatus.lastError,
+                            max_duration_ms: audioCaptureStatus.maxDurationMs,
+                            last_stop_reason: audioCaptureStatus.lastStopReason,
                             uploading: audioProbeUploading,
                             probe: audioProbeResult
                               ? {

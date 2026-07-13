@@ -255,6 +255,23 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 29. Packaged app 退出后不得残留由 app 启动的 bundled backend 进程。
 30. Packaged smoke 应确认 app 非黑屏、backend connected、普通聊天、Voice workspace、Local ASR 配置入口、confirm / Direct 边界、guard、Voice Profile、Test / Stop Voice、Provider Registry、Event Stream、Settings 和 Debug 无明显回归。
 
+#### Voice Input Capture & Transcript UX Stabilization v0
+
+1. 主 Local ASR 使用 `MediaRecorder`；确认没有 Web Audio VAD 或 silence detection，不得把 30 秒 timer 描述为 VAD。
+2. 点击开始后应持续录音，3 秒和 5 秒处都不能自动结束；正常自然停顿不会触发停止。
+3. 用户点击停止后，必须等待最终 `dataavailable` 和 `stop`，再生成 Blob、进入 `transcribing` 并调用 ASR。
+4. 主 Local ASR 最长录音为 30 秒；接近上限显示剩余时间，到达上限显示“已达到最长录音时间”，并记录 `max_duration`。
+5. 取消录音记录 `cancelled`，不调用 ASR、不改输入框、不发 chat request，状态恢复 idle。
+6. confirm-send 的 ASR 输出必须显示为“转写草稿，尚未发送”；用户可检查、修改、清空或重新录音。
+7. 未发送草稿不等于 LLM 已理解，不等于 Semantic Extraction 已运行，不等于 Game Context 或当前 Boss 已更新。
+8. 空文本、短文本、短录音、疑似半句 / 最大时长截断和明显噪声输出都不能在 Direct Conversation 自动发送。
+9. `我现在不打玛尔` 在 confirm-send 中保留为可编辑草稿并提示可能不完整，在 Direct Conversation 中必须阻止自动发送。
+10. `我现在不打猫耳机做了去打机` 等有长度但错误的文本必须原样保留为未发送草稿，不根据历史 Boss 状态自动改写。
+11. 切换 confirm-send / Direct Conversation 不得丢失或自动发送既有草稿；录音期间关闭 Direct Conversation 后，本轮必须回到 confirm-send。
+12. Event Stream 只记录 stop reason、quality、send decision、interaction mode、字数、时长、格式和清理摘要；不得记录 transcript、raw audio、完整路径或 secret。
+13. 当前 Voice v2.2 不是 streaming ASR、always listening、实时转写或全双工语音系统。
+14. 真实麦克风 packaged smoke 应覆盖正常长句、自然停顿、用户停止、错误草稿、极短录音、取消、模式切换和退出后 8000 端口释放；报告需区分真实麦克风、模拟 MediaRecorder 和受控 transcript。
+
 ### 1.11 Voice Profile v1 人工验收
 
 设计文档见 `docs/voice_profile_v1.md`，机器可读场景见 `docs/qa/voice_profile_scenarios.json`。
@@ -662,14 +679,14 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - Probe UI、Debug Panel、Raw JSON 不显示完整路径、raw stdout、raw stderr、raw exception、raw env、API key、`.env`、Authorization 或 raw prompt。
 - Packaged `.app` 中未配置时应安全显示配置未就绪；配置 fake binary / fake model 时可手动验证 `可以启动`，退出后 backend 无残留。
 - Audio Capture / Temp File v1 只在用户点击 `测试录音 / Test Recording` 后请求麦克风权限；权限拒绝时显示 `麦克风权限被拒绝` 或等价中文 fallback。
-- 录音测试默认录制短音频，最长不超过 5 秒；用户可点击 `停止录音 / Stop Recording` 提前停止。
+- 独立录音测试默认最长 3 秒；用户可点击 `停止录音 / Stop Recording` 提前停止。主 Local ASR 录音是另一条路径，最长 30 秒。
 - Renderer 使用 `MediaRecorder` 生成音频 blob，只发送到本机 backend audio probe endpoint；不调用 whisper，不调用 local ASR binary，不调用云 ASR，不转写。
 - Backend audio probe 最大上传大小为 2MB；过大返回 `录音文件过大`，无效 MIME 或空数据返回 `录音数据无效`。
 - Backend audio probe 写入系统临时目录，立即删除临时音频；清理失败时显示 `临时音频清理失败`，不暴露完整路径。
 - Audio Capture UI、Debug Panel 和 Event Stream 只显示录音时长、大小、MIME 和清理状态，不显示音频内容、base64、完整临时路径、raw exception、API key、`.env`、Authorization 或 raw prompt。
 - Audio Capture 不填入聊天输入框，不自动发送，不写 memory / prompt，不触发 knowledge retrieval 或 game context extraction。
 - 主聊天语音按钮 provider selection：Local ASR ready 优先使用 `local_asr`；Local ASR not ready 且 Web Speech 可用时回退 `web_speech`；两者都不可用时显示安全 unavailable fallback。
-- Local ASR ready 时，主聊天语音按钮即使在 Web Speech service unavailable 的运行环境中也应可用，并显示 `本地语音识别可用`、`正在录音`、`正在本地转写` 或 `转写完成，请确认后发送`。
+- Local ASR ready 时，主聊天语音按钮即使在 Web Speech service unavailable 的运行环境中也应可用，并显示 `本地语音识别可用`、带 30 秒上限的 `正在录音`、`正在本地转写` 或 `转写草稿已进入输入框，尚未发送`。
 - Backend ASR Transcription Bridge v1 只在 Local ASR config status 为 `local_asr_ready` 时启用主聊天语音按钮的本地转写路径和 `录音并转写 / Record & Transcribe`。
 - config not ready 时，转写按钮不可用；backend 返回 `local_asr_transcription_not_ready`，不运行 binary。
 - config ready 时，用户点击主聊天语音按钮或 Settings 的 `Record & Transcribe` 后才请求麦克风权限，录制短音频并上传到本机 backend transcription endpoint。
@@ -689,7 +706,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - fake binary smoke：通过 Settings 或 env fallback 配置 fake binary / fake model，fake binary 输出固定 transcript，确认输入框被回填。
 - Settings 显示安全 model basename。`ggml-base.bin` 通常速度和准确率较均衡；tiny 更快但更不准，small / medium / large 可能更准但更慢或超时。ReiLink 不内置模型。
 - 真实准确率排查建议：尽量说短句、靠近麦克风、降低背景噪声；需要更高准确率时可尝试更大模型，但要接受更慢或超时风险。
-- 默认 confirm-send 下正常 transcript 只填入聊天输入框，用户可编辑或删除；不会自动发送，UI 应显示 `转写完成，请确认后发送`。直接对话模式开启时，UI 应显示 `转写完成，已自动发送`。
+- 默认 confirm-send 下正常 transcript 只作为可编辑草稿填入聊天输入框，用户可修改、删除或重新录音；不会自动发送，UI 应显示 `转写草稿，尚未发送`。直接对话模式开启时，只有 quality guard 通过才显示 `转写完成，已自动发送`。
 - 未确认 transcript 不写 memory，不进入 prompt / retrieval / game context，也不触发 semantic/game extraction。
 - 默认 confirm-send 下主聊天语音按钮的 transcript 同样只填入输入框；用户手动点击发送后才进入 chat flow。直接对话模式开启时，transcript 会自动进入现有 chat flow。
 - 空 transcript 返回 `local_asr_transcription_no_text`，UI 显示 `没有识别到可用文本`，不改输入框。
@@ -697,7 +714,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - subprocess OS error 返回 `local_asr_transcription_error`，不显示 raw exception。
 - cleanup succeeded 时 response / UI 显示临时音频已清理。
 - cleanup failed 时返回 `local_asr_transcription_cleanup_failed`，不显示 temp path、raw exception 或 transcript。
-- Event Stream 只显示 `本地语音识别开始`、`本地语音识别完成`、`本地语音识别失败`、字数、language、是否 `已规范为简体中文`、duration、size、MIME、conversion status、target MIME、cleanup、安全 model / binary basename 和安全 status。
+- Event Stream 只显示 `本地语音识别开始`、`本地语音识别完成`、`本地语音识别失败`、stop reason、transcript quality、send decision、interaction mode、字数、language、是否 `已规范为简体中文`、duration、size、MIME、conversion status、target MIME、cleanup、安全 model / binary basename 和安全 status。
 - Event Stream、Debug Panel、Raw JSON 不显示完整 transcript、raw stdout、raw stderr、完整 binary/model/temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
 - packaged `.app` smoke 需要确认未配置时 Local Transcribe disabled；可选 fake binary / fake model smoke 确认 packaged app 仍不泄露 transcript 或路径。
 - Packaged `.app` 应包含麦克风用途说明：`ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。`
