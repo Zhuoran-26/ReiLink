@@ -131,6 +131,18 @@ def _run_scenario(scenario: dict[str, Any], *, provider_mode: str) -> dict[str, 
         "grounding_match_type": actual["grounding_match_type"],
         "canonical_entity": actual["canonical_entity"],
         "canonical_display_name": actual["canonical_display_name"],
+        "intent": actual["intent"],
+        "switch_detected": actual["switch_detected"],
+        "previous_target": actual["previous_target"],
+        "new_target_candidate": actual["new_target_candidate"],
+        "canonical_candidate": actual["canonical_candidate"],
+        "grounding_method": actual["grounding_method"],
+        "grounding_confidence_band": actual["grounding_confidence_band"],
+        "cleared_fields": actual["cleared_fields"],
+        "applied_fields": actual["applied_fields"],
+        "rejected_fields": actual["rejected_fields"],
+        "rejection_reason": actual["rejection_reason"],
+        "attribution_status": actual["attribution_status"],
         "candidate_event": actual["candidate_event"],
         "candidate_confidence": actual["candidate_confidence"],
         "candidate_reason": actual["candidate_reason"],
@@ -230,6 +242,18 @@ def _actual_result(
         "grounding_match_type": trace.get("grounding_match_type") or debug.get("grounding_match_type"),
         "canonical_entity": trace.get("canonical_entity") or debug.get("canonical_entity"),
         "canonical_display_name": trace.get("canonical_display_name") or debug.get("canonical_display_name"),
+        "intent": trace.get("intent") or debug.get("intent"),
+        "switch_detected": bool(trace.get("switch_detected") or debug.get("switch_detected")),
+        "previous_target": trace.get("previous_target") or debug.get("previous_target"),
+        "new_target_candidate": trace.get("new_target_candidate") or debug.get("new_target_candidate"),
+        "canonical_candidate": trace.get("canonical_candidate") or debug.get("canonical_candidate"),
+        "grounding_method": trace.get("grounding_method") or debug.get("grounding_method"),
+        "grounding_confidence_band": trace.get("grounding_confidence_band") or debug.get("grounding_confidence_band"),
+        "cleared_fields": _safe_string_list(trace.get("cleared_fields") or debug.get("cleared_fields") or []),
+        "applied_fields": _safe_string_list(trace.get("applied_fields") or debug.get("applied_fields") or []),
+        "rejected_fields": _safe_string_list(trace.get("rejected_fields") or debug.get("rejected_fields") or []),
+        "rejection_reason": trace.get("rejection_reason") or debug.get("rejection_reason"),
+        "attribution_status": trace.get("attribution_status") or debug.get("attribution_status"),
         "candidate_event": llm_shadow.get("candidate_event"),
         "candidate_confidence": llm_shadow.get("candidate_confidence"),
         "candidate_reason": llm_shadow.get("candidate_reason"),
@@ -264,6 +288,15 @@ def _evaluate_scenario(expected: dict[str, Any], actual: dict[str, Any]) -> list
         ("grounding_match_type", "grounding_match_type"),
         ("canonical_entity", "canonical_entity"),
         ("canonical_display_name", "canonical_display_name"),
+        ("intent", "intent"),
+        ("switch_detected", "switch_detected"),
+        ("previous_target", "previous_target"),
+        ("new_target_candidate", "new_target_candidate"),
+        ("canonical_candidate", "canonical_candidate"),
+        ("grounding_method", "grounding_method"),
+        ("grounding_confidence_band", "grounding_confidence_band"),
+        ("rejection_reason", "rejection_reason"),
+        ("attribution_status", "attribution_status"),
         ("candidate_boss", "candidate_boss"),
         ("candidate_event", "candidate_event"),
         ("candidate_confidence", "candidate_confidence"),
@@ -285,6 +318,9 @@ def _evaluate_scenario(expected: dict[str, Any], actual: dict[str, Any]) -> list
     for update in _safe_string_list(expected.get("absent_applied_updates") or []):
         if update in actual["applied_updates"]:
             failures.append(f"unexpected applied update {update}")
+    for key in ("cleared_fields", "applied_fields", "rejected_fields"):
+        if key in expected and _safe_string_list(expected.get(key)) != actual[key]:
+            failures.append(f"{key} expected {expected[key]!r} got {actual[key]!r}")
     _compare_state_expectations(expected, actual, failures)
     if expected.get("must_not_clear_boss") and actual["event_type"] == "boss_cleared":
         failures.append("unexpected boss_cleared event")

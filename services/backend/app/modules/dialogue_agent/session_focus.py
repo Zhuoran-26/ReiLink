@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from app.modules.game_context.entity_registry import BossEntity, find_boss_mentions
+from app.modules.game_context.entity_registry import BossEntity, find_boss_mentions, is_boss_negated
 
 
 @dataclass(frozen=True)
@@ -44,6 +44,8 @@ ELLIPTICAL_BOSS_REFERENCES = (
     "這個boss",
     "这个 boss",
     "這個 boss",
+    "这个",
+    "這個",
     "打不过啊",
     "打不過啊",
 )
@@ -59,6 +61,8 @@ def resolve_session_focus(current_message: str, recent_user_messages: list[str])
         boss = detect_boss_focus(message)
         if boss:
             return SessionFocus(boss, "recent_session")
+        if _has_explicit_negated_boss(message):
+            return SessionFocus(source="explicit_focus_boundary")
     return SessionFocus()
 
 
@@ -77,14 +81,11 @@ def is_elliptical_boss_reference(message: str) -> bool:
 
 
 def _is_negated_entity(normalized: str, entity: BossEntity) -> bool:
-    compact = re.sub(r"\s+", "", normalized.lower())
-    for alias in (entity.canonical_id, entity.display_name, *entity.aliases):
-        alias_compact = re.sub(r"[\s_\-:：·•.,。?？!！'\"“”‘’()（）]+", "", alias.lower())
-        if any(
-            marker in compact
-            for marker in (
-                f"不是{alias_compact}",
-            )
-        ):
-            return True
-    return False
+    return is_boss_negated(normalized, entity.canonical_id)
+
+
+def _has_explicit_negated_boss(message: str) -> bool:
+    return any(
+        grounding.entity and is_boss_negated(message, grounding.entity.canonical_id)
+        for grounding in find_boss_mentions(message)
+    )

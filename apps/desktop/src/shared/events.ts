@@ -64,6 +64,18 @@ export type ReiLinkEvent =
       grounding_match_type?: string | null;
       canonical_entity?: string | null;
       canonical_display_name?: string | null;
+      intent?: string | null;
+      switch_detected?: boolean;
+      previous_target?: string | null;
+      new_target_candidate?: string | null;
+      canonical_candidate?: string | null;
+      grounding_method?: string | null;
+      grounding_confidence_band?: "high" | "medium" | "low";
+      cleared_fields?: string[];
+      applied_fields?: string[];
+      rejected_fields?: string[];
+      rejection_reason?: string | null;
+      attribution_status?: string | null;
       llm_shadow_status?: "skipped" | "succeeded" | "failed";
       llm_shadow_confidence?: "high" | "medium" | "low";
       llm_shadow_summary?: string | null;

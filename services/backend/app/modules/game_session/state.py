@@ -199,11 +199,9 @@ class GameSessionStore:
         if game_name:
             state.current_game = game_name
 
-        death_update = (
-            _semantic_death_count_update(semantic_game_event)
-            if semantic_priority
-            else _death_count_update(user_message, state, explicit_boss or focused_boss)
-        )
+        death_update = _semantic_death_count_update(semantic_game_event) if semantic_priority else None
+        if death_update is None:
+            death_update = _death_count_update(user_message, state, explicit_boss or focused_boss)
         if death_update:
             mode, value = death_update
             if mode == "absolute":
@@ -232,7 +230,7 @@ class GameSessionStore:
         elif explicit_boss and not state_neutral_question:
             _set_current_boss(state, explicit_boss, now, "current_message", 0.95)
         elif fails_boss:
-            failed_boss = _context_boss_for_failure(state, focused_boss, now)
+            failed_boss = _context_boss_for_failure(state, focused_boss, now, user_message)
             if not failed_boss and _corrects_clear_to_failure(user_message):
                 failed_boss = _recent_cleared_boss_for_correction(state, now)
             if failed_boss:
@@ -648,10 +646,17 @@ def _context_boss_for_failure(
     state: GameSessionState,
     focused_boss: str | None,
     timestamp: datetime,
+    message: str,
 ) -> str | None:
+    allow_abandoned = _is_explicit_rechallenge(message)
+
+    def safe_status(boss_name: str | None) -> bool:
+        status = _history_status(state, boss_name)
+        return status != "cleared" and (allow_abandoned or status != "abandoned")
+
     if state.current_boss:
         return state.current_boss.name
-    if focused_boss and _history_status(state, focused_boss) != "cleared":
+    if focused_boss and safe_status(focused_boss):
         return focused_boss
     for boss_name in (
         state.last_failed_boss,
@@ -659,9 +664,18 @@ def _context_boss_for_failure(
         state.last_attempted_boss,
         state.last_boss,
     ):
-        if boss_name and _history_status(state, boss_name) != "cleared" and _history_is_recent(state, boss_name, timestamp):
+        if (
+            boss_name
+            and safe_status(boss_name)
+            and _history_is_recent(state, boss_name, timestamp)
+        ):
             return boss_name
     return None
+
+
+def _is_explicit_rechallenge(message: str) -> bool:
+    compact = re.sub(r"\s+", "", message.lower())
+    return any(marker in compact for marker in ("重新挑战", "重新挑戰", "重新打", "再挑战", "再挑戰", "回去打"))
 
 
 def _recent_cleared_boss_for_correction(state: GameSessionState, timestamp: datetime) -> str | None:
@@ -786,6 +800,8 @@ def _apply_semantic_game_event(
         return True
     if event_type == "boss_switch":
         if boss_name:
+            if state.current_boss and state.current_boss.name != boss_name:
+                _abandon_current_boss(state, timestamp)
             _set_current_boss(state, boss_name, timestamp, "semantic_extraction", confidence)
         elif state.current_boss:
             _abandon_current_boss(state, timestamp)
@@ -822,10 +838,10 @@ def _history_status(state: GameSessionState, boss_name: str | None) -> str | Non
 def _unresolved_bosses(state: GameSessionState) -> list[str]:
     names: list[str] = []
     for entry in state.boss_history:
-        if entry.status in {"failed", "current", "attempted", "abandoned"}:
+        if entry.status in {"failed", "current", "attempted"}:
             names = [name for name in names if name != entry.name]
             names.append(entry.name)
-        elif entry.status == "cleared":
+        elif entry.status in {"cleared", "abandoned"}:
             names = [name for name in names if name != entry.name]
     return names
 

@@ -3030,7 +3030,7 @@ describe("App", () => {
   });
 
   it("renders LLM primary guard traces in Event Stream without raw transcript text", async () => {
-    const privateTranscript = "我换去打玛尔基特了，这是私密转写";
+    const privateTranscript = "我现在不打马尔吉特了，我去打接支格瑞克，这是私密转写";
     const guardTrace = {
       ...semanticExtractionDebug,
       latest_user_message: "游戏状态表达 / 18 字",
@@ -3040,9 +3040,22 @@ describe("App", () => {
       applied_updates: ["boss_switched", "boss_detected"],
       rejected_updates: [],
       grounding_status: "matched",
-      grounding_match_type: "exact_alias",
-      canonical_entity: "margit",
-      canonical_display_name: "恶兆妖鬼 Margit",
+      grounding_match_type: "canonical_id",
+      canonical_entity: "godrick",
+      canonical_display_name: "接肢葛瑞克",
+      intent: "boss_switch",
+      switch_detected: true,
+      previous_target: "margit",
+      new_target_candidate: "godrick",
+      canonical_candidate: "godrick",
+      grounding_method: "llm_canonical_role_unique_noisy_surface",
+      grounding_confidence_band: "high",
+      extracted_surface: "接支格瑞克",
+      cleared_fields: ["previous_current_boss"],
+      applied_fields: ["boss_switched", "boss_detected"],
+      rejected_fields: [],
+      rejection_reason: null,
+      attribution_status: "not_applicable",
       llm_provider_status: "succeeded",
       llm_schema_valid: true,
       extraction_trace: {
@@ -3052,9 +3065,22 @@ describe("App", () => {
         applied_updates: ["boss_switched", "boss_detected"],
         rejected_updates: [],
         grounding_status: "matched",
-        grounding_match_type: "exact_alias",
-        canonical_entity: "margit",
-        canonical_display_name: "恶兆妖鬼 Margit",
+        grounding_match_type: "canonical_id",
+        canonical_entity: "godrick",
+        canonical_display_name: "接肢葛瑞克",
+        intent: "boss_switch",
+        switch_detected: true,
+        previous_target: "margit",
+        new_target_candidate: "godrick",
+        canonical_candidate: "godrick",
+        grounding_method: "llm_canonical_role_unique_noisy_surface",
+        grounding_confidence_band: "high",
+        extracted_surface: "接支格瑞克",
+        cleared_fields: ["previous_current_boss"],
+        applied_fields: ["boss_switched", "boss_detected"],
+        rejected_fields: [],
+        rejection_reason: null,
+        attribution_status: "not_applicable",
         llm_guard_decision: "apply",
         llm_guard_reason: "high_confidence_grounded_candidate",
         llm_guard_summary: "LLM 主识别候选通过 guard"
@@ -3064,11 +3090,11 @@ describe("App", () => {
       llm_guard_decision: "apply",
       llm_guard_reason: "high_confidence_grounded_candidate",
       llm_guard_summary: "LLM 主识别候选通过 guard",
-      llm_shadow_summary: "Boss 候选：恶兆妖鬼 Margit",
+      llm_shadow_summary: "Boss 候选：接肢葛瑞克",
       final_decision: {
         game_event: {
           type: "boss_switch",
-          boss_name: "恶兆妖鬼 Margit",
+          boss_name: "接肢葛瑞克",
           guard_source: "llm_primary",
           input_source: "voice_direct"
         }
@@ -3093,8 +3119,19 @@ describe("App", () => {
     expect(eventStream).toHaveTextContent("Provider：已完成");
     expect(eventStream).toHaveTextContent("Schema：有效");
     expect(eventStream).toHaveTextContent("Grounding：matched");
-    expect(eventStream).toHaveTextContent("实体：margit");
+    expect(eventStream).toHaveTextContent("实体：godrick");
+    expect(eventStream).toHaveTextContent("意图：boss_switch");
+    expect(eventStream).toHaveTextContent("切换：已检测");
+    expect(eventStream).toHaveTextContent("旧目标：margit");
+    expect(eventStream).toHaveTextContent("新候选：godrick");
+    expect(eventStream).toHaveTextContent("Canonical：godrick");
+    expect(eventStream).toHaveTextContent("方法：llm_canonical_role_unique_noisy_surface");
+    expect(eventStream).toHaveTextContent("Grounding 置信度：高");
+    expect(eventStream).toHaveTextContent("已清理：previous_current_boss");
     expect(eventStream).not.toHaveTextContent(privateTranscript);
+    const semanticEvent = eventBus.getRecentEvents(20).find((event) => event.type === "semantic_extraction_traced");
+    expect(semanticEvent).not.toHaveProperty("extracted_surface");
+    expect(JSON.stringify(semanticEvent)).not.toContain("接支格瑞克");
   });
 
   it("polls background LLM shadow final events into Event Stream without raw text", async () => {

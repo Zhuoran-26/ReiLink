@@ -213,6 +213,8 @@ Current semantic extraction direction:
 - `text`, `voice_confirmed`, and `voice_direct` use the same LLM-primary guarded extraction architecture when the provider is configured.
 - Voice source affects send timing and safe trace metadata, but once text is submitted it must not change extraction candidate, canonical grounding, guard, or game-context apply behavior.
 - Direct Conversation auto-send must still route through deterministic guard decisions before any game context update.
+- ASR name noise is handled after submission through LLM canonical candidates plus bounded deterministic grounding signals; Voice must not add a source-specific alias or state-write path.
+- Explicitly negating the old current Boss clears it even when the noisy new target remains candidate-only. A later `这个` / `它` must not be attributed to the abandoned old Boss.
 - Architecture details live in `docs/llm_primary_guarded_extraction_architecture.md`; Voice itself still does not write game context, memory, or proactive state.
 
 Empty or low-confidence transcript:

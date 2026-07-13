@@ -94,7 +94,67 @@ def test_llm_primary_semantic_switch_overrides_old_current_boss(tmp_path):
     assert state.current_boss.name == "恶兆妖鬼 Margit"
     assert state.current_boss.source == "semantic_extraction"
     assert state.last_attempted_boss == "恶兆妖鬼 Margit"
-    assert any(entry.name == "女武神" and entry.status == "attempted" for entry in state.boss_history)
+    assert any(entry.name == "女武神" and entry.status == "abandoned" for entry in state.boss_history)
+
+
+def test_semantic_clear_only_switch_prevents_stale_followup_attribution(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在马尔吉特", "casual_chat", _idle_status(), now)
+
+    cleared = store.update_from_user_message(
+        "我不打马尔吉特了，可能去看看那个接什么瑞克",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(seconds=1),
+        semantic_game_event={
+            "type": "boss_switch",
+            "boss_name": None,
+            "confidence": 0.92,
+            "should_update_current_boss": True,
+            "guard_source": "llm_primary",
+            "new_target_candidate": "godrick",
+            "new_target_status": "candidate_only",
+        },
+    )
+    failed = store.update_from_user_message(
+        "这个也没打过死了一次",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(seconds=2),
+        session_focus_boss="恶兆妖鬼 Margit",
+    )
+
+    assert cleared.current_boss is None
+    assert any(entry.name == "恶兆妖鬼 Margit" and entry.status == "abandoned" for entry in cleared.boss_history)
+    assert failed.current_boss is None
+    assert failed.current_activity == "boss_failed"
+    assert failed.death_count == 1
+    assert not any(entry.name == "恶兆妖鬼 Margit" and entry.status == "failed" for entry in failed.boss_history)
+
+
+def test_semantic_failure_uses_explicit_death_text_when_provider_omits_count(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在接肢葛瑞克", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message(
+        "这个也没打过死了一次",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(seconds=1),
+        semantic_game_event={
+            "type": "failed_attempt",
+            "boss_name": "接肢葛瑞克",
+            "confidence": 0.92,
+            "should_update_current_boss": True,
+            "guard_source": "llm_primary",
+        },
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "接肢葛瑞克"
+    assert state.death_count == 1
 
 
 def test_llm_primary_game_context_event_updates_game_only(tmp_path):

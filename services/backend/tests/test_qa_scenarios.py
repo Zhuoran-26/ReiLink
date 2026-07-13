@@ -827,6 +827,13 @@ def test_extraction_eval_scenarios_have_required_fields():
         "extraction-eval-regression-switch-margit-to-godrick",
         "extraction-eval-regression-historical-margit-no-progress",
         "extraction-eval-regression-non-game-no-context-change",
+        "extraction-eval-noisy-godrick-switch-text",
+        "extraction-eval-noisy-godrick-switch-voice-confirmed",
+        "extraction-eval-noisy-godrick-switch-voice-direct",
+        "extraction-eval-noisy-switch-clears-old-candidate-only",
+        "extraction-eval-vague-godrick-candidate-only",
+        "extraction-eval-noisy-godrick-guide-discussion-target",
+        "extraction-eval-non-game-status-no-switch",
     } <= ids
     assert {"text", "voice_confirmed", "voice_direct"} <= {item.get("input_source") for item in scenarios}
     for item in scenarios:

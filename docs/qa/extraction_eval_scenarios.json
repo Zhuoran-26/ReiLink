@@ -701,7 +701,7 @@
     },
     "expected_live": {
       "compat_retry_used": "__any__",
-      "compat_retry_succeeded": null,
+      "compat_retry_succeeded": "__any__",
       "ultra_compact_used": false
     }
   },
@@ -1526,6 +1526,475 @@
       "discussion_target": null,
       "death_count": 0,
       "frustration_count": 0,
+      "no_risky_state_delta": true
+    }
+  },
+  {
+    "id": "extraction-eval-noisy-godrick-switch-text",
+    "category": "extraction_eval",
+    "input_source": "text",
+    "input": "我现在不打马尔吉特了，我去打接支格瑞克",
+    "intent": "casual_chat",
+    "pre_state": {
+      "current_game": "Elden Ring",
+      "current_boss": "恶兆妖鬼 Margit"
+    },
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "boss_switch",
+      "confidence": "high",
+      "boss": {
+        "operation": "set",
+        "value": "godrick",
+        "confidence": "high"
+      },
+      "boss_switched": {
+        "value": true,
+        "confidence": "high"
+      },
+      "previous_target": {
+        "value": "margit",
+        "surface_label": "马尔吉特",
+        "confidence": "high"
+      },
+      "negated_entity": {
+        "value": "margit",
+        "surface_label": "马尔吉特",
+        "confidence": "high"
+      },
+      "new_current_target": {
+        "value": "godrick",
+        "surface_label": "接支格瑞克",
+        "confidence": "high"
+      },
+      "candidate_boss": {
+        "value": "godrick",
+        "surface_label": "接支格瑞克",
+        "confidence": "high"
+      },
+      "candidate_event": "boss_switch",
+      "candidate_confidence": "high",
+      "candidate_reason": "descriptive_nickname",
+      "needs_confirmation": true,
+      "safe_trace_summary": "noisy canonical boss switch"
+    },
+    "expected": {
+      "decision": "apply",
+      "applied_by": "llm_primary",
+      "provider_status": "succeeded",
+      "schema_valid": true,
+      "intent": "boss_switch",
+      "switch_detected": true,
+      "previous_target": "margit",
+      "new_target_candidate": "godrick",
+      "canonical_candidate": "godrick",
+      "grounding_method": "llm_canonical_role_unique_noisy_surface",
+      "grounding_confidence_band": "high",
+      "cleared_fields": [
+        "previous_current_boss"
+      ],
+      "applied_fields": [
+        "boss_switched",
+        "boss_detected"
+      ],
+      "event_type": "boss_switch",
+      "candidate_boss": "godrick",
+      "canonical_entity": "godrick",
+      "current_boss": "接肢葛瑞克",
+      "current_activity": "boss_attempt",
+      "forbidden_current_boss": [
+        "恶兆妖鬼 Margit"
+      ]
+    },
+    "expected_live": {
+      "candidate_boss": "__any__"
+    }
+  },
+  {
+    "id": "extraction-eval-noisy-godrick-switch-voice-confirmed",
+    "category": "extraction_eval",
+    "input_source": "voice_confirmed",
+    "input": "我现在不打马尔吉特了，我去打接支格瑞克",
+    "intent": "casual_chat",
+    "pre_state": {
+      "current_game": "Elden Ring",
+      "current_boss": "恶兆妖鬼 Margit"
+    },
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "boss_switch",
+      "confidence": "high",
+      "boss": {
+        "operation": "set",
+        "value": "godrick",
+        "confidence": "high"
+      },
+      "boss_switched": {
+        "value": true,
+        "confidence": "high"
+      },
+      "previous_target": {
+        "value": "margit",
+        "surface_label": "马尔吉特",
+        "confidence": "high"
+      },
+      "negated_entity": {
+        "value": "margit",
+        "surface_label": "马尔吉特",
+        "confidence": "high"
+      },
+      "new_current_target": {
+        "value": "godrick",
+        "surface_label": "接支格瑞克",
+        "confidence": "high"
+      },
+      "candidate_boss": {
+        "value": "godrick",
+        "surface_label": "接支格瑞克",
+        "confidence": "high"
+      },
+      "candidate_event": "boss_switch",
+      "candidate_confidence": "high",
+      "candidate_reason": "descriptive_nickname",
+      "needs_confirmation": true,
+      "safe_trace_summary": "noisy canonical boss switch"
+    },
+    "expected": {
+      "decision": "apply",
+      "applied_by": "llm_primary",
+      "provider_status": "succeeded",
+      "schema_valid": true,
+      "intent": "boss_switch",
+      "switch_detected": true,
+      "previous_target": "margit",
+      "new_target_candidate": "godrick",
+      "canonical_candidate": "godrick",
+      "grounding_method": "llm_canonical_role_unique_noisy_surface",
+      "grounding_confidence_band": "high",
+      "cleared_fields": [
+        "previous_current_boss"
+      ],
+      "applied_fields": [
+        "boss_switched",
+        "boss_detected"
+      ],
+      "event_type": "boss_switch",
+      "candidate_boss": "godrick",
+      "canonical_entity": "godrick",
+      "current_boss": "接肢葛瑞克",
+      "current_activity": "boss_attempt",
+      "forbidden_current_boss": [
+        "恶兆妖鬼 Margit"
+      ]
+    },
+    "expected_live": {
+      "candidate_boss": "__any__"
+    }
+  },
+  {
+    "id": "extraction-eval-noisy-godrick-switch-voice-direct",
+    "category": "extraction_eval",
+    "input_source": "voice_direct",
+    "input": "我现在不打马尔吉特了，我去打接支格瑞克",
+    "intent": "casual_chat",
+    "pre_state": {
+      "current_game": "Elden Ring",
+      "current_boss": "恶兆妖鬼 Margit"
+    },
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "boss_switch",
+      "confidence": "high",
+      "boss": {
+        "operation": "set",
+        "value": "godrick",
+        "confidence": "high"
+      },
+      "boss_switched": {
+        "value": true,
+        "confidence": "high"
+      },
+      "previous_target": {
+        "value": "margit",
+        "surface_label": "马尔吉特",
+        "confidence": "high"
+      },
+      "negated_entity": {
+        "value": "margit",
+        "surface_label": "马尔吉特",
+        "confidence": "high"
+      },
+      "new_current_target": {
+        "value": "godrick",
+        "surface_label": "接支格瑞克",
+        "confidence": "high"
+      },
+      "candidate_boss": {
+        "value": "godrick",
+        "surface_label": "接支格瑞克",
+        "confidence": "high"
+      },
+      "candidate_event": "boss_switch",
+      "candidate_confidence": "high",
+      "candidate_reason": "descriptive_nickname",
+      "needs_confirmation": true,
+      "safe_trace_summary": "noisy canonical boss switch"
+    },
+    "expected": {
+      "decision": "apply",
+      "applied_by": "llm_primary",
+      "provider_status": "succeeded",
+      "schema_valid": true,
+      "intent": "boss_switch",
+      "switch_detected": true,
+      "previous_target": "margit",
+      "new_target_candidate": "godrick",
+      "canonical_candidate": "godrick",
+      "grounding_method": "llm_canonical_role_unique_noisy_surface",
+      "grounding_confidence_band": "high",
+      "cleared_fields": [
+        "previous_current_boss"
+      ],
+      "applied_fields": [
+        "boss_switched",
+        "boss_detected"
+      ],
+      "event_type": "boss_switch",
+      "candidate_boss": "godrick",
+      "canonical_entity": "godrick",
+      "current_boss": "接肢葛瑞克",
+      "current_activity": "boss_attempt",
+      "forbidden_current_boss": [
+        "恶兆妖鬼 Margit"
+      ]
+    },
+    "expected_live": {
+      "candidate_boss": "__any__"
+    }
+  },
+  {
+    "id": "extraction-eval-noisy-switch-clears-old-candidate-only",
+    "category": "extraction_eval",
+    "input_source": "voice_direct",
+    "input": "我不打玛尔基特了，可能去看看那个接什么瑞克",
+    "intent": "casual_chat",
+    "pre_state": {
+      "current_game": "Elden Ring",
+      "current_boss": "恶兆妖鬼 Margit"
+    },
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "boss_switch",
+      "confidence": "high",
+      "candidate_boss": {
+        "value": "godrick",
+        "surface_label": "接什么瑞克",
+        "confidence": "high"
+      },
+      "candidate_event": "boss_switch",
+      "candidate_confidence": "high",
+      "candidate_reason": "uncertain_entity",
+      "needs_confirmation": true,
+      "previous_target": {
+        "value": "margit",
+        "confidence": "high"
+      },
+      "negated_entity": {
+        "value": "margit",
+        "confidence": "high"
+      },
+      "safe_trace_summary": "clear old and retain candidate"
+    },
+    "expected": {
+      "decision": "apply",
+      "applied_by": "llm_primary",
+      "provider_status": "succeeded",
+      "schema_valid": true,
+      "switch_detected": true,
+      "previous_target": "margit",
+      "new_target_candidate": "godrick",
+      "canonical_candidate": "godrick",
+      "cleared_fields": [
+        "current_boss"
+      ],
+      "applied_fields": [
+        "boss_switched",
+        "current_boss_cleared"
+      ],
+      "rejected_fields": [
+        "new_current_target"
+      ],
+      "rejection_reason": "new_target_not_applied",
+      "event_type": "boss_switch",
+      "candidate_boss": "godrick",
+      "current_boss": null,
+      "current_activity": "boss_switching",
+      "forbidden_current_boss": [
+        "恶兆妖鬼 Margit"
+      ]
+    },
+    "expected_live": {
+      "new_target_candidate": "__any__",
+      "canonical_candidate": "__any__",
+      "candidate_boss": "__any__",
+      "rejection_reason": "__any__"
+    }
+  },
+  {
+    "id": "extraction-eval-vague-godrick-candidate-only",
+    "category": "extraction_eval",
+    "input_source": "text",
+    "input": "我可能去看看那个接什么瑞克",
+    "intent": "casual_chat",
+    "pre_state": {
+      "current_game": "Elden Ring",
+      "current_boss": null
+    },
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "boss_report",
+      "confidence": "high",
+      "game": {
+        "operation": "set",
+        "value": "elden_ring",
+        "confidence": "high"
+      },
+      "candidate_boss": {
+        "value": "godrick",
+        "surface_label": "接什么瑞克",
+        "confidence": "medium"
+      },
+      "candidate_event": "boss_attempt",
+      "candidate_confidence": "medium",
+      "candidate_reason": "uncertain_entity",
+      "needs_confirmation": false,
+      "safe_trace_summary": "vague boss candidate"
+    },
+    "expected": {
+      "decision": "candidate_only",
+      "applied_by": null,
+      "provider_status": "succeeded",
+      "schema_valid": true,
+      "switch_detected": false,
+      "canonical_candidate": "godrick",
+      "rejected_fields": [
+        "current_boss"
+      ],
+      "candidate_boss": "godrick",
+      "candidate_event": "boss_attempt",
+      "current_boss": null,
+      "no_risky_state_delta": true
+    },
+    "expected_live": {
+      "decision": "no_op",
+      "acceptable_decisions": [
+        "candidate_only",
+        "ask_clarification",
+        "no_op"
+      ],
+      "provider_status": "__any__",
+      "schema_valid": "__any__",
+      "canonical_candidate": "__any__",
+      "candidate_boss": "__any__",
+      "candidate_event": "__any__"
+    }
+  },
+  {
+    "id": "extraction-eval-noisy-godrick-guide-discussion-target",
+    "category": "extraction_eval",
+    "input_source": "voice_confirmed",
+    "input": "接支格瑞克怎么打",
+    "intent": "elden_ring_boss_strategy",
+    "pre_state": {
+      "current_game": "Elden Ring",
+      "current_boss": "女武神",
+      "death_count": 0,
+      "frustration_count": 0
+    },
+    "mock_primary": {
+      "is_game_related": true,
+      "intent": "guide_request",
+      "confidence": "high",
+      "guide_request": true,
+      "strategy_request": true,
+      "guide_only_entity": {
+        "value": "godrick",
+        "surface_label": "接支格瑞克",
+        "confidence": "high"
+      },
+      "guide_entity": {
+        "value": "godrick",
+        "surface_label": "接支格瑞克",
+        "confidence": "high"
+      },
+      "candidate_boss": {
+        "value": "godrick",
+        "surface_label": "接支格瑞克",
+        "confidence": "high"
+      },
+      "candidate_event": "guide_request",
+      "candidate_confidence": "high",
+      "candidate_reason": "descriptive_nickname",
+      "needs_confirmation": true,
+      "safe_trace_summary": "noisy guide target"
+    },
+    "expected": {
+      "decision": "apply",
+      "applied_by": "llm_primary",
+      "provider_status": "succeeded",
+      "schema_valid": true,
+      "switch_detected": false,
+      "canonical_candidate": "godrick",
+      "grounding_method": "llm_canonical_role_unique_noisy_surface",
+      "grounding_confidence_band": "high",
+      "applied_fields": [
+        "discussion_target",
+        "boss_detected"
+      ],
+      "rejected_fields": [
+        "current_boss"
+      ],
+      "event_type": "guide_request",
+      "candidate_boss": "godrick",
+      "guide_request": true,
+      "guide_entity": "godrick",
+      "current_boss": "女武神",
+      "discussion_target": "接肢葛瑞克",
+      "death_count": 0,
+      "frustration_count": 0,
+      "no_risky_state_delta": true
+    },
+    "expected_live": {
+      "candidate_boss": "__any__",
+      "guide_request": "__any__",
+      "guide_entity": "__any__"
+    }
+  },
+  {
+    "id": "extraction-eval-non-game-status-no-switch",
+    "category": "extraction_eval",
+    "input_source": "voice_direct",
+    "input": "我今天状态不太好",
+    "intent": "casual_chat",
+    "pre_state": {
+      "current_game": "Elden Ring",
+      "current_boss": "恶兆妖鬼 Margit"
+    },
+    "mock_primary": {
+      "is_game_related": false,
+      "intent": "none",
+      "confidence": "low",
+      "updates": [],
+      "safe_trace_summary": "non-game no-op"
+    },
+    "expected": {
+      "decision": "no_op",
+      "applied_by": null,
+      "provider_status": "not_run",
+      "schema_valid": null,
+      "switch_detected": false,
+      "event_type": "none",
+      "current_boss": "恶兆妖鬼 Margit",
       "no_risky_state_delta": true
     }
   }

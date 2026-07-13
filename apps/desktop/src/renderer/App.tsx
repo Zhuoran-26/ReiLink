@@ -776,6 +776,19 @@ const labelMap: Record<string, string> = {
   normalized_entity: "归一实体",
   canonical_entity: "Canonical ID",
   canonical_display_name: "Canonical 名称",
+  intent: "识别意图",
+  switch_detected: "检测到切换",
+  previous_target: "旧目标",
+  new_target_candidate: "新目标候选",
+  canonical_candidate: "Canonical 候选",
+  grounding_method: "Grounding 方法",
+  grounding_confidence_band: "Grounding 置信度",
+  extracted_surface: "实体短文本",
+  cleared_fields: "已清理字段",
+  applied_fields: "已应用字段",
+  rejected_fields: "已拒绝字段",
+  rejection_reason: "拒绝原因",
+  attribution_status: "后续归因状态",
   first_attempt_failed: "首次失败",
   compat_retry_used: "Compat retry",
   compat_retry_succeeded: "Compat 结果",
@@ -1518,6 +1531,19 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.schema_valid != null ? `Schema：${event.schema_valid ? "有效" : "无效"}` : "",
         event.grounding_status ? `Grounding：${debugText(event.grounding_status)}` : "",
         event.canonical_entity ? `实体：${debugText(event.canonical_entity)}` : "",
+        event.intent ? `意图：${debugText(event.intent)}` : "",
+        event.switch_detected ? "切换：已检测" : "",
+        event.previous_target ? `旧目标：${debugText(event.previous_target)}` : "",
+        event.new_target_candidate ? `新候选：${debugText(event.new_target_candidate)}` : "",
+        event.canonical_candidate ? `Canonical：${debugText(event.canonical_candidate)}` : "",
+        event.grounding_method ? `方法：${debugText(event.grounding_method)}` : "",
+        event.grounding_confidence_band ? `Grounding 置信度：${debugText(event.grounding_confidence_band)}` : "",
+        event.cleared_fields?.length ? `已清理：${debugText(event.cleared_fields)}` : "",
+        event.rejected_fields?.length ? `已拒绝：${debugText(event.rejected_fields)}` : "",
+        event.rejection_reason ? `拒绝原因：${debugText(event.rejection_reason)}` : "",
+        event.attribution_status && event.attribution_status !== "not_applicable"
+          ? `归因：${debugText(event.attribution_status)}`
+          : "",
         event.shadow_event_status ? semanticShadowEventStatusText(event.shadow_event_status) : "",
         event.fallback_reason ? `原因：${debugText(event.fallback_reason)}` : "",
         event.skip_reason && event.skip_reason !== "no_semantic_signal" ? `跳过：${debugText(event.skip_reason)}` : "",
@@ -2752,6 +2778,18 @@ export function App() {
     const groundingMatchType = trace?.grounding_match_type ?? debug.grounding_match_type ?? null;
     const canonicalEntity = trace?.canonical_entity ?? debug.canonical_entity ?? null;
     const canonicalDisplayName = trace?.canonical_display_name ?? debug.canonical_display_name ?? null;
+    const intent = trace?.intent ?? debug.intent ?? null;
+    const switchDetected = trace?.switch_detected ?? debug.switch_detected ?? false;
+    const previousTarget = trace?.previous_target ?? debug.previous_target ?? null;
+    const newTargetCandidate = trace?.new_target_candidate ?? debug.new_target_candidate ?? null;
+    const canonicalCandidate = trace?.canonical_candidate ?? debug.canonical_candidate ?? null;
+    const groundingMethod = trace?.grounding_method ?? debug.grounding_method ?? null;
+    const groundingConfidenceBand = trace?.grounding_confidence_band ?? debug.grounding_confidence_band ?? "low";
+    const clearedFields = trace?.cleared_fields ?? debug.cleared_fields ?? [];
+    const appliedFields = trace?.applied_fields ?? debug.applied_fields ?? appliedUpdates;
+    const rejectedFields = trace?.rejected_fields ?? debug.rejected_fields ?? rejectedUpdates;
+    const rejectionReason = trace?.rejection_reason ?? debug.rejection_reason ?? null;
+    const attributionStatus = trace?.attribution_status ?? debug.attribution_status ?? null;
     const shadowStatus = trace?.llm_shadow_status ?? debug.llm_shadow_status ?? null;
     const shadowConfidence = trace?.llm_shadow_confidence ?? debug.llm_shadow_confidence ?? null;
     const shadowSummary = trace?.llm_shadow_summary ?? debug.llm_shadow_summary ?? null;
@@ -2792,6 +2830,18 @@ export function App() {
       groundingStatus,
       groundingMatchType,
       canonicalEntity,
+      intent,
+      switchDetected,
+      previousTarget,
+      newTargetCandidate,
+      canonicalCandidate,
+      groundingMethod,
+      groundingConfidenceBand,
+      clearedFields,
+      appliedFields,
+      rejectedFields,
+      rejectionReason,
+      attributionStatus,
       shadowStatus,
       shadowConfidence,
       shadowSummary,
@@ -2829,6 +2879,18 @@ export function App() {
       grounding_match_type: groundingMatchType,
       canonical_entity: canonicalEntity,
       canonical_display_name: canonicalDisplayName,
+      intent,
+      switch_detected: switchDetected,
+      previous_target: previousTarget,
+      new_target_candidate: newTargetCandidate,
+      canonical_candidate: canonicalCandidate,
+      grounding_method: groundingMethod,
+      grounding_confidence_band: groundingConfidenceBand,
+      cleared_fields: clearedFields,
+      applied_fields: appliedFields,
+      rejected_fields: rejectedFields,
+      rejection_reason: rejectionReason,
+      attribution_status: attributionStatus,
       llm_shadow_status: shadowStatus ?? undefined,
       llm_shadow_confidence: shadowConfidence ?? undefined,
       llm_shadow_summary: shadowSummary,
@@ -2870,6 +2932,18 @@ export function App() {
         grounding_match_type: event.grounding_match_type ?? null,
         canonical_entity: event.canonical_entity ?? null,
         canonical_display_name: event.canonical_display_name ?? null,
+        intent: event.intent ?? null,
+        switch_detected: event.switch_detected ?? false,
+        previous_target: event.previous_target ?? null,
+        new_target_candidate: event.new_target_candidate ?? null,
+        canonical_candidate: event.canonical_candidate ?? null,
+        grounding_method: event.grounding_method ?? null,
+        grounding_confidence_band: event.grounding_confidence_band,
+        cleared_fields: event.cleared_fields ?? [],
+        applied_fields: event.applied_fields ?? event.applied_updates ?? [],
+        rejected_fields: event.rejected_fields ?? event.rejected_updates ?? [],
+        rejection_reason: event.rejection_reason ?? null,
+        attribution_status: event.attribution_status ?? null,
         llm_shadow_status: event.llm_shadow_status,
         llm_shadow_confidence: event.llm_shadow_confidence,
         llm_shadow_summary: event.llm_shadow_summary ?? null,
@@ -6470,6 +6544,58 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <dd>{debugText(semanticDebug.canonical_display_name)}</dd>
                 </div>
                 <div>
+                  <dt>{formatDebugLabel("intent")}</dt>
+                  <dd>{debugText(semanticDebug.intent)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("switch_detected")}</dt>
+                  <dd><BooleanBadge value={Boolean(semanticDebug.switch_detected)} /></dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("previous_target")}</dt>
+                  <dd>{debugText(semanticDebug.previous_target)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("new_target_candidate")}</dt>
+                  <dd>{debugText(semanticDebug.new_target_candidate)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("canonical_candidate")}</dt>
+                  <dd>{debugText(semanticDebug.canonical_candidate)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("grounding_method")}</dt>
+                  <dd>{debugText(semanticDebug.grounding_method)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("grounding_confidence_band")}</dt>
+                  <dd>{debugText(semanticDebug.grounding_confidence_band)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("extracted_surface")}</dt>
+                  <dd>{debugText(semanticDebug.extracted_surface)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("cleared_fields")}</dt>
+                  <dd>{debugText(semanticDebug.cleared_fields)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("applied_fields")}</dt>
+                  <dd>{debugText(semanticDebug.applied_fields)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("rejected_fields")}</dt>
+                  <dd>{debugText(semanticDebug.rejected_fields)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("rejection_reason")}</dt>
+                  <dd>{debugText(semanticDebug.rejection_reason)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("attribution_status")}</dt>
+                  <dd>{debugText(semanticDebug.attribution_status)}</dd>
+                </div>
+                <div>
                   <dt>{formatDebugLabel("applied_updates")}</dt>
                   <dd>{debugText(semanticDebug.applied_updates)}</dd>
                 </div>
@@ -8282,6 +8408,58 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       <div>
                         <dt>{formatDebugLabel("canonical_display_name")}</dt>
                         <dd>{debugText(semanticDebug.canonical_display_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("intent")}</dt>
+                        <dd>{debugText(semanticDebug.intent)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("switch_detected")}</dt>
+                        <dd><BooleanBadge value={Boolean(semanticDebug.switch_detected)} /></dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("previous_target")}</dt>
+                        <dd>{debugText(semanticDebug.previous_target)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("new_target_candidate")}</dt>
+                        <dd>{debugText(semanticDebug.new_target_candidate)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("canonical_candidate")}</dt>
+                        <dd>{debugText(semanticDebug.canonical_candidate)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("grounding_method")}</dt>
+                        <dd>{debugText(semanticDebug.grounding_method)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("grounding_confidence_band")}</dt>
+                        <dd>{debugText(semanticDebug.grounding_confidence_band)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("extracted_surface")}</dt>
+                        <dd>{debugText(semanticDebug.extracted_surface)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("cleared_fields")}</dt>
+                        <dd>{debugText(semanticDebug.cleared_fields)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("applied_fields")}</dt>
+                        <dd>{debugText(semanticDebug.applied_fields)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("rejected_fields")}</dt>
+                        <dd>{debugText(semanticDebug.rejected_fields)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("rejection_reason")}</dt>
+                        <dd>{debugText(semanticDebug.rejection_reason)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("attribution_status")}</dt>
+                        <dd>{debugText(semanticDebug.attribution_status)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("rule_confidence")}</dt>

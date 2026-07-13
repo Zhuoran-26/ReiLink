@@ -574,6 +574,18 @@ Trace fields may include:
 - `conflict_summary`
 - `fallback_reason`
 - `safe_trace_summary`
+- `intent`
+- `switch_detected`
+- `previous_target`
+- `new_target_candidate`
+- `canonical_candidate`
+- `grounding_method`
+- `grounding_confidence_band`
+- `cleared_fields`
+- `applied_fields`
+- `rejected_fields`
+- `rejection_reason`
+- `attribution_status`
 
 Trace must not include by default:
 
@@ -594,6 +606,14 @@ Debug / Game workspace should show enough safe information to answer:
 - What did guard decide?
 - Why did it apply, ask, keep candidate-only, no-op, or fallback?
 - Which safe summaries were applied?
+
+### Noisy Entity Grounding And Old-Target Clearing
+
+ASR-noisy entity grounding remains LLM-primary. The model proposes canonical identity and semantic role; the deterministic layer validates game ownership, entity type, current / previous target consistency, explicit negation, switch or guide role, and a unique bounded registry surface. Edit distance is supporting evidence only and cannot apply formal state by itself.
+
+For an explicit switch, multiple consistent signals may override a descriptive-name warning. If the old current Boss is explicitly negated but the new target does not reach the apply threshold, guard must still emit a clear-only transition. The old Boss becomes `abandoned`, the new identity remains candidate-only or unresolved, and later vague failure text cannot reuse the abandoned Boss unless the user explicitly says they are rechallenging it.
+
+The implementation and regression evidence are documented in `docs/asr_noisy_boss_switch_regression.md`. This is entity identity / state consistency work, not a complete game knowledge or RAG layer.
 
 ## Rollout Plan
 

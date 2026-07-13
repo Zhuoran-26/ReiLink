@@ -2,10 +2,12 @@ import json
 import inspect
 import socket
 import urllib.error
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app.modules.dialogue_agent import semantic_extraction as sem
+from app.modules.game_session.state import GameSessionStore
 
 
 def _shadow_payload(
@@ -1538,6 +1540,201 @@ def test_llm_primary_switches_from_negated_margit_to_canonical_godrick(monkeypat
     assert result["final_decision"]["game_event"]["boss_name"] == "接肢葛瑞克"
 
 
+def test_noisy_godrick_switch_is_equivalent_across_submitted_input_sources(monkeypatch):
+    payload = _primary_payload(
+        boss="godrick",
+        boss_switched=True,
+        candidate_boss="godrick",
+        candidate_event="boss_switch",
+        candidate_reason="descriptive_nickname",
+        needs_confirmation=True,
+        mentioned="godrick",
+        negated="margit",
+        previous="margit",
+        new_current="godrick",
+    )
+    payload["new_current_target"]["surface_label"] = "接支格瑞克"
+    _mock_primary(monkeypatch, payload)
+
+    results = [
+        sem.extract_semantics(
+            "我现在不打马尔吉特了，我去打接支格瑞克",
+            "casual_chat",
+            _game_state("恶兆妖鬼 Margit"),
+            input_source=input_source,
+            run_llm_primary=True,
+        )
+        for input_source in ("text", "voice_confirmed", "voice_direct")
+    ]
+
+    signatures = {
+        (
+            result["llm_provider_status"],
+            result["llm_schema_valid"],
+            result["previous_target"],
+            result["new_target_candidate"],
+            result["canonical_candidate"],
+            result["grounding_method"],
+            result["grounding_confidence_band"],
+            result["llm_guard_decision"],
+            result["final_decision"]["game_event"]["boss_name"],
+            tuple(result["cleared_fields"]),
+            tuple(result["applied_fields"]),
+        )
+        for result in results
+    }
+    assert signatures == {
+        (
+            "succeeded",
+            True,
+            "margit",
+            "godrick",
+            "godrick",
+            "llm_canonical_role_unique_noisy_surface",
+            "high",
+            "apply",
+            "接肢葛瑞克",
+            ("previous_current_boss",),
+            ("boss_switched", "boss_detected"),
+        )
+    }
+    assert {result["input_source"] for result in results} == {"text", "voice_confirmed", "voice_direct"}
+    assert {result["llm_shadow_diff"] for result in results} == {"规则与 LLM 候选无明显冲突"}
+
+
+def test_uncertain_new_target_still_clears_explicitly_negated_old_target(monkeypatch):
+    payload = _primary_payload(
+        boss="unknown",
+        candidate_boss="godrick",
+        candidate_event="boss_switch",
+        candidate_reason="uncertain_entity",
+        needs_confirmation=True,
+        negated="margit",
+        previous="margit",
+    )
+    payload["candidate_boss"]["surface_label"] = "接什么瑞克"
+    _mock_primary(monkeypatch, payload)
+
+    result = sem.extract_semantics(
+        "我不打玛尔基特了，可能去看看那个接什么瑞克",
+        "casual_chat",
+        _game_state("恶兆妖鬼 Margit"),
+        run_llm_primary=True,
+    )
+
+    event = result["final_decision"]["game_event"]
+    assert result["llm_guard_decision"] == "apply"
+    assert result["llm_guard_reason"] == "old_target_cleared_new_target_candidate_only"
+    assert event["type"] == "boss_switch"
+    assert event["boss_name"] is None
+    assert event["new_target_candidate"] == "godrick"
+    assert event["new_target_status"] == "candidate_only"
+    assert result["cleared_fields"] == ["current_boss"]
+    assert result["rejected_fields"] == ["new_current_target"]
+
+
+def test_noisy_godrick_guide_applies_discussion_target_only(monkeypatch):
+    payload = _primary_payload(
+        boss="unknown",
+        candidate_boss="godrick",
+        candidate_reason="descriptive_nickname",
+        needs_confirmation=True,
+        guide=True,
+        strategy=True,
+        guide_only="godrick",
+        guide_entity="godrick",
+        candidate_event="guide_request",
+    )
+    payload["guide_entity"]["surface_label"] = "接支格瑞克"
+    _mock_primary(monkeypatch, payload)
+
+    result = sem.extract_semantics(
+        "接支格瑞克怎么打",
+        "elden_ring_boss_strategy",
+        _game_state(),
+        run_llm_primary=True,
+    )
+
+    event = result["final_decision"]["game_event"]
+    assert result["llm_guard_decision"] == "apply"
+    assert result["grounding_method"] == "llm_canonical_role_unique_noisy_surface"
+    assert event["type"] == "guide_request"
+    assert event["boss_name"] == "接肢葛瑞克"
+    assert event["should_update_current_boss"] is False
+    assert result["applied_updates"] == ["discussion_target", "boss_detected"]
+    assert result["rejected_fields"] == ["current_boss"]
+
+
+def test_noisy_switch_followup_failure_is_attributed_to_godrick(monkeypatch, tmp_path):
+    switch_payload = _primary_payload(
+        boss="godrick",
+        boss_switched=True,
+        candidate_boss="godrick",
+        candidate_event="boss_switch",
+        candidate_reason="descriptive_nickname",
+        needs_confirmation=True,
+        negated="margit",
+        previous="margit",
+        new_current="godrick",
+    )
+    switch_payload["new_current_target"]["surface_label"] = "接支格瑞克"
+    failure_payload = _primary_payload(
+        boss="godrick",
+        candidate_boss="godrick",
+        candidate_event="boss_failed",
+        death_operation="increment",
+        death_value=1,
+        frustration="raise",
+    )
+    _mock_primary_sequence(monkeypatch, [switch_payload, failure_payload])
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    initial = store.update_from_user_message("我现在卡在马尔吉特", "casual_chat", {}, now)
+
+    first = sem.extract_semantics(
+        "我现在不打马尔吉特了，我去打接支格瑞克",
+        "casual_chat",
+        initial.as_dict(),
+        input_source="voice_direct",
+        run_llm_primary=True,
+    )
+    switched = store.update_from_user_message(
+        "我现在不打马尔吉特了，我去打接支格瑞克",
+        "casual_chat",
+        {},
+        now + timedelta(seconds=1),
+        semantic_game_event=first["final_decision"]["game_event"],
+    )
+    second = sem.extract_semantics(
+        "这个也没打过死了一次",
+        "casual_chat",
+        switched.as_dict(),
+        session_focus_boss="接肢葛瑞克",
+        input_source="voice_direct",
+        run_llm_primary=True,
+    )
+    failed = store.update_from_user_message(
+        "这个也没打过死了一次",
+        "casual_chat",
+        {},
+        now + timedelta(seconds=2),
+        session_focus_boss="接肢葛瑞克",
+        semantic_game_event=second["final_decision"]["game_event"],
+    )
+
+    assert switched.current_boss is not None
+    assert switched.current_boss.name == "接肢葛瑞克"
+    assert any(entry.name == "恶兆妖鬼 Margit" and entry.status == "abandoned" for entry in switched.boss_history)
+    assert second["switch_detected"] is False
+    assert second["attribution_status"] == "resolved"
+    assert failed.current_boss is not None
+    assert failed.current_boss.name == "接肢葛瑞克"
+    assert failed.last_failed_boss == "接肢葛瑞克"
+    assert failed.death_count == 1
+    assert failed.frustration_count == initial.frustration_count + 1
+    assert not any(entry.name == "恶兆妖鬼 Margit" and entry.status == "failed" for entry in failed.boss_history)
+
+
 def test_grounded_switch_event_applies_when_provider_omits_role_fields(monkeypatch):
     _mock_primary(
         monkeypatch,
@@ -1556,7 +1753,7 @@ def test_grounded_switch_event_applies_when_provider_omits_role_fields(monkeypat
     )
 
     assert result["llm_guard_decision"] == "apply"
-    assert result["llm_guard_reason"] == "switch_negation_candidate_overrules_rule_grounding"
+    assert result["llm_guard_reason"] == "high_confidence_grounded_candidate"
     assert result["final_decision"]["game_event"]["type"] == "boss_switch"
     assert result["final_decision"]["game_event"]["boss_name"] == "接肢葛瑞克"
 
@@ -1713,10 +1910,14 @@ def test_llm_primary_switch_negation_overrides_old_rule_grounding(monkeypatch, m
         run_llm_primary=True,
     )
 
-    assert result["rule_result"]["game_event"]["boss_name"] == "女武神"
+    expected_rule_boss = "女武神" if message.startswith("从") else "恶兆妖鬼 Margit"
+    assert result["rule_result"]["game_event"]["boss_name"] == expected_rule_boss
     assert result["source"] == "llm_primary"
     assert result["llm_guard_decision"] == "apply"
-    assert result["llm_guard_reason"] == "switch_negation_candidate_overrules_rule_grounding"
+    assert result["llm_guard_reason"] in {
+        "high_confidence_grounded_candidate",
+        "switch_negation_candidate_overrules_rule_grounding",
+    }
     event = result["final_decision"]["game_event"]
     assert event["type"] == "boss_switch"
     assert event["boss_name"] == "恶兆妖鬼 Margit"
@@ -1801,10 +2002,13 @@ def test_llm_primary_updates_json_switch_negation_applies_margit(monkeypatch):
         run_llm_primary=True,
     )
 
-    assert result["rule_result"]["game_event"]["boss_name"] == "女武神"
+    assert result["rule_result"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
     assert result["llm_schema_valid"] is True
     assert result["llm_guard_decision"] == "apply"
-    assert result["llm_guard_reason"] == "switch_negation_candidate_overrules_rule_grounding"
+    assert result["llm_guard_reason"] in {
+        "high_confidence_grounded_candidate",
+        "switch_negation_candidate_overrules_rule_grounding",
+    }
     assert result["source"] == "llm_primary"
     assert result["final_decision"]["game_event"]["type"] == "boss_switch"
     assert result["final_decision"]["game_event"]["boss_name"] == "恶兆妖鬼 Margit"
@@ -2209,7 +2413,12 @@ def test_llm_primary_compat_retry_failure_reports_invalid_json(monkeypatch):
     assert result["compat_retry_used"] is True
     assert result["compat_retry_succeeded"] is False
     assert result["llm_shadow"]["ultra_compact_used"] is True
-    assert result["llm_guard_decision"] == "no_op"
+    assert result["llm_guard_decision"] == "apply"
+    assert result["final_decision"]["game_event"]["type"] == "boss_switch"
+    assert result["final_decision"]["game_event"]["boss_name"] is None
+    assert result["cleared_fields"] == ["current_boss"]
+    assert result["applied_updates"] == ["boss_switched", "current_boss_cleared"]
+    assert result["rejection_reason"] == "semantic_extraction_invalid_json"
 
 
 def test_llm_primary_schema_invalid_is_distinct_from_invalid_json(monkeypatch):
@@ -2291,10 +2500,12 @@ def test_llm_primary_timeout_does_not_fallback_to_negated_old_target(monkeypatch
     )
 
     assert result["parse_error"] == "semantic_extraction_timeout"
-    assert result["llm_guard_decision"] == "no_op"
-    assert result["final_decision"]["game_event"]["type"] == "none"
-    assert result["applied_updates"] == []
-    assert "LLM extraction timeout" in result["llm_guard_summary"]
+    assert result["llm_guard_decision"] == "apply"
+    assert result["final_decision"]["game_event"]["type"] == "boss_switch"
+    assert result["final_decision"]["game_event"]["boss_name"] is None
+    assert result["cleared_fields"] == ["current_boss"]
+    assert result["applied_updates"] == ["boss_switched", "current_boss_cleared"]
+    assert result["rejection_reason"] == "semantic_extraction_timeout"
 
 
 def test_llm_primary_timeout_noops_without_rule_grounding(monkeypatch):

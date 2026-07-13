@@ -23,6 +23,8 @@ from app.modules.game_context.entity_registry import (
     detect_boss_mention,
     find_boss_mentions,
     ground_boss_entity,
+    ground_boss_surface,
+    is_boss_negated,
 )
 from app.modules.game_session.state import (
     _abandons_current_boss,
@@ -291,7 +293,14 @@ def extract_semantics(
     raw_rule_confidence = _decision_confidence(rule_result)
     ambiguity_reason = _ambiguity_reason(normalized_message)
     rule_confidence = min(raw_rule_confidence, 0.55) if ambiguity_reason else raw_rule_confidence
-    should_call_llm, skip_reason = _should_call_llm_shadow(normalized_message, rule_result, rule_confidence, ambiguity_reason, state)
+    should_call_llm, skip_reason = _should_call_llm_shadow(
+        normalized_message,
+        intent,
+        rule_result,
+        rule_confidence,
+        ambiguity_reason,
+        state,
+    )
     llm_called = False
     llm_shadow = _empty_llm_shadow(status="skipped", skip_reason=skip_reason)
     parse_error: str | None = None
@@ -465,6 +474,7 @@ def extract_semantics(
         llm_guard = _guard_rule_fallback(
             normalized_message,
             intent,
+            state,
             rule_result,
             llm_shadow,
             input_source=input_source_value,
@@ -484,6 +494,15 @@ def extract_semantics(
         llm_shadow=llm_shadow,
         llm_guard=llm_guard,
     )
+    provider_status = _llm_provider_status(
+        primary_ran=primary_ran,
+        llm_called=llm_called,
+        llm_shadow=llm_shadow,
+        parse_error=parse_error,
+    )
+    schema_valid = _llm_schema_valid(primary_ran=primary_ran, llm_shadow=llm_shadow, parse_error=parse_error)
+    trace["provider_status"] = provider_status
+    trace["schema_valid"] = schema_valid
     pending_reason = _pending_reason(final_decision)
     debug = {
         "latest_user_message": _safe_message_summary(normalized_message),
@@ -508,14 +527,27 @@ def extract_semantics(
         "normalized_entity": trace["normalized_entity"],
         "canonical_entity": trace["canonical_entity"],
         "canonical_display_name": trace["canonical_display_name"],
+        "intent": trace["intent"],
+        "switch_detected": trace["switch_detected"],
+        "previous_target": trace["previous_target"],
+        "new_target_candidate": trace["new_target_candidate"],
+        "canonical_candidate": trace["canonical_candidate"],
+        "grounding_method": trace["grounding_method"],
+        "grounding_confidence_band": trace["grounding_confidence_band"],
+        "extracted_surface": trace["extracted_surface"],
+        "cleared_fields": trace["cleared_fields"],
+        "applied_fields": trace["applied_fields"],
+        "rejected_fields": trace["rejected_fields"],
+        "rejection_reason": trace["rejection_reason"],
+        "attribution_status": trace["attribution_status"],
         "extraction_trace": trace,
         "llm_called": llm_called,
         "semantic_extraction_model": extraction_model if llm_called else None,
         "semantic_extraction_latency_ms": extraction_latency_ms,
         "provider_latency_ms": extraction_latency_ms,
         "llm_primary_status": llm_shadow["status"] if primary_ran else "not_run",
-        "llm_provider_status": _llm_provider_status(primary_ran=primary_ran, llm_called=llm_called, llm_shadow=llm_shadow, parse_error=parse_error),
-        "llm_schema_valid": _llm_schema_valid(primary_ran=primary_ran, llm_shadow=llm_shadow, parse_error=parse_error),
+        "llm_provider_status": provider_status,
+        "llm_schema_valid": schema_valid,
         "rule_grounding": _safe_rule_grounding(rule_result),
         "first_attempt_failed": _safe_optional_label(llm_shadow.get("first_attempt_failed")),
         "compat_retry_used": bool(llm_shadow.get("compat_retry_used")),
@@ -1008,6 +1040,26 @@ def _shadow_event_from_debug(
         "canonical_display_name": _safe_short_text(
             trace.get("canonical_display_name") or debug.get("canonical_display_name")
         ) or None,
+        "intent": _safe_optional_label(trace.get("intent") or debug.get("intent")),
+        "switch_detected": bool(trace.get("switch_detected") or debug.get("switch_detected")),
+        "previous_target": _safe_optional_label(trace.get("previous_target") or debug.get("previous_target")),
+        "new_target_candidate": _safe_optional_label(
+            trace.get("new_target_candidate") or debug.get("new_target_candidate")
+        ),
+        "canonical_candidate": _safe_optional_label(
+            trace.get("canonical_candidate") or debug.get("canonical_candidate")
+        ),
+        "grounding_method": _safe_optional_label(trace.get("grounding_method") or debug.get("grounding_method")),
+        "grounding_confidence_band": _safe_confidence(
+            trace.get("grounding_confidence_band") or debug.get("grounding_confidence_band") or "low"
+        ),
+        "cleared_fields": _safe_label_list(trace.get("cleared_fields") or debug.get("cleared_fields") or []),
+        "applied_fields": _safe_label_list(trace.get("applied_fields") or debug.get("applied_fields") or []),
+        "rejected_fields": _safe_label_list(trace.get("rejected_fields") or debug.get("rejected_fields") or []),
+        "rejection_reason": _safe_optional_label(trace.get("rejection_reason") or debug.get("rejection_reason")),
+        "attribution_status": _safe_optional_label(
+            trace.get("attribution_status") or debug.get("attribution_status")
+        ),
         "llm_shadow_status": _safe_shadow_status(trace.get("llm_shadow_status") or debug.get("llm_shadow_status") or shadow.get("status")),
         "llm_shadow_confidence": _safe_confidence(
             trace.get("llm_shadow_confidence") or debug.get("llm_shadow_confidence") or shadow.get("confidence") or "low"
@@ -1334,6 +1386,7 @@ def _rule_emotion(message: str) -> dict[str, Any] | None:
 
 def _should_call_llm_shadow(
     message: str,
+    intent: str,
     rule_result: dict[str, Any],
     rule_confidence: float,
     ambiguity_reason: str | None = None,
@@ -1343,7 +1396,16 @@ def _should_call_llm_shadow(
         if not _shadow_provider_config():
             return False, "provider_unavailable"
         return True, "pending_candidate_confirmation"
-    if not _has_shadow_semantic_signal(message, rule_result, ambiguity_reason):
+    if (
+        isinstance(game_state, dict)
+        and game_state.get("current_game")
+        and _has_vague_entity_reference(message)
+        and any(marker in _compact(message) for marker in ("去看", "想去", "打", "攻略", "名字"))
+    ):
+        if not _shadow_provider_config():
+            return False, "provider_unavailable"
+        return True, "vague_game_entity_candidate"
+    if not _has_shadow_semantic_signal(message, intent, rule_result, ambiguity_reason):
         return False, "no_semantic_signal"
     if not _shadow_provider_config():
         return False, "provider_unavailable"
@@ -1365,12 +1427,15 @@ def _has_pending_game_candidate(game_state: dict[str, Any] | None) -> bool:
 
 def _has_shadow_semantic_signal(
     message: str,
+    intent: str,
     rule_result: dict[str, Any],
     ambiguity_reason: str | None = None,
 ) -> bool:
     if ambiguity_reason:
         return True
     compact = _compact(message)
+    if intent == "elden_ring_boss_strategy" and _has_shadow_game_hint(compact):
+        return True
     game_event = rule_result.get("game_event") or {}
     if str(game_event.get("type") or "none") != "none":
         return True
@@ -1700,11 +1765,11 @@ def _llm_primary_prompt(
             "confidence": 0.0,
             "requires_clarification": False,
             "updates": [
-                {"field": "boss", "value": "玛尔基特", "canonical": "margit", "confidence": 0.92}
+                {"field": "boss", "value": "接支格瑞克", "canonical": "godrick", "confidence": 0.92}
             ],
-            "previous_target": None,
-            "negated_entity": None,
-            "new_current_target": None,
+            "previous_target": {"value": "margit", "surface_label": "马尔吉特", "confidence": "high"},
+            "negated_entity": {"value": "margit", "surface_label": "马尔吉特", "confidence": "high"},
+            "new_current_target": {"value": "godrick", "surface_label": "接支格瑞克", "confidence": "high"},
             "guide_only_entity": None,
             "guide_request": False,
             "strategy_request": False,
@@ -1724,6 +1789,7 @@ def _llm_primary_prompt(
             "Extract game context candidates only. Do not create memory. Do not trigger proactive behavior.",
             "If unsure, lower confidence or set requires_clarification=true.",
             "For '不打 A 了，换去打 B', A is previous/negated target and B is new_current_target plus boss update.",
+            "Entity signal value must be a canonical boss id; surface_label is only the short entity phrase actually heard/read, including ASR noise.",
             "For guide questions like 'X 那边怎么打', set guide_request and guide_only_entity; do not set new_current_target unless user says now fighting/switching/dying/clearing.",
             "Historical mentions like '以前打过 X' are mentions only; do not mark X current, failed, or cleared.",
             "For descriptive or nickname entities like '那个骑马金甲大哥' or '那个金甲的', set candidate_boss/candidate_event and needs_confirmation=true; do not pretend it is confirmed state.",
@@ -1739,9 +1805,9 @@ def _llm_primary_prompt(
             "confidence": 0.0,
             "requires_clarification": False,
             "updates": [],
-            "previous_target": None,
-            "negated_entity": None,
-            "new_current_target": None,
+            "previous_target": {"value": "margit", "surface_label": "马尔吉特", "confidence": "high"},
+            "negated_entity": {"value": "margit", "surface_label": "马尔吉特", "confidence": "high"},
+            "new_current_target": {"value": "godrick", "surface_label": "接支格瑞克", "confidence": "high"},
             "guide_only_entity": None,
             "guide_request": False,
             "strategy_request": False,
@@ -1759,6 +1825,7 @@ def _llm_primary_prompt(
             "Use keys from format only. Keep output under 1200 characters.",
             "Allowed update fields: boss, game, death_count_absolute, death_count_increment, boss_cleared, guide_request, strategy_request.",
             f"Use canonical boss ids: {BOSS_IDS_PROMPT}.",
+            "For entity signals, value is canonical id and surface_label is the short observed phrase, including ASR noise.",
             "Descriptive nickname or uncertain confirmation must be candidate/needs_confirmation, not confirmed state.",
             "If pending_candidate exists, classify confirmation_intent.",
             "No memory or proactive writes.",
@@ -3157,7 +3224,7 @@ def _shadow_diff_summary(rule_result: dict[str, Any], shadow: dict[str, Any]) ->
     rule_boss = ((rule_result.get("game_event") or {}).get("boss_name") or "").strip()
     if rule_boss and boss_label and normalize_terminology(rule_boss) != normalize_terminology(boss_label):
         return "规则和 LLM Boss 候选不同"
-    return "规则结果保留，LLM 候选未应用"
+    return "规则与 LLM 候选无明显冲突"
 
 
 def _shadow_has_candidate(shadow: dict[str, Any]) -> bool:
@@ -3198,6 +3265,23 @@ def _shadow_has_candidate(shadow: dict[str, Any]) -> bool:
     )
 
 
+def _shadow_has_boss_entity_candidate(shadow: dict[str, Any]) -> bool:
+    boss = shadow.get("boss") if isinstance(shadow.get("boss"), dict) else {}
+    if _shadow_boss_value(boss.get("value")) not in {None, "unknown"}:
+        return True
+    return any(
+        _entity_signal_boss_name(shadow.get(key))
+        for key in (
+            "mentioned_entity",
+            "new_current_target",
+            "guide_only_entity",
+            "current_target_candidate",
+            "candidate_boss",
+            "guide_entity",
+        )
+    )
+
+
 def _shadow_game_label(value: str | None) -> str:
     return {
         "elden_ring": "艾尔登法环",
@@ -3231,6 +3315,9 @@ def _empty_llm_guard(
     apply_confidence: float = 0.0,
     conflict_summary: str | None = None,
     applied_updates: list[str] | None = None,
+    grounding_method: str | None = None,
+    extracted_surface: str | None = None,
+    cleared_fields: list[str] | None = None,
 ) -> dict[str, Any]:
     decision_value = decision if decision in LLM_GUARD_DECISIONS else "no_op"
     return {
@@ -3244,12 +3331,17 @@ def _empty_llm_guard(
         "apply_confidence": round(_clamp(apply_confidence), 3),
         "conflict_summary": _safe_optional_label(conflict_summary),
         "applied_updates": _safe_label_list(applied_updates or []),
+        "grounding_method": _safe_optional_label(grounding_method),
+        "grounding_confidence_band": _confidence_label(_clamp(grounding_confidence)),
+        "extracted_surface": _safe_short_text(extracted_surface or "")[:24] or None,
+        "cleared_fields": _safe_label_list(cleared_fields or []),
     }
 
 
 def _guard_rule_fallback(
     message: str,
     intent: str,
+    game_state: dict[str, Any],
     rule_result: dict[str, Any],
     llm_shadow: dict[str, Any],
     *,
@@ -3259,9 +3351,15 @@ def _guard_rule_fallback(
 ) -> dict[str, Any]:
     rule_updates = _applied_updates(rule_result)
     rule_event_type = str(((rule_result.get("game_event") or {}).get("type")) or "none")
-    safe_rule_fallback = rule_event_type == "none" or _rule_exact_match_safe_for_fallback(message, intent, rule_result)
+    clear_only = _safe_old_target_clear_decision(message, game_state)
+    safe_clear_only = bool(clear_only and rule_event_type == "boss_switch" and not (rule_result.get("game_event") or {}).get("boss_name"))
+    safe_rule_fallback = (
+        rule_event_type == "none"
+        or safe_clear_only
+        or _rule_exact_match_safe_for_fallback(message, intent, rule_result)
+    )
     if rule_updates and safe_rule_fallback:
-        reason = parse_error or skip_reason or "rule_grounding"
+        reason = "old_target_cleared_rule_fallback" if safe_clear_only else parse_error or skip_reason or "rule_grounding"
         return _empty_llm_guard(
             input_source=input_source,
             decision="fallback_to_rule",
@@ -3272,6 +3370,8 @@ def _guard_rule_fallback(
             context_confidence=_decision_confidence(rule_result),
             apply_confidence=_decision_confidence(rule_result),
             applied_updates=rule_updates,
+            grounding_method="exact_negated_current_target" if safe_clear_only else None,
+            cleared_fields=["current_boss"] if safe_clear_only else None,
         )
     return _empty_llm_guard(
         input_source=input_source,
@@ -3300,7 +3400,16 @@ def _guard_llm_primary_candidate(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     rule_updates = _applied_updates(rule_result)
     rule_confidence = _decision_confidence(rule_result)
+    clear_only_decision = _safe_old_target_clear_decision(message, game_state)
     if candidate.get("status") == "failed":
+        clear_result = _old_target_clear_guard_result(
+            clear_only_decision,
+            candidate,
+            input_source=input_source,
+            rejection_reason=parse_error or "primary_failed",
+        )
+        if clear_result:
+            return clear_result
         if (
             rule_updates
             and rule_confidence >= 0.9
@@ -3325,6 +3434,14 @@ def _guard_llm_primary_candidate(
             candidate_confidence=candidate.get("confidence") or "low",
         )
     if candidate.get("status") == "skipped":
+        clear_result = _old_target_clear_guard_result(
+            clear_only_decision,
+            candidate,
+            input_source=input_source,
+            rejection_reason=provider_skip_reason or candidate.get("skip_reason") or "primary_skipped",
+        )
+        if clear_result:
+            return clear_result
         if rule_updates and _rule_exact_match_safe_for_fallback(message, intent, rule_result):
             return deepcopy(rule_result), _empty_llm_guard(
                 input_source=input_source,
@@ -3348,7 +3465,22 @@ def _guard_llm_primary_candidate(
     candidate_decision = _llm_primary_candidate_decision(message, intent, game_state, session_focus_boss, candidate)
     candidate_updates = _applied_updates(candidate_decision)
     candidate_score = _llm_candidate_confidence_score(candidate)
-    grounding_score = _llm_candidate_grounding_score(message, intent, game_state, session_focus_boss, candidate, candidate_decision)
+    grounding_evidence = _llm_candidate_grounding_evidence(
+        message,
+        intent,
+        game_state,
+        candidate,
+        candidate_decision,
+    )
+    grounding_score = _llm_candidate_grounding_score(
+        message,
+        intent,
+        game_state,
+        session_focus_boss,
+        candidate,
+        candidate_decision,
+        grounding_evidence=grounding_evidence,
+    )
     context_score = _llm_context_confidence(game_state, session_focus_boss, candidate_decision)
     conflict = _llm_rule_conflict(rule_result, candidate_decision)
     guide_only = _is_guide_only_request(message, intent, candidate)
@@ -3377,6 +3509,17 @@ def _guard_llm_primary_candidate(
     game_event = candidate_decision.get("game_event") or {}
     confirmation_intent = str(candidate.get("confirmation_intent") or "unknown")
     if confirmation_intent in {"uncertain", "deny", "unrelated"}:
+        clear_result = _old_target_clear_guard_result(
+            clear_only_decision,
+            candidate,
+            input_source=input_source,
+            rejection_reason=f"{confirmation_intent}_confirmation",
+            grounding_evidence=grounding_evidence,
+            grounding_score=grounding_score,
+            context_score=context_score,
+        )
+        if clear_result:
+            return clear_result
         return _empty_decision(), _empty_llm_guard(
             input_source=input_source,
             decision="candidate_only" if confirmation_intent == "uncertain" and _shadow_has_candidate(candidate) else "no_op",
@@ -3396,6 +3539,20 @@ def _guard_llm_primary_candidate(
             grounding_confidence=grounding_score,
             context_confidence=context_score,
         )
+    if clear_only_decision and not (
+        game_event.get("type") == "boss_switch" and game_event.get("boss_name")
+    ):
+        clear_result = _old_target_clear_guard_result(
+            clear_only_decision,
+            candidate,
+            input_source=input_source,
+            rejection_reason="new_target_not_applied",
+            grounding_evidence=grounding_evidence,
+            grounding_score=grounding_score,
+            context_score=context_score,
+        )
+        if clear_result:
+            return clear_result
     if guide_only and game_event.get("type") == "guide_request":
         if candidate_score >= 0.7 and grounding_score >= 0.7:
             _mark_llm_primary_decision(candidate_decision, input_source, candidate)
@@ -3409,6 +3566,8 @@ def _guard_llm_primary_candidate(
                 context_confidence=context_score,
                 apply_confidence=min(candidate_score, grounding_score),
                 applied_updates=candidate_updates,
+                grounding_method=grounding_evidence.get("method"),
+                extracted_surface=grounding_evidence.get("surface"),
             )
         return _empty_decision(), _empty_llm_guard(
             input_source=input_source,
@@ -3418,6 +3577,8 @@ def _guard_llm_primary_candidate(
             candidate_confidence=candidate.get("confidence") or "low",
             grounding_confidence=grounding_score,
             context_confidence=context_score,
+            grounding_method=grounding_evidence.get("method"),
+            extracted_surface=grounding_evidence.get("surface"),
         )
     if _candidate_requires_confirmation_before_apply(
         message,
@@ -3426,7 +3587,19 @@ def _guard_llm_primary_candidate(
         candidate,
         candidate_decision,
         input_source=input_source,
+        grounding_evidence=grounding_evidence,
     ):
+        clear_result = _old_target_clear_guard_result(
+            clear_only_decision,
+            candidate,
+            input_source=input_source,
+            rejection_reason="uncertain_entity_candidate",
+            grounding_evidence=grounding_evidence,
+            grounding_score=grounding_score,
+            context_score=context_score,
+        )
+        if clear_result:
+            return clear_result
         return _empty_decision(), _empty_llm_guard(
             input_source=input_source,
             decision=(
@@ -3439,6 +3612,8 @@ def _guard_llm_primary_candidate(
             candidate_confidence=candidate.get("candidate_confidence") or candidate.get("confidence") or "low",
             grounding_confidence=grounding_score,
             context_confidence=context_score,
+            grounding_method=grounding_evidence.get("method"),
+            extracted_surface=grounding_evidence.get("surface"),
         )
 
     if conflict:
@@ -3460,7 +3635,20 @@ def _guard_llm_primary_candidate(
                 apply_confidence=min(candidate_score, max(grounding_score, context_score)),
                 conflict_summary=conflict,
                 applied_updates=candidate_updates,
+                grounding_method=grounding_evidence.get("method"),
+                extracted_surface=grounding_evidence.get("surface"),
             )
+        clear_result = _old_target_clear_guard_result(
+            clear_only_decision,
+            candidate,
+            input_source=input_source,
+            rejection_reason="rule_llm_conflict",
+            grounding_evidence=grounding_evidence,
+            grounding_score=grounding_score,
+            context_score=context_score,
+        )
+        if clear_result:
+            return clear_result
         return _empty_decision(), _empty_llm_guard(
             input_source=input_source,
             decision="ask_clarification",
@@ -3473,6 +3661,17 @@ def _guard_llm_primary_candidate(
         )
 
     if not candidate_updates:
+        clear_result = _old_target_clear_guard_result(
+            clear_only_decision,
+            candidate,
+            input_source=input_source,
+            rejection_reason="no_safe_state_update",
+            grounding_evidence=grounding_evidence,
+            grounding_score=grounding_score,
+            context_score=context_score,
+        )
+        if clear_result:
+            return clear_result
         if (
             _candidate_allows_exact_rule_fallback(candidate, rule_result)
             and rule_updates
@@ -3499,6 +3698,8 @@ def _guard_llm_primary_candidate(
             candidate_confidence=candidate.get("confidence") or "low",
             grounding_confidence=grounding_score,
             context_confidence=context_score,
+            grounding_method=grounding_evidence.get("method"),
+            extracted_surface=grounding_evidence.get("surface"),
         )
 
     apply_confidence = min(candidate_score, max(grounding_score, context_score))
@@ -3514,6 +3715,8 @@ def _guard_llm_primary_candidate(
             context_confidence=context_score,
             apply_confidence=apply_confidence,
             applied_updates=candidate_updates,
+            grounding_method=grounding_evidence.get("method"),
+            extracted_surface=grounding_evidence.get("surface"),
         )
     confirmed_context_boss = _context_boss_for_rule(
         game_state,
@@ -3539,6 +3742,8 @@ def _guard_llm_primary_candidate(
             context_confidence=context_score,
             apply_confidence=min(candidate_score, max(grounding_score, context_score)),
             applied_updates=candidate_updates,
+            grounding_method=grounding_evidence.get("method"),
+            extracted_surface=grounding_evidence.get("surface"),
         )
     if candidate_score >= 0.7 and _rule_agrees_with_candidate(rule_result, candidate_decision):
         _mark_llm_primary_decision(candidate_decision, input_source, candidate)
@@ -3552,6 +3757,8 @@ def _guard_llm_primary_candidate(
             context_confidence=context_score,
             apply_confidence=max(apply_confidence, rule_confidence),
             applied_updates=candidate_updates,
+            grounding_method=grounding_evidence.get("method"),
+            extracted_surface=grounding_evidence.get("surface"),
         )
     if (
         rule_updates
@@ -3570,6 +3777,17 @@ def _guard_llm_primary_candidate(
             apply_confidence=rule_confidence,
             applied_updates=rule_updates,
         )
+    clear_result = _old_target_clear_guard_result(
+        clear_only_decision,
+        candidate,
+        input_source=input_source,
+        rejection_reason="confidence_below_apply_threshold",
+        grounding_evidence=grounding_evidence,
+        grounding_score=grounding_score,
+        context_score=context_score,
+    )
+    if clear_result:
+        return clear_result
     return _empty_decision(), _empty_llm_guard(
         input_source=input_source,
         decision="candidate_only",
@@ -3578,7 +3796,77 @@ def _guard_llm_primary_candidate(
         candidate_confidence=candidate.get("confidence") or "low",
         grounding_confidence=grounding_score,
         context_confidence=context_score,
+        grounding_method=grounding_evidence.get("method"),
+        extracted_surface=grounding_evidence.get("surface"),
     )
+
+
+def _safe_old_target_clear_decision(message: str, game_state: dict[str, Any]) -> dict[str, Any] | None:
+    current_boss = _state_boss(game_state.get("current_boss"))
+    grounding = ground_boss_entity(current_boss)
+    if not grounding.entity or not is_boss_negated(message, grounding.canonical_id):
+        return None
+    decision = _empty_decision()
+    decision["game_event"] = _game_event("boss_switch", None, 0.92, True)
+    decision["game_event"].update(
+        {
+            "previous_target": grounding.canonical_id,
+            "clear_reason": "explicit_old_target_negation",
+            "cleared_fields": ["current_boss"],
+        }
+    )
+    return decision
+
+
+def _old_target_clear_guard_result(
+    clear_only_decision: dict[str, Any] | None,
+    candidate: dict[str, Any],
+    *,
+    input_source: InputSource,
+    rejection_reason: str,
+    grounding_evidence: dict[str, Any] | None = None,
+    grounding_score: float = 0.0,
+    context_score: float = 0.0,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    if clear_only_decision is None:
+        return None
+    evidence = grounding_evidence or {}
+    new_target = _candidate_new_target_id(candidate)
+    event = clear_only_decision.get("game_event") or {}
+    event["new_target_candidate"] = new_target
+    event["new_target_status"] = "candidate_only" if new_target else "unresolved"
+    event["guard_source"] = "llm_primary"
+    event["input_source"] = input_source
+    reason = "old_target_cleared_new_target_candidate_only" if new_target else "old_target_cleared_after_explicit_negation"
+    return clear_only_decision, _empty_llm_guard(
+        input_source=input_source,
+        decision="apply",
+        reason=reason,
+        summary="旧目标已明确否定并清理；新目标未达到正式写入阈值" if new_target else "旧目标已明确否定并清理",
+        candidate_confidence=candidate.get("candidate_confidence") or candidate.get("confidence") or "low",
+        grounding_confidence=grounding_score,
+        context_confidence=context_score,
+        apply_confidence=0.92,
+        conflict_summary=rejection_reason,
+        applied_updates=_applied_updates(clear_only_decision),
+        grounding_method=evidence.get("method") or "exact_negated_current_target",
+        extracted_surface=evidence.get("surface"),
+        cleared_fields=["current_boss"],
+    )
+
+
+def _candidate_new_target_id(candidate: dict[str, Any]) -> str | None:
+    for key in ("new_current_target", "current_target_candidate"):
+        value = candidate.get(key) if isinstance(candidate.get(key), dict) else {}
+        canonical = _shadow_boss_value(value.get("value"))
+        if canonical and canonical != "unknown":
+            return canonical
+    if str(candidate.get("candidate_event") or "none") == "boss_switch":
+        value = candidate.get("candidate_boss") if isinstance(candidate.get("candidate_boss"), dict) else {}
+        canonical = _shadow_boss_value(value.get("value"))
+        if canonical and canonical != "unknown":
+            return canonical
+    return None
 
 
 def _llm_primary_candidate_decision(
@@ -3742,6 +4030,145 @@ def _confidence_score(label: Any) -> float:
     return 0.45
 
 
+def _llm_candidate_grounding_evidence(
+    message: str,
+    intent: str,
+    game_state: dict[str, Any],
+    candidate: dict[str, Any],
+    candidate_decision: dict[str, Any],
+) -> dict[str, Any]:
+    event = candidate_decision.get("game_event") or {}
+    entity = ground_boss_entity(str(event.get("boss_name") or "")).entity
+    if not entity:
+        return {
+            "canonical_id": None,
+            "surface": None,
+            "surface_match": False,
+            "method": "unresolved",
+            "safe_multi_signal_apply": False,
+        }
+
+    event_type = str(event.get("type") or "none")
+    surface = _candidate_surface_hint(message, candidate, event_type, entity.canonical_id)
+    surface_grounding = ground_boss_surface(surface, canonical_hint=entity.canonical_id)
+    surface_match = bool(surface_grounding.entity and surface_grounding.canonical_id == entity.canonical_id)
+    current = ground_boss_entity(_state_boss(game_state.get("current_boss"))).canonical_id
+    previous_candidates = {
+        _shadow_boss_value((candidate.get(key) or {}).get("value"))
+        for key in ("previous_target", "negated_entity")
+        if isinstance(candidate.get(key), dict)
+    }
+    previous_match = bool(
+        current
+        and (
+            current in previous_candidates
+            or is_boss_negated(message, current)
+        )
+    )
+    switch_role = bool(
+        event_type == "boss_switch"
+        and _candidate_has_switch_intent(message, candidate)
+        and (
+            _entity_signal_boss_name(candidate.get("new_current_target"))
+            or str(candidate.get("candidate_event") or "none") == "boss_switch"
+            or (candidate.get("boss_switched") or {}).get("value")
+        )
+    )
+    guide_role = bool(event_type == "guide_request" and _is_guide_only_request(message, intent, candidate))
+    game_match = _candidate_game_matches_entity(game_state, candidate, event, entity.game_id, entity.game_display_name)
+    vague = _has_vague_entity_reference(message)
+    safe_switch = bool(switch_role and previous_match and game_match and surface_match and not vague)
+    safe_guide = bool(guide_role and game_match and surface_match and not vague)
+    if surface_match and surface_grounding.match_type == "noisy_surface":
+        method = "llm_canonical_role_unique_noisy_surface"
+    elif surface_match:
+        method = "llm_canonical_role_exact_surface"
+    else:
+        method = "llm_canonical_only"
+    return {
+        "canonical_id": entity.canonical_id,
+        "surface": surface,
+        "surface_match": surface_match,
+        "surface_match_type": surface_grounding.match_type,
+        "surface_confidence": surface_grounding.confidence,
+        "switch_role": switch_role,
+        "guide_role": guide_role,
+        "previous_match": previous_match,
+        "game_match": game_match,
+        "method": method,
+        "safe_multi_signal_apply": safe_switch or safe_guide,
+    }
+
+
+def _candidate_surface_hint(
+    message: str,
+    candidate: dict[str, Any],
+    event_type: str,
+    canonical_id: str,
+) -> str | None:
+    for key in ("new_current_target", "guide_entity", "guide_only_entity", "candidate_boss", "current_target_candidate"):
+        signal = candidate.get(key) if isinstance(candidate.get(key), dict) else {}
+        if _shadow_boss_value(signal.get("value")) == canonical_id and signal.get("surface_label"):
+            return _trim_entity_surface(str(signal["surface_label"]))
+    boss = candidate.get("boss") if isinstance(candidate.get("boss"), dict) else {}
+    if _shadow_boss_value(boss.get("value")) == canonical_id and boss.get("surface_label"):
+        return _trim_entity_surface(str(boss["surface_label"]))
+    if event_type == "boss_switch":
+        return _surface_after_switch_marker(message)
+    if event_type == "guide_request":
+        return _surface_before_guide_marker(message)
+    return None
+
+
+def _surface_after_switch_marker(message: str) -> str | None:
+    markers = ("换去打", "換去打", "转去打", "轉去打", "我去打", "改打", "换到", "換到", "换成", "換成", "去打")
+    matches = [(message.rfind(marker), marker) for marker in markers if marker in message]
+    if not matches:
+        return None
+    start, marker = max(matches, key=lambda item: item[0])
+    tail = re.split(r"[，。！？,!?；;]", message[start + len(marker) :], maxsplit=1)[0]
+    return _trim_entity_surface(tail)
+
+
+def _surface_before_guide_marker(message: str) -> str | None:
+    markers = ("怎么打", "怎麼打", "弱什么", "弱什麼", "难吗", "難嗎", "攻略", "打法")
+    positions = [(message.find(marker), marker) for marker in markers if marker in message]
+    if not positions:
+        return None
+    end, _ = min(positions, key=lambda item: item[0])
+    prefix = re.split(r"[，。！？,!?；;]", message[:end])[-1]
+    return _trim_entity_surface(prefix)
+
+
+def _trim_entity_surface(value: str) -> str | None:
+    text = re.sub(r"\s+", "", value).strip("，。！？,!?；;：: ")
+    text = re.sub(r"^(?:我想|我去|那个|那個|这个|這個|一下)+", "", text)
+    text = re.sub(r"(?:那边|那邊|了|吧|呢|试试|試試)$", "", text)
+    return text[:16] or None
+
+
+def _candidate_game_matches_entity(
+    game_state: dict[str, Any],
+    candidate: dict[str, Any],
+    event: dict[str, Any],
+    game_id: str,
+    game_display_name: str,
+) -> bool:
+    values = {
+        str(game_state.get("current_game") or ""),
+        str(event.get("game_name") or ""),
+        str((candidate.get("candidate_game") or {}).get("value") or ""),
+        str((candidate.get("game") or {}).get("value") or ""),
+    }
+    normalized = {re.sub(r"[\s_-]+", "", value.casefold()) for value in values if value}
+    aliases = {
+        re.sub(r"[\s_-]+", "", game_id.casefold()),
+        re.sub(r"[\s_-]+", "", game_display_name.casefold()),
+        "艾尔登法环" if game_id == "elden_ring" else "空洞骑士",
+    }
+    return bool(normalized & aliases)
+
+
 def _llm_candidate_grounding_score(
     message: str,
     intent: str,
@@ -3749,7 +4176,12 @@ def _llm_candidate_grounding_score(
     session_focus_boss: str | None,
     candidate: dict[str, Any],
     candidate_decision: dict[str, Any],
+    *,
+    grounding_evidence: dict[str, Any] | None = None,
 ) -> float:
+    evidence = grounding_evidence or {}
+    if evidence.get("safe_multi_signal_apply"):
+        return 0.9
     game_event = candidate_decision.get("game_event") or {}
     boss_name = game_event.get("boss_name")
     explicit_boss = _detect_boss(message)
@@ -3972,7 +4404,11 @@ def _known_boss_mention_count(message: str) -> int:
 
 def _candidate_has_switch_intent(message: str, candidate: dict[str, Any]) -> bool:
     switched = candidate.get("boss_switched") or {}
-    return bool(switched.get("value") or _entity_signal_boss_name(candidate.get("new_current_target")) or _has_switch_signal(message))
+    return bool(
+        switched.get("value")
+        or str(candidate.get("intent") or "none") == "boss_switch"
+        or _has_switch_signal(message)
+    )
 
 
 def _candidate_has_current_target_signal(candidate: dict[str, Any]) -> bool:
@@ -3990,13 +4426,27 @@ def _candidate_requires_confirmation_before_apply(
     candidate_decision: dict[str, Any],
     *,
     input_source: InputSource,
+    grounding_evidence: dict[str, Any] | None = None,
 ) -> bool:
+    del input_source
     event = candidate_decision.get("game_event") or {}
     event_type = str(event.get("type") or "none")
-    if event_type in {"none", "game_context"}:
+    if event_type == "none":
         return False
+    if event_type == "game_context":
+        return bool(
+            _shadow_has_boss_entity_candidate(candidate)
+            and (
+                candidate.get("needs_confirmation")
+                or candidate.get("requires_clarification")
+                or _candidate_reason_requires_confirmation(candidate)
+                or _has_vague_entity_reference(message)
+            )
+        )
     boss_name = normalize_terminology(str(event.get("boss_name") or ""))
     if not boss_name:
+        return False
+    if (grounding_evidence or {}).get("safe_multi_signal_apply"):
         return False
     boss = candidate.get("boss") or {}
     if boss.get("operation") == "unknown" and boss.get("value") not in {None, "unknown"}:
@@ -4161,6 +4611,27 @@ def _extraction_trace(
         applied_by = "rule_fallback"
     grounding = _entity_grounding_trace(message, llm_shadow, final_decision)
     rejected_updates = _rejected_updates(llm_shadow, llm_guard, applied_updates)
+    previous_target = _candidate_signal_id(llm_shadow, "previous_target") or _candidate_signal_id(llm_shadow, "negated_entity")
+    new_target = _candidate_new_target_id(llm_shadow)
+    cleared_fields = _safe_label_list(
+        llm_guard.get("cleared_fields")
+        or ((final_decision.get("game_event") or {}).get("cleared_fields"))
+        or []
+    )
+    final_event = final_decision.get("game_event") if isinstance(final_decision.get("game_event"), dict) else {}
+    if (
+        not cleared_fields
+        and final_event.get("type") == "boss_switch"
+        and final_event.get("boss_name")
+        and previous_target
+    ):
+        cleared_fields = ["previous_current_boss"]
+    grounding_method = _safe_optional_label(llm_guard.get("grounding_method")) or grounding.get("grounding_match_type")
+    rejection_reason = None
+    if guard_decision in {"candidate_only", "ask_clarification", "no_op"} or (
+        guard_decision == "apply" and "current_boss" in cleared_fields
+    ):
+        rejection_reason = _safe_optional_label(llm_guard.get("conflict_summary") or llm_guard.get("reason"))
     return {
         "primary_extractor": "llm",
         "primary_status": llm_shadow.get("status"),
@@ -4174,6 +4645,29 @@ def _extraction_trace(
         "parse_error": parse_error,
         "applied_updates": applied_updates,
         "rejected_updates": rejected_updates,
+        "intent": _safe_label(llm_shadow.get("intent") or "none"),
+        "switch_detected": bool(
+            final_event.get("type") == "boss_switch"
+            or (
+                _has_switch_signal(message)
+                and (
+                    (llm_shadow.get("boss_switched") or {}).get("value")
+                    or str(llm_shadow.get("candidate_event") or "none") == "boss_switch"
+                    or str(llm_shadow.get("intent") or "none") == "boss_switch"
+                )
+            )
+        ),
+        "previous_target": previous_target,
+        "new_target_candidate": new_target,
+        "canonical_candidate": grounding.get("canonical_entity"),
+        "grounding_method": grounding_method,
+        "grounding_confidence_band": _safe_confidence(llm_guard.get("grounding_confidence_band")),
+        "extracted_surface": _safe_short_text(llm_guard.get("extracted_surface") or "")[:24] or None,
+        "cleared_fields": cleared_fields,
+        "applied_fields": applied_updates,
+        "rejected_fields": rejected_updates,
+        "rejection_reason": rejection_reason,
+        "attribution_status": _followup_attribution_status(message, final_decision, llm_guard),
         **grounding,
         "llm_shadow_status": llm_shadow.get("status"),
         "llm_shadow_confidence": llm_shadow.get("confidence"),
@@ -4191,6 +4685,27 @@ def _extraction_trace(
         "guide_entity": (llm_shadow.get("guide_entity") or llm_shadow.get("guide_only_entity") or {}).get("value"),
         "confirmation_intent": llm_shadow.get("confirmation_intent"),
     }
+
+
+def _candidate_signal_id(candidate: dict[str, Any], key: str) -> str | None:
+    value = candidate.get(key) if isinstance(candidate.get(key), dict) else {}
+    canonical = _shadow_boss_value(value.get("value"))
+    return canonical if canonical and canonical != "unknown" else None
+
+
+def _followup_attribution_status(
+    message: str,
+    final_decision: dict[str, Any],
+    guard: dict[str, Any],
+) -> str:
+    if not (_fails_current_boss(message) and _has_vague_entity_reference(message)):
+        return "not_applicable"
+    event = final_decision.get("game_event") if isinstance(final_decision.get("game_event"), dict) else {}
+    if event.get("boss_name"):
+        return "resolved"
+    if guard.get("reason") in {"no_safe_state_update", "confidence_below_apply_threshold"}:
+        return "safe_no_op"
+    return "unresolved"
 
 
 def _entity_grounding_trace(
@@ -4270,6 +4785,8 @@ def _rejected_updates(
     rejected: list[str] = []
     if "discussion_target" in applied_updates:
         rejected.append("current_boss")
+    elif "current_boss" in (guard.get("cleared_fields") or []) and _candidate_new_target_id(candidate):
+        rejected.append("new_current_target")
     elif guard.get("decision") in {"candidate_only", "ask_clarification", "no_op"} and _shadow_has_candidate(candidate):
         rejected.append("current_boss")
     if _llm_candidate_attempted_memory_or_proactive(candidate):
@@ -4425,6 +4942,8 @@ def _applied_updates(decision: dict[str, Any]) -> list[str]:
         updates.append("boss_changed")
     elif event_type == "boss_switch":
         updates.append("boss_switched")
+        if not game_event.get("boss_name"):
+            updates.append("current_boss_cleared")
     elif event_type == "guide_request":
         updates.append("discussion_target")
     elif event_type == "game_context":
@@ -4517,16 +5036,16 @@ def _context_boss_for_rule(
     current_boss = _state_boss(game_state.get("current_boss"))
     if current_boss:
         return current_boss
-    if focused_boss and _history_status(game_state, focused_boss) != "cleared":
+    if focused_boss and _history_status(game_state, focused_boss) not in {"cleared", "abandoned"}:
         return focused_boss
     last_failed = _state_boss(game_state.get("last_failed_boss"))
-    if last_failed and _history_status(game_state, last_failed) != "cleared":
+    if last_failed and _history_status(game_state, last_failed) not in {"cleared", "abandoned"}:
         return last_failed
     unresolved = _latest_unresolved_boss(game_state)
     if unresolved:
         return unresolved
     last_attempted = _state_boss(game_state.get("last_attempted_boss"))
-    if last_attempted and _history_status(game_state, last_attempted) != "cleared":
+    if last_attempted and _history_status(game_state, last_attempted) not in {"cleared", "abandoned"}:
         return last_attempted
     return None
 
@@ -4549,10 +5068,10 @@ def _latest_unresolved_boss(game_state: dict[str, Any]) -> str | None:
         if not boss_name:
             continue
         status = str(item.get("status") or "")
-        if status in {"failed", "current", "attempted", "abandoned"}:
+        if status in {"failed", "current", "attempted"}:
             names = [name for name in names if name != boss_name]
             names.append(boss_name)
-        elif status == "cleared":
+        elif status in {"cleared", "abandoned"}:
             names = [name for name in names if name != boss_name]
     return names[-1] if names else None
 

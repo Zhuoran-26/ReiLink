@@ -318,6 +318,13 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 34. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、`玛尔吉特` 三来源失败等价性、canonical aliases、Boss set / switch、Margit -> Godrick switch negation、guide-only discussion target 不切换、historical mention no progress、non-game no context change、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict、low-confidence candidate-only、uncertain confirmation 和 harmless game-detected-only update。
 35. Eval runner 应复用 `extract_semantics` 与 `GameSessionStore`，只应用 guarded `final_decision.game_event`，避免把 runner 变成第二套 extraction 规则。
 36. Eval report 和 pytest 输出不得包含 raw prompt、raw provider JSON、API key、`.env`、完整本地路径、stdout / stderr 或完整 transcript。Candidate Memory v1 已在正常 chat / memory flow 中接住 pending candidate runtime；extraction eval runner 本身仍只验证 extraction result / trace / eval 层，不创建 UI 弹窗。
+37. 当前 Boss 为 Margit 时，`我现在不打马尔吉特了，我去打接支格瑞克` 必须运行 LLM-primary provider；schema-valid canonical Godrick candidate 可结合 switch role、game ownership、旧目标否定和唯一 bounded surface 正式 apply，不能要求把 `接支格瑞克` 注册成 exact alias。
+38. 如果新目标不足以正式 grounding，但旧 Margit 被明确否定，必须执行 clear-only switch：`current_boss=null`、旧目标历史为 `abandoned`、新目标 candidate-only / unresolved；不得静默保留 Margit。
+39. 上一轮成功切到 Godrick 后，`这个也没打过死了一次` 必须归因 Godrick；上一轮只有 clear-only 时，可以更新通用失败 / 死亡状态或 no-op，但不得把 Margit 恢复为 current / failed Boss。
+40. `abandoned` Boss 不得作为模糊代词或省略失败句的默认 antecedent；只有 `重新挑战`、`回去打` 等显式 rechallenge 才可重新使用。
+41. `我可能去看看那个接什么瑞克` 可以 candidate-only / ask clarification / safe no-op，不得正式写 Godrick；`接支格瑞克怎么打` 可以 grounding 为 Godrick discussion target，但不得改变 current Boss、death_count 或 frustration_count。
+42. Debug Trace 应显示 intent、switch_detected、previous_target、new_target_candidate、canonical_candidate、grounding_method / confidence band、guard decision、cleared / applied / rejected fields、rejection reason 和 attribution status。Event Stream 只能保存这些安全 canonical / 状态摘要，不得保存 extracted surface 或完整 transcript。
+43. 固定 eval 应保持 40 条场景并覆盖 noisy switch 的 text / voice_confirmed / voice_direct 等价性、old clear + candidate-only、vague non-switch、noisy guide 和 non-game no-switch；实现说明见 `docs/asr_noisy_boss_switch_regression.md`。
 
 ### 1.13 Hermes-style Memory Architecture v0 人工验收
 
