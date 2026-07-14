@@ -153,7 +153,7 @@
       "candidate_only",
       "apply_if_grounding_high"
     ],
-    "expected_behavior": "Voice source still uses LLM-primary extraction. ASR uncertainty lowers source reliability unless catalog and context grounding are strong enough.",
+    "expected_behavior": "Voice source still uses LLM-primary extraction. Pre-submit guards handle ASR uncertainty; once submitted, the same text uses the same catalog grounding and deterministic guard as typed text.",
     "must_not_do": [
       "add_alias_patch_for_every_typo",
       "silent_wrong_update",

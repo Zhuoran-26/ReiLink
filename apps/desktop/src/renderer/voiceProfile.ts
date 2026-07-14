@@ -28,7 +28,7 @@ export type VoiceSpeakDecision = {
 
 export const VOICE_PROFILE_ID = "rei_calm";
 export const VOICE_PROFILE_LABEL = "Rei Calm / Rei 冷静陪伴";
-export const VOICE_PROFILE_DESCRIPTION = "控制说什么、说多长、什么时候不说；当前仍使用系统 speechSynthesis。";
+export const VOICE_PROFILE_DESCRIPTION = "控制说什么、说多长、什么时候不说；当前仍使用 System Speech Synthesis / 系统 speechSynthesis。";
 export const VOICE_DEBUG_SPEAKING_ALLOWED = false;
 export const VOICE_INTERRUPT_ON_NEW_RECORDING = true;
 export const VOICE_TEST_VOICE_ALLOWED = true;

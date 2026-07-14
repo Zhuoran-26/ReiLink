@@ -218,6 +218,22 @@ def test_session_focus_resolves_elliptical_boss_reference():
     assert "不要再问“哪个 boss”" in focus.as_prompt_line()
 
 
+def test_session_focus_uses_new_exact_target_after_switch():
+    focus = resolve_session_focus("这个也没打过", ["我不打玛尔基特了，换去打接肢葛瑞克"])
+
+    assert focus.boss == "接肢葛瑞克"
+
+
+def test_session_focus_does_not_cross_noisy_negated_switch_boundary():
+    focus = resolve_session_focus(
+        "这个也没打过死了一次",
+        ["我现在卡在马尔吉特", "我现在不打马尔吉特了，我去打接支格瑞克"],
+    )
+
+    assert focus.boss is None
+    assert focus.source == "explicit_focus_boundary"
+
+
 def test_no_hardcoded_followup_dialogue_added():
     root = Path(__file__).resolve().parents[3]
     checked = [

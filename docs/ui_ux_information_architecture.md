@@ -1,8 +1,10 @@
 # UI/UX Information Architecture v0
 
-Updated: 2026-06-16
+Updated: 2026-07-12
 
-This document records the UI/UX IA baseline and the implemented UI Surface v0. UI Surface v0 adds an in-app Panel Launcher & Workspace Shell in the existing React renderer. It does not implement Voice v2, Overlay auto-show, Hermes-style memory, Live2D, or any Electron multi-window change.
+Document status: current for IA placement. The original implementation-order and "do not do now" sections are retained as a historical planning snapshot; current feature status comes from `docs/PROJECT_STATUS.md` and the Voice v2.2 status from `docs/voice_interaction_v2_spec.md`.
+
+This document records the UI/UX IA baseline and the implemented UI Surface v0. UI Surface v0 originally added an in-app Panel Launcher & Workspace Shell without implementing Voice v2; Voice v2.2, Voice Profile v1, and TTS Provider Registry v0 have since landed inside that shell. Overlay auto-show and Live2D remain outside the current implementation.
 
 ## Scope
 
@@ -57,7 +59,7 @@ Settings still carries some legacy configuration details for regression stabilit
 | Home / Chat | Player | Main chat, Rei status, current game chips, input, latest companion state | Chat, Today, Quick actions, compact status | Yes | High | Normal user | P0 |
 | Memory | Player | Pending memory, confirmed memory, ignored memory, memory source summaries | Pending, Confirmed, Ignored, Search, Sources, Session Archive later | No | Medium | Normal user | P1 |
 | Game | Player | Current game, current boss, game session state, knowledge availability, manual selection | Current, Session, Knowledge, Supported Games, Timeline summary | No | High | Normal user | P1 |
-| Voice | Player | Voice Input, Local ASR, Voice Output, future direct conversation state | Conversation, Input, Output, Local ASR Setup, Voice Profile later | No, but visible | Very high | Normal user | P1 |
+| Voice | Player | Voice Input, Local ASR, confirm-send, Direct Conversation, Voice Output | Conversation, Input / Local ASR, Output, Voice Profile | No, but visible | Very high | Normal user | P1 |
 | Overlay | Player | Safe Mode status, overlay config, recent safe message preview, force close | Safe Mode, Placement, Content, Future Game Mode checklist | No | Very high | Normal user | P1 |
 | Settings | Player | App-level preferences and safe setup | Model, Persona Mode, Proactive, Privacy, Local Data, Reset | No | Medium | Normal user | P2 |
 | Developer / Debug | Developer / QA | Event Stream, Prompt Preview safe summary, Semantic Shadow trace, Knowledge trace, Runtime status | Events, Prompt Preview, Runtime, Knowledge, Semantic Shadow, Raw JSON safe view | No | Low | Developer | P1 for split |
@@ -113,49 +115,38 @@ This model has the best balance for ReiLink now: it is less invasive than native
 
 ## Voice IA Position
 
-Voice should become a first-class top-level module, while Home / Chat keeps a compact mic entry near the input.
+Status: current UI architecture. Voice is a first-class top-level module, while Home / Chat keeps a compact mic entry near the input. The older future-only Voice v2 plan in this section is superseded by the implemented Voice v2.2 baseline.
 
 Current state:
 
 - Local ASR v1 is available when the user configures a local whisper-like binary, model, and optional converter.
-- The current flow is record / transcribe / fill input / user confirms send.
-- Voice Output uses renderer-side `speechSynthesis`.
-- Voice Output has toggle, Test Voice, rate, and volume.
-- Current Voice is not natural direct conversation.
+- `confirm_send` remains the default: record, transcribe, fill the input, then confirm.
+- Opt-in Direct Conversation auto-sends only after a user-triggered recording round; it is not hands-free, always listening, or wake-word driven.
+- Voice Output uses renderer-side system `speechSynthesis`, with Test Voice, Stop Voice, rate, and volume controls.
+- Voice Profile v1 selects deterministic `full`, `brief`, or `silent` behavior without another LLM request.
+- TTS Provider Registry v0 exposes only `system_speech_synthesis` as selectable; Local TTS and External TTS remain disabled placeholders.
+- Event Stream stores Voice / TTS lifecycle metadata and counts, not full transcripts, assistant replies, or spoken text.
 
-Future Voice v2 direction:
-
-- User can speak directly.
-- Rei can listen, transcribe, answer, and speak back.
-- User can choose auto-send or confirm-send.
-- Rei reply can be spoken automatically when enabled.
-- User can interrupt Rei.
-- TTS and recording must not conflict.
-- Game mode should prefer short, low-interruption spoken replies.
-- Audio should not be uploaded.
-- Unconfirmed transcript must not enter memory, prompt, knowledge retrieval, game context, or proactive.
-- Debug, Prompt Preview, internal trace, raw prompt, and full transcript must not be spoken.
-
-Recommended Voice states:
+Current Voice states:
 
 - `idle`
 - `listening`
 - `transcribing`
+- `auto_sending`
 - `ready_to_send`
 - `assistant_thinking`
 - `speaking`
 - `interrupted`
 - `error`
 
-Recommended Voice workspace tabs:
+Current Voice workspace tabs:
 
-- Conversation: future direct voice loop state, listen/speak status, interruption state.
+- Conversation: current mode, state, transcript policy, listen/speak status, and interruption state.
 - Input: Local ASR status, record/transcribe controls, transcript confirmation boundary.
-- Output: Voice Output toggle, Test Voice, rate, volume, system voice notes.
-- Local ASR Setup: binary/model/converter configuration with privacy copy.
-- Voice Profile later: voice personality and output strategy, after TTS strategy is chosen.
+- Output: Voice Output toggle, Test Voice, Stop Voice, rate, volume, and provider capability surface.
+- Voice Profile: current full / brief / silent behavior policy and safe speaking boundaries.
 
-Do not implement Voice v2 in this IA task.
+Future only: hands-free, always listening, wake word, speaker diarization, local neural TTS, external / streaming TTS providers, character voice, voice cloning, and Overlay Voice state. These are not part of Voice v2.2.
 
 ## Overlay IA Position
 
@@ -260,6 +251,8 @@ Current recommendation:
 
 ## Recommended Next Task Order
 
+Historical planning snapshot: the ordering below described the pre-implementation IA phase. UI Surface, Voice v2.2, Voice Profile, TTS Strategy / Provider Registry, and the listed Memory foundation have since advanced. Do not use this section as current status.
+
 Completed:
 
 - UI Surface v0 - Panel Launcher & Workspace Shell.
@@ -331,7 +324,7 @@ Manual acceptance for IA and UI Surface v0:
 2. Memory, Game, Voice, Overlay, Settings, and Developer should each have a clear top-level IA home.
 3. Prompt Preview and Event Stream should live under Developer / Debug and remain safe summaries.
 4. Overlay should remain documented as safe mode, not a complete game HUD.
-5. Voice should be documented as a future direct conversation surface without implementing Voice v2.
+5. Voice should reflect the current v2.2 confirm-send / opt-in Direct Conversation boundary; hands-free, wake word, real local / external TTS providers, and Overlay Voice state remain future-only.
 6. Memory should be understandable to ordinary users and separate from Game Session state.
 7. Live2D should remain a future presentation placeholder.
 8. Panel Shell switching should not discard chat input.

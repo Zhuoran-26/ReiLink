@@ -57,7 +57,17 @@ import {
   SetupStatus,
   UserProfileMemory
 } from "../shared/api";
-import type { ReiLinkEvent } from "../shared/events";
+import type {
+  ReiLinkEvent,
+  TtsEventProviderId,
+  TtsEventProviderStatus,
+  TtsEventSource,
+  TtsEventStrategyId,
+  VoiceAutoSendBlockReason,
+  VoiceCaptureStopReason,
+  VoiceSendDecision,
+  VoiceTranscriptQuality
+} from "../shared/events";
 import {
   normalizeOverlayConfig,
   OVERLAY_DEFAULT_MESSAGE_COUNT,
@@ -79,6 +89,7 @@ import {
 } from "./sessionTimeline";
 import { voiceInput, type VoiceInputStatus } from "./voiceInput";
 import { voiceOutput, type VoiceOutputStatus, type VoiceStopReason } from "./voiceOutput";
+import type { TtsProviderCapability, TtsProviderDescriptor, TtsProviderStatus } from "./ttsProviderRegistry";
 import {
   buildSpokenAssistantReply,
   VOICE_DEBUG_SPEAKING_ALLOWED,
@@ -93,6 +104,10 @@ import {
   type VoiceSpeakSkippedReason
 } from "./voiceProfile";
 import { resolveVoiceConversationState } from "./voiceState";
+import {
+  assessVoiceTranscript,
+  type VoiceTranscriptAssessment
+} from "./voiceTranscriptQuality";
 
 type Message = {
   id: string;
@@ -133,8 +148,21 @@ type VoiceTranscriptSendOptions = {
   mode: AppSettings["voice_interaction_mode"];
   autoSent?: boolean;
   characterCount: number;
+  captureStopReason?: VoiceCaptureStopReason;
+  transcriptQuality: VoiceTranscriptQuality;
+  sendDecision: VoiceSendDecision;
 };
-type VoiceDirectAutoSendBlockReason = "short_recording" | "short_transcript" | "partial_transcript";
+type VoiceTranscriptReady = {
+  source: MainVoiceInputProvider;
+  characterCount: number;
+  inputBeforeTranscript: string;
+  captureStopReason?: VoiceCaptureStopReason;
+  quality: VoiceTranscriptQuality;
+  sendDecision: VoiceSendDecision;
+};
+type VoiceTranscriptHandling = VoiceTranscriptAssessment & {
+  interactionMode: AppSettings["voice_interaction_mode"];
+};
 type LocalAsrSettingsDraft = {
   local_asr_binary_path: string;
   local_asr_model_path: string;
@@ -148,8 +176,9 @@ type WorkspaceTab = {
 };
 
 const LOCAL_ASR_UI_LANGUAGE = "zh-CN";
-const VOICE_DIRECT_MIN_AUTO_SEND_DURATION_MS = 800;
-const VOICE_DIRECT_MIN_AUTO_SEND_CHARS = 4;
+const AUDIO_CAPTURE_PROBE_DURATION_MS = 3000;
+const VOICE_AUTO_SENDING_VISIBLE_MS = 900;
+const VOICE_CAPTURE_LIMIT_WARNING_MS = 5000;
 const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
 const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
   home: "Home / Chat",
@@ -346,6 +375,7 @@ const emptyChatDebug: ChatDebugResponse = {
 const emptyGameSessionDebug: GameSessionDebugResponse = {
   current_game: null,
   current_boss: null,
+  discussion_target: null,
   last_boss: null,
   last_attempted_boss: null,
   last_cleared_boss: null,
@@ -679,6 +709,7 @@ const labelMap: Record<string, string> = {
   cooldown_remaining_seconds: "冷却剩余",
   coverage: "覆盖范围",
   current_boss: "当前 Boss",
+  discussion_target: "讨论目标",
   current_game: "当前游戏",
   current_session: "当前会话",
   current_session_context: "当前会话",
@@ -759,6 +790,26 @@ const labelMap: Record<string, string> = {
   fallback_extractor: "Fallback extractor",
   guard_final_decision: "最终判定",
   applied_by: "应用来源",
+  rejected_updates: "未应用字段",
+  grounding_status: "Grounding 状态",
+  grounding_match_type: "Grounding 匹配",
+  extracted_entity: "提取实体",
+  normalized_entity: "归一实体",
+  canonical_entity: "Canonical ID",
+  canonical_display_name: "Canonical 名称",
+  intent: "识别意图",
+  switch_detected: "检测到切换",
+  previous_target: "旧目标",
+  new_target_candidate: "新目标候选",
+  canonical_candidate: "Canonical 候选",
+  grounding_method: "Grounding 方法",
+  grounding_confidence_band: "Grounding 置信度",
+  extracted_surface: "实体短文本",
+  cleared_fields: "已清理字段",
+  applied_fields: "已应用字段",
+  rejected_fields: "已拒绝字段",
+  rejection_reason: "拒绝原因",
+  attribution_status: "后续归因状态",
   first_attempt_failed: "首次失败",
   compat_retry_used: "Compat retry",
   compat_retry_succeeded: "Compat 结果",
@@ -1146,6 +1197,12 @@ const voiceStopReasonText = (reason?: string) => {
   return labels[reason] ?? debugText(reason);
 };
 
+const ttsStopStatusText = (status?: Extract<ReiLinkEvent, { type: "tts_stopped" }>["status"]) => {
+  if (status === "interrupted") return "已打断";
+  if (status === "stopped") return "已停止";
+  return "";
+};
+
 const voiceInputReasonText = (reason?: string, status?: string) => {
   if (status) return status;
   const labels: Record<string, string> = {
@@ -1171,10 +1228,33 @@ const audioCaptureReasonText = (reason?: string, status?: string) => {
     recording_failed: "录音失败",
     user_stop: "用户停止",
     max_duration: "达到最长录音时间",
-    unmount: "窗口关闭"
+    cancelled: "用户取消",
+    error: "录音错误"
   };
   if (!reason && !status) return "无";
   return labels[reason ?? ""] ?? debugText(status ?? reason);
+};
+
+const voiceTranscriptQualityText = (quality?: VoiceTranscriptQuality) => {
+  const labels: Record<VoiceTranscriptQuality, string> = {
+    acceptable: "质量检查通过",
+    empty: "没有有效内容",
+    too_short: "文本过短",
+    short_recording: "录音过短",
+    non_speech_caption: "仅有字幕或声音说明",
+    suspected_partial: "疑似不完整",
+    suspicious: "质量可疑"
+  };
+  return quality ? labels[quality] : "";
+};
+
+const voiceSendDecisionText = (decision?: VoiceSendDecision) => {
+  const labels: Record<VoiceSendDecision, string> = {
+    editable_draft: "可编辑草稿，尚未发送",
+    blocked: "已阻止发送",
+    auto_send_allowed: "允许自动发送"
+  };
+  return decision ? labels[decision] : "";
 };
 
 const audioBytesText = (sizeBytes: number) => {
@@ -1209,8 +1289,61 @@ const audioConversionStatusText = (status: LocalAsrTranscriptionResponse["conver
   return status ? labels[status] ?? debugText(status) : "无";
 };
 
-const voiceEventSourceText = (source?: "assistant_reply" | "test_voice") => {
+const ttsStrategyText = (strategyId?: TtsEventStrategyId) => {
+  const labels: Record<TtsEventStrategyId, string> = {
+    system_speech_synthesis: "System Speech Synthesis"
+  };
+  return strategyId ? labels[strategyId] ?? debugText(strategyId) : "";
+};
+
+const ttsProviderText = (providerId?: TtsEventProviderId) => {
+  const labels: Record<TtsEventProviderId, string> = {
+    system_speech_synthesis: "System Speech Synthesis",
+    local_tts: "Local TTS",
+    external_tts: "External TTS"
+  };
+  return providerId ? labels[providerId] ?? debugText(providerId) : "";
+};
+
+const ttsProviderStatusText = (status?: TtsProviderStatus | TtsEventProviderStatus) => {
+  const labels: Record<TtsProviderStatus, string> = {
+    available: "可用",
+    unavailable: "不可用",
+    not_configured: "未配置",
+    not_implemented: "未实现"
+  };
+  return status ? labels[status] ?? debugText(status) : "";
+};
+
+const ttsProviderSelectableText = (provider: TtsProviderDescriptor) =>
+  provider.enabled && provider.selectable ? "可选择" : "不可选择";
+
+const ttsProviderCapabilityText = (capability: TtsProviderCapability) =>
+  [
+    capability.localOnly ? "本机系统语音" : "非本机 provider",
+    capability.localOnly && !capability.requiresNetwork ? "ReiLink 不接外部 TTS API" : "",
+    capability.supportsInterrupt ? "支持停止 / 打断" : "不支持停止 / 打断",
+    capability.customVoice ? "支持自定义或角色音色" : "不支持角色音色",
+    capability.streaming ? "支持 provider streaming" : "不支持 provider streaming",
+    capability.requiresApiKey ? "需要 API key" : "不需要 API key"
+  ].filter(Boolean).join("；");
+
+const ttsProviderEventText = (
+  providerId: TtsEventProviderId | undefined,
+  providerStatus: TtsEventProviderStatus | undefined,
+  providerFallbackUsed: boolean | undefined,
+  strategyId: TtsEventStrategyId | undefined
+) =>
+  [
+    providerId ? ttsProviderText(providerId) : ttsStrategyText(strategyId),
+    providerStatus ? ttsProviderStatusText(providerStatus) : "",
+    providerFallbackUsed ? "已回退" : ""
+  ].filter(Boolean).join(" / ");
+
+const voiceEventSourceText = (source?: TtsEventSource) => {
   if (source === "test_voice") return "测试语音";
+  if (source === "direct_conversation") return "直接对话";
+  if (source === "assistant_reply") return "普通回复";
   return "";
 };
 
@@ -1218,7 +1351,7 @@ const voiceInteractionModeText = (mode: AppSettings["voice_interaction_mode"]) =
   mode === "direct_conversation" ? "直接对话" : "确认后发送";
 
 const voiceInteractionModeDescription = (mode: AppSettings["voice_interaction_mode"]) =>
-  mode === "direct_conversation" ? "转写后会自动发送。" : "转写后需要确认发送。";
+  mode === "direct_conversation" ? "主动录音完成后会自动发送；不会常驻监听。" : "转写先进输入框，需要你确认发送。";
 
 const voiceSpeakSourceText = (source?: VoiceReplySpeakSource) => {
   const labels: Record<VoiceReplySpeakSource, string> = {
@@ -1263,6 +1396,48 @@ const semanticGuardDecisionText = (decision?: string | null) => {
     fallback_to_rule: "规则 fallback"
   };
   return labels[decision ?? ""] ?? debugText(decision);
+};
+
+const gameActivityText = (activity?: unknown) => {
+  const labels: Record<string, string> = {
+    boss_attempt: "挑战中",
+    boss_failed: "挑战失败",
+    boss_cleared: "已通过",
+    boss_switching: "切换目标",
+    guide_request: "询问攻略",
+    game_discussion: "讨论游戏",
+    route_or_location: "查找路线",
+    build_or_equipment: "调整配装",
+    unclear_boss_reference: "Boss 指代待确认",
+    boss_history_query: "回顾挑战",
+    frustration_calm: "状态缓和"
+  };
+  const value = String(activity ?? "");
+  return labels[value] ?? debugText(activity);
+};
+
+const bossFreshnessText = (freshness?: unknown) => {
+  const labels: Record<string, string> = {
+    fresh: "新鲜",
+    weak: "待确认",
+    stale: "已过期",
+    none: "无"
+  };
+  const value = String(freshness ?? "");
+  return labels[value] ?? debugText(freshness);
+};
+
+const bossHistoryStatusText = (status?: unknown) => {
+  const labels: Record<string, string> = {
+    current: "当前挑战",
+    attempted: "尝试过",
+    failed: "挑战失败",
+    cleared: "已通过",
+    abandoned: "已放弃",
+    mentioned: "提到过"
+  };
+  const value = String(status ?? "");
+  return labels[value] ?? debugText(status);
 };
 
 const semanticShadowEventStatusText = (status?: string | null) => {
@@ -1396,11 +1571,29 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [
         `语义识别：${debugText(event.source)}`,
         debugText(event.confidence),
+        event.provider_status ? `Provider：${debugText(event.provider_status)}` : "",
+        event.schema_valid != null ? `Schema：${event.schema_valid ? "有效" : "无效"}` : "",
+        event.grounding_status ? `Grounding：${debugText(event.grounding_status)}` : "",
+        event.canonical_entity ? `实体：${debugText(event.canonical_entity)}` : "",
+        event.intent ? `意图：${debugText(event.intent)}` : "",
+        event.switch_detected ? "切换：已检测" : "",
+        event.previous_target ? `旧目标：${debugText(event.previous_target)}` : "",
+        event.new_target_candidate ? `新候选：${debugText(event.new_target_candidate)}` : "",
+        event.canonical_candidate ? `Canonical：${debugText(event.canonical_candidate)}` : "",
+        event.grounding_method ? `方法：${debugText(event.grounding_method)}` : "",
+        event.grounding_confidence_band ? `Grounding 置信度：${debugText(event.grounding_confidence_band)}` : "",
+        event.cleared_fields?.length ? `已清理：${debugText(event.cleared_fields)}` : "",
+        event.rejected_fields?.length ? `已拒绝：${debugText(event.rejected_fields)}` : "",
+        event.rejection_reason ? `拒绝原因：${debugText(event.rejection_reason)}` : "",
+        event.attribution_status && event.attribution_status !== "not_applicable"
+          ? `归因：${debugText(event.attribution_status)}`
+          : "",
         event.shadow_event_status ? semanticShadowEventStatusText(event.shadow_event_status) : "",
         event.fallback_reason ? `原因：${debugText(event.fallback_reason)}` : "",
         event.skip_reason && event.skip_reason !== "no_semantic_signal" ? `跳过：${debugText(event.skip_reason)}` : "",
         event.parse_error ? `错误：${debugText(event.parse_error)}` : "",
         event.applied_updates?.length ? debugText(event.applied_updates) : "",
+        event.rejected_updates?.length ? `未应用：${debugText(event.rejected_updates)}` : "",
         event.llm_guard_decision ? `Guard：${semanticGuardDecisionText(event.llm_guard_decision)}` : "",
         event.llm_guard_summary ? sanitizeSessionTimelineText(event.llm_guard_summary, 96) : "",
         event.llm_shadow_status ? `影子：${semanticShadowStatusText(event.llm_shadow_status)}` : "",
@@ -1411,7 +1604,8 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [
         debugText(event.game),
         debugText(event.current_boss),
-        debugText(event.activity),
+        event.discussion_target ? `讨论 ${debugText(event.discussion_target)}` : "",
+        gameActivityText(event.activity),
         typeof event.death_count === "number" ? `死亡 ${event.death_count}` : "",
         typeof event.frustration_count === "number" ? `挫败 ${event.frustration_count}` : "",
         event.last_cleared_boss ? `通过 ${debugText(event.last_cleared_boss)}` : ""
@@ -1452,13 +1646,13 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "overlay_error":
       return sanitizeOverlayText(event.reason, 48);
     case "tts_started":
-      return [voiceEventSourceText(event.source), `${event.character_count} 字`].filter(Boolean).join(" / ");
+      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_completed":
-      return [voiceEventSourceText(event.source), `${event.character_count} 字`].filter(Boolean).join(" / ");
+      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", `${event.character_count} 字`].filter(Boolean).join(" / ");
     case "tts_stopped":
-      return [voiceEventSourceText(event.source), voiceStopReasonText(event.reason)].filter(Boolean).join(" / ");
+      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", ttsStopStatusText(event.status), voiceStopReasonText(event.reason)].filter(Boolean).join(" / ");
     case "tts_error":
-      return [voiceEventSourceText(event.source), event.status ? debugText(event.status) : debugText(event.reason)].filter(Boolean).join(" / ");
+      return [ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id), voiceEventSourceText(event.source), event.profile ? voiceSpokenModeText(event.profile) : "", event.status ? debugText(event.status) : debugText(event.reason)].filter(Boolean).join(" / ");
     case "voice_input_started":
       return [event.language ? `语言：${debugText(event.language)}` : ""].filter(Boolean).join(" / ") || "正在听";
     case "voice_input_completed":
@@ -1474,12 +1668,24 @@ const eventSummary = (event: ReiLinkEvent) => {
     case "voice_direct_mode_disabled":
       return "直接对话模式已关闭";
     case "voice_transcription_auto_sent":
-      return [`语音文本 ${event.character_count} 字`, event.provider ? debugText(event.provider) : ""].filter(Boolean).join(" / ");
+      return [
+        event.source === "direct_conversation" ? "直接对话" : "",
+        `语音文本 ${event.character_count} 字`,
+        voiceTranscriptQualityText(event.transcript_quality),
+        voiceSendDecisionText(event.send_decision),
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        event.provider ? debugText(event.provider) : ""
+      ].filter(Boolean).join(" / ");
     case "voice_transcription_auto_send_blocked":
       return [
+        event.source === "direct_conversation" ? "直接对话" : "",
         directVoiceAutoSendBlockSummary(event.reason),
         `识别文本 ${event.character_count} 字`,
         event.duration_ms ? `${event.duration_ms} ms` : "",
+        voiceTranscriptQualityText(event.transcript_quality),
+        voiceSendDecisionText(event.send_decision),
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        event.interaction_mode ? voiceInteractionModeText(event.interaction_mode) : "",
         event.provider ? debugText(event.provider) : ""
       ].filter(Boolean).join(" / ");
     case "voice_profile_applied":
@@ -1507,12 +1713,18 @@ const eventSummary = (event: ReiLinkEvent) => {
       return [
         `自动播报 ${event.character_count} 字`,
         event.spoken_mode ? voiceSpokenModeText(event.spoken_mode) : "",
-        event.sentence_count ? `${event.sentence_count} 句` : ""
+        event.sentence_count ? `${event.sentence_count} 句` : "",
+        ttsProviderEventText(event.provider_id, event.provider_status, event.provider_fallback_used, event.strategy_id)
       ].filter(Boolean).join(" / ");
     case "audio_capture_started":
-      return `最长 ${event.duration_ms ?? 0} ms`;
+      return `最长 ${event.max_duration_ms ?? event.duration_ms ?? 0} ms`;
     case "audio_capture_completed":
-      return [`${event.duration_ms} ms`, audioBytesText(event.size_bytes), audioFormatSummaryText(event.mime_type)].filter(Boolean).join(" / ");
+      return [
+        audioCaptureReasonText(event.stop_reason),
+        `${event.duration_ms} ms`,
+        audioBytesText(event.size_bytes),
+        audioFormatSummaryText(event.mime_type)
+      ].filter(Boolean).join(" / ");
     case "audio_capture_stopped":
       return [audioCaptureReasonText(event.reason), event.duration_ms ? `${event.duration_ms} ms` : ""].filter(Boolean).join(" / ");
     case "audio_capture_error":
@@ -1530,7 +1742,9 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.language ? `语言：${debugText(event.language)}` : "",
         event.duration_ms ? `${event.duration_ms} ms` : "",
         event.size_bytes ? audioBytesText(event.size_bytes) : "",
-        audioFormatSummaryText(event.mime_type)
+        audioFormatSummaryText(event.mime_type),
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        event.interaction_mode ? voiceInteractionModeText(event.interaction_mode) : ""
       ].filter(Boolean).join(" / ");
     case "local_asr_transcription_completed":
       return [
@@ -1545,7 +1759,11 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.converted_mime_type ? `转为 ${audioFormatSummaryText(event.converted_mime_type)}` : "",
         event.safe_converter_name ? `转换器：${debugText(event.safe_converter_name)}` : "",
         event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
-        event.model_name ? `模型：${debugText(event.model_name)}` : ""
+        event.model_name ? `模型：${debugText(event.model_name)}` : "",
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        voiceTranscriptQualityText(event.transcript_quality),
+        voiceSendDecisionText(event.send_decision),
+        event.interaction_mode ? voiceInteractionModeText(event.interaction_mode) : ""
       ].filter(Boolean).join(" / ");
     case "local_asr_transcription_error":
       return [
@@ -1561,7 +1779,11 @@ const eventSummary = (event: ReiLinkEvent) => {
         event.converted_mime_type ? `转为 ${audioFormatSummaryText(event.converted_mime_type)}` : "",
         event.safe_converter_name ? `转换器：${debugText(event.safe_converter_name)}` : "",
         event.binary_name ? `程序：${debugText(event.binary_name)}` : "",
-        event.model_name ? `模型：${debugText(event.model_name)}` : ""
+        event.model_name ? `模型：${debugText(event.model_name)}` : "",
+        event.capture_stop_reason ? audioCaptureReasonText(event.capture_stop_reason) : "",
+        voiceTranscriptQualityText(event.transcript_quality),
+        voiceSendDecisionText(event.send_decision),
+        event.interaction_mode ? voiceInteractionModeText(event.interaction_mode) : ""
       ].filter(Boolean).join(" / ");
     default:
       return "event";
@@ -1652,6 +1874,41 @@ const voicePhaseText = (status: VoiceOutputStatus) => {
   if (status.phase === "playing") return "正在播放";
   return "已停止";
 };
+
+function TtsProviderSurface({ voiceStatus }: { voiceStatus: VoiceOutputStatus }) {
+  const futureProviders = voiceStatus.providers.filter((provider) => provider.id !== voiceStatus.providerId);
+  return (
+    <>
+      <div className="settingRow static">
+        <span>当前 TTS Provider</span>
+        <strong>{voiceStatus.providerLabel}</strong>
+      </div>
+      <div className="settingRow static">
+        <span>Provider 状态</span>
+        <strong>{ttsProviderStatusText(voiceStatus.providerStatus)}</strong>
+      </div>
+      <p className="settingHint">
+        {voiceStatus.providerDescription}。{voiceStatus.providerPrivacySummary}
+      </p>
+      <p className="settingHint">Provider 能力：{ttsProviderCapabilityText(voiceStatus.providerCapability)}。</p>
+      <p className="settingHint">{voiceStatus.providerFallbackSummary}</p>
+      {voiceStatus.providerFallbackUsed && (
+        <p className="settingHint">请求的 TTS provider 已回退到 System Speech Synthesis。</p>
+      )}
+      {futureProviders.map((provider) => (
+        <div className="settingRow static" key={provider.id}>
+          <span>{provider.label}</span>
+          <strong>
+            {ttsProviderStatusText(provider.status)} / {ttsProviderSelectableText(provider)}
+          </strong>
+        </div>
+      ))}
+      <p className="settingHint">
+        Local TTS 和 External TTS 当前只是未来 provider 占位信息；不会选择、不会调用本地路径、不会保存 API key，也不会发起网络请求。
+      </p>
+    </>
+  );
+}
 
 const voiceInputPhaseText = (status: VoiceInputStatus) => {
   if (!status.supported) return "当前运行环境不支持本地语音识别";
@@ -1749,13 +2006,33 @@ const selectMainVoiceInputProvider = (
   return "unavailable";
 };
 
+const activeAudioCaptureStatusText = (captureStatus: AudioCaptureStatus, clockMs: number) => {
+  if (captureStatus.phase === "stopping") {
+    return captureStatus.lastStopReason === "max_duration"
+      ? "已达到最长录音时间，正在整理音频"
+      : "正在结束录音，等待音频完整收集";
+  }
+  const maxDurationMs = captureStatus.maxDurationMs ?? MAX_RECORDING_DURATION_MS;
+  const elapsedMs = captureStatus.startedAtMs === null ? 0 : Math.max(0, clockMs - captureStatus.startedAtMs);
+  const remainingMs = Math.max(0, maxDurationMs - elapsedMs);
+  if (remainingMs <= VOICE_CAPTURE_LIMIT_WARNING_MS) {
+    return `正在录音，还可录 ${Math.max(1, Math.ceil(remainingMs / 1000))} 秒`;
+  }
+  return `正在录音，点击麦克风结束（最长 ${Math.round(maxDurationMs / 1000)} 秒）`;
+};
+
 const mainVoiceInputLocalAsrStatusText = (
   phase: LocalAsrTranscriptionPhase,
   result: LocalAsrTranscriptionResponse | null,
-  captureStatus: AudioCaptureStatus
+  captureStatus: AudioCaptureStatus,
+  clockMs: number
 ) => {
-  if (phase === "recording") return "正在录音";
-  if (phase === "transcribing") return "正在本地转写";
+  if (phase === "recording") return activeAudioCaptureStatusText(captureStatus, clockMs);
+  if (phase === "transcribing") {
+    return captureStatus.lastStopReason === "max_duration"
+      ? "已达到最长录音时间，已开始转写"
+      : "正在本地转写";
+  }
   if (!captureStatus.supported) return "当前环境缺少麦克风录音能力";
   if (captureStatus.lastError) return captureStatus.lastError;
   if (!result) return "本地语音识别可用";
@@ -1766,7 +2043,7 @@ const mainVoiceInputLocalAsrStatusText = (
   const labels: Record<LocalAsrTranscriptionResponse["status"], string> = {
     local_asr_transcription_not_ready: "未配置本地 ASR",
     local_asr_transcription_started: "正在本地转写",
-    local_asr_transcription_succeeded: "转写完成，请确认后发送",
+    local_asr_transcription_succeeded: "转写草稿已进入输入框，尚未发送",
     local_asr_transcription_failed: "本地转写失败",
     local_asr_transcription_timed_out: "本地语音识别超时，可以尝试更小模型或更短录音",
     local_asr_transcription_no_text: "没有识别到可用文本",
@@ -1790,9 +2067,10 @@ const mainVoiceInputStatusText = (
   localStatus: LocalAsrStatus,
   localPhase: LocalAsrTranscriptionPhase,
   localResult: LocalAsrTranscriptionResponse | null,
-  captureStatus: AudioCaptureStatus
+  captureStatus: AudioCaptureStatus,
+  clockMs: number
 ) => {
-  if (provider === "local_asr") return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus);
+  if (provider === "local_asr") return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus, clockMs);
   if (provider === "web_speech") return voiceInputPhaseText(webSpeechStatus);
   return mainVoiceInputUnavailableStatusText(localStatus, webSpeechStatus);
 };
@@ -1810,11 +2088,12 @@ const mainVoiceInputButtonTitle = (
   localStatus: LocalAsrStatus,
   localPhase: LocalAsrTranscriptionPhase,
   localResult: LocalAsrTranscriptionResponse | null,
-  captureStatus: AudioCaptureStatus
+  captureStatus: AudioCaptureStatus,
+  clockMs: number
 ) => {
   if (provider === "local_asr") {
     if (localPhase === "recording") return "停止本地录音并开始转写";
-    return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus);
+    return mainVoiceInputLocalAsrStatusText(localPhase, localResult, captureStatus, clockMs);
   }
   if (provider === "web_speech") return webSpeechStatus.phase === "idle" ? "开始语音输入" : "停止识别";
   return mainVoiceInputUnavailableStatusText(localStatus, webSpeechStatus);
@@ -1847,6 +2126,7 @@ const audioProbeStatusText = (
   result: AudioProbeResponse | null
 ) => {
   if (captureStatus.phase === "recording") return "正在录音";
+  if (captureStatus.phase === "stopping") return "正在结束录音";
   if (uploading) return "正在上传临时音频";
   if (!captureStatus.supported) return "当前环境不支持录音";
   if (captureStatus.lastError === "麦克风权限被拒绝") return "权限被拒绝";
@@ -1868,10 +2148,11 @@ const audioProbeStatusText = (
 
 const audioProbeHint = (captureStatus: AudioCaptureStatus, uploading: boolean, result: AudioProbeResponse | null) => {
   if (captureStatus.phase === "recording") return "正在录制短音频。不会转写，也不会自动发送。";
+  if (captureStatus.phase === "stopping") return "正在等待最后一段音频写入。";
   if (uploading) return "正在上传到本机后端做临时文件清理测试。";
   if (captureStatus.lastError) return captureStatus.lastError;
   if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
-  if (!result) return `只测试麦克风录音和临时文件清理，不做语音识别。最长 ${Math.round(MAX_RECORDING_DURATION_MS / 1000)} 秒。`;
+  if (!result) return `只测试麦克风录音和临时文件清理，不做语音识别。最长 ${Math.round(AUDIO_CAPTURE_PROBE_DURATION_MS / 1000)} 秒。`;
   return result.display_message;
 };
 
@@ -1879,17 +2160,20 @@ const localAsrTranscriptionStatusText = (
   phase: LocalAsrTranscriptionPhase,
   result: LocalAsrTranscriptionResponse | null,
   configReady: boolean,
-  captureStatus: AudioCaptureStatus
+  captureStatus: AudioCaptureStatus,
+  clockMs: number
 ) => {
-  if (phase === "recording") return "正在录音";
-  if (phase === "transcribing") return "正在本地转写";
+  if (phase === "recording") return activeAudioCaptureStatusText(captureStatus, clockMs);
+  if (phase === "transcribing") {
+    return captureStatus.lastStopReason === "max_duration" ? "达到最长时间，正在转写" : "正在本地转写";
+  }
   if (!configReady) return "配置未就绪";
   if (!captureStatus.supported) return "当前环境不支持录音";
   if (!result) return "未转写";
   const labels: Record<LocalAsrTranscriptionResponse["status"], string> = {
     local_asr_transcription_not_ready: "配置未就绪",
     local_asr_transcription_started: "正在本地转写",
-    local_asr_transcription_succeeded: "转写完成",
+    local_asr_transcription_succeeded: "转写草稿待检查",
     local_asr_transcription_failed: "转写失败",
     local_asr_transcription_timed_out: "转写超时",
     local_asr_transcription_no_text: "没有识别到可用文本",
@@ -1904,15 +2188,25 @@ const localAsrTranscriptionHint = (
   result: LocalAsrTranscriptionResponse | null,
   configReady: boolean,
   captureStatus: AudioCaptureStatus,
-  localStatus: LocalAsrStatus
+  localStatus: LocalAsrStatus,
+  clockMs: number,
+  transcriptReady?: VoiceTranscriptReady | null
 ) => {
-  if (phase === "recording") return "正在录制短音频。完成后会交给本机后端转写。";
-  if (phase === "transcribing") return "正在本机调用本地语音识别程序。不会自动发送。";
+  if (phase === "recording") return `${activeAudioCaptureStatusText(captureStatus, clockMs)}。说完后请主动停止；当前没有静音自动停止。`;
+  if (phase === "transcribing") {
+    return captureStatus.lastStopReason === "max_duration"
+      ? "已达到最长录音时间，正在本地转写。最终音频已完整收集。"
+      : "正在本机调用本地语音识别程序。确认后发送模式不会自动发送。";
+  }
   if (!configReady) return localStatus.display_message;
   if (captureStatus.lastError) return captureStatus.lastError;
   if (!captureStatus.supported) return "当前环境缺少麦克风录音能力。";
-  if (!result) return "录音并转写会把识别文本填入输入框，发送前仍可编辑或删除。";
-  if (result.status === "local_asr_transcription_succeeded") return "转写完成，请确认后发送。文本已填入输入框，可编辑或删除，不会自动发送。";
+  if (!result) return `录音由你主动停止，最长 ${Math.round(MAX_RECORDING_DURATION_MS / 1000)} 秒。转写文本会作为可编辑草稿进入输入框。`;
+  if (result.status === "local_asr_transcription_succeeded") {
+    return transcriptReady
+      ? voiceTranscriptDraftHint(transcriptReady.quality, transcriptReady.characterCount)
+      : "转写完成。直接对话只有在质量检查通过后才会自动发送。";
+  }
   if (result.status === "local_asr_transcription_timed_out") return "本地语音识别超时，可以尝试更小模型或更短录音。不会自动发送。";
   if (result.conversion_status === "audio_conversion_not_configured") {
     return "当前录音格式需要转换为 WAV，尚未配置音频转换工具。不会上传音频，也不会自动发送。";
@@ -1929,39 +2223,42 @@ const appendTranscriptToInput = (current: string, transcript: string) => {
   return `${current.trimEnd()} ${text}`;
 };
 
-const directVoiceAutoSendBlockReasonText = (reason: VoiceDirectAutoSendBlockReason) => {
-  const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
-    short_recording: "这句太短了。可以再说一次，或确认后发送。",
-    short_transcript: "识别结果太短了。可以再说一次，或确认后发送。",
-    partial_transcript: "这句像是还没说完。可以再说一次，或确认后发送。"
+const directVoiceAutoSendBlockReasonText = (reason: VoiceAutoSendBlockReason) => {
+  const labels: Record<VoiceAutoSendBlockReason, string> = {
+    capture_stop_not_allowed: "这次录音没有正常结束，先没有自动发送。请重新录音。",
+    recording_too_short: "这段录音太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    empty_transcript: "没有识别到有效内容，请重新录音。",
+    transcript_too_short: "识别结果太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    non_speech_caption: "识别结果只有字幕或声音说明，先没有自动发送。请检查输入框内容或重新录音。",
+    suspected_partial: "这句像是还没说完，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    max_duration: "录音达到最长时间，可能没有说完，先没有自动发送。请检查输入框内容。",
+    suspicious_transcript: "这次转写质量可疑，先没有自动发送。请检查输入框内容或重新录音。"
   };
   return labels[reason];
 };
 
-const directVoiceAutoSendBlockSummary = (reason: VoiceDirectAutoSendBlockReason) => {
-  const labels: Record<VoiceDirectAutoSendBlockReason, string> = {
-    short_recording: "录音过短，已改为确认发送",
-    short_transcript: "识别文本过短，已改为确认发送",
-    partial_transcript: "疑似半句，已改为确认发送"
+const directVoiceAutoSendBlockSummary = (reason: VoiceAutoSendBlockReason) => {
+  const labels: Record<VoiceAutoSendBlockReason, string> = {
+    capture_stop_not_allowed: "录音未正常结束，未自动发送",
+    recording_too_short: "录音过短，未自动发送",
+    empty_transcript: "没有有效文本，未自动发送",
+    transcript_too_short: "识别文本过短，未自动发送",
+    non_speech_caption: "仅有字幕或声音说明，未自动发送",
+    suspected_partial: "疑似半句，未自动发送",
+    max_duration: "达到最长录音时间，未自动发送",
+    suspicious_transcript: "转写质量可疑，未自动发送"
   };
   return labels[reason];
 };
 
-const directVoiceAutoSendBlockReason = (transcript: string, durationMs?: number): VoiceDirectAutoSendBlockReason | null => {
-  const text = transcript.trim();
-  if (!text) return "short_transcript";
-  if (typeof durationMs === "number" && durationMs > 0 && durationMs < VOICE_DIRECT_MIN_AUTO_SEND_DURATION_MS) {
-    return "short_recording";
+const voiceTranscriptDraftHint = (quality: VoiceTranscriptQuality, characterCount: number) => {
+  if (quality === "short_recording") return "录音时间太短，请检查现有草稿或重新录音。文本尚未发送。";
+  if (quality === "too_short") return "转写内容较短，请检查、修改或重新录音。文本尚未发送。";
+  if (quality === "non_speech_caption") return "转写只有字幕或声音说明，请检查、修改或重新录音。文本尚未发送。";
+  if (quality === "suspected_partial" || quality === "suspicious") {
+    return "转写可能不完整，请检查、修改或重新录音。文本尚未发送。";
   }
-  const compact = text.replace(/\s+/g, "");
-  if (compact.length <= VOICE_DIRECT_MIN_AUTO_SEND_CHARS - 1) return "short_transcript";
-  const partialEndMarkers = (
-    "我想,我现在,我現在,我换,我換,我换去,我換去,不打,先不打,去打,换到,換到,那个,那個,这个,這個,帮我,幫我"
-  ).split(",");
-  if (compact.length <= 8 && partialEndMarkers.some((marker) => compact.endsWith(marker))) {
-    return "partial_transcript";
-  }
-  return null;
+  return `${characterCount} 字转写草稿已在输入框，尚未发送。请检查内容，也可以重新录音。`;
 };
 
 const safeProviderDebug = (debug: ProviderDebugResponse) => {
@@ -2232,6 +2529,9 @@ export function App() {
   const [audioProbeUploading, setAudioProbeUploading] = useState(false);
   const [localAsrTranscriptionResult, setLocalAsrTranscriptionResult] = useState<LocalAsrTranscriptionResponse | null>(null);
   const [localAsrTranscriptionPhase, setLocalAsrTranscriptionPhase] = useState<LocalAsrTranscriptionPhase>("idle");
+  const [localAsrCaptureStopReason, setLocalAsrCaptureStopReason] = useState<VoiceCaptureStopReason | null>(null);
+  const [localAsrTranscriptAssessment, setLocalAsrTranscriptAssessment] = useState<VoiceTranscriptHandling | null>(null);
+  const [audioCaptureClockMs, setAudioCaptureClockMs] = useState(() => Date.now());
   const [backendRuntimeStatus, setBackendRuntimeStatus] = useState<BackendRuntimeStatus>(emptyBackendRuntimeStatus);
   const [backendRuntimeAvailable, setBackendRuntimeAvailable] = useState(false);
   const [pendingMemories, setPendingMemories] = useState<PendingMemory[]>([]);
@@ -2290,8 +2590,9 @@ export function App() {
   const [lastResponseLatencyMs, setLastResponseLatencyMs] = useState(0);
   const [voiceStatus, setVoiceStatus] = useState<VoiceOutputStatus>(() => voiceOutput.getStatus());
   const [voiceInputStatus, setVoiceInputStatus] = useState<VoiceInputStatus>(() => voiceInput.getStatus());
-  const [voiceTranscriptReady, setVoiceTranscriptReady] = useState<{ source: MainVoiceInputProvider; characterCount: number } | null>(null);
+  const [voiceTranscriptReady, setVoiceTranscriptReady] = useState<VoiceTranscriptReady | null>(null);
   const [voiceAutoSendBlockedHint, setVoiceAutoSendBlockedHint] = useState("");
+  const [voiceAutoSendingActive, setVoiceAutoSendingActive] = useState(false);
   const [voiceAssistantTurnActive, setVoiceAssistantTurnActive] = useState(false);
   const [voiceTransientState, setVoiceTransientState] = useState<VoiceTransientState>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
@@ -2314,6 +2615,8 @@ export function App() {
   const spokenAssistantReplyIdsRef = useRef<Set<string>>(new Set());
   const proactiveSuppressedUntilRef = useRef(0);
   const voiceInterruptedTimerRef = useRef<number | null>(null);
+  const voiceAutoSendingTimerRef = useRef<number | null>(null);
+  const voiceInteractionModeRef = useRef<AppSettings["voice_interaction_mode"]>(appSettings.voice_interaction_mode);
 
   const suppressProactiveAfterSystemAction = useCallback(() => {
     proactiveSuppressedUntilRef.current = Date.now() + PROACTIVE_SYSTEM_ACTION_SUPPRESSION_MS;
@@ -2325,31 +2628,65 @@ export function App() {
     voiceInterruptedTimerRef.current = null;
   }, []);
 
+  const clearVoiceAutoSendingTimer = useCallback(() => {
+    if (voiceAutoSendingTimerRef.current === null) return;
+    window.clearTimeout(voiceAutoSendingTimerRef.current);
+    voiceAutoSendingTimerRef.current = null;
+  }, []);
+
+  const showVoiceAutoSending = useCallback(() => {
+    clearVoiceAutoSendingTimer();
+    setVoiceAutoSendingActive(true);
+    voiceAutoSendingTimerRef.current = window.setTimeout(() => {
+      voiceAutoSendingTimerRef.current = null;
+      setVoiceAutoSendingActive(false);
+    }, VOICE_AUTO_SENDING_VISIBLE_MS);
+  }, [clearVoiceAutoSendingTimer]);
+
+  const clearVoiceAutoSending = useCallback(() => {
+    clearVoiceAutoSendingTimer();
+    setVoiceAutoSendingActive(false);
+  }, [clearVoiceAutoSendingTimer]);
+
   const clearVoiceTransientState = useCallback(() => {
     clearVoiceInterruptedTimer();
+    clearVoiceAutoSending();
     setVoiceTransientState(null);
     setVoiceAutoSendBlockedHint("");
-  }, [clearVoiceInterruptedTimer]);
+  }, [clearVoiceAutoSending, clearVoiceInterruptedTimer]);
 
   const setVoiceInterrupted = useCallback(() => {
     clearVoiceInterruptedTimer();
+    clearVoiceAutoSending();
     setVoiceTransientState({ kind: "interrupted" });
     voiceInterruptedTimerRef.current = window.setTimeout(() => {
       voiceInterruptedTimerRef.current = null;
       setVoiceTransientState((current) => current?.kind === "interrupted" ? null : current);
     }, 1400);
-  }, [clearVoiceInterruptedTimer]);
+  }, [clearVoiceAutoSending, clearVoiceInterruptedTimer]);
 
   const setVoiceError = useCallback((message = "语音没有接上。可以再试一次。") => {
     clearVoiceInterruptedTimer();
+    clearVoiceAutoSending();
     setVoiceTransientState({ kind: "error", message });
-  }, [clearVoiceInterruptedTimer]);
+  }, [clearVoiceAutoSending, clearVoiceInterruptedTimer]);
 
-  const markVoiceTranscriptReady = useCallback((source: MainVoiceInputProvider, transcript: string) => {
-    const characterCount = transcript.trim().length;
-    if (characterCount <= 0) return;
+  const markVoiceTranscriptReady = useCallback((
+    source: MainVoiceInputProvider,
+    assessment: VoiceTranscriptAssessment,
+    inputBeforeTranscript: string,
+    captureStopReason?: VoiceCaptureStopReason
+  ) => {
+    if (assessment.characterCount <= 0) return;
     clearVoiceTransientState();
-    setVoiceTranscriptReady({ source, characterCount });
+    setVoiceTranscriptReady({
+      source,
+      characterCount: assessment.characterCount,
+      inputBeforeTranscript,
+      captureStopReason,
+      quality: assessment.quality,
+      sendDecision: assessment.sendDecision
+    });
   }, [clearVoiceTransientState]);
 
   const clearVoiceTranscriptReady = useCallback(() => {
@@ -2370,19 +2707,22 @@ export function App() {
     voiceOutput.speak(TEST_VOICE_TEXT, {
       rate: appSettings.voice_rate,
       volume: appSettings.voice_volume,
-      source: "test_voice"
+      source: "test_voice",
+      profile: "full"
     });
   }, [appSettings.voice_rate, appSettings.voice_volume, clearVoiceTransientState]);
 
   const startVoiceInput = () => {
     clearVoiceTransientState();
     clearVoiceTranscriptReady();
+    const interactionModeAtStart = voiceInteractionModeRef.current;
+    const inputBeforeTranscript = input;
     if (VOICE_INTERRUPT_ON_NEW_RECORDING && voiceOutput.getStatus().active) {
       stopVoiceOutput("user_stop");
     }
     const started = voiceInput.start({
       onFinalTranscript: (transcript) => {
-        handleRecognizedVoiceTranscript("web_speech", transcript);
+        handleRecognizedVoiceTranscript("web_speech", transcript, { interactionModeAtStart, inputBeforeTranscript });
       }
     });
     if (!started) {
@@ -2458,9 +2798,11 @@ export function App() {
 
   const emitGameSessionChanged = useCallback((currentGameSession: GameSessionDebugResponse) => {
     const currentBoss = currentGameSession.current_boss?.name;
+    const discussionTarget = currentGameSession.discussion_target?.name;
     const signature = eventSignature(
       currentGameSession.current_game,
       currentBoss,
+      discussionTarget,
       currentGameSession.current_activity,
       currentGameSession.death_count,
       currentGameSession.frustration_count,
@@ -2473,6 +2815,7 @@ export function App() {
       timestamp: eventTimestamp(),
       game: currentGameSession.current_game ?? undefined,
       current_boss: currentBoss,
+      discussion_target: discussionTarget,
       activity: currentGameSession.current_activity ?? undefined,
       death_count: currentGameSession.death_count,
       frustration_count: currentGameSession.frustration_count,
@@ -2557,6 +2900,23 @@ export function App() {
     const skipReason = trace?.skip_reason ?? debug.skip_reason ?? null;
     const parseError = trace?.parse_error ?? debug.parse_error ?? null;
     const appliedUpdates = trace?.applied_updates ?? debug.applied_updates ?? [];
+    const rejectedUpdates = trace?.rejected_updates ?? debug.rejected_updates ?? [];
+    const groundingStatus = trace?.grounding_status ?? debug.grounding_status ?? null;
+    const groundingMatchType = trace?.grounding_match_type ?? debug.grounding_match_type ?? null;
+    const canonicalEntity = trace?.canonical_entity ?? debug.canonical_entity ?? null;
+    const canonicalDisplayName = trace?.canonical_display_name ?? debug.canonical_display_name ?? null;
+    const intent = trace?.intent ?? debug.intent ?? null;
+    const switchDetected = trace?.switch_detected ?? debug.switch_detected ?? false;
+    const previousTarget = trace?.previous_target ?? debug.previous_target ?? null;
+    const newTargetCandidate = trace?.new_target_candidate ?? debug.new_target_candidate ?? null;
+    const canonicalCandidate = trace?.canonical_candidate ?? debug.canonical_candidate ?? null;
+    const groundingMethod = trace?.grounding_method ?? debug.grounding_method ?? null;
+    const groundingConfidenceBand = trace?.grounding_confidence_band ?? debug.grounding_confidence_band ?? "low";
+    const clearedFields = trace?.cleared_fields ?? debug.cleared_fields ?? [];
+    const appliedFields = trace?.applied_fields ?? debug.applied_fields ?? appliedUpdates;
+    const rejectedFields = trace?.rejected_fields ?? debug.rejected_fields ?? rejectedUpdates;
+    const rejectionReason = trace?.rejection_reason ?? debug.rejection_reason ?? null;
+    const attributionStatus = trace?.attribution_status ?? debug.attribution_status ?? null;
     const shadowStatus = trace?.llm_shadow_status ?? debug.llm_shadow_status ?? null;
     const shadowConfidence = trace?.llm_shadow_confidence ?? debug.llm_shadow_confidence ?? null;
     const shadowSummary = trace?.llm_shadow_summary ?? debug.llm_shadow_summary ?? null;
@@ -2593,6 +2953,22 @@ export function App() {
       skipReason,
       parseError,
       appliedUpdates,
+      rejectedUpdates,
+      groundingStatus,
+      groundingMatchType,
+      canonicalEntity,
+      intent,
+      switchDetected,
+      previousTarget,
+      newTargetCandidate,
+      canonicalCandidate,
+      groundingMethod,
+      groundingConfidenceBand,
+      clearedFields,
+      appliedFields,
+      rejectedFields,
+      rejectionReason,
+      attributionStatus,
       shadowStatus,
       shadowConfidence,
       shadowSummary,
@@ -2623,6 +2999,25 @@ export function App() {
       skip_reason: skipReason,
       parse_error: parseError,
       applied_updates: appliedUpdates,
+      rejected_updates: rejectedUpdates,
+      provider_status: debug.llm_provider_status ?? null,
+      schema_valid: debug.llm_schema_valid ?? null,
+      grounding_status: groundingStatus,
+      grounding_match_type: groundingMatchType,
+      canonical_entity: canonicalEntity,
+      canonical_display_name: canonicalDisplayName,
+      intent,
+      switch_detected: switchDetected,
+      previous_target: previousTarget,
+      new_target_candidate: newTargetCandidate,
+      canonical_candidate: canonicalCandidate,
+      grounding_method: groundingMethod,
+      grounding_confidence_band: groundingConfidenceBand,
+      cleared_fields: clearedFields,
+      applied_fields: appliedFields,
+      rejected_fields: rejectedFields,
+      rejection_reason: rejectionReason,
+      attribution_status: attributionStatus,
       llm_shadow_status: shadowStatus ?? undefined,
       llm_shadow_confidence: shadowConfidence ?? undefined,
       llm_shadow_summary: shadowSummary,
@@ -2657,6 +3052,25 @@ export function App() {
         skip_reason: event.skip_reason ?? null,
         parse_error: event.parse_error ?? null,
         applied_updates: event.applied_updates ?? [],
+        rejected_updates: event.rejected_updates ?? [],
+        provider_status: event.provider_status ?? null,
+        schema_valid: event.schema_valid ?? null,
+        grounding_status: event.grounding_status ?? null,
+        grounding_match_type: event.grounding_match_type ?? null,
+        canonical_entity: event.canonical_entity ?? null,
+        canonical_display_name: event.canonical_display_name ?? null,
+        intent: event.intent ?? null,
+        switch_detected: event.switch_detected ?? false,
+        previous_target: event.previous_target ?? null,
+        new_target_candidate: event.new_target_candidate ?? null,
+        canonical_candidate: event.canonical_candidate ?? null,
+        grounding_method: event.grounding_method ?? null,
+        grounding_confidence_band: event.grounding_confidence_band,
+        cleared_fields: event.cleared_fields ?? [],
+        applied_fields: event.applied_fields ?? event.applied_updates ?? [],
+        rejected_fields: event.rejected_fields ?? event.rejected_updates ?? [],
+        rejection_reason: event.rejection_reason ?? null,
+        attribution_status: event.attribution_status ?? null,
         llm_shadow_status: event.llm_shadow_status,
         llm_shadow_confidence: event.llm_shadow_confidence,
         llm_shadow_summary: event.llm_shadow_summary ?? null,
@@ -2996,13 +3410,16 @@ export function App() {
       setLastError("");
       setLastRawError("");
       const updated = await api.updateSettings(patch);
-      setAppSettings((previous) =>
-        normalizeAppSettings(
+      setAppSettings((previous) => {
+        const nextSettings = normalizeAppSettings(
           updated,
           voiceSettingFallback(updated, previous, patch)
-        )
-      );
+        );
+        voiceInteractionModeRef.current = nextSettings.voice_interaction_mode;
+        return nextSettings;
+      });
       if (patch.voice_interaction_mode) {
+        if (patch.voice_interaction_mode === "confirm_send") setVoiceAutoSendBlockedHint("");
         eventBus.emit({
           type: patch.voice_interaction_mode === "direct_conversation" ? "voice_direct_mode_enabled" : "voice_direct_mode_disabled",
           timestamp: eventTimestamp()
@@ -3149,10 +3566,10 @@ export function App() {
       audioCapture.stop("user_stop");
       return;
     }
-    if (!audioCaptureStatus.supported || audioProbeUploading) return;
+    if (audioCaptureStatus.phase !== "idle" || !audioCaptureStatus.supported || audioProbeUploading) return;
     setAudioProbeResult(null);
     await audioCapture.start({
-      durationMs: 3000,
+      durationMs: AUDIO_CAPTURE_PROBE_DURATION_MS,
       onRecorded: (recording) => {
         setAudioProbeUploading(true);
         void api.probeAudio(recording.blob, recording.durationMs)
@@ -3189,40 +3606,91 @@ export function App() {
     });
   };
 
-  function handleRecognizedVoiceTranscript(source: MainVoiceInputProvider, transcript: string, options: { durationMs?: number } = {}) {
+  const resolvedCapturedVoiceMode = (modeAtStart: AppSettings["voice_interaction_mode"]) =>
+    modeAtStart === "direct_conversation" && voiceInteractionModeRef.current === "direct_conversation"
+      ? "direct_conversation"
+      : "confirm_send";
+
+  function handleRecognizedVoiceTranscript(
+    source: MainVoiceInputProvider,
+    transcript: string,
+    options: {
+      durationMs?: number;
+      captureStopReason?: VoiceCaptureStopReason;
+      interactionModeAtStart?: AppSettings["voice_interaction_mode"];
+      inputBeforeTranscript?: string;
+    } = {}
+  ): VoiceTranscriptHandling {
     const trimmedTranscript = transcript.trim();
-    if (!trimmedTranscript) return;
-    if (appSettings.voice_interaction_mode === "direct_conversation") {
-      const blockReason = directVoiceAutoSendBlockReason(trimmedTranscript, options.durationMs);
+    const modeAtStart = options.interactionModeAtStart ?? voiceInteractionModeRef.current;
+    const interactionMode: AppSettings["voice_interaction_mode"] = resolvedCapturedVoiceMode(modeAtStart);
+    const assessment = assessVoiceTranscript({
+      transcript,
+      interactionMode,
+      durationMs: options.durationMs,
+      captureStopReason: options.captureStopReason
+    });
+
+    if (assessment.quality === "empty") {
+      setVoiceError("没有识别到有效内容，请重新录音。");
+      if (interactionMode === "direct_conversation") {
+        eventBus.emit({
+          type: "voice_transcription_auto_send_blocked",
+          timestamp: eventTimestamp(),
+          character_count: 0,
+          provider: source === "unavailable" ? undefined : source,
+          source: "direct_conversation",
+          reason: assessment.autoSendBlockReason ?? "empty_transcript",
+          duration_ms: options.durationMs,
+          capture_stop_reason: options.captureStopReason,
+          transcript_quality: assessment.quality,
+          send_decision: assessment.sendDecision,
+          interaction_mode: interactionMode
+        });
+      }
+      return { ...assessment, interactionMode };
+    }
+    if (interactionMode === "direct_conversation") {
+      const blockReason = assessment.autoSendBlockReason;
       if (blockReason) {
         setInput((current) => appendTranscriptToInput(current, transcript));
-        markVoiceTranscriptReady(source, transcript);
+        markVoiceTranscriptReady(source, assessment, options.inputBeforeTranscript ?? "", options.captureStopReason);
         setVoiceAutoSendBlockedHint(directVoiceAutoSendBlockReasonText(blockReason));
         eventBus.emit({
           type: "voice_transcription_auto_send_blocked",
           timestamp: eventTimestamp(),
           character_count: trimmedTranscript.length,
           provider: source === "unavailable" ? undefined : source,
+          source: "direct_conversation",
           reason: blockReason,
-          duration_ms: options.durationMs
+          duration_ms: options.durationMs,
+          capture_stop_reason: options.captureStopReason,
+          transcript_quality: assessment.quality,
+          send_decision: assessment.sendDecision,
+          interaction_mode: interactionMode
         });
-        return;
+        return { ...assessment, interactionMode };
       }
       clearVoiceTransientState();
       clearVoiceTranscriptReady();
+      showVoiceAutoSending();
       void submitChatMessage(trimmedTranscript, {
         clearInput: false,
         voiceTranscript: {
           source,
           mode: "direct_conversation",
           autoSent: true,
-          characterCount: trimmedTranscript.length
+          characterCount: trimmedTranscript.length,
+          captureStopReason: options.captureStopReason,
+          transcriptQuality: assessment.quality,
+          sendDecision: assessment.sendDecision
         }
       });
-      return;
+      return { ...assessment, interactionMode };
     }
     setInput((current) => appendTranscriptToInput(current, transcript));
-    markVoiceTranscriptReady(source, transcript);
+    markVoiceTranscriptReady(source, assessment, options.inputBeforeTranscript ?? "", options.captureStopReason);
+    return { ...assessment, interactionMode };
   }
 
   const runLocalAsrTranscription = async () => {
@@ -3238,16 +3706,21 @@ export function App() {
     ) {
       return;
     }
+    const interactionModeAtStart = voiceInteractionModeRef.current;
+    const inputBeforeTranscript = input;
     clearVoiceTransientState();
     clearVoiceTranscriptReady();
     if (voiceOutput.getStatus().active) {
       stopVoiceOutput("user_stop");
     }
     setLocalAsrTranscriptionResult(null);
+    setLocalAsrCaptureStopReason(null);
+    setLocalAsrTranscriptAssessment(null);
     setLocalAsrTranscriptionPhase("recording");
     const started = await audioCapture.start({
-      durationMs: 3000,
+      durationMs: MAX_RECORDING_DURATION_MS,
       onRecorded: (recording) => {
+        setLocalAsrCaptureStopReason(recording.stopReason);
         setLocalAsrTranscriptionPhase("transcribing");
         eventBus.emit({
           type: "local_asr_transcription_started",
@@ -3256,13 +3729,21 @@ export function App() {
           language: LOCAL_ASR_UI_LANGUAGE,
           duration_ms: recording.durationMs,
           size_bytes: recording.sizeBytes,
-          mime_type: recording.mimeType
+          mime_type: recording.mimeType,
+          capture_stop_reason: recording.stopReason,
+          interaction_mode: interactionModeAtStart
         });
         void api.transcribeLocalAsr(recording.blob, recording.durationMs, LOCAL_ASR_UI_LANGUAGE)
           .then((result) => {
             setLocalAsrTranscriptionResult(result);
-            if (result.status === "local_asr_transcription_succeeded" && result.transcript.trim()) {
-              handleRecognizedVoiceTranscript("local_asr", result.transcript, { durationMs: result.duration_ms });
+            if (result.status === "local_asr_transcription_succeeded") {
+              const handling = handleRecognizedVoiceTranscript("local_asr", result.transcript, {
+                durationMs: recording.durationMs,
+                captureStopReason: recording.stopReason,
+                interactionModeAtStart,
+                inputBeforeTranscript
+              });
+              setLocalAsrTranscriptAssessment(handling);
               eventBus.emit({
                 type: "local_asr_transcription_completed",
                 timestamp: eventTimestamp(),
@@ -3283,14 +3764,32 @@ export function App() {
                 temporary_input_cleaned: result.temporary_input_cleaned,
                 temporary_converted_cleaned: result.temporary_converted_cleaned,
                 binary_name: result.binary_name ?? undefined,
-                model_name: result.model_name ?? undefined
+                model_name: result.model_name ?? undefined,
+                capture_stop_reason: recording.stopReason,
+                transcript_quality: handling.quality,
+                send_decision: handling.sendDecision,
+                interaction_mode: handling.interactionMode
               });
               return;
             }
+            const failedAssessment = assessVoiceTranscript({
+              transcript: result.transcript,
+              interactionMode: "confirm_send",
+              durationMs: result.duration_ms,
+              captureStopReason: recording.stopReason
+            });
+            const failedInteractionMode = resolvedCapturedVoiceMode(interactionModeAtStart);
+            setLocalAsrTranscriptAssessment({
+              ...failedAssessment,
+              sendDecision: "blocked",
+              interactionMode: failedInteractionMode
+            });
             setVoiceError(
-              result.conversion_status === "audio_conversion_not_configured"
+              result.status === "local_asr_transcription_no_text"
+                ? "没有识别到有效内容，请重新录音。"
+                : result.conversion_status === "audio_conversion_not_configured"
                 ? "本地语音识别暂不可用。请检查设置。"
-                : mainVoiceInputLocalAsrStatusText("idle", result, audioCaptureStatus)
+                : mainVoiceInputLocalAsrStatusText("idle", result, audioCaptureStatus, Date.now())
             );
             eventBus.emit({
               type: "local_asr_transcription_error",
@@ -3313,7 +3812,11 @@ export function App() {
               temporary_input_cleaned: result.temporary_input_cleaned,
               temporary_converted_cleaned: result.temporary_converted_cleaned,
               binary_name: result.binary_name ?? undefined,
-              model_name: result.model_name ?? undefined
+              model_name: result.model_name ?? undefined,
+              capture_stop_reason: recording.stopReason,
+              transcript_quality: failedAssessment.quality,
+              send_decision: "blocked",
+              interaction_mode: failedInteractionMode
             });
           })
           .catch(() => {
@@ -3333,6 +3836,13 @@ export function App() {
               model_name: localAsrStatus.safe_model_name
             };
             setLocalAsrTranscriptionResult(fallback);
+            setLocalAsrTranscriptAssessment({
+              characterCount: 0,
+              quality: "empty",
+              sendDecision: "blocked",
+              autoSendBlockReason: "empty_transcript",
+              interactionMode: interactionModeAtStart
+            });
             setVoiceError("本地语音识别暂不可用。请检查设置。");
             eventBus.emit({
               type: "local_asr_transcription_error",
@@ -3354,7 +3864,11 @@ export function App() {
               temporary_input_cleaned: fallback.temporary_input_cleaned,
               temporary_converted_cleaned: fallback.temporary_converted_cleaned,
               binary_name: fallback.binary_name ?? undefined,
-              model_name: fallback.model_name ?? undefined
+              model_name: fallback.model_name ?? undefined,
+              capture_stop_reason: recording.stopReason,
+              transcript_quality: "empty",
+              send_decision: "blocked",
+              interaction_mode: interactionModeAtStart
             });
           })
           .finally(() => setLocalAsrTranscriptionPhase("idle"));
@@ -3363,6 +3877,25 @@ export function App() {
     if (!started) {
       setLocalAsrTranscriptionPhase("idle");
       setVoiceError(audioCapture.getStatus().lastError ?? "本地语音识别暂不可用。请检查设置。");
+    }
+  };
+
+  const cancelLocalAsrRecording = () => {
+    if (localAsrTranscriptionPhase !== "recording") return;
+    if (!audioCapture.cancel()) return;
+    setLocalAsrCaptureStopReason("cancelled");
+    setLocalAsrTranscriptionPhase("idle");
+    setVoiceTransientState(null);
+  };
+
+  const restartVoiceTranscription = () => {
+    if (!voiceTranscriptReady || localAsrTranscriptionPhase !== "idle") return;
+    setInput(voiceTranscriptReady.inputBeforeTranscript);
+    clearVoiceTranscriptReady();
+    if (mainVoiceInputProvider === "local_asr") {
+      void runLocalAsrTranscription();
+    } else if (mainVoiceInputProvider === "web_speech") {
+      startVoiceInput();
     }
   };
 
@@ -3533,16 +4066,35 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = audioCapture.subscribe(setAudioCaptureStatus);
+    const unsubscribe = audioCapture.subscribe((status) => {
+      setAudioCaptureStatus(status);
+      if (status.phase === "idle" && (status.lastStopReason === "cancelled" || status.lastStopReason === "error")) {
+        setLocalAsrTranscriptionPhase((current) => current === "recording" ? "idle" : current);
+      }
+    });
     return () => {
       unsubscribe();
-      audioCapture.stop("unmount");
+      audioCapture.cancel();
     };
   }, []);
 
   useEffect(() => {
-    return () => clearVoiceInterruptedTimer();
-  }, [clearVoiceInterruptedTimer]);
+    voiceInteractionModeRef.current = appSettings.voice_interaction_mode;
+  }, [appSettings.voice_interaction_mode]);
+
+  useEffect(() => {
+    if (audioCaptureStatus.phase !== "recording") return;
+    setAudioCaptureClockMs(Date.now());
+    const interval = window.setInterval(() => setAudioCaptureClockMs(Date.now()), 500);
+    return () => window.clearInterval(interval);
+  }, [audioCaptureStatus.phase]);
+
+  useEffect(() => {
+    return () => {
+      clearVoiceInterruptedTimer();
+      clearVoiceAutoSendingTimer();
+    };
+  }, [clearVoiceAutoSendingTimer, clearVoiceInterruptedTimer]);
 
   useEffect(() => {
     if (!voiceStatus.lastError) return;
@@ -3721,7 +4273,10 @@ export function App() {
       ? {
           source: voiceTranscriptReady.source,
           mode: appSettings.voice_interaction_mode,
-          characterCount: Math.max(voiceTranscriptReady.characterCount, trimmed.length)
+          characterCount: Math.max(voiceTranscriptReady.characterCount, trimmed.length),
+          captureStopReason: voiceTranscriptReady.captureStopReason,
+          transcriptQuality: voiceTranscriptReady.quality,
+          sendDecision: voiceTranscriptReady.sendDecision
         }
       : null;
     const voiceTranscript = options.voiceTranscript ?? fallbackVoiceTranscript;
@@ -3732,7 +4287,9 @@ export function App() {
         ? "voice_confirmed"
         : "text";
     if (sendingVoiceTranscript) {
-      clearVoiceTransientState();
+      clearVoiceInterruptedTimer();
+      setVoiceTransientState(null);
+      setVoiceAutoSendBlockedHint("");
       setVoiceAssistantTurnActive(true);
     }
     const userMessage: Message = { id: crypto.randomUUID(), role: "user", text: trimmed, createdAt: new Date().toISOString() };
@@ -3751,13 +4308,18 @@ export function App() {
         type: "voice_transcription_auto_sent",
         timestamp: userMessage.createdAt,
         character_count: voiceTranscript.characterCount,
-        provider: voiceTranscript.source === "unavailable" ? undefined : voiceTranscript.source
+        provider: voiceTranscript.source === "unavailable" ? undefined : voiceTranscript.source,
+        source: "direct_conversation",
+        capture_stop_reason: voiceTranscript.captureStopReason,
+        transcript_quality: voiceTranscript.transcriptQuality,
+        send_decision: voiceTranscript.sendDecision,
+        interaction_mode: voiceTranscript.mode
       });
     }
     eventBus.emit({
       type: "user_message_sent",
       timestamp: userMessage.createdAt,
-      text: voiceTranscript?.autoSent ? "" : trimmed,
+      text: sendingVoiceTranscript ? "" : trimmed,
       source: chatInputSource,
       character_count: sendingVoiceTranscript ? voiceTranscript?.characterCount ?? trimmed.length : undefined
     });
@@ -3838,18 +4400,26 @@ export function App() {
               reason: "voice_profile"
             });
           }
+          const ttsSpeakSource = speakDecision.source === "direct_conversation" ? "direct_conversation" : "assistant_reply";
           const speakingStarted = voiceOutput.speak(speakDecision.spokenText, {
             rate: appSettings.voice_rate,
             volume: appSettings.voice_volume,
-            source: "assistant_reply"
+            source: ttsSpeakSource,
+            profile: speakDecision.spokenMode
           });
           if (voiceTranscript?.mode === "direct_conversation" && speakingStarted) {
+            const ttsStatus = voiceOutput.getStatus();
             eventBus.emit({
               type: "voice_reply_auto_speak_started",
               timestamp: eventTimestamp(),
               character_count: speakDecision.spokenCharacterCount,
               spoken_mode: speakDecision.spokenMode,
-              sentence_count: speakDecision.sentenceCount
+              sentence_count: speakDecision.sentenceCount,
+              source: "direct_conversation",
+              strategy_id: ttsStatus.strategyId,
+              provider_id: ttsStatus.providerId,
+              provider_status: ttsStatus.providerStatus,
+              provider_fallback_used: ttsStatus.providerFallbackUsed
             });
           }
           if (sendingVoiceTranscript && !speakingStarted) {
@@ -3879,6 +4449,7 @@ export function App() {
     } finally {
       setSending(false);
       setVoiceAssistantTurnActive(false);
+      clearVoiceAutoSending();
     }
   };
 
@@ -4036,6 +4607,7 @@ export function App() {
   const gameStateSummary = {
     current_game: firstDefined(promptGameState.current_game, gameSessionDebug.current_game),
     current_boss: firstDefined(promptGameState.current_boss, gameSessionDebug.current_boss),
+    discussion_target: firstDefined(promptGameState.discussion_target, gameSessionDebug.discussion_target),
     current_activity: firstDefined(promptGameState.current_activity, gameSessionDebug.current_activity),
     freshness: firstDefined(promptGameState.freshness, gameSessionDebug.current_boss?.freshness),
     death_count: firstDefined(promptGameState.death_count, gameSessionDebug.death_count),
@@ -4226,6 +4798,7 @@ export function App() {
   const localAsrTranscriptionButtonDisabled = !localAsrConfigReady ||
     !audioCaptureStatus.supported ||
     audioProbeUploading ||
+    audioCaptureStatus.phase === "stopping" ||
     (audioCaptureStatus.phase !== "idle" && localAsrTranscriptionPhase !== "recording") ||
     localAsrTranscriptionPhase === "transcribing";
   const mainVoiceInputProvider = selectMainVoiceInputProvider(localAsrStatus, voiceInputStatus);
@@ -4248,13 +4821,20 @@ export function App() {
     localAsrStatus,
     localAsrTranscriptionPhase,
     localAsrTranscriptionResult,
-    audioCaptureStatus
+    audioCaptureStatus,
+    audioCaptureClockMs
   );
   const mainVoiceInputStatus =
     voiceDirectConversationEnabled &&
     localAsrTranscriptionPhase === "idle" &&
     localAsrTranscriptionResult?.status === "local_asr_transcription_succeeded"
-      ? "转写完成，已自动发送"
+      ? voiceAutoSendBlockedHint
+        ? "转写草稿待检查，尚未发送"
+        : voiceTranscriptReady
+          ? "转写草稿待检查，尚未发送"
+        : localAsrTranscriptionResult.transcript.trim()
+          ? "转写完成，已自动发送"
+          : "没有识别到可用文本"
       : baseMainVoiceInputStatus;
   const mainVoiceInputDisabled = mainVoiceInputUsesLocalAsr
     ? localAsrTranscriptionButtonDisabled
@@ -4273,27 +4853,29 @@ export function App() {
     localAsrStatus,
     localAsrTranscriptionPhase,
     localAsrTranscriptionResult,
-    audioCaptureStatus
+    audioCaptureStatus,
+    audioCaptureClockMs
   );
   const voiceErrorMessage = voiceTransientState?.kind === "error" ? voiceTransientState.message ?? "语音没有接上。可以再试一次。" : null;
   const resolvedVoiceConversationState = resolveVoiceConversationState({
     transcribing: localAsrTranscriptionPhase === "transcribing",
     listening: localAsrTranscriptionPhase === "recording" || voiceInputStatus.phase !== "idle",
+    autoSending: voiceAutoSendingActive,
     assistantThinking: voiceAssistantTurnActive && sending,
     speaking: voiceStatus.active,
     interrupted: voiceTransientState?.kind === "interrupted",
-    readyToSend: Boolean(voiceTranscriptReady && input.trim() && (!voiceDirectConversationEnabled || voiceAutoSendBlockedHint)),
+    readyToSend: Boolean(voiceTranscriptReady && input.trim()),
     errorMessage: voiceErrorMessage
   });
   const voiceConversationState = {
     ...resolvedVoiceConversationState,
     description:
-      voiceDirectConversationEnabled && ["idle", "transcribing"].includes(resolvedVoiceConversationState.state)
+      voiceDirectConversationEnabled && resolvedVoiceConversationState.state === "idle"
         ? voiceInteractionModeHint
         : resolvedVoiceConversationState.description
   };
   const voiceConfirmSendText = voiceTranscriptReady
-    ? voiceAutoSendBlockedHint || `${voiceTranscriptReady.characterCount} 字已在输入框，仍需点击发送。`
+    ? voiceAutoSendBlockedHint || voiceTranscriptDraftHint(voiceTranscriptReady.quality, voiceTranscriptReady.characterCount)
     : "确认后发送，默认不自动发送。";
   const detectionStatusText = gameDetection.status === "idle" ? "未检测到游戏" : debugText(gameDetection.status);
   const manualGameId = gameContext.manual_override.enabled ? gameContext.manual_override.game_id ?? "" : "";
@@ -4380,7 +4962,7 @@ export function App() {
     app: `本地保存到 settings.json，不包含密钥。自动游戏检测当前为${debugText(appSettings.auto_game_detection)}。`,
     provider: "模型配置只显示 provider、模型名和 API Key 加载状态，不显示 .env 或密钥原文。",
     privacy: "本地数据操作保持显式按钮；显式记忆可撤销，隐式候选仍需确认。",
-    advanced: "高级设置复用现有功能入口；Voice v2.1 只提供主动开启的直接对话，不实现 hands-free、常驻监听或 Overlay auto-show。"
+    advanced: "高级设置复用现有功能入口；Voice v2.2 只提供主动开启的直接对话，不实现 hands-free、常驻监听或 Overlay auto-show。"
   } as Record<string, string>)[activeWorkspaceTab] || "本地保存到 settings.json，不包含密钥。";
 
   const openWorkspace = useCallback((workspaceId: WorkspaceId, tabId?: string) => {
@@ -4769,15 +5351,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               </button>
               <div className={`voiceInputInlineStatus voiceState-${voiceConversationState.tone}`} role="status">
                 <span>
-                  Voice v2.1：{voiceConversationState.label}。{voiceConversationState.description}
+                  Voice v2.2：{voiceConversationState.label}。{voiceConversationState.description}
                 </span>
                 <span>
                   语音输入：{mainVoiceInputStatus}
                   {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
                 </span>
                 <span>模式：{voiceInteractionModeLabel}</span>
+                {localAsrCaptureStopReason && localAsrTranscriptionPhase !== "recording" && (
+                  <span>录音结束：{audioCaptureReasonText(localAsrCaptureStopReason)}</span>
+                )}
                 {voiceDirectConversationEnabled && !voiceAutoSendBlockedHint && (
-                  <span className="voiceStateNotice">转写后会自动发送</span>
+                  <span className="voiceStateNotice">主动录音后自动发送，不会常驻监听</span>
                 )}
                 {voiceConversationState.state === "ready_to_send" && (
                   <span className="voiceStateNotice">{voiceConfirmSendText}</span>
@@ -4791,6 +5376,29 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   >
                     <VolumeX size={13} />
                     停止播放
+                  </button>
+                )}
+                {mainVoiceInputUsesLocalAsr && localAsrTranscriptionPhase === "recording" && audioCaptureStatus.phase === "recording" && (
+                  <button
+                    className="smallButton quiet voiceInlineStop"
+                    type="button"
+                    aria-label="取消本次录音 / Cancel Recording"
+                    onClick={cancelLocalAsrRecording}
+                  >
+                    <X size={13} />
+                    取消录音
+                  </button>
+                )}
+                {voiceConversationState.state === "ready_to_send" && (
+                  <button
+                    className="smallButton quiet voiceInlineStop"
+                    type="button"
+                    aria-label="清空草稿并重新录音 / Re-record"
+                    disabled={mainVoiceInputDisabled}
+                    onClick={restartVoiceTranscription}
+                  >
+                    <RefreshCw size={13} />
+                    重新录音
                   </button>
                 )}
               </div>
@@ -5349,10 +5957,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             <section className="infoCard" aria-label="语音对话">
               <div className="cardHeader">
                 <Mic size={17} />
-                <h2>Voice v2.1 对话状态</h2>
+                <h2>Voice v2.2 对话状态</h2>
               </div>
               <p className="settingHint">
-                Voice v2.1 已接入可选直接对话模式；默认仍是确认后发送。直接对话不是常驻监听，每轮仍需你主动点击录音。
+                Voice v2.2 已接入可选直接对话模式；默认仍是确认后发送。直接对话不是常驻监听，每轮仍需你主动点击录音。
               </p>
               <div className="voiceModeControl" role="group" aria-label="直接对话模式">
                 <span>当前模式</span>
@@ -5383,7 +5991,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   : "关闭时：转写后会先进入输入框，仍需你确认发送；未确认 transcript 不进入 memory、prompt、retrieval 或 game context。"}
                 音频仍只在本地处理。
               </p>
-              <div className={`voiceStatePanel voiceState-${voiceConversationState.tone}`} role="status" aria-label="Voice v2.1 状态">
+              <div className={`voiceStatePanel voiceState-${voiceConversationState.tone}`} role="status" aria-label="Voice v2.2 状态">
                 <div>
                   <span>当前状态</span>
                   <strong>{voiceConversationState.label}</strong>
@@ -5410,6 +6018,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <div>
                   <dt>输入状态</dt>
                   <dd>{mainVoiceInputStatus}</dd>
+                </div>
+                <div>
+                  <dt>最近录音结束</dt>
+                  <dd>{localAsrCaptureStopReason ? audioCaptureReasonText(localAsrCaptureStopReason) : "无"}</dd>
                 </div>
                 <div>
                   <dt>语音输出</dt>
@@ -5656,7 +6268,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                      localAsrTranscriptionPhase,
 	                      localAsrTranscriptionResult,
 	                      localAsrConfigReady,
-	                      audioCaptureStatus
+	                      audioCaptureStatus,
+	                      audioCaptureClockMs
 	                    )}
 	                  </strong>
 	                </div>
@@ -5666,7 +6279,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                    localAsrTranscriptionResult,
 	                    localAsrConfigReady,
 	                    audioCaptureStatus,
-	                    localAsrStatus
+	                    localAsrStatus,
+	                    audioCaptureClockMs,
+	                    voiceTranscriptReady
 	                  )}
 	                </p>
 	                {localAsrTranscriptionResult && (
@@ -5715,7 +6330,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                  className="smallButton quiet"
 	                  type="button"
 	                  aria-label={audioCaptureStatus.phase === "recording" ? "停止录音 / Stop Recording" : "测试录音 / Test Recording"}
-	                  disabled={audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
+	                  disabled={audioCaptureStatus.phase === "stopping" || audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
 	                  onClick={() => void runAudioCaptureProbe()}
 	                >
 	                  <Mic size={14} />
@@ -5750,6 +6365,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                  当前状态：{appSettings.voice_output === "on" ? "已开启" : "已关闭"}；本地语音：
 	                  {voiceStatus.available ? "可用" : "不可用"}。
 	                </p>
+	                <TtsProviderSurface voiceStatus={voiceStatus} />
 	                <p className="settingHint">播放状态：{voicePhaseText(voiceStatus)}。</p>
 	                {voiceStatus.available && (
 	                  <p className="settingHint">
@@ -5829,6 +6445,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
 	                <div className="settingRow static">
 	                  <span>当前 Profile</span>
 	                  <strong>{VOICE_PROFILE_LABEL}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>当前 TTS Provider</span>
+	                  <strong>{voiceStatus.providerLabel}</strong>
+	                </div>
+	                <div className="settingRow static">
+	                  <span>Provider 状态</span>
+	                  <strong>{ttsProviderStatusText(voiceStatus.providerStatus)}</strong>
 	                </div>
 	                <p className="settingHint">{VOICE_PROFILE_DESCRIPTION} 这不是角色音色，也不声明真人或角色声音。</p>
 	                <div className="settingRow static">
@@ -6195,8 +6819,80 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   <dd>{semanticSummary(semanticDebug.rule_grounding)}</dd>
                 </div>
                 <div>
+                  <dt>{formatDebugLabel("grounding_status")}</dt>
+                  <dd>{debugText(semanticDebug.grounding_status)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("grounding_match_type")}</dt>
+                  <dd>{debugText(semanticDebug.grounding_match_type)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("canonical_entity")}</dt>
+                  <dd>{debugText(semanticDebug.canonical_entity)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("canonical_display_name")}</dt>
+                  <dd>{debugText(semanticDebug.canonical_display_name)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("intent")}</dt>
+                  <dd>{debugText(semanticDebug.intent)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("switch_detected")}</dt>
+                  <dd><BooleanBadge value={Boolean(semanticDebug.switch_detected)} /></dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("previous_target")}</dt>
+                  <dd>{debugText(semanticDebug.previous_target)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("new_target_candidate")}</dt>
+                  <dd>{debugText(semanticDebug.new_target_candidate)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("canonical_candidate")}</dt>
+                  <dd>{debugText(semanticDebug.canonical_candidate)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("grounding_method")}</dt>
+                  <dd>{debugText(semanticDebug.grounding_method)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("grounding_confidence_band")}</dt>
+                  <dd>{debugText(semanticDebug.grounding_confidence_band)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("extracted_surface")}</dt>
+                  <dd>{debugText(semanticDebug.extracted_surface)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("cleared_fields")}</dt>
+                  <dd>{debugText(semanticDebug.cleared_fields)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("applied_fields")}</dt>
+                  <dd>{debugText(semanticDebug.applied_fields)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("rejected_fields")}</dt>
+                  <dd>{debugText(semanticDebug.rejected_fields)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("rejection_reason")}</dt>
+                  <dd>{debugText(semanticDebug.rejection_reason)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("attribution_status")}</dt>
+                  <dd>{debugText(semanticDebug.attribution_status)}</dd>
+                </div>
+                <div>
                   <dt>{formatDebugLabel("applied_updates")}</dt>
                   <dd>{debugText(semanticDebug.applied_updates)}</dd>
+                </div>
+                <div>
+                  <dt>{formatDebugLabel("rejected_updates")}</dt>
+                  <dd>{debugText(semanticDebug.rejected_updates)}</dd>
                 </div>
                 <div>
                   <dt>{formatDebugLabel("parse_error")}</dt>
@@ -6453,6 +7149,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   当前状态：{appSettings.voice_output === "on" ? "已开启" : "已关闭"}；本地语音：
                   {voiceStatus.available ? "可用" : "不可用"}。
                 </p>
+                <TtsProviderSurface voiceStatus={voiceStatus} />
                 <p className="settingHint">播放状态：{voicePhaseText(voiceStatus)}。</p>
                 {voiceStatus.available && (
                   <p className="settingHint">
@@ -6719,7 +7416,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                       localAsrTranscriptionPhase,
                       localAsrTranscriptionResult,
                       localAsrConfigReady,
-                      audioCaptureStatus
+                      audioCaptureStatus,
+                      audioCaptureClockMs
                     )}
                   </strong>
                 </div>
@@ -6729,7 +7427,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     localAsrTranscriptionResult,
                     localAsrConfigReady,
                     audioCaptureStatus,
-                    localAsrStatus
+                    localAsrStatus,
+                    audioCaptureClockMs,
+                    voiceTranscriptReady
                   )}
                 </p>
                 {localAsrTranscriptionResult && (
@@ -6778,7 +7478,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   className="smallButton quiet"
                   type="button"
                   aria-label={audioCaptureStatus.phase === "recording" ? "停止录音 / Stop Recording" : "测试录音 / Test Recording"}
-                  disabled={audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
+                  disabled={audioCaptureStatus.phase === "stopping" || audioProbeUploading || (!audioCaptureStatus.supported && audioCaptureStatus.phase !== "recording")}
                   onClick={() => void runAudioCaptureProbe()}
                 >
                   <Mic size={14} />
@@ -7213,12 +7913,16 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                 <dd>{debugText(gameSessionDebug.current_boss?.name)}</dd>
               </div>
               <div>
+                <dt>{formatDebugLabel("discussion_target")}</dt>
+                <dd>{debugText(gameSessionDebug.discussion_target?.name)}</dd>
+              </div>
+              <div>
                 <dt>{formatDebugLabel("freshness")}</dt>
-                <dd>{debugText(gameSessionDebug.current_boss?.freshness)}</dd>
+                <dd>{bossFreshnessText(gameSessionDebug.current_boss?.freshness)}</dd>
               </div>
               <div>
                 <dt>{formatDebugLabel("activity")}</dt>
-                <dd>{debugText(gameSessionDebug.current_activity)}</dd>
+                <dd>{gameActivityText(gameSessionDebug.current_activity)}</dd>
               </div>
               <div>
                 <dt>{formatDebugLabel("last_attempted")}</dt>
@@ -7240,7 +7944,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
             <ul className="debugList compact" aria-label="Boss 记录">
               {recentBossHistory.map((boss, index) => (
                 <li key={`${boss.name}-${boss.status}-${index}`}>
-                  {boss.name} / {debugText(boss.status)} / {debugText(boss.freshness)}
+                  {boss.name} / {bossHistoryStatusText(boss.status)} / {bossFreshnessText(boss.freshness)}
                 </li>
               ))}
               {recentBossHistory.length === 0 && <li>无</li>}
@@ -7483,11 +8187,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                     <h3>语音输入</h3>
                     <dl className="debugFacts">
                       <div>
-                        <dt>Voice v2.1 状态</dt>
+                        <dt>Voice v2.2 状态</dt>
                         <dd>{voiceConversationState.label}</dd>
                       </div>
                       <div>
-                        <dt>Voice v2.1 模式</dt>
+                        <dt>Voice v2.2 模式</dt>
                         <dd>{appSettings.voice_interaction_mode}</dd>
                       </div>
                       <div>
@@ -7601,7 +8305,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             localAsrTranscriptionPhase,
                             localAsrTranscriptionResult,
                             localAsrConfigReady,
-                            audioCaptureStatus
+                            audioCaptureStatus,
+                            audioCaptureClockMs
                           )}
                         </dd>
                       </div>
@@ -7614,7 +8319,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                               localAsrTranscriptionResult,
                               localAsrConfigReady,
                               audioCaptureStatus,
-                              localAsrStatus
+                              localAsrStatus,
+                              audioCaptureClockMs,
+                              voiceTranscriptReady
                             )
                           )}
                         </dd>
@@ -7964,6 +8671,10 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>{debugText(semanticDebug.applied_updates)}</dd>
                       </div>
                       <div>
+                        <dt>{formatDebugLabel("rejected_updates")}</dt>
+                        <dd>{debugText(semanticDebug.rejected_updates)}</dd>
+                      </div>
+                      <div>
                         <dt>{formatDebugLabel("latest_user_message")}</dt>
                         <dd>{debugText(semanticDebug.latest_user_message)}</dd>
                       </div>
@@ -7978,6 +8689,74 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                         <dd>
                           {semanticSummary(semanticDebug.rule_grounding)}
                         </dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("grounding_status")}</dt>
+                        <dd>{debugText(semanticDebug.grounding_status)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("grounding_match_type")}</dt>
+                        <dd>{debugText(semanticDebug.grounding_match_type)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("canonical_entity")}</dt>
+                        <dd>{debugText(semanticDebug.canonical_entity)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("canonical_display_name")}</dt>
+                        <dd>{debugText(semanticDebug.canonical_display_name)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("intent")}</dt>
+                        <dd>{debugText(semanticDebug.intent)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("switch_detected")}</dt>
+                        <dd><BooleanBadge value={Boolean(semanticDebug.switch_detected)} /></dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("previous_target")}</dt>
+                        <dd>{debugText(semanticDebug.previous_target)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("new_target_candidate")}</dt>
+                        <dd>{debugText(semanticDebug.new_target_candidate)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("canonical_candidate")}</dt>
+                        <dd>{debugText(semanticDebug.canonical_candidate)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("grounding_method")}</dt>
+                        <dd>{debugText(semanticDebug.grounding_method)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("grounding_confidence_band")}</dt>
+                        <dd>{debugText(semanticDebug.grounding_confidence_band)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("extracted_surface")}</dt>
+                        <dd>{debugText(semanticDebug.extracted_surface)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("cleared_fields")}</dt>
+                        <dd>{debugText(semanticDebug.cleared_fields)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("applied_fields")}</dt>
+                        <dd>{debugText(semanticDebug.applied_fields)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("rejected_fields")}</dt>
+                        <dd>{debugText(semanticDebug.rejected_fields)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("rejection_reason")}</dt>
+                        <dd>{debugText(semanticDebug.rejection_reason)}</dd>
+                      </div>
+                      <div>
+                        <dt>{formatDebugLabel("attribution_status")}</dt>
+                        <dd>{debugText(semanticDebug.attribution_status)}</dd>
                       </div>
                       <div>
                         <dt>{formatDebugLabel("rule_confidence")}</dt>
@@ -8087,6 +8866,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                               web_speech_available: webSpeechVoiceInputAvailable(voiceInputStatus),
                               audio_capture_supported: audioCaptureStatus.supported,
                               audio_capture_phase: audioCaptureStatus.phase,
+                              audio_capture_stop_reason: localAsrCaptureStopReason,
+                              transcript_quality: localAsrTranscriptAssessment?.quality ?? null,
+                              send_decision: localAsrTranscriptAssessment?.sendDecision ?? null,
                               local_asr_transcription_phase: localAsrTranscriptionPhase,
                               local_asr_transcription_status: localAsrTranscriptionResult?.status ?? null,
                               local_asr_language: localAsrTranscriptionResult?.language ?? null,
@@ -8121,6 +8903,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             hands_free_enabled: false,
                             transcript_ready: Boolean(voiceTranscriptReady),
                             transcript_character_count: voiceTranscriptReady?.characterCount ?? 0,
+                            transcript_quality: voiceTranscriptReady?.quality ?? localAsrTranscriptAssessment?.quality ?? null,
+                            send_decision: voiceTranscriptReady?.sendDecision ?? localAsrTranscriptAssessment?.sendDecision ?? null,
+                            capture_stop_reason: voiceTranscriptReady?.captureStopReason ?? localAsrCaptureStopReason,
                             tts_active: voiceStatus.active,
                             tts_phase: voiceStatus.phase
                           },
@@ -8183,7 +8968,11 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                                   temporary_input_cleaned: localAsrTranscriptionResult.temporary_input_cleaned,
                                   temporary_converted_cleaned: localAsrTranscriptionResult.temporary_converted_cleaned,
                                   binary_name: localAsrTranscriptionResult.binary_name,
-                                  model_name: localAsrTranscriptionResult.model_name
+                                  model_name: localAsrTranscriptionResult.model_name,
+                                  capture_stop_reason: localAsrCaptureStopReason,
+                                  transcript_quality: localAsrTranscriptAssessment?.quality ?? null,
+                                  send_decision: localAsrTranscriptAssessment?.sendDecision ?? null,
+                                  interaction_mode: localAsrTranscriptAssessment?.interactionMode ?? null
                                 }
                               : null
                           },
@@ -8191,6 +8980,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                             supported: audioCaptureStatus.supported,
                             phase: audioCaptureStatus.phase,
                             last_error: audioCaptureStatus.lastError,
+                            max_duration_ms: audioCaptureStatus.maxDurationMs,
+                            last_stop_reason: audioCaptureStatus.lastStopReason,
                             uploading: audioProbeUploading,
                             probe: audioProbeResult
                               ? {

@@ -5,6 +5,7 @@
 这份 QA Pack 用于在继续开发 Voice Input 后续能力、Live2D、Overlay、embedding RAG 之前，快速回归 ReiLink 当前已经稳定的交互底座。它覆盖手动检查、packaged app smoke、Knowledge Retrieval、Voice Output、Voice Input、Context & Memory、Event Stream / Debug 隐私，以及 release 前 runtime sanity。
 
 Voice Interaction MVP 的 GitHub 更新草稿见 `docs/release-notes/reilink-voice-mvp.md`。
+Voice v2.2 release hardening checklist 见 `docs/release_voice_v2_2_hardening_checklist.md`，候选 release note 草稿见 `docs/releases/reilink-voice-v2.2.md`，机器可读 release matrix 见 `docs/qa/voice_v2_2_release_matrix.json`。
 Context & Memory release hardening checklist 见 `docs/release_context_memory_hardening_checklist.md`，v0.2-pre.4 release notes 草稿见 `docs/releases/reilink-v0.2-pre.4-context-memory.md`。
 
 配套机器可读场景文件：
@@ -128,6 +129,20 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 9. accepted memory 才进入 prompt。
 10. proactive 内容不进入 memory。
 
+#### E. TTS Provider Registry / Capability Surface
+
+1. Voice Output 显示当前 TTS Provider 为 `System Speech Synthesis`。
+2. Provider 状态显示为可用；缺少 `speechSynthesis` 的环境应显示不可用且不崩溃。
+3. Provider 能力显示系统语音、ReiLink 不接外部 TTS API、支持停止 / 打断、不支持角色音色、不支持 provider streaming。
+4. `Local TTS` 显示为未实现 / 不可选择。
+5. `External TTS` 显示为未配置 / 不可选择。
+6. UI 不提供可用的 provider 切换入口。
+7. 非法 provider id、disabled provider 或 non-selectable provider 必须安全回退到 `System Speech Synthesis`，不能调用未实现 provider。
+8. Event Stream 可以显示 provider id 对应的人类可读 label、provider status、fallback 标记、source、profile 和 character count。
+9. Stop Voice 后 Event Stream 可以显示安全状态，例如 `已打断` / `已停止`、provider、source、profile 和 stop 摘要，但不得显示 spoken text。
+10. Event Stream 不显示完整 assistant reply、spoken text、Test Voice 文本、raw prompt、persona markdown、API key、`.env`、本地模型路径、完整本地路径或 raw config。
+11. Direct Conversation 的自动播报、Stop Voice、full / brief / silent Voice Profile 行为保持原有回归结果。
+
 ### 1.6 Rei Persona Pack v1.1.2 回归检查
 
 本节用于 Persona Pack v1.1.2。它不表示用户自定义角色、Live2D、TTS 音色或 persona 自动学习已开始。
@@ -155,7 +170,7 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 
 ### 1.7 UI/UX Information Architecture v0 人工验收
 
-本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认当前 Voice 已接入 Voice v2.1 + Voice Profile v1：默认确认发送、显式 opt-in 直接对话和规则化 full / brief / silent 播报策略。不表示 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
+本节用于 `docs/ui_ux_information_architecture.md`。IA 已落到 UI Surface v0；本节同时确认当前 Voice 已接入 Voice v2.2 + Voice Profile v1：默认确认发送、显式 opt-in 直接对话和规则化 full / brief / silent 播报策略。不表示 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D 已实现。
 
 机器可读场景见 `docs/qa/ui_ux_information_architecture_scenarios.json`。
 
@@ -163,8 +178,8 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 2. 左侧定位应是 workspace launcher，不只是页面 anchor。
 3. Memory 应有独立普通用户入口，承接 pending、confirmed、ignored、search、sources 和后续 session archive。
 4. Game 应有独立普通用户入口，承接 current game、boss、session state、knowledge availability 和 manual control。
-5. Voice 应有独立一级入口；当前是 Local ASR transcript-first 默认 + Voice Output + Voice v2.1 直接对话显式 opt-in + Voice Profile v1 行为策略，hands-free、角色 TTS / 角色音色和 Overlay voice state 仍只做未来规划。
-6. Voice 未来状态至少覆盖 idle、listening、transcribing、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
+5. Voice 应有独立一级入口；当前是 Local ASR transcript-first 默认 + Voice Output + Voice v2.2 直接对话显式 opt-in + Voice Profile v1 行为策略，hands-free、角色 TTS / 角色音色和 Overlay voice state 仍只做未来规划。
+6. Voice 当前状态至少覆盖 idle、listening、transcribing、auto_sending、ready_to_send、assistant_thinking、speaking、interrupted 和 error。
 7. Overlay 应有独立入口，但 macOS auto-show 仍是 fail-closed safe mode；不要把它描述为完整可用的游戏 HUD。
 8. Developer / Debug 应与普通体验分离，承接 Event Stream、Prompt Preview、LLM Primary / Semantic Shadow trace、Knowledge trace、Persona Pack safe summary 和 Runtime status。
 9. Prompt Preview / Debug 不得显示 raw prompt、API key、`.env`、完整路径、stdout/stderr、完整 persona markdown、完整 assistant reply、完整 user input 或完整 ASR transcript。
@@ -204,37 +219,67 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 5. Future / Avatar workspace 中 Avatar 与 Presentation Policy tabs 显示不同 placeholder，且不加载 Live2D runtime、Avatar 资源或 presentation layer 行为。
 6. 切换任意 workspace tab 不应清空聊天历史或未发送输入；切换到其他 workspace 后，该 workspace 的上次 active tab 可独立保留，不污染其他 workspace。
 7. Close button 与 Escape 关闭 workspace 仍有效；v0.1 的 tabs 不遮挡、body 内部滚动隔离、小窗口 hit-testing 要继续通过。
-8. 本轮接入 Voice v2.1 直接对话显式 opt-in 和 Voice Profile v1 行为策略；仍不实现 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D。
+8. 当前接入 Voice v2.2 直接对话显式 opt-in 和 Voice Profile v1 行为策略；仍不实现 hands-free、角色 TTS / 角色音色、Overlay voice state、Overlay auto-show、Hermes-style memory 或 Live2D。
 
-### 1.10 Voice Interaction v2.1 Direct Conversation Mode 人工验收
+### 1.10 Voice v2.2 Release Hardening 人工验收
 
-设计文档见 `docs/voice_interaction_v2_spec.md`，机器可读场景见 `docs/qa/voice_interaction_v2_scenarios.json`。本节验收 Voice v2 state machine、默认确认发送、显式 opt-in 直接对话和 Voice Profile v1 brief 默认；不表示 hands-free、角色 TTS / 角色音色或 Overlay voice state 已实现。
+当前规格见 `docs/voice_interaction_v2_spec.md`，可复用 release gate 见 `docs/release_voice_v2_2_hardening_checklist.md`。`docs/qa/voice_v2_2_release_matrix.json` 是 release-level 索引，将以下 30 条门禁映射到 `voice_interaction_v2_scenarios.json`、`voice_profile_scenarios.json`、`voice_input_scenarios.json`、`voice_input_local_asr_scenarios.json` 和自动化测试；component suite 保留详细步骤，不在 release matrix 机械复制。当前状态必须统一为 `idle`、`listening`、`transcribing`、`auto_sending`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
 
-1. Voice v2 默认仍是 confirm-send：ASR transcript 进入 ready-to-send 状态，用户确认后才进入 chat flow。
-2. 直接对话模式必须默认关闭，只能由用户在 Voice workspace Conversation 中显式切换到 `直接对话`；不得因开启 Local ASR、Voice Output 或打开 Voice workspace 自动启用。
-3. 直接对话模式开启后，ASR transcript 转写成功会自动进入现有 chat flow；不得绕过 Memory Candidate guard、knowledge gating、game context safety、persona guardrails 或 provider error handling。显式记忆可显示非阻塞撤销提示，隐式候选仍待确认。
-4. 直接对话模式下，录音过短、transcript 太短或疑似半句时不得自动发送；应进入 `ready_to_send`，提示“这句太短了。可以再说一次。”或等价安全文案。
-5. 被 partial guard 拦下的 transcript 不写 memory、不触发 proactive、不进入 game context / Semantic Extraction，Event Stream 只能显示 provider、字符数、时长和阻断原因。
-6. 直接对话不是 hands-free：每一轮仍需要用户主动点击或按住语音输入；当前不做 wake word、不做后台常驻监听、不做自动下一轮录音。
-7. Voice Output 开启时，直接对话的 assistant 最终回复默认短版播报，完整回复仍显示在聊天里；Voice Output 关闭时只显示文字回复。
-8. Stop Voice 能打断直接对话后的 TTS；用户开始新一轮录音时应先停止正在播放的 TTS。
-9. 状态机至少覆盖 `idle`、`listening`、`transcribing`、`ready_to_send`、`assistant_thinking`、`speaking`、`interrupted` 和 `error`。
-10. `listening` 和 `speaking` 必须互斥。
-11. 未确认 transcript 不写 memory、不创建 pending memory、不进入 prompt / retrieval / game context / Semantic Extraction，也不触发 proactive。
-12. 直接对话的 Event Stream / Debug / Raw JSON / Prompt Preview / Overlay 只能显示 mode、provider、字符数、句数、长度上限、跳过原因和生命周期摘要；不得显示完整 transcript、raw prompt、完整 assistant reply、spoken text、路径、API key、`.env`、stdout 或 stderr。
-13. Voice Output 只能朗读安全 assistant reply、Test Voice 或未来安全短摘要；不得朗读 Debug、Prompt Preview、Event Stream、LLM Primary / Semantic Shadow trace、raw prompt、raw provider response、完整 transcript、memory 内部信息、API key、`.env`、完整路径、stdout 或 stderr。
-14. 游戏中语音输出应短、低打扰；长攻略内容可以保留在 chat text，不应整段朗读 Debug 或知识原文。
-15. Voice workspace 的 Conversation tab 应承接状态、确认发送 / 直接对话切换、确认、打断和错误；Input / Local ASR 与 Output 继续承接现有配置，Output tab 应说明直接对话 + Voice Output 的默认短版自动播报关系。
-16. Home / Chat 输入区应显示紧凑 voice state 和当前模式，但不得清空未发送草稿或隐藏普通文本输入。
-17. 未来 Overlay 只可显示低风险 voice state，不显示完整 transcript、完整 assistant reply、Debug、Prompt Preview、memory 内容或敏感信息；macOS auto-show 仍不在本 spec 范围内。
-18. 错误文案应中文优先、短且安全：覆盖 ASR 未配置、binary / model 缺失、converter 缺失、ASR timeout、无 transcript、mic permission denied、TTS unavailable 和 provider timeout。
+1. 普通文本聊天不受 Voice interaction mode、Voice Output 或 Voice Profile 设置影响。
+2. Voice Output 关闭时，普通聊天和 Direct Conversation 都只保留文字回复，不自动播报。
+3. Test Voice 只能由显式操作触发，不写聊天，也不代表角色音色。
+4. Test Voice 播放时，Stop Voice 能取消播放并显示 stopped / interrupted 反馈。
+5. Local ASR 未配置时显示安全中文提示，不启动转写、不暴露 binary / model 完整路径。
+6. 普通语音模式默认 `confirm_send`；transcript 可编辑并等待用户确认。
+7. Direct Conversation 必须显式开启；每轮仍由用户主动开始录音。Local ASR 只有 `user_stop` 且 guard 结果为 `acceptable` 才自动发送；Web Speech final transcript 没有 MediaRecorder stop reason，但仍需通过其余文本 guard。
+8. 切换模式不会发送已有草稿；录音或转写期间关闭 Direct Conversation 时，本轮按完成时的设置退回 confirm-send。
+9. 空 transcript 不发送，输入框不被污染，并显示可恢复提示。
+10. 短 transcript 不自动发送，保留为可确认文本。
+11. 短录音不自动发送，即使识别到了较长 hallucinated transcript；实际时长按 recorder start 到用户 Stop 请求计算，不包含 teardown。
+12. caption / speaker-label / stage-direction-only、命中 bounded partial guard 的常见疑似半句和 30 秒 `max_duration` 都不自动发送；非空文本保留为草稿。
+13. 任何 guard 阻断都不写 long-term / pending memory，不进入 prompt 或 Semantic Extraction，也不更新 Game Context / Boss。
+14. 任何 guard 阻断都不触发 proactive、不发起 chat request、不产生 `user_message_sent` 或 Rei 回复。
+15. `assistant_thinking` 只在确认发送或 Direct Conversation auto-send handoff 后出现；`auto_sending` 应短暂可见并能恢复。
+16. `speaking` 只在 TTS active 时出现；`listening` 与 `speaking` 必须互斥。
+17. Stop Voice 或开始新录音会停止当前播报，进入可恢复 `interrupted` / stopped 反馈且不自动重播。
+18. TTS unavailable 不影响文字回复，也不调用 disabled provider。
+19. `full` 播报清理后的完整 assistant reply，同时保留聊天文字。
+20. `brief` 使用 deterministic 句数 / 字数限制，不额外调用 LLM。
+21. `silent` 不自动播报，但保留完整文字回复和安全 skip metadata。
+22. `system_speech_synthesis` 是唯一 enabled / selectable provider。
+23. `local_tts` 是 disabled / `not_implemented` placeholder；`external_tts` 是 disabled / `not_configured` placeholder，均不可选择。
+24. 非法、disabled 或不可选择 provider 会安全 fallback 到 System Speech Synthesis；系统语音 unavailable 时安全 no-op。
+25. Event Stream payload 和 UI 都不保存或显示完整 transcript，包括 confirm-send 后的 voice-origin user event。
+26. Event Stream payload 和 UI 都不保存或显示完整 assistant reply。
+27. Event Stream payload 和 UI 都不保存或显示 spoken text 或 Test Voice 固定文本。
+28. Voice / TTS 事件不得包含 raw prompt、persona markdown、`.env`、API key、Authorization、完整本地路径、raw stdout / stderr、raw ASR output、raw provider config 或 raw JSON dump。
+29. Packaged app 退出后必须释放麦克风 track、由 app 启动的 bundled backend 和 8000 端口。
+30. Packaged smoke 应确认 app 非黑屏、backend connected、普通聊天、Voice workspace、Local ASR 配置入口、confirm / Direct 边界、guard、Voice Profile、Test / Stop Voice、Provider Registry、Event Stream、Settings 和 Debug 无明显回归。
+
+#### Voice Input Capture & Transcript UX Stabilization v0
+
+1. 主 Local ASR 使用 `MediaRecorder`；确认没有 Web Audio VAD 或 silence detection，不得把 30 秒 timer 描述为 VAD。
+2. 点击开始后应持续录音，3 秒和 5 秒处都不能自动结束；正常自然停顿不会触发停止。
+3. 用户点击停止后，必须等待最终 `dataavailable` 和 `stop`，再生成 Blob、进入 `transcribing` 并调用 ASR。
+4. 主 Local ASR 最长录音为 30 秒；接近上限显示剩余时间，到达上限显示“已达到最长录音时间”，并记录 `max_duration`。
+5. 取消录音记录 `cancelled`，不调用 ASR、不改输入框、不发 chat request，状态恢复 idle。
+6. confirm-send 的 ASR 输出必须显示为“转写草稿，尚未发送”；用户可检查、修改、清空或重新录音。
+7. 未发送草稿不等于 LLM 已理解，不等于 Semantic Extraction 已运行，不等于 Game Context 或当前 Boss 已更新。
+8. 空文本、短文本、短录音、caption / stage-direction-only、疑似半句 / 最大时长截断和明显噪声输出都不能在 Direct Conversation 自动发送。
+9. `我现在不打玛尔` 在 confirm-send 中保留为可编辑草稿并提示可能不完整，在 Direct Conversation 中必须阻止自动发送。
+10. `我现在不打猫耳机做了去打机` 等有长度但错误的文本必须原样保留为未发送草稿，不根据历史 Boss 状态自动改写。
+11. 切换 confirm-send / Direct Conversation 不得丢失或自动发送既有草稿；录音期间关闭 Direct Conversation 后，本轮必须回到 confirm-send。
+12. Event Stream 只记录 stop reason、quality、send decision、interaction mode、字数、时长、格式和清理摘要；不得记录 transcript、raw audio、完整路径或 secret。
+13. 当前 Voice v2.2 不是 streaming ASR、always listening、实时转写或全双工语音系统。当前 Local ASR response 也不提供 no-speech probability、segment confidence 或 average log probability 给 renderer。
+14. 半句判断是 bounded best-effort，不是完整语义 endpointing。ASR 可能丢失标点、改变措辞或把半句转成表面完整文本，少量未完成口语仍可能通过；不继续用开放式句尾 regex、无限关键词或 typo alias 追逐所有边缘场景。严格控制使用默认 confirm-send；后续由 streaming ASR、VAD、endpointing、partial / final transcript 和 turn-taking 统一解决。
+15. 真实麦克风 packaged smoke 应覆盖正常长句、自然停顿、用户停止、错误草稿、极短录音、取消、模式切换和退出后 8000 端口释放；报告需区分真实麦克风、模拟 MediaRecorder、受控 transcript、系统语音回录、自动化测试和用户人工测试。
 
 ### 1.11 Voice Profile v1 人工验收
 
 设计文档见 `docs/voice_profile_v1.md`，机器可读场景见 `docs/qa/voice_profile_scenarios.json`。
 
 1. Voice workspace 的 Voice Profile tab 应显示当前 profile `rei_calm` / `Rei Calm / Rei 冷静陪伴`。
-2. UI 应明确这是行为策略，不是角色音色或新 TTS 引擎；当前仍使用系统 `speechSynthesis`。
+2. UI 应明确这是行为策略，不是角色音色或新 TTS provider；当前 strategy 是 `System Speech Synthesis` / `system_speech_synthesis`，底层使用平台 `speechSynthesis`。ReiLink 不接外部 TTS API / key，但不对平台未公开内部实现作承诺。
 3. 默认普通聊天播报模式为 `full`，默认直接对话播报模式为 `brief`。
 4. 直接对话 + Voice Output 开启时，完整 assistant reply 仍在聊天中可见，TTS 只读短版。
 5. 将直接对话播报模式改为 `full` 后，应朗读清理后的完整 assistant reply。
@@ -243,9 +288,14 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 8. 主动陪伴和记忆确认播报默认关闭，开启也只能播报安全文本。
 9. Voice Profile 决策不得朗读 Debug、Prompt Preview、Event Stream、Trace、Knowledge trace、Persona summary、Memory internal、raw prompt、API key、`.env`、完整路径、stdout 或 stderr。
 10. 代码块、inline code、JSON 和 trace-like structured content 不应被整段读出；清理后为空则跳过。
-11. Voice Profile 相关事件只允许包含 profile id、source、mode、字符数、句数、长度上限和 skip reason；不得包含完整 assistant reply、spoken text、ASR transcript、raw prompt 或敏感信息。
+11. Voice Profile / TTS lifecycle 相关事件只允许包含 profile id、strategy id、source、mode、字符数、句数、长度上限、stop / error reason、safe status 和 skip reason；不得包含完整 assistant reply、spoken text、ASR transcript、raw prompt 或敏感信息。
 12. Test Voice 仍可播放固定测试文本，不写入聊天，也不代表角色音色。
 13. 直接对话自动发送时，已有未发送手打草稿不得被 Voice Profile 或播报策略清空。
+14. Test Voice 播放开始后，Stop Voice 应取消播放，并只记录 provider、status、source、profile、字数和 stopped / interrupted 原因。
+15. TTS unavailable 时完整文字回复仍应显示，且不得尝试 Local TTS / External TTS placeholder。
+16. System Speech Synthesis 应是唯一 enabled / selectable provider。
+17. Local TTS 应显示未实现 / 不可选择；External TTS 应显示未配置或未实现 / 不可选择。
+18. 非法或 disabled provider id 应安全 fallback；如果系统语音也不可用，则保持文字回复并 no-op。
 
 ### 1.12 LLM-primary Guarded Extraction v1.0.3 Pilot 人工验收
 
@@ -254,27 +304,27 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 1. 文档应明确 rule-first 的早期优势：可预测、易测、少量游戏稳定、不依赖 provider。
 2. 文档应明确 rule-first 的扩展瓶颈：多游戏 alias 爆炸、ASR 近音错字、规则 no-op 不等于语义不可理解、规则 confidence 不等于语义正确概率。
 3. 新架构必须是 LLM-primary semantic reader + schema validation + deterministic guard apply；LLM 不得直接写 game context。
-4. typed text、voice_confirmed 和 voice_direct 都应进入同一 LLM-primary extraction pipeline；source 只影响 reliability / confidence / trace。
+4. typed text、voice_confirmed 和 voice_direct 真正提交后都应进入同一 LLM-primary extraction pipeline；source 只作为发送阶段与 privacy / trace metadata，不得改变同一句已提交文本的 candidate、canonical entity、guard 或 state apply。
 5. 规则层应降级为 grounding、sanity check、cross-check、fallback、regression comparison 或 emergency no-provider mode。
 6. 文档应给出 pilot candidate schema，覆盖 minimal `updates` 形状以及兼容的 game、boss、death_count、frustration、boss_cleared、guide_request、strategy_request、candidate_boss、candidate_event、candidate_game、candidate_confidence、candidate_reason、needs_confirmation、guide_entity、confirmation_intent、memory/proactive blocked fields 和 safe reasoning summary。
 7. schema 应区分 guide request 与 current boss report，也应区分 formal game state、candidate understanding、temporary game state 与 long-term memory candidate。
 8. 新 confidence 机制应至少拆分 semantic_confidence、grounding_confidence、context_confidence 和 apply_confidence。
 9. LLM self-confidence 不能单独决定 apply；rule exact match / catalog match 只能作为 grounding 支持。
-10. voice_direct 应因 ASR uncertainty 降低 source reliability；用户确认后的 voice_confirmed reliability 应更高。
+10. Voice 的空文本、极短文本、极短录音和 partial transcript uncertainty 应在提交前 guard；一旦 voice_direct 或 voice_confirmed 已提交，不能再因 source 单独降低 apply 结果。
 11. conflict with current boss 不应自动 no-op；显式 switch phrase 可以提高 context confidence。
 12. 当前 Boss 为女武神时，输入 `我现在不打女武神了，换去打玛尔基特。`、`先不打女武神了，我换去玛尔基特。` 或 `从女武神换到玛尔基特。` 应切换到玛尔基特；规则不得因先命中女武神而保留旧 boss。
 13. `我换去打马尔吉特了`、`我现在去打女巫神了` 等 voice_direct ASR 错字应产生 LLM candidate / apply / clarification trace；不得静默显示 no semantic signal。
 14. Guard decisions 应覆盖 `apply`、`ask_clarification`、`candidate_only`、`no_op` 和 `fallback_to_rule`；`candidate_only` 可以用于当轮回复 / trace / 后续确认，但不得写正式状态。
 15. low confidence、invalid JSON、schema invalid、provider timeout、unsafe、uncertain confirmation 或 memory-sensitive 输入不得写 state；fallback 只允许 exact safe rule evidence，不得把 switch / negation 中的旧目标写回当前 Boss。
-16. Exact / canonical entity 搭配明确动作可以 `apply`；guide-only / strategy request 应 `candidate_only` 且不切 Boss；descriptive / nickname / low-certainty entity 默认只能 `candidate_only` 或 `ask_clarification`，除非当前上下文已有同一个 confirmed boss。
+16. Exact / canonical entity 搭配明确动作可以 `apply`；guide-only / strategy request 可以 `apply` 到 session-level `discussion_target`，但不得切换 `current_boss`；descriptive / nickname / low-certainty entity 默认只能 `candidate_only` 或 `ask_clarification`，除非当前上下文已有同一个 confirmed boss。
 17. Confirmation intent 应覆盖 `confirm`、`deny`、`correct`、`uncertain`、`unrelated`、`unknown`。v1.0.3 不实现完整 pending runtime，但 extraction result / trace / eval 必须显示这些字段；`uncertain` 不应正式 apply，`correct` + exact new target 可由 deterministic guard 应用新目标。
 18. `用于 Rei 回复` 不等于 `写入正式状态`：LLM 可以大胆理解候选，例如“那个骑马金甲大哥”可能是大树守卫，但 guard 必须谨慎写 `current_boss` / `death_count` / `last_cleared_boss` / 高风险 `current_activity`。
 19. Shadow Mode 应被描述为历史基础 / audit / comparison / rollout fallback；新的 foreground path 不能继续只是 Shadow 旁路观察。
 20. LLM extraction 不得直接写长期 memory、不得触发 proactive、不得修改 persona；memory_candidate_hint 必须交给独立 Memory Candidate guard。显式记忆由 memory 模块决定是否可撤销 auto-save，隐式候选仍进入 pending confirmation。
 21. Debug / Game workspace / Event Stream trace 只显示 safe summary、confidence、decision、fallback reason 和 update summary；不得显示 full transcript、full user input、raw prompt、raw LLM JSON、API key、`.env`、完整路径、stdout / stderr 或完整 assistant reply。
-22. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding、applied updates、primary_extractor、fallback_extractor、applied_by、candidate_boss、candidate_event、candidate_confidence、candidate_reason、needs_confirmation、guide_request、guide_entity、confirmation_intent、first_attempt_failed、compat_retry_used / succeeded、ultra_compact_used、json_recovery_stage 和 safe parse diagnostic。
+22. Trace 面板应区分 `LLM Primary Extraction` 与 legacy Shadow，显示 provider status、schema_valid、guard decision、fallback reason、rule grounding、grounding status / match type、canonical entity、applied / rejected updates、primary_extractor、fallback_extractor、applied_by、candidate_boss、candidate_event、candidate_confidence、candidate_reason、needs_confirmation、guide_request、guide_entity、confirmation_intent、first_attempt_failed、compat_retry_used / succeeded、ultra_compact_used、json_recovery_stage 和 safe parse diagnostic。
 23. 手测 `我现在在打玛尔基特` 应能在 Game workspace 更新 current boss，并在 Debug / Event Stream 看到 `llm_primary` / `apply` 或 provider unavailable 时的 `fallback_to_rule` 安全 trace。
-24. 手测当前 Boss 为 Malenia 时输入 `玛尔基特那边怎么打来着`，不得切换 current boss；Debug / Event Stream 应显示 candidate-only / guide-only、`guide_entity=margit` 或等价安全判定。
+24. 手测当前 Boss 为 Malenia 时输入 `玛尔吉特怎么打` 或 `玛尔基特那边怎么打来着`，不得切换 current boss；Game workspace 应显示 Margit discussion target 与中文活动文案，Debug / Event Stream 应显示 `guide_entity=margit`、discussion-target apply 和 current-boss rejection。
 25. 手测 `那个骑马金甲大哥又寄了` / `我去打那个金甲的` 在无 confirmed current boss 时不得写 current_boss / death_count；在 current_boss 已是大树守卫时，失败事件可以指代当前 boss 并 apply。
 26. 手测 pending candidate 后输入 `有可能是大树守卫吧？我没看清名字，死太快了` 或 `名字太长我没记住，但是也许是吧？` 应显示 `confirmation_intent=uncertain` 且不正式 apply；输入 `对，就是它` 应显示 confirm intent，但 v1.0.3 若未实现 pending runtime，则只 trace 不写正式状态；输入 `不是，是玛尔基特` 可以 apply 新 exact target。
 27. 手测 Direct Conversation Mode 下 `我换去打玛尔基特了`，chat flow、source `voice_direct`、guard trace、current boss 更新和语音播报策略都应保持正常；voice_direct 模糊实体不应绕过 guard。
@@ -284,9 +334,16 @@ Context & Memory release hardening checklist 见 `docs/release_context_memory_ha
 31. 可选 live provider 漂移检查使用 `python scripts/run_extraction_eval.py --provider live`；如只想观察 provider 漂移且不让失败阻塞脚本，可加 `--allow-failures`。live eval 依赖当前 provider 配置，不作为 CI 必需项，也不应因 provider timeout / auth / quota 影响 mock regression。
 32. Eval report 至少包含 total / passed / failed / pass_rate、LLM-primary success、schema_valid、invalid_json、schema_invalid、fallback_to_rule、compat retry、ultra-compact retry、wrong_apply、missed_apply、wrong_risky_apply、missed_risky_apply、harmless_extra_update 和 correct candidate-only 指标。
 33. Eval result 应逐条输出 scenario id、input_source、expected / actual decision、expected / actual state、state delta、risky_state_delta、harmless_state_delta、parse_diagnostic、primary_extractor、primary_status、provider_status、schema_valid、retry flags、fallback_extractor、applied_by、candidate fields、confirmation_intent、pass 和 failure_reason。
-34. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、boss set / switch、switch negation、guide-only 不切换、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict、low-confidence candidate-only、uncertain confirmation 和 harmless game-detected-only update。
+34. Eval 场景必须覆盖 text、voice_confirmed、voice_direct、`玛尔吉特` 三来源失败等价性、canonical aliases、Boss set / switch、Margit -> Godrick switch negation、guide-only discussion target 不切换、historical mention no progress、non-game no context change、death absolute / increment、被杀不等于 cleared、boss cleared、memory boundary、negative memory、invalid JSON、schema invalid、compat retry、ultra-compact retry、rule conflict、low-confidence candidate-only、uncertain confirmation 和 harmless game-detected-only update。
 35. Eval runner 应复用 `extract_semantics` 与 `GameSessionStore`，只应用 guarded `final_decision.game_event`，避免把 runner 变成第二套 extraction 规则。
 36. Eval report 和 pytest 输出不得包含 raw prompt、raw provider JSON、API key、`.env`、完整本地路径、stdout / stderr 或完整 transcript。Candidate Memory v1 已在正常 chat / memory flow 中接住 pending candidate runtime；extraction eval runner 本身仍只验证 extraction result / trace / eval 层，不创建 UI 弹窗。
+37. 当前 Boss 为 Margit 时，`我现在不打马尔吉特了，我去打接支格瑞克` 必须运行 LLM-primary provider；schema-valid canonical Godrick candidate 可结合 switch role、game ownership、旧目标否定和唯一 bounded surface 正式 apply，不能要求把 `接支格瑞克` 注册成 exact alias。
+38. 如果新目标不足以正式 grounding，但旧 Margit 被明确否定，必须执行 clear-only switch：`current_boss=null`、旧目标历史为 `abandoned`、新目标 candidate-only / unresolved；不得静默保留 Margit。
+39. 上一轮成功切到 Godrick 后，`这个也没打过死了一次` 必须归因 Godrick；上一轮只有 clear-only 时，可以更新通用失败 / 死亡状态或 no-op，但不得把 Margit 恢复为 current / failed Boss。
+40. `abandoned` Boss 不得作为模糊代词或省略失败句的默认 antecedent；只有 `重新挑战`、`回去打` 等显式 rechallenge 才可重新使用。
+41. `我可能去看看那个接什么瑞克` 可以 candidate-only / ask clarification / safe no-op，不得正式写 Godrick；`接支格瑞克怎么打` 可以 grounding 为 Godrick discussion target，但不得改变 current Boss、death_count 或 frustration_count。
+42. Debug Trace 应显示 intent、switch_detected、previous_target、new_target_candidate、canonical_candidate、grounding_method / confidence band、guard decision、cleared / applied / rejected fields、rejection reason 和 attribution status。Event Stream 只能保存这些安全 canonical / 状态摘要，不得保存 extracted surface 或完整 transcript。
+43. 固定 eval 应保持 40 条场景并覆盖 noisy switch 的 text / voice_confirmed / voice_direct 等价性、old clear + candidate-only、vague non-switch、noisy guide 和 non-game no-switch；实现说明见 `docs/asr_noisy_boss_switch_regression.md`。
 
 ### 1.13 Hermes-style Memory Architecture v0 人工验收
 
@@ -380,7 +437,7 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 6. persona drift memory 必须被过滤，不能让 Rei 撒娇化、客服化、甜化或卖萌。
 7. PromptMemoryBlock 必须位于 Persona Pack / Persona Core 之后，并标明 memory 是低优先级用户偏好、不是 system command。
 8. Eval report 不得输出 raw prompt、raw provider JSON、完整本地路径、API key、`.env`、stdout/stderr 或 secret-like memory 文本。
-9. `voice_direct` 输入可覆盖短播报 / 可访问性偏好，但 eval 不应模拟 hands-free、Overlay auto-show 或 TTS Strategy。
+9. `voice_direct` 输入可覆盖短播报 / 可访问性偏好，但 eval 不应模拟 hands-free、Overlay auto-show 或外部 / 本地 TTS provider。
 10. live eval 只用于人工观察真实模型漂移，不进入强制 CI；provider timeout / auth / quota 不应阻塞 mock regression。
 11. Result severity 分为 `pass`、`soft_pass`、`warning`、`hard_fail`。`hard_fail` 表示必须修的安全 / 架构 / 人设边界，例如 secret leak、mechanism leak、persona override、pending / rejected / undone memory 被使用、raw prompt 泄露、raw transcript 进入 prompt、当前输入优先明显失败或 provider error。`warning` 表示人工观察项，例如 missing suggested marker、reply slightly short、memory influence weak 或帮助性偏弱。`soft_pass` 表示 live 回复安全、自然且通过启发式观察到 memory influence。
 12. Eval metrics 至少覆盖 `total_scenarios`、`passed`、`failed`、`pass_rate`、`hard_passed`、`soft_passed`、`warnings`、`hard_failed`、`hard_fail_rate`、`warning_rate`、`safe_boundary_pass_count`、`style_warning_count`、`helpfulness_warning_count`、`semantic_marker_warning_count`、`prompt_memory_block_correct_count`、`pending_memory_blocked_count`、`inactive_memory_blocked_count`、`persona_drift_blocked_count`、`mechanism_phrase_violation_count`、`mechanical_memory_recall_count`、`persona_override_violation_count`、`secret_leak_count` 和 `current_input_priority_count`。
@@ -476,6 +533,9 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 ### 2. Voice Output 回归检查
 
 - `语音输出 / Voice Output` 默认关闭。
+- Voice workspace / Settings 应显示当前 TTS Provider 为 `System Speech Synthesis`，状态为可用或安全不可用，并说明当前只是本机系统语音 fallback。
+- Voice workspace / Settings 应显示 provider 能力：系统语音、ReiLink 不接外部 TTS API、支持停止 / 打断、不支持角色音色、不支持 provider streaming。
+- Local TTS / External TTS 只能显示为 disabled / 不可选择占位，不应触发本地路径、API key、网络请求或外部 provider 调用。
 - `测试语音 / Test Voice` 按钮可见。
 - `语速 / Rate` 和 `音量 / Volume` 控件可见。
 - 默认关闭时，assistant 回复不会播放语音。
@@ -488,10 +548,13 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 - 播放中发送新用户消息会停止当前语音。
 - 关闭 Voice Output 会停止当前语音。
 - Voice Output 开启时，assistant 最终回复会触发语音播放。
+- 直接对话 + `brief` 时只播报短版文本；`full` 时尽量播报清理后的完整回复；`silent` 时不自动播报但保留文字回复。
+- TTS unavailable 时不崩溃，聊天文字仍保留，Event Stream 只显示安全错误摘要。
 - 如果 5 秒内没有真实开始播放，Event Stream 显示“语音播放失败”或等价中文摘要。
 - 更换系统语音包后，Test Voice 仍应允许失败并显示可理解错误，不应卡死 UI。
 - Event Stream 不显示完整 assistant 回复文本。
 - Event Stream 不显示完整测试语音文本。
+- Event Stream 可显示 TTS strategy id、source、profile、字符数、stop / error reason 和 safe status。
 - Event Stream 不显示 raw prompt、API key、`.env`、Authorization、完整路径或长 internal payload。
 
 ### 3. Voice Input push-to-talk 回归检查
@@ -545,7 +608,7 @@ python scripts/run_persona_memory_eval.py --provider live --allow-failures
 
 #### Local ASR v1 Release Regression / 本地语音输入 v1 发布回归
 
-Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保存本地 ASR binary、model 和 converter 路径，主聊天语音按钮在 ready 时优先使用本地 ASR，transcript 只填入输入框且不会自动发送。每次修改 Overlay、Live2D、RAG、packaging、voice 或 debug surfaces 前后，都应先按本清单做 release regression。
+Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保存本地 ASR binary、model 和 converter 路径，主聊天语音按钮在 ready 时优先使用本地 ASR；默认 `confirm_send` 下 transcript 只填入输入框且不会自动发送，显式 Direct Conversation 则使用 Voice v2.2 guard。每次修改 Overlay、Live2D、RAG、packaging、voice 或 debug surfaces 前后，都应先按本清单做 release regression。
 
 1. Clean packaged app startup:
    - 运行 `make package-backend`。
@@ -618,14 +681,14 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - Probe UI、Debug Panel、Raw JSON 不显示完整路径、raw stdout、raw stderr、raw exception、raw env、API key、`.env`、Authorization 或 raw prompt。
 - Packaged `.app` 中未配置时应安全显示配置未就绪；配置 fake binary / fake model 时可手动验证 `可以启动`，退出后 backend 无残留。
 - Audio Capture / Temp File v1 只在用户点击 `测试录音 / Test Recording` 后请求麦克风权限；权限拒绝时显示 `麦克风权限被拒绝` 或等价中文 fallback。
-- 录音测试默认录制短音频，最长不超过 5 秒；用户可点击 `停止录音 / Stop Recording` 提前停止。
+- 独立录音测试默认最长 3 秒；用户可点击 `停止录音 / Stop Recording` 提前停止。主 Local ASR 录音是另一条路径，最长 30 秒。
 - Renderer 使用 `MediaRecorder` 生成音频 blob，只发送到本机 backend audio probe endpoint；不调用 whisper，不调用 local ASR binary，不调用云 ASR，不转写。
 - Backend audio probe 最大上传大小为 2MB；过大返回 `录音文件过大`，无效 MIME 或空数据返回 `录音数据无效`。
 - Backend audio probe 写入系统临时目录，立即删除临时音频；清理失败时显示 `临时音频清理失败`，不暴露完整路径。
 - Audio Capture UI、Debug Panel 和 Event Stream 只显示录音时长、大小、MIME 和清理状态，不显示音频内容、base64、完整临时路径、raw exception、API key、`.env`、Authorization 或 raw prompt。
 - Audio Capture 不填入聊天输入框，不自动发送，不写 memory / prompt，不触发 knowledge retrieval 或 game context extraction。
 - 主聊天语音按钮 provider selection：Local ASR ready 优先使用 `local_asr`；Local ASR not ready 且 Web Speech 可用时回退 `web_speech`；两者都不可用时显示安全 unavailable fallback。
-- Local ASR ready 时，主聊天语音按钮即使在 Web Speech service unavailable 的运行环境中也应可用，并显示 `本地语音识别可用`、`正在录音`、`正在本地转写` 或 `转写完成，请确认后发送`。
+- Local ASR ready 时，主聊天语音按钮即使在 Web Speech service unavailable 的运行环境中也应可用，并显示 `本地语音识别可用`、带 30 秒上限的 `正在录音`、`正在本地转写` 或 `转写草稿已进入输入框，尚未发送`。
 - Backend ASR Transcription Bridge v1 只在 Local ASR config status 为 `local_asr_ready` 时启用主聊天语音按钮的本地转写路径和 `录音并转写 / Record & Transcribe`。
 - config not ready 时，转写按钮不可用；backend 返回 `local_asr_transcription_not_ready`，不运行 binary。
 - config ready 时，用户点击主聊天语音按钮或 Settings 的 `Record & Transcribe` 后才请求麦克风权限，录制短音频并上传到本机 backend transcription endpoint。
@@ -645,7 +708,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - fake binary smoke：通过 Settings 或 env fallback 配置 fake binary / fake model，fake binary 输出固定 transcript，确认输入框被回填。
 - Settings 显示安全 model basename。`ggml-base.bin` 通常速度和准确率较均衡；tiny 更快但更不准，small / medium / large 可能更准但更慢或超时。ReiLink 不内置模型。
 - 真实准确率排查建议：尽量说短句、靠近麦克风、降低背景噪声；需要更高准确率时可尝试更大模型，但要接受更慢或超时风险。
-- 默认 confirm-send 下正常 transcript 只填入聊天输入框，用户可编辑或删除；不会自动发送，UI 应显示 `转写完成，请确认后发送`。直接对话模式开启时，UI 应显示 `转写完成，已自动发送`。
+- 默认 confirm-send 下正常 transcript 只作为可编辑草稿填入聊天输入框，用户可修改、删除或重新录音；不会自动发送，UI 应显示 `转写草稿，尚未发送`。直接对话模式开启时，只有 quality guard 通过才显示 `转写完成，已自动发送`。
 - 未确认 transcript 不写 memory，不进入 prompt / retrieval / game context，也不触发 semantic/game extraction。
 - 默认 confirm-send 下主聊天语音按钮的 transcript 同样只填入输入框；用户手动点击发送后才进入 chat flow。直接对话模式开启时，transcript 会自动进入现有 chat flow。
 - 空 transcript 返回 `local_asr_transcription_no_text`，UI 显示 `没有识别到可用文本`，不改输入框。
@@ -653,8 +716,23 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - subprocess OS error 返回 `local_asr_transcription_error`，不显示 raw exception。
 - cleanup succeeded 时 response / UI 显示临时音频已清理。
 - cleanup failed 时返回 `local_asr_transcription_cleanup_failed`，不显示 temp path、raw exception 或 transcript。
-- Event Stream 只显示 `本地语音识别开始`、`本地语音识别完成`、`本地语音识别失败`、字数、language、是否 `已规范为简体中文`、duration、size、MIME、conversion status、target MIME、cleanup、安全 model / binary basename 和安全 status。
+- Event Stream 只显示 `本地语音识别开始`、`本地语音识别完成`、`本地语音识别失败`、stop reason、transcript quality、send decision、interaction mode、字数、language、是否 `已规范为简体中文`、duration、size、MIME、conversion status、target MIME、cleanup、安全 model / binary basename 和安全 status。
 - Event Stream、Debug Panel、Raw JSON 不显示完整 transcript、raw stdout、raw stderr、完整 binary/model/temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
+- Direct Conversation 安全验收必须覆盖：极短实际 capture + 较长幻觉 transcript -> `recording_too_short`；`(字幕:J Chong)` / `(拍摄)` / `[Music]` -> `non_speech_caption`；`我等您下准备去` -> `suspected_partial`；`嗯` -> `transcript_too_short`；30 秒上限 -> `max_duration`。这些场景必须保留非空文本为可编辑草稿，不调用 `/api/chat`，不产生 `user_message_sent`，不触发 Extraction / Memory / proactive / Game Context 更新。
+- 短录音时长以 `MediaRecorder.start()` 到用户请求 Stop 的实际间隔为准，不包含等待最终 `dataavailable` / `onstop` 的 teardown 时间，也不信任 backend echo 覆盖 renderer capture duration。当前 Direct Conversation 自动发送下限为 800 ms。
+- 如果用户在 `getUserMedia()` 尚未返回时立即 Stop，controller 必须排队该请求，并在 recorder start 后立刻停止；不得丢失 Stop 后继续录到 30 秒上限。deferred-permission 自动化与 packaged 极短点击都要覆盖这条竞态。
+- caption guard 使用有限结构：仅括号 / 方括号组、caption marker payload 或裸 speaker label；不得为真实 payload 增加专用字符串特判。带括号细节但括号外仍有自然语言主体的完整句应继续通过；纯括号包裹的真实自然语言可能被保守阻止，但仍可编辑后手动发送。这不是音频 VAD。
+- 干净 Game Context 下，`我今天准备现在石东威尔城附近探索一会` 必须对 `text` / `voice_confirmed` / `voice_direct` 都保持无游戏状态；知识包中的通用 exploration / build / general topic alias 不得独立启动 canonical game。实体型 Boss / 地点 alias 仍可作为 bounded bootstrap evidence，因此正确的 `史东薇尔` 仍识别为艾尔登法环，明确的 `我现在换去玩空洞骑士` 仍正常切换。
+- packaged `.app` 人工验收需明确区分真实麦克风、模拟 MediaRecorder、受控 transcript、系统语音回录、自动化测试和用户人工测试。被拦截内容不得产生 Rei 回复或永久卡在 listening / stopping / transcribing，退出后应释放麦克风、backend 和 8000 端口。
+
+| 证据方法 | 可以证明 | 不得宣称 |
+| --- | --- | --- |
+| 自动化测试 | state / reason / side-effect / privacy 断言可重复通过 | 已完成真实设备或真人麦克风验收 |
+| 模拟 MediaRecorder | final chunk、延迟 `onstop`、实际时长、pending permission、30 秒 timer 等控制器边界 | 浏览器真实编码、系统权限、物理麦克风质量已通过 |
+| 受控 transcript | empty / short / caption / partial / mode switch / GameCatalog 决策可精确复现 | ASR 模型真的产出了该文本 |
+| 系统语音回录 | 系统扬声器到麦克风再到本地 ASR 的近真实链路 | 真人口音、物理敲击或所有环境噪声已覆盖 |
+| 真实麦克风 | 当前机器的权限、capture、ASR、草稿 / auto-send 和退出释放 | 其他机器、模型、口音或环境同样通过 |
+| 用户人工测试 | 实际可见 UI、交互节奏、听感和可恢复性 | 可替代自动化回归或未执行的边缘场景 |
 - packaged `.app` smoke 需要确认未配置时 Local Transcribe disabled；可选 fake binary / fake model smoke 确认 packaged app 仍不泄露 transcript 或路径。
 - Packaged `.app` 应包含麦克风用途说明：`ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。`
 - Local ASR QA 后续重点是：主聊天按钮 provider selection、转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。
@@ -673,8 +751,8 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - `Check Local ASR` 应返回 succeeded；失败或超时只显示中文安全状态。
 - `Audio Capture Test` 应录音成功，显示 duration、size、MIME，并清理临时音频。
 - audio conversion 应显示 `audio_conversion_succeeded`，或在 WAV / PCM 输入时显示 conversion not needed。
-- `Record & Transcribe` 应返回已 trim / 折叠空白 / 简体规范化后的 transcript，并只填入输入框。
-- 主聊天语音按钮应显示本地 ASR 可用；点击后录音、转写，并把 transcript 只填入主聊天输入框。
+- `Record & Transcribe` 应返回已 trim / 折叠空白 / 简体规范化后的 transcript；默认 `confirm_send` 下只填入输入框。
+- 主聊天语音按钮应显示本地 ASR 可用；默认 `confirm_send` 下点击后录音、转写，并把 transcript 只填入主聊天输入框。
 - 默认 confirm-send 下 transcript 不自动发送；用户检查后才手动点击发送。
 - 未发送前不得写入 memory / prompt / knowledge retrieval / game context。
 - Event Stream / Debug Panel 不显示完整 transcript、完整路径、raw stdout、raw stderr、API key、`.env` 或 Authorization。
@@ -704,7 +782,7 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - 通过 Settings 保存真实 whisper.cpp binary 和 model 路径，或设置 `REILINK_LOCAL_ASR_BINARY` 和 `REILINK_LOCAL_ASR_MODEL` env fallback。
 - 打开 dev app，运行 `Check Local ASR`，确认只显示安全文件名。
 - 运行 `Audio Capture Test`，记录安全 MIME summary，例如 `audio/webm`、`audio/wav` 或 `unknown`。
-- 运行 `Record & Transcribe`，检查 transcript 是否以简体规范化结果进入输入框且不会自动发送。
+- 在默认 `confirm_send` 下运行 `Record & Transcribe`，检查 transcript 是否以简体规范化结果进入输入框且不会自动发送。
 - 运行主聊天语音按钮，确认 Web Speech 不可用时仍走 Local ASR，状态不是 `语音识别服务不可用`。
 - 检查 Event Stream 不显示完整 transcript。
 - 如果录音格式是 `audio/webm` / Ogg，检查未配置 converter 时是否显示 `尚未配置音频转换工具`；通过 Settings 或 `REILINK_AUDIO_CONVERTER_BINARY` fallback 配置 converter 后再验证转换状态、target MIME 和清理状态。
@@ -1007,6 +1085,9 @@ packaged `.app` 手动 smoke 最低步骤：
 - backend 自启动，或复用健康外部 backend。
 - bundled knowledge resources 可用。
 - `语音输出 / Voice Output` 和 `测试语音 / Test Voice` 可见。
+- Voice workspace / Settings 可见 `System Speech Synthesis` 当前策略，且没有可误导用户的外部 provider selector。
+- Direct Conversation + Voice Profile `silent` 不自动播报；`brief` 不播报超长文本；Stop Voice / interruption 可用。
+- Event Stream 不展示完整 assistant reply、完整 Test Voice 文本或 spoken text，只展示 strategy、source、profile、字符数和安全状态。
 - `语音输入 / Voice Input` 和主语音按钮可见。
 - Voice Input supported / unsupported / permission fallback 可读，不崩溃。
 - Knowledge Retrieval 可用。
@@ -1033,6 +1114,7 @@ packaged `.app` 手动 smoke 最低步骤：
 - `no_pack` 依赖 catalog 中仍有 planned / unsupported 游戏；当前可用 `只狼` 做手动场景。
 - Voice Input v1 保留 Web Speech fallback；Local ASR ready 时主聊天语音按钮优先走本地转写。不接商业 ASR，不上传外部服务，不保存音频。
 - 如果 Electron runtime 不支持 Web Speech Recognition，当前预期是 Local ASR ready 时主按钮仍可用；Local ASR not ready 时显示明确 unavailable fallback，用户可临时使用系统听写输入到聊天框。真实 whisper.cpp / model / converter 兼容性仍属后续手动 QA。
+- Direct Conversation 的 partial / noise guard 是 bounded best-effort；当前没有 renderer 可用的 no-speech probability、segment confidence 或 average log probability，不能宣称可靠识别所有半句或噪声。需要严格复核时使用默认 confirm-send。
 - Voice Output 的真实播放取决于系统语音包和浏览器 speech synthesis 支持；失败必须被 UI 允许并可见，不应被视为崩溃。
 - Manual QA 不替代 automated tests；它用于 release 前的人眼回归与打包行为确认。
 
@@ -1045,6 +1127,9 @@ Machine-readable scenarios live at:
 - `docs/qa/retrieval_scenarios.json`
 - `docs/qa/voice_input_scenarios.json`
 - `docs/qa/voice_input_local_asr_scenarios.json`
+- `docs/qa/voice_interaction_v2_scenarios.json`
+- `docs/qa/voice_profile_scenarios.json`
+- `docs/qa/voice_v2_2_release_matrix.json`
 - `docs/qa/llm_primary_guarded_extraction_scenarios.json`
 - `docs/qa/extraction_eval_scenarios.json`
 - `docs/qa/memory_architecture_scenarios.json`
@@ -1060,6 +1145,7 @@ Machine-readable scenarios live at:
 - `docs/qa/ui_ux_information_architecture_scenarios.json`
 
 Real Local ASR manual setup and optional smoke guidance lives at `docs/local-asr-manual-setup.md`.
+Voice v2.2 release guidance lives at `docs/release_voice_v2_2_hardening_checklist.md`, with candidate notes at `docs/releases/reilink-voice-v2.2.md`.
 Context & Memory release hardening guidance lives at `docs/release_context_memory_hardening_checklist.md`.
 
 Use the Chinese checklist above as the source of truth for manual runs. Keep results short and concrete: pass/fail, exact app mode, exact commit, and any visible privacy issue.

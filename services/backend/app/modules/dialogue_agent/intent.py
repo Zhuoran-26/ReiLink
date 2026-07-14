@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from app.modules.game_context.entity_registry import find_boss_mentions
+
 Intent = Literal[
     "casual_chat",
     "identity_question",
@@ -30,27 +32,6 @@ _IDENTITY_PATTERNS = (
     "介绍一下你",
 )
 
-_BOSS_NAMES = (
-    "margit",
-    "恶兆妖鬼",
-    "惡兆妖鬼",
-    "玛尔基特",
-    "瑪爾基特",
-    "恶兆",
-    "惡兆",
-    "tree sentinel",
-    "大树守卫",
-    "大樹守衛",
-    "radahn",
-    "拉塔恩",
-    "malenia",
-    "玛莲妮亚",
-    "瑪蓮妮亞",
-    "水鸟乱舞",
-    "水鳥亂舞",
-    "waterfowl",
-    "waterfowl dance",
-)
 _LOCATION_WORDS = ("where", "where is", "在哪", "哪里", "哪裡", "位置", "怎么去", "路上", "地点")
 _STRATEGY_WORDS = (
     "beat",
@@ -84,7 +65,10 @@ def detect_intent(message: str) -> IntentResult:
     if normalized in _UNCLEAR_SHORT or compact in _UNCLEAR_SHORT:
         return IntentResult("unclear", False)
 
-    has_boss = any(name in normalized or name in compact for name in _BOSS_NAMES)
+    has_boss = any(
+        grounding.entity and grounding.entity.game_id == "elden_ring"
+        for grounding in find_boss_mentions(message)
+    ) or any(name in normalized or name in compact for name in ("水鸟乱舞", "水鳥亂舞", "waterfowl", "waterfowl dance"))
     has_location = any(word in normalized or word in compact for word in _LOCATION_WORDS)
     has_strategy = any(word in normalized or word in compact for word in _STRATEGY_WORDS)
     has_build = any(word in normalized or word in compact for word in _BUILD_WORDS)

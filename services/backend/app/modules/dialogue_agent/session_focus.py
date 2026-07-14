@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.modules.game_context.entity_registry import BossEntity, find_boss_mentions, is_boss_negated
+
 
 @dataclass(frozen=True)
 class SessionFocus:
@@ -23,15 +25,6 @@ class SessionFocus:
         )
 
 
-BOSS_FOCUS_ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("女武神", ("女武神", "malenia", "玛莲妮亚", "瑪蓮妮亞", "米凯拉", "米凱拉")),
-    ("大树守卫", ("大树守卫", "大樹守衛", "tree sentinel")),
-    ("恶兆妖鬼 Margit", ("margit", "恶兆妖鬼", "惡兆妖鬼", "玛尔基特", "瑪爾基特", "恶兆", "惡兆")),
-    ("拉塔恩", ("拉塔恩", "radahn", "碎星", "拉塔恩将军", "拉塔恩將軍")),
-    ("老将欧尼尔", ("老将欧尼尔", "老將歐尼爾", "欧尼尔", "歐尼爾", "老将", "老將", "commander o'neil", "commander o’neil", "o'neil", "o’neil")),
-    ("False Knight", ("假骑士", "假騎士", "false knight")),
-)
-
 ELLIPTICAL_BOSS_REFERENCES = (
     "一直打不过",
     "一直打不過",
@@ -51,6 +44,8 @@ ELLIPTICAL_BOSS_REFERENCES = (
     "這個boss",
     "这个 boss",
     "這個 boss",
+    "这个",
+    "這個",
     "打不过啊",
     "打不過啊",
 )
@@ -66,15 +61,17 @@ def resolve_session_focus(current_message: str, recent_user_messages: list[str])
         boss = detect_boss_focus(message)
         if boss:
             return SessionFocus(boss, "recent_session")
+        if _has_explicit_negated_boss(message):
+            return SessionFocus(source="explicit_focus_boundary")
     return SessionFocus()
 
 
 def detect_boss_focus(message: str) -> str | None:
     normalized = message.lower()
-    for canonical, aliases in BOSS_FOCUS_ALIASES:
-        for alias in aliases:
-            if alias.lower() in normalized and not _is_negated_alias(normalized, alias):
-                return canonical
+    for grounding in find_boss_mentions(message):
+        entity = grounding.entity
+        if entity and not _is_negated_entity(normalized, entity):
+            return entity.display_name
     return None
 
 
@@ -83,7 +80,12 @@ def is_elliptical_boss_reference(message: str) -> bool:
     return any(re.sub(r"\s+", "", marker.lower()) in compact for marker in ELLIPTICAL_BOSS_REFERENCES)
 
 
-def _is_negated_alias(normalized: str, alias: str) -> bool:
-    compact = re.sub(r"\s+", "", normalized.lower())
-    alias_compact = re.sub(r"\s+", "", alias.lower())
-    return f"不是{alias_compact}" in compact or f"不是{alias_compact}啊" in compact
+def _is_negated_entity(normalized: str, entity: BossEntity) -> bool:
+    return is_boss_negated(normalized, entity.canonical_id)
+
+
+def _has_explicit_negated_boss(message: str) -> bool:
+    return any(
+        grounding.entity and is_boss_negated(message, grounding.entity.canonical_id)
+        for grounding in find_boss_mentions(message)
+    )

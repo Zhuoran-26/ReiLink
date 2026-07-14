@@ -2,6 +2,7 @@ export type VoiceConversationState =
   | "idle"
   | "listening"
   | "transcribing"
+  | "auto_sending"
   | "ready_to_send"
   | "assistant_thinking"
   | "speaking"
@@ -18,6 +19,7 @@ export type VoiceConversationSnapshot = {
 export type VoiceStateSignals = {
   listening?: boolean;
   transcribing?: boolean;
+  autoSending?: boolean;
   readyToSend?: boolean;
   assistantThinking?: boolean;
   speaking?: boolean;
@@ -28,41 +30,46 @@ export type VoiceStateSignals = {
 const VOICE_STATE_META: Record<VoiceConversationState, Omit<VoiceConversationSnapshot, "state">> = {
   idle: {
     label: "语音待机",
-    description: "默认确认后发送。",
+    description: "默认确认后发送，开启直接对话后才会自动发送。",
     tone: "neutral"
   },
   listening: {
-    label: "正在听",
-    description: "录音结束后才会转写。",
+    label: "正在录音",
+    description: "说完后停止录音，随后本地转写。",
     tone: "active"
   },
   transcribing: {
     label: "正在识别",
-    description: "本地转写中，不会自动发送。",
+    description: "正在本地转写，音频不会上传。",
+    tone: "active"
+  },
+  auto_sending: {
+    label: "已转写，正在发送给 Rei",
+    description: "直接对话已开启，这句会自动进入聊天。",
     tone: "active"
   },
   ready_to_send: {
-    label: "已识别，等待发送",
-    description: "文本已在输入框，请确认后发送。",
+    label: "转写草稿，尚未发送",
+    description: "请检查或修改输入框内容，也可以重新录音。",
     tone: "ready"
   },
   assistant_thinking: {
     label: "Rei 正在回应",
-    description: "已确认发送，正在等待回复。",
+    description: "已发送，正在等待回复。",
     tone: "active"
   },
   speaking: {
-    label: "Rei 正在说话",
-    description: "可以随时停止播放。",
+    label: "正在播报",
+    description: "可以点击停止语音打断播报。",
     tone: "active"
   },
   interrupted: {
     label: "已停止播放",
-    description: "语音播放已停止。",
+    description: "播报已停止。",
     tone: "warning"
   },
   error: {
-    label: "语音出错",
+    label: "语音暂时不可用",
     description: "语音没有接上。可以再试一次。",
     tone: "error"
   }
@@ -83,11 +90,12 @@ export const voiceConversationSnapshot = (
 
 export const resolveVoiceConversationState = (signals: VoiceStateSignals): VoiceConversationSnapshot => {
   if (signals.transcribing) return voiceConversationSnapshot("transcribing");
-  if (signals.assistantThinking) return voiceConversationSnapshot("assistant_thinking");
+  if (signals.errorMessage) return voiceConversationSnapshot("error", signals.errorMessage);
   if (signals.speaking) return voiceConversationSnapshot("speaking");
+  if (signals.autoSending) return voiceConversationSnapshot("auto_sending");
+  if (signals.assistantThinking) return voiceConversationSnapshot("assistant_thinking");
   if (signals.readyToSend) return voiceConversationSnapshot("ready_to_send");
   if (signals.listening) return voiceConversationSnapshot("listening");
   if (signals.interrupted) return voiceConversationSnapshot("interrupted");
-  if (signals.errorMessage) return voiceConversationSnapshot("error", signals.errorMessage);
   return voiceConversationSnapshot("idle");
 };

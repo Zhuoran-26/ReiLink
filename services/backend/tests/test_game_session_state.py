@@ -94,7 +94,67 @@ def test_llm_primary_semantic_switch_overrides_old_current_boss(tmp_path):
     assert state.current_boss.name == "恶兆妖鬼 Margit"
     assert state.current_boss.source == "semantic_extraction"
     assert state.last_attempted_boss == "恶兆妖鬼 Margit"
-    assert any(entry.name == "女武神" and entry.status == "attempted" for entry in state.boss_history)
+    assert any(entry.name == "女武神" and entry.status == "abandoned" for entry in state.boss_history)
+
+
+def test_semantic_clear_only_switch_prevents_stale_followup_attribution(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在马尔吉特", "casual_chat", _idle_status(), now)
+
+    cleared = store.update_from_user_message(
+        "我不打马尔吉特了，可能去看看那个接什么瑞克",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(seconds=1),
+        semantic_game_event={
+            "type": "boss_switch",
+            "boss_name": None,
+            "confidence": 0.92,
+            "should_update_current_boss": True,
+            "guard_source": "llm_primary",
+            "new_target_candidate": "godrick",
+            "new_target_status": "candidate_only",
+        },
+    )
+    failed = store.update_from_user_message(
+        "这个也没打过死了一次",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(seconds=2),
+        session_focus_boss="恶兆妖鬼 Margit",
+    )
+
+    assert cleared.current_boss is None
+    assert any(entry.name == "恶兆妖鬼 Margit" and entry.status == "abandoned" for entry in cleared.boss_history)
+    assert failed.current_boss is None
+    assert failed.current_activity == "boss_failed"
+    assert failed.death_count == 1
+    assert not any(entry.name == "恶兆妖鬼 Margit" and entry.status == "failed" for entry in failed.boss_history)
+
+
+def test_semantic_failure_uses_explicit_death_text_when_provider_omits_count(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message("我现在卡在接肢葛瑞克", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message(
+        "这个也没打过死了一次",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(seconds=1),
+        semantic_game_event={
+            "type": "failed_attempt",
+            "boss_name": "接肢葛瑞克",
+            "confidence": 0.92,
+            "should_update_current_boss": True,
+            "guard_source": "llm_primary",
+        },
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "接肢葛瑞克"
+    assert state.death_count == 1
 
 
 def test_llm_primary_game_context_event_updates_game_only(tmp_path):
@@ -119,6 +179,122 @@ def test_llm_primary_game_context_event_updates_game_only(tmp_path):
     assert state.current_game == "Elden Ring"
     assert state.current_boss is None
     assert state.current_activity == "game_discussion"
+
+
+def test_guide_entity_updates_discussion_target_without_switching_current_boss(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    before = store.update_from_user_message("我现在卡在女武神", "casual_chat", _idle_status(), now)
+
+    state = store.update_from_user_message(
+        "玛尔吉特怎么打",
+        "elden_ring_boss_strategy",
+        _idle_status(),
+        now + timedelta(minutes=1),
+        semantic_game_event={
+            "type": "guide_request",
+            "boss_name": "恶兆妖鬼 Margit",
+            "confidence": 0.95,
+            "should_update_current_boss": False,
+            "guard_source": "llm_primary",
+            "input_source": "text",
+        },
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "女武神"
+    assert state.discussion_target is not None
+    assert state.discussion_target.entity_id == "margit"
+    assert state.discussion_target.name == "恶兆妖鬼 Margit"
+    assert state.current_activity == "guide_request"
+    assert state.death_count == 0
+    assert state.frustration_count == before.frustration_count
+
+
+def test_explicit_challenge_replaces_discussion_target_with_formal_boss_state(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+    store.update_from_user_message(
+        "玛尔吉特怎么打",
+        "elden_ring_boss_strategy",
+        _idle_status(),
+        now,
+        semantic_game_event={
+            "type": "guide_request",
+            "boss_name": "恶兆妖鬼 Margit",
+            "confidence": 0.95,
+            "should_update_current_boss": False,
+            "guard_source": "llm_primary",
+        },
+    )
+
+    state = store.update_from_user_message(
+        "我准备去打接肢葛瑞克",
+        "casual_chat",
+        _idle_status(),
+        now + timedelta(minutes=1),
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "接肢葛瑞克"
+    assert state.discussion_target is None
+
+
+def test_historical_margit_mention_does_not_write_current_progress(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+
+    state = store.update_from_user_message("我以前打过玛尔吉特", "casual_chat", _idle_status(), now)
+
+    assert state.current_boss is None
+    assert state.discussion_target is None
+    assert state.last_attempted_boss is None
+    assert state.last_cleared_boss is None
+    assert state.death_count == 0
+    assert state.frustration_count == 0
+
+
+def test_margit_translation_variant_failure_updates_formal_boss_state(tmp_path):
+    store = GameSessionStore(tmp_path / "game_session_state.json")
+    now = datetime.now(timezone.utc)
+
+    state = store.update_from_user_message("我刚才打玛尔吉特又失败了", "casual_chat", _idle_status(), now)
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "恶兆妖鬼 Margit"
+    assert state.last_attempted_boss == "恶兆妖鬼 Margit"
+    assert state.last_failed_boss == "恶兆妖鬼 Margit"
+    assert state.current_activity == "boss_failed"
+    assert state.frustration_count == 1
+
+
+@pytest.mark.parametrize("input_source", ["text", "voice_confirmed", "voice_direct"])
+def test_submitted_input_sources_apply_the_same_failure_state(tmp_path, input_source):
+    store = GameSessionStore(tmp_path / f"game_session_state_{input_source}.json")
+    now = datetime.now(timezone.utc)
+
+    state = store.update_from_user_message(
+        "我刚才打玛尔吉特又失败了",
+        "casual_chat",
+        _idle_status(),
+        now,
+        semantic_game_event={
+            "type": "failed_attempt",
+            "boss_name": "恶兆妖鬼 Margit",
+            "confidence": 0.95,
+            "should_update_current_boss": True,
+            "guard_source": "llm_primary",
+            "input_source": input_source,
+            "frustration_delta": 1,
+        },
+    )
+
+    assert state.current_boss is not None
+    assert state.current_boss.name == "恶兆妖鬼 Margit"
+    assert state.last_attempted_boss == "恶兆妖鬼 Margit"
+    assert state.last_failed_boss == "恶兆妖鬼 Margit"
+    assert state.current_activity == "boss_failed"
+    assert state.frustration_count == 1
 
 
 @pytest.mark.parametrize(

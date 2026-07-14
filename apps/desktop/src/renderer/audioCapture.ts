@@ -1,11 +1,15 @@
 import { eventBus } from "./eventBus";
+import type { VoiceCaptureStopReason } from "../shared/events";
 
-export type AudioCapturePhase = "idle" | "recording";
+export type AudioCapturePhase = "idle" | "recording" | "stopping";
 
 export type AudioCaptureStatus = {
   supported: boolean;
   phase: AudioCapturePhase;
   lastError: string | null;
+  startedAtMs: number | null;
+  maxDurationMs: number | null;
+  lastStopReason: VoiceCaptureStopReason | null;
 };
 
 export type AudioCaptureRecording = {
@@ -13,6 +17,7 @@ export type AudioCaptureRecording = {
   durationMs: number;
   sizeBytes: number;
   mimeType: string;
+  stopReason: Extract<VoiceCaptureStopReason, "user_stop" | "max_duration">;
 };
 
 type AudioCaptureListener = (status: AudioCaptureStatus) => void;
@@ -26,13 +31,23 @@ type ActiveCapture = {
   recorder: MediaRecorder;
   stream: MediaStream;
   startedAt: number;
+  stoppedAt: number | null;
   chunks: Blob[];
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | null;
   stopped: boolean;
+  finalized: boolean;
+  deliverRecording: boolean;
+  stopReason: VoiceCaptureStopReason | null;
+  maxDurationMs: number;
 };
 
-const DEFAULT_RECORDING_DURATION_MS = 3000;
-const MAX_RECORDING_DURATION_MS = 5000;
+type PendingCaptureStop = {
+  reason: VoiceCaptureStopReason;
+  deliverRecording: boolean;
+};
+
+const DEFAULT_RECORDING_DURATION_MS = 30_000;
+const MAX_RECORDING_DURATION_MS = 30_000;
 const now = () => new Date().toISOString();
 
 const errorText = (reason: string) => {
@@ -60,14 +75,20 @@ const recorderMimeType = () => {
 
 export class AudioCaptureController {
   private activeCapture: ActiveCapture | null = null;
+  private startPending = false;
+  private pendingStop: PendingCaptureStop | null = null;
   private listeners = new Set<AudioCaptureListener>();
   private lastError: string | null = null;
+  private lastStopReason: VoiceCaptureStopReason | null = null;
 
   getStatus(): AudioCaptureStatus {
     return {
       supported: this.isSupported(),
-      phase: this.activeCapture ? "recording" : "idle",
-      lastError: this.lastError
+      phase: this.activeCapture ? (this.activeCapture.stopped ? "stopping" : "recording") : "idle",
+      lastError: this.lastError,
+      startedAtMs: this.activeCapture?.startedAt ?? null,
+      maxDurationMs: this.activeCapture?.maxDurationMs ?? null,
+      lastStopReason: this.lastStopReason
     };
   }
 
@@ -80,17 +101,20 @@ export class AudioCaptureController {
   }
 
   async start(options: AudioCaptureStartOptions) {
-    if (this.activeCapture) return true;
+    if (this.activeCapture || this.startPending) return true;
     if (!this.isSupported()) {
       this.setError("not_supported");
       return false;
     }
 
     const durationMs = Math.min(Math.max(options.durationMs ?? DEFAULT_RECORDING_DURATION_MS, 1), MAX_RECORDING_DURATION_MS);
+    this.startPending = true;
+    this.pendingStop = null;
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (error) {
+      this.clearPendingStart();
       this.setError(isPermissionDenied(error) ? "permission_denied" : "recording_failed");
       return false;
     }
@@ -101,6 +125,7 @@ export class AudioCaptureController {
       recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
     } catch {
       stopStreamTracks(stream);
+      this.clearPendingStart();
       this.setError("recording_failed");
       return false;
     }
@@ -108,13 +133,19 @@ export class AudioCaptureController {
     const activeCapture: ActiveCapture = {
       recorder,
       stream,
-      startedAt: Date.now(),
+      startedAt: 0,
+      stoppedAt: null,
       chunks: [],
-      timer: setTimeout(() => this.stop("max_duration"), durationMs),
-      stopped: false
+      timer: null,
+      stopped: false,
+      finalized: false,
+      deliverRecording: true,
+      stopReason: null,
+      maxDurationMs: durationMs
     };
     this.activeCapture = activeCapture;
     this.lastError = null;
+    this.lastStopReason = null;
 
     recorder.ondataavailable = (event) => {
       if (event.data?.size > 0) activeCapture.chunks.push(event.data);
@@ -122,80 +153,147 @@ export class AudioCaptureController {
 
     recorder.onerror = () => {
       if (this.activeCapture !== activeCapture) return;
-      this.stop("recording_failed");
+      this.requestStop(activeCapture, "error", false);
       this.setError("recording_failed");
     };
 
     recorder.onstop = () => {
-      if (this.activeCapture === activeCapture) this.activeCapture = null;
-      clearTimeout(activeCapture.timer);
-      stopStreamTracks(activeCapture.stream);
-      const recordedDurationMs = Math.max(0, Date.now() - activeCapture.startedAt);
-      const mimeType = recorder.mimeType || activeCapture.chunks[0]?.type || "audio/webm";
-      const blob = new Blob(activeCapture.chunks, { type: mimeType });
-      const recording = {
-        blob,
-        durationMs: recordedDurationMs,
-        sizeBytes: blob.size,
-        mimeType
-      };
-      eventBus.emit({
-        type: "audio_capture_completed",
-        timestamp: now(),
-        duration_ms: recording.durationMs,
-        size_bytes: recording.sizeBytes,
-        mime_type: recording.mimeType
-      });
-      options.onRecorded(recording);
-      this.notify();
+      this.finalizeCapture(activeCapture, options);
     };
 
     try {
       recorder.start();
+      activeCapture.startedAt = Date.now();
+      activeCapture.timer = setTimeout(() => this.stop("max_duration"), durationMs);
     } catch {
       this.activeCapture = null;
-      clearTimeout(activeCapture.timer);
+      activeCapture.finalized = true;
       stopStreamTracks(stream);
+      this.clearPendingStart();
       this.setError("recording_failed");
       return false;
     }
 
-    eventBus.emit({ type: "audio_capture_started", timestamp: now(), duration_ms: durationMs });
+    this.startPending = false;
+    eventBus.emit({ type: "audio_capture_started", timestamp: now(), duration_ms: durationMs, max_duration_ms: durationMs });
     this.notify();
+    const pendingStop = this.consumePendingStop();
+    if (pendingStop) {
+      this.requestStop(activeCapture, pendingStop.reason, pendingStop.deliverRecording);
+    }
     return true;
   }
 
-  stop(reason = "user_stop") {
+  stop(reason: Extract<VoiceCaptureStopReason, "user_stop" | "max_duration"> = "user_stop") {
     const activeCapture = this.activeCapture;
-    if (!activeCapture || activeCapture.stopped) return;
-    activeCapture.stopped = true;
-    eventBus.emit({
-      type: "audio_capture_stopped",
-      timestamp: now(),
-      reason,
-      duration_ms: Math.max(0, Date.now() - activeCapture.startedAt)
-    });
-    try {
-      if (activeCapture.recorder.state !== "inactive") {
-        activeCapture.recorder.stop();
-      }
-    } catch {
-      this.activeCapture = null;
-      clearTimeout(activeCapture.timer);
-      stopStreamTracks(activeCapture.stream);
-      this.setError("recording_failed");
-    }
-    this.notify();
+    if (!activeCapture) return this.queuePendingStop(reason, true);
+    return this.requestStop(activeCapture, reason, true);
+  }
+
+  cancel() {
+    const activeCapture = this.activeCapture;
+    if (!activeCapture) return this.queuePendingStop("cancelled", false);
+    return this.requestStop(activeCapture, "cancelled", false);
   }
 
   resetForTest() {
     if (this.activeCapture) {
-      clearTimeout(this.activeCapture.timer);
+      if (this.activeCapture.timer) clearTimeout(this.activeCapture.timer);
+      this.activeCapture.finalized = true;
       stopStreamTracks(this.activeCapture.stream);
     }
     this.activeCapture = null;
+    this.clearPendingStart();
     this.listeners.clear();
     this.lastError = null;
+    this.lastStopReason = null;
+  }
+
+  private requestStop(activeCapture: ActiveCapture, reason: VoiceCaptureStopReason, deliverRecording: boolean) {
+    if (this.activeCapture !== activeCapture || activeCapture.stopped || activeCapture.finalized) return false;
+    const stoppedAt = Date.now();
+    activeCapture.stopped = true;
+    activeCapture.stoppedAt = stoppedAt;
+    activeCapture.stopReason = reason;
+    activeCapture.deliverRecording = deliverRecording;
+    this.lastStopReason = reason;
+    if (activeCapture.timer) clearTimeout(activeCapture.timer);
+    eventBus.emit({
+      type: "audio_capture_stopped",
+      timestamp: now(),
+      reason,
+      duration_ms: Math.max(0, stoppedAt - activeCapture.startedAt)
+    });
+    this.notify();
+    try {
+      if (activeCapture.recorder.state !== "inactive") activeCapture.recorder.stop();
+    } catch {
+      this.releaseCapture(activeCapture);
+      this.setError("recording_failed");
+      return false;
+    }
+    return true;
+  }
+
+  private queuePendingStop(reason: VoiceCaptureStopReason, deliverRecording: boolean) {
+    if (!this.startPending) return false;
+    if (!this.pendingStop) this.pendingStop = { reason, deliverRecording };
+    return true;
+  }
+
+  private clearPendingStart() {
+    this.startPending = false;
+    this.pendingStop = null;
+  }
+
+  private consumePendingStop(): PendingCaptureStop | null {
+    const pendingStop = this.pendingStop;
+    this.pendingStop = null;
+    return pendingStop;
+  }
+
+  private finalizeCapture(activeCapture: ActiveCapture, options: AudioCaptureStartOptions) {
+    if (activeCapture.finalized) return;
+    activeCapture.finalized = true;
+    this.releaseCapture(activeCapture);
+
+    const stopReason = activeCapture.stopReason;
+    if (!activeCapture.deliverRecording || stopReason === "cancelled" || stopReason === "error") {
+      this.notify();
+      return;
+    }
+    if (stopReason !== "user_stop" && stopReason !== "max_duration") {
+      this.lastStopReason = "error";
+      this.setError("recording_failed");
+      return;
+    }
+
+    const recordedDurationMs = Math.max(0, (activeCapture.stoppedAt ?? Date.now()) - activeCapture.startedAt);
+    const mimeType = activeCapture.recorder.mimeType || activeCapture.chunks[0]?.type || "audio/webm";
+    const blob = new Blob(activeCapture.chunks, { type: mimeType });
+    const recording: AudioCaptureRecording = {
+      blob,
+      durationMs: recordedDurationMs,
+      sizeBytes: blob.size,
+      mimeType,
+      stopReason
+    };
+    eventBus.emit({
+      type: "audio_capture_completed",
+      timestamp: now(),
+      duration_ms: recording.durationMs,
+      size_bytes: recording.sizeBytes,
+      mime_type: recording.mimeType,
+      stop_reason: recording.stopReason
+    });
+    options.onRecorded(recording);
+    this.notify();
+  }
+
+  private releaseCapture(activeCapture: ActiveCapture) {
+    if (activeCapture.timer) clearTimeout(activeCapture.timer);
+    stopStreamTracks(activeCapture.stream);
+    if (this.activeCapture === activeCapture) this.activeCapture = null;
   }
 
   private isSupported() {

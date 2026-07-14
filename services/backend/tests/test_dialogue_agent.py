@@ -291,6 +291,69 @@ def test_margit_location_returns_location_content(tmp_path: Path):
     assert_chinese_reply(response.reply)
 
 
+@pytest.mark.parametrize("input_source", ["text", "voice_confirmed", "voice_direct"])
+def test_noisy_stormveil_exploration_does_not_switch_game(input_source: str, tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    provider = _PromptCapturingProvider(["嗯。"])
+    agent.provider = provider
+
+    response = agent.chat(
+        ChatRequest(
+            message="我今天准备现在石东威尔城附近探索一会",
+            session_id=f"noisy-stormveil-{input_source}",
+            input_source=input_source,
+        )
+    )
+
+    assert agent.game_session.load().current_game is None
+    assert response.game_status == "idle"
+    assert response.sources == []
+    assert provider.snippets == [[]]
+    assert all(term not in response.reply for term in ("隐藏", "敲墙", "回头", "上方"))
+
+
+def test_exact_stormveil_location_still_selects_elden_ring(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    provider = _PromptCapturingProvider(["慢慢走就好。"])
+    agent.provider = provider
+
+    response = agent.chat(
+        ChatRequest(
+            message="我今天准备先在史东薇尔城附近探索一会儿",
+            session_id="exact-stormveil",
+            input_source="text",
+        )
+    )
+
+    assert agent.game_session.load().current_game == "艾尔登法环"
+    assert response.game_status == "running"
+
+
+def test_explicit_voice_direct_switch_to_hollow_knight_still_applies(tmp_path: Path):
+    from app.modules.dialogue_agent.agent import DialogueAgent
+
+    agent = DialogueAgent()
+    agent.store = ConversationStore(tmp_path / "conversations")
+    agent.provider = _PromptCapturingProvider(["嗯。"])
+
+    response = agent.chat(
+        ChatRequest(
+            message="我现在换去玩空洞骑士",
+            session_id="explicit-hollow-switch",
+            input_source="voice_direct",
+        )
+    )
+
+    assert agent.game_session.load().current_game == "空洞骑士"
+    assert response.game_status == "running"
+
+
 def test_unclear_how_asks_for_more_detail(tmp_path: Path):
     from app.modules.dialogue_agent.agent import DialogueAgent
 

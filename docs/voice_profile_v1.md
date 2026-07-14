@@ -1,8 +1,10 @@
 # Voice Profile v1
 
-Updated: 2026-06-17
+Updated: 2026-07-12
 
-Status: implemented as a behavior policy. Voice Profile v1 decides whether an assistant reply may be spoken and whether it is spoken as full, brief, or silent. It does not add a new TTS engine, character voice, voice clone, wake-word mode, or hands-free loop.
+Document status: current component specification for Voice v2.2.
+
+Status: implemented as a behavior policy and wired through TTS Strategy v0 plus TTS Provider Registry / Capability Surface v0. Voice Profile v1 decides whether an assistant reply may be spoken and whether it is spoken as full, brief, or silent. TTS Provider Registry v0 currently exposes only the system-provided `system_speech_synthesis` strategy around renderer-side `speechSynthesis`; it reserves disabled metadata for future local / external providers but does not add a real external provider, local model provider, character voice, voice clone, wake-word mode, or hands-free loop.
 
 ## Current Profile
 
@@ -15,7 +17,25 @@ Status: implemented as a behavior policy. Voice Profile v1 decides whether an as
 - Max brief length: 2 sentences / 120 characters by default.
 - Debug speaking: disabled.
 - Starting a new recording interrupts active TTS.
-- Test Voice remains available and uses the system `speechSynthesis` voice.
+- Stop Voice interrupts active TTS and shows a short stopped / interrupted state.
+- Test Voice remains available and uses the `system_speech_synthesis` provider backed by system `speechSynthesis`.
+- Test Voice is an explicit user action. It does not represent automatic assistant-reply policy and does not write a chat message.
+- TTS unavailable never removes the full text reply.
+
+## TTS Provider Registry v0
+
+- Current provider id: `system_speech_synthesis`.
+- Current provider role: system-provided fallback around browser / Electron `speechSynthesis`.
+- The underlying strategy owns speak / stop / availability fallback; Voice Output owns lifecycle status and safe Event Stream summaries.
+- The Voice workspace displays the current provider as `System Speech Synthesis`.
+- Provider status is `available` when `speechSynthesis` and `SpeechSynthesisUtterance` exist, otherwise `unavailable`.
+- Current capabilities: system-provided speech, no provider streaming, no character voice, no ReiLink-configured network provider, no TTS API key, supports stop / interrupt.
+- Reserved provider ids: `local_tts` and `external_tts`.
+- `local_tts` is disabled, not selectable, and `not_implemented`.
+- `external_tts` is disabled, not selectable, and `not_configured`.
+- Future local TTS, external TTS, and character voice providers are not implemented.
+- ReiLink passes selected text to the platform `speechSynthesis` implementation. This layer does not call an external TTS endpoint, configure a TTS API key, upload an audio file, or read a local TTS model path; it makes no broader claim about undocumented platform internals.
+- Unknown or disabled provider ids safely fall back to `system_speech_synthesis`; if system speech is unavailable, Voice Output emits a safe unavailable event and keeps the reply as text.
 
 ## Spoken Modes
 
@@ -37,6 +57,7 @@ Status: implemented as a behavior policy. Voice Profile v1 decides whether an as
 - Skip speech.
 - Keep the assistant reply visible in chat.
 - Emit only safe skip metadata.
+- This controls automatic assistant-reply speech; an explicit Test Voice action remains separate.
 
 ## Never Spoken
 
@@ -62,12 +83,18 @@ Voice Profile events may include:
 - profile id,
 - source,
 - spoken mode,
+- TTS strategy id,
+- TTS provider id,
+- TTS provider status,
+- TTS provider fallback flag,
 - max character / sentence limits,
 - original and spoken character counts,
 - sentence count,
 - skip reason.
 
 Voice Profile events must not include full assistant text, spoken text, prompt text, ASR transcript, secrets, raw logs, or full local paths.
+
+TTS lifecycle events may include strategy id, provider id, provider status, provider fallback flag, source, profile, character count, stop reason, safe stop status such as `interrupted` / `stopped`, unavailable / error reason, and a short status string. They must not include the full assistant reply, Test Voice text, spoken text, prompt text, ASR transcript, persona markdown, `.env`, API keys, raw provider responses, raw config, local model paths, stdout, stderr, or full local paths.
 
 ## UI Surface
 
@@ -78,7 +105,8 @@ The Voice workspace `Voice Profile` tab shows:
 - max spoken length,
 - proactive and memory speaking toggles,
 - never-spoken categories,
-- `speechSynthesis` caveat,
+- current `System Speech Synthesis` provider and `speechSynthesis` caveat,
 - explicit note that this is not a character voice.
+- Stop Voice / interrupted feedback that confirms playback was stopped without exposing spoken text.
 
 The full reply remains in chat regardless of spoken mode.

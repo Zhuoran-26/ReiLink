@@ -23,7 +23,7 @@ ReiLink is not a generic chatbot and not a guide-site clone. Final replies remai
 - [Feature Matrix](#feature-matrix)
 - [Architecture](#architecture)
 - [Agent Turn Flow](#agent-turn-flow)
-- [Voice Interaction MVP](#voice-interaction-mvp)
+- [Voice Interaction v2.2](#voice-interaction-v22)
 - [Knowledge Retrieval](#knowledge-retrieval)
 - [Local-first And Privacy](#local-first-and-privacy)
 - [Quick Start](#quick-start)
@@ -42,16 +42,16 @@ Most game companions drift toward either generic chat or static guide lookup. Re
 - the companion stays restrained, low-emotion, and low-interruption;
 - local knowledge provides factual context only when relevant;
 - long-term memory is written only after user confirmation;
-- voice input is transcript-first, editable, and manually sent;
+- voice input defaults to editable confirm-send, while explicitly enabled Direct Conversation auto-sends only a user-triggered recording that passes guards;
 - user data, settings, knowledge packs, and audio handling stay local-first.
 
 The project is currently built for local demos, portfolio presentation, code review, and product/runtime iteration. It is not a commercial installer.
 
 ## Current Status
 
-- Current development milestone: **v0.2-pre.4 Context & Memory release hardening**.
+- Current development milestone: **Voice v2.2 release hardening**.
 - The `dev/codex-reilink` branch contains the latest Voice, Local ASR, Knowledge Retrieval, and Context & Memory work.
-- The current development line includes Voice Output, Local ASR voice input, the main chat voice button, persisted Local ASR Settings, Knowledge Retrieval, Candidate Memory, Memory Retrieval, Session Archive Runtime, Archive Search, and Archive-to-Memory Candidate Bridge.
+- The current development line includes Voice v2.2 (confirm-send, Direct Conversation, Voice Profile, TTS Strategy / Provider Registry), Local ASR, Knowledge Retrieval, Candidate Memory, Memory Retrieval, Session Archive Runtime, Archive Search, and Archive-to-Memory Candidate Bridge.
 - Public release tags may lag behind the dev branch. GitHub updates, release tags, push, and merge still require manual review.
 - The macOS packaged app has been smoke-tested repeatedly, but ReiLink remains pre-release.
 
@@ -66,8 +66,8 @@ See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for detailed project stat
 - Game Context: current game, boss, progression, frustration state, and manual current-game override.
 - Local sample knowledge packs for [Elden Ring](data/knowledge/games/elden_ring) and [Hollow Knight](data/knowledge/games/hollow_knight).
 - Knowledge Retrieval v1: local keyword retrieval, top-k snippets, grounding/gating, explicit game-name switching, and casual-chat isolation.
-- Voice Output MVP: optional system TTS with sanitized Event Stream summaries.
-- Voice Input MVP: Local ASR through user-configured [whisper.cpp](https://github.com/ggerganov/whisper.cpp) compatible binary, model, and [ffmpeg](https://ffmpeg.org/) compatible converter.
+- Voice v2.2: confirm-send by default, explicit Direct Conversation, a nine-state model, full / brief / silent Voice Profile policy, interruptible system TTS, and safe Event Stream lifecycle summaries.
+- Voice Input: Local ASR through user-configured [whisper.cpp](https://github.com/ggerganov/whisper.cpp) compatible binary, model, and [ffmpeg](https://ffmpeg.org/) compatible converter; no cloud ASR path.
 - Event Stream / Debug Panel: safe summaries without raw prompts, API keys, full paths, or full transcripts.
 - macOS packaged app runtime foundation: bundled backend binary, bundled knowledge resources, and user data outside the `.app`.
 
@@ -81,8 +81,9 @@ See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for detailed project stat
 | Game Context | Boss / deaths / frustration / session | MVP | Rule-first with limited LLM semantic fallback. |
 | Knowledge Retrieval | Local keyword retrieval | MVP | No embeddings, vector DB, or hybrid retrieval yet. |
 | Session Archive | Recent session safe summaries | MVP | Manual archive, search, delete, clear, and explicit candidate scan; no raw prompt or transcript storage. |
-| Voice Output | System TTS | MVP | Optional, not character-grade voice acting. |
-| Voice Input | Local ASR | MVP | User-managed binary, model, and converter required. |
+| Voice Interaction | confirm-send + Direct Conversation | v2.2 | Direct Conversation is explicit and user-triggered each round; it is not hands-free. |
+| Voice Output | System Speech Synthesis + Voice Profile | v2.2 | full / brief / silent; system speech is the only selectable provider and is not character-grade voice acting. |
+| Voice Input | Local ASR | MVP | User-managed binary, model, and converter required; audio is transferred only to the local backend. |
 | Event Stream | Safe lifecycle events | Done | No raw prompt, API key, full path, or full transcript. |
 | Packaging | macOS `.app` | MVP | User data stays outside the `.app`; unsigned local build. |
 | Overlay | macOS safe mode | MVP / frozen | Foundation exists; auto-show intentionally fails closed. |
@@ -133,7 +134,7 @@ flowchart LR
   UserData -. "local persistence" .-> Runtime
 ```
 
-The renderer owns interaction, audio capture, system TTS, and safe event display. The backend owns the Agent runtime, knowledge retrieval, memory, game context, model routing, Local ASR subprocess boundaries, and user data directories. Local ASR settings are stored in Local User Data. Local ASR uses temporary audio files and cleans them by default after processing. Transcript only fills the input box; it does not automatically enter memory, prompt, knowledge retrieval, or game context.
+The renderer owns interaction, audio capture, Voice state, system TTS, and safe event display. The backend owns the Agent runtime, knowledge retrieval, memory, game context, model routing, Local ASR subprocess boundaries, and user data directories. Local ASR settings are stored in Local User Data, and temporary audio files are cleaned by default after processing. Confirm-send fills the input box; explicit Direct Conversation enters the same chat path only after a user-triggered recording is stopped and passes guards. Unconfirmed or guarded transcripts do not enter memory, prompt, knowledge retrieval, game context, Semantic Extraction, or proactive behavior.
 
 ## Agent Turn Flow
 
@@ -166,61 +167,62 @@ flowchart TD
 
 Prompt assembly includes persona, confirmed memory, current turn context, and relevant knowledge snippets. Memory is not written automatically. Knowledge is injected only when relevant. Casual chat does not force retrieval. Event Stream shows safe summaries only.
 
-## Voice Interaction MVP
+## Voice Interaction v2.2
 
-Voice Interaction MVP is intentionally conservative: optional voice output, user-triggered voice input, and transcript-first confirmation. It is not a full natural voice assistant.
-
-### Voice Output
-
-- Uses local system `speechSynthesis`.
-- Optional and off by default.
-- No commercial TTS provider is integrated.
-- Supports Test Voice, rate, volume, and Stop Voice.
-- Event Stream records safe lifecycle summaries only.
-- Known limitation: system voices are not character-grade and may pronounce "Rei" or game terms unnaturally.
+Voice v2.2 is a user-triggered voice conversation foundation, not a real-time voice agent. `confirm_send` remains the default. Direct Conversation must be enabled explicitly, and every round still starts with an explicit recording action; there is no always-listening loop or wake word.
 
 ### Voice Input / Local ASR
 
-- Web Speech fallback is unreliable in packaged Electron.
-- Local ASR is the current stable path.
-- Users configure the ASR binary, model, and converter in Settings.
-- Transcript fills the input box only, then the user sends manually.
-- No cloud ASR upload.
-- No audio retention by default.
-- No wake word or continuous listening.
-- Before confirmation, transcript does not enter memory, prompt, knowledge retrieval, or game context extraction.
+- Local ASR is the stable path; Web Speech remains an environment-dependent fallback.
+- Users configure the ASR binary, model, and converter in Settings. ReiLink does not bundle those third-party assets.
+- Main chat uses browser `MediaRecorder` without Web Audio VAD or silence detection. It does not stop at the old 3- or 5-second boundary. User Stop is primary and 30 seconds is only a safety limit; the separate Audio Capture Probe remains a 3-second test.
+- After Stop, capture enters `stopping`, waits for final `dataavailable` / `onstop`, then builds the complete Blob for local transcription. Stop reasons are `user_stop`, `max_duration`, `cancelled`, and `error`.
+- `confirm_send`: the transcript enters the editable composer and can be changed, cleared, or replaced by another recording. Before send, it is not LLM understanding and does not run Semantic Extraction or update Game Context, Memory, or Boss state.
+- `direct_conversation`: every round remains user-triggered. Local ASR auto-send requires `user_stop` and `acceptable` quality; a Web Speech final transcript has no MediaRecorder stop reason but still passes the remaining text guards. Empty or sub-four-character text, Local ASR recordings under 800 ms, the 30-second limit, caption / speaker-label / stage-direction-only output, common suspected partials, and mechanically suspicious output are blocked. Disabling Direct Conversation before completion falls back to confirm-send for that round.
+- Unconfirmed or guarded transcripts do not write memory, trigger proactive behavior, or enter prompt, retrieval, game context, or Semantic Extraction.
+- Local ASR exposes no renderer-usable no-speech probability, segment confidence, or average log probability; ReiLink does not invent those confidence signals.
+
+### State / Direct Conversation
+
+The current states are `idle`, `listening`, `transcribing`, `auto_sending`, `ready_to_send`, `assistant_thinking`, `speaking`, `interrupted`, and `error`. Recording and playback are mutually exclusive; starting another recording or pressing Stop Voice attempts to interrupt speech.
+
+### Voice Output / Profile
+
+- The only enabled and selectable provider is `system_speech_synthesis`, backed by the platform `speechSynthesis` implementation.
+- Local TTS is a disabled `not_implemented` placeholder. External TTS is a disabled `not_configured` placeholder.
+- Voice Profile `rei_calm` defaults normal chat to `full` and Direct Conversation to deterministic `brief`; `silent` is also supported without removing the text reply.
+- Test Voice is a separate explicit action, not automatic assistant-reply policy.
+- ReiLink does not integrate an external TTS API or TTS API key. Platform `speechSynthesis` internals are owned by the OS / runtime.
 
 ```mermaid
 sequenceDiagram
   participant User as User
   participant UI as Renderer
-  participant Backend as FastAPI Backend
-  participant Settings as Local ASR Settings
-  participant Converter as Audio Converter
-  participant ASR as Local ASR Binary
+  participant Backend as Local Backend
+  participant ASR as Local ASR
+  participant Chat as Existing Chat Flow
 
-  User->>UI: Click main chat voice button
-  UI->>UI: Record short audio
-  UI->>Backend: Upload audio blob
-  Backend->>Settings: Resolve ASR / model / converter settings
-  Backend->>Backend: Write temporary audio
-  alt WebM / Ogg input
-    Backend->>Converter: Convert to 16kHz mono WAV
-    Converter-->>Backend: Return WAV
+  User->>UI: Explicitly start recording
+  User->>UI: Stop, or reach the 30-second safety limit
+  UI->>UI: stopping; await final dataavailable / onstop
+  UI->>Backend: Transfer the complete audio Blob locally
+  Backend->>ASR: Transcribe locally
+  ASR-->>UI: transcript
+  alt confirm_send
+    UI->>UI: Fill composer and wait
+    User->>Chat: Confirm send
+  else direct_conversation and guard passes
+    UI->>Chat: Auto-send
+  else guard blocks
+    UI->>UI: Wait for confirmation or retry
   end
-  Backend->>ASR: Run local transcription
-  ASR-->>Backend: transcript output
-  Backend->>Backend: Clean temporary files
-  Backend-->>UI: Return safe transcript response
-  UI->>UI: Fill editable input box
-  User->>UI: Confirm and send manually
+  Chat-->>UI: Text reply
+  opt Voice Output enabled and profile is not silent
+    UI->>UI: Play system speech with Stop control
+  end
 ```
 
-Before the user confirms sending, transcript does not enter memory, prompt, knowledge retrieval, or game context extraction.
-
-If ASR is not configured, the converter is not configured, transcription fails, times out, or returns no text, the flow fails safely: it does not auto-send, does not write to memory / prompt / retrieval / game context, and Event Stream / Debug show safe summaries only.
-
-See [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) for setup and [`docs/QA.md`](docs/QA.md) for release regression checks.
+Voice / TTS Event Stream payloads retain only safe metadata such as type, source / mode, provider / status / profile, capture duration, audio-format summary, stop reason, quality, send decision, guard reason, and lengths. They do not retain full transcripts, raw ASR output, raw audio, assistant replies, spoken text, raw prompts, provider raw config, credentials, full local paths, or raw stderr. See [`docs/voice_interaction_v2_spec.md`](docs/voice_interaction_v2_spec.md) for the current specification and [`docs/release_voice_v2_2_hardening_checklist.md`](docs/release_voice_v2_2_hardening_checklist.md) for release gates.
 
 ## Knowledge Retrieval
 
@@ -231,6 +233,7 @@ Current retrieval is local keyword retrieval, not embedding or vector search.
 - Grounding/gating keeps low-relevance snippets out of prompts.
 - Casual chat does not force knowledge injection.
 - Explicit game names from user messages take priority over current game context.
+- Without Game Context, generic topic aliases such as `探索` no longer bootstrap a canonical game. Only bounded Boss / location entity aliases can do so: noisy text no longer switches to Hollow Knight, exact `史东薇尔` still resolves Elden Ring, and an explicit Hollow Knight switch still works.
 
 Knowledge packs live under [`data/knowledge/games`](data/knowledge/games). Authoring guidance is in [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md).
 
@@ -245,7 +248,7 @@ Local-first means local user data, memory, settings, knowledge packs, audio hand
 - Pending memory requires user confirmation.
 - Session Archive stores safe summaries only; Archive Search does not enter prompt, and Archive-to-Memory Bridge only creates pending candidates.
 - Local ASR audio is short-lived temporary data and is cleaned after processing.
-- Event Stream / Debug / Raw JSON avoids raw prompts, full transcripts, raw subprocess output, API keys, full local paths, audio content, and base64 audio.
+- Voice / TTS Event Stream may retain safe source / mode, provider / status / profile, capture duration, audio-format summary, stop reason, quality, send decision, guard reason, and counts. It does not retain full transcripts, raw ASR output, raw audio, assistant replies, spoken text, raw prompts, raw provider config, credentials, full local paths, or raw stderr.
 
 ## Quick Start
 
@@ -326,13 +329,19 @@ Packaged resources are read-only. Memory, session, settings, logs, and Local ASR
 | --- | --- |
 | [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) | Current project state and scope. |
 | [`docs/QA.md`](docs/QA.md) | Manual QA and release regression checklist. |
+| [`docs/release_voice_v2_2_hardening_checklist.md`](docs/release_voice_v2_2_hardening_checklist.md) | Current Voice v2.2 automated, manual, and packaged release gates. |
+| [`docs/releases/reilink-voice-v2.2.md`](docs/releases/reilink-voice-v2.2.md) | Voice v2.2 release notes draft. |
+| [`docs/voice_interaction_v2_spec.md`](docs/voice_interaction_v2_spec.md) | Current Voice v2.2 state and Direct Conversation specification. |
+| [`docs/voice_profile_v1.md`](docs/voice_profile_v1.md) | Current full / brief / silent output policy. |
+| [`docs/tts_provider_registry.md`](docs/tts_provider_registry.md) | Current TTS provider capability and placeholder boundaries. |
+| [`docs/qa/voice_v2_2_release_matrix.json`](docs/qa/voice_v2_2_release_matrix.json) | Machine-readable mapping from Voice v2.2 release gates to component QA and automated tests. |
 | [`docs/release_context_memory_hardening_checklist.md`](docs/release_context_memory_hardening_checklist.md) | Context & Memory release hardening checklist. |
 | [`docs/releases/reilink-v0.2-pre.4-context-memory.md`](docs/releases/reilink-v0.2-pre.4-context-memory.md) | Context & Memory v0.2-pre.4 release notes draft. |
 | [`docs/memory_architecture_v0.md`](docs/memory_architecture_v0.md) | Memory layers, Candidate Memory, Retrieval, and archive bridge boundaries. |
 | [`docs/session_archive_v1_architecture.md`](docs/session_archive_v1_architecture.md) | Session Archive / Search / Archive-to-Memory Bridge architecture. |
 | [`docs/local-asr-manual-setup.md`](docs/local-asr-manual-setup.md) | Real Local ASR setup and smoke flow. |
-| [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Local ASR design background and implementation notes. |
-| [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Voice Interaction MVP release notes draft. |
+| [`docs/voice-input-local-asr-spike.md`](docs/voice-input-local-asr-spike.md) | Historical Local ASR spike; use the Voice v2.2 spec for current status. |
+| [`docs/release-notes/reilink-voice-mvp.md`](docs/release-notes/reilink-voice-mvp.md) | Historical Voice MVP release note, superseded by the v2.2 draft. |
 | [`docs/qa/retrieval_scenarios.json`](docs/qa/retrieval_scenarios.json) | Machine-readable Knowledge Retrieval regression scenarios. |
 | [`docs/qa/voice_input_scenarios.json`](docs/qa/voice_input_scenarios.json) | Machine-readable Voice Input fallback scenarios. |
 | [`docs/qa/voice_input_local_asr_scenarios.json`](docs/qa/voice_input_local_asr_scenarios.json) | Machine-readable Local ASR release regression scenarios. |
@@ -355,6 +364,7 @@ The current development line has largely completed this MVP foundation.
 ### v0.2.x Stabilization
 
 - Context & Memory release hardening.
+- Voice v2.2 release hardening and QA consolidation.
 - Packaged app smoke coverage for user-visible runtime changes.
 - Local ASR setup helper and accuracy / timeout tuning.
 - More robust QA regression flows.
@@ -385,8 +395,10 @@ The current development line has largely completed this MVP foundation.
 - No cloud account or sync.
 - No bundled whisper binary, model, ffmpeg, or third-party executable.
 - System TTS may sound unnatural and is not character-grade voice acting.
-- Local ASR accuracy depends on model size, microphone quality, noise, and hardware.
-- No wake word or continuous listening.
+- Local ASR accuracy depends on model size, microphone quality, noise, accent, and hardware; game terms and long Chinese sentences may be misrecognized, and no renderer-usable ASR confidence metadata is available.
+- Direct Conversation partial-utterance detection is bounded and best-effort. Some incomplete speech may look complete and pass, while natural language fully enclosed in brackets may be conservatively blocked as caption-like output. Use default `confirm_send` when strict review is required.
+- Voice v2.2 is not a hands-free or always-listening agent; there is no wake word, speaker diarization, or automatic next recording round.
+- No local neural TTS, external / streaming TTS provider, custom character voice, voice cloning, or cloud audio upload.
 - Overlay auto-show remains in macOS fail-closed safe mode.
 - No Live2D yet.
 - No embedding, vector DB, hybrid retrieval, semantic archive search, prompt archive retrieval, or external memory provider yet.

@@ -1,9 +1,11 @@
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.modules.dialogue_agent import semantic_extraction as sem
+from app.modules.dialogue_agent.providers import MockLLMProvider
 
 client = TestClient(app)
 
@@ -457,6 +459,7 @@ def test_debug_game_session_routes():
         "last_boss",
         "last_attempted_boss",
         "last_cleared_boss",
+        "discussion_target",
         "boss_history",
         "death_count",
         "frustration_count",
@@ -706,6 +709,24 @@ def test_semantic_extraction_debug_endpoint_returns_latest_without_secrets():
             "source",
             "confidence",
             "applied_updates",
+            "rejected_updates",
+            "grounding_status",
+            "grounding_match_type",
+            "canonical_entity",
+            "canonical_display_name",
+            "intent",
+            "switch_detected",
+            "previous_target",
+            "new_target_candidate",
+            "canonical_candidate",
+            "grounding_method",
+            "grounding_confidence_band",
+            "extracted_surface",
+            "cleared_fields",
+            "applied_fields",
+            "rejected_fields",
+            "rejection_reason",
+            "attribution_status",
             "extraction_trace",
             "skip_reason",
             "why_pending_created",
@@ -744,6 +765,82 @@ def test_chat_accepts_voice_direct_input_source_in_semantic_debug():
     data = response.json()
     assert data["input_source"] == "voice_direct"
     assert {"llm_primary_status", "llm_provider_status", "llm_schema_valid", "rule_grounding"} <= data.keys()
+
+
+@pytest.mark.parametrize("input_source", ["text", "voice_confirmed", "voice_direct"])
+def test_submitted_sources_share_margit_failure_pipeline(input_source):
+    client.post("/api/debug/game-session/reset")
+    payload = {
+        "message": "我刚才打玛尔吉特又失败了",
+        "session_id": f"api-margit-regression-{input_source}",
+    }
+    if input_source != "text":
+        payload["input_source"] = input_source
+
+    response = client.post("/api/chat", json=payload)
+
+    assert response.status_code == 200
+    state = client.get("/api/debug/game-session").json()
+    trace = client.get("/api/debug/semantic-extraction/latest").json()
+    assert state["current_boss"]["name"] == "恶兆妖鬼 Margit"
+    assert state["last_attempted_boss"] == "恶兆妖鬼 Margit"
+    assert state["current_activity"] == "boss_failed"
+    assert trace["canonical_entity"] == "margit"
+    assert trace["grounding_status"] == "matched"
+    assert trace["extraction_trace"]["applied_updates"] == ["boss_failed", "boss_detected"]
+
+
+@pytest.mark.parametrize("input_source", ["text", "voice_confirmed", "voice_direct"])
+def test_submitted_sources_share_noisy_godrick_switch_pipeline(monkeypatch, input_source):
+    client.post("/api/debug/game-session/reset")
+    client.post(
+        "/api/chat",
+        json={"message": "我现在卡在马尔吉特", "session_id": f"api-noisy-switch-{input_source}"},
+    )
+    primary_payload = {
+        "is_game_related": True,
+        "intent": "boss_switch",
+        "confidence": "high",
+        "boss": {"operation": "set", "value": "godrick", "confidence": "high"},
+        "boss_switched": {"value": True, "confidence": "high"},
+        "previous_target": {"value": "margit", "surface_label": "马尔吉特", "confidence": "high"},
+        "negated_entity": {"value": "margit", "surface_label": "马尔吉特", "confidence": "high"},
+        "new_current_target": {"value": "godrick", "surface_label": "接支格瑞克", "confidence": "high"},
+        "candidate_boss": {"value": "godrick", "surface_label": "接支格瑞克", "confidence": "high"},
+        "candidate_event": "boss_switch",
+        "candidate_confidence": "high",
+        "candidate_reason": "descriptive_nickname",
+        "needs_confirmation": True,
+        "safe_trace_summary": "noisy canonical boss switch",
+    }
+    monkeypatch.setattr(sem.settings, "llm_provider", "deepseek")
+    monkeypatch.setattr(sem.settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(sem, "_call_llm_primary", lambda *args, **kwargs: json.dumps(primary_payload, ensure_ascii=False))
+    monkeypatch.setattr("app.modules.dialogue_agent.agent.get_provider", lambda: MockLLMProvider())
+    payload = {
+        "message": "我现在不打马尔吉特了，我去打接支格瑞克",
+        "session_id": f"api-noisy-switch-{input_source}",
+    }
+    if input_source != "text":
+        payload["input_source"] = input_source
+
+    response = client.post("/api/chat", json=payload)
+
+    assert response.status_code == 200
+    state = client.get("/api/debug/game-session").json()
+    trace = client.get("/api/debug/semantic-extraction/latest").json()
+    assert state["current_boss"]["name"] == "接肢葛瑞克"
+    assert state["last_attempted_boss"] == "接肢葛瑞克"
+    assert any(item["name"] == "恶兆妖鬼 Margit" and item["status"] == "abandoned" for item in state["boss_history"])
+    assert trace["input_source"] == input_source
+    assert trace["llm_provider_status"] == "succeeded"
+    assert trace["llm_schema_valid"] is True
+    assert trace["previous_target"] == "margit"
+    assert trace["new_target_candidate"] == "godrick"
+    assert trace["canonical_candidate"] == "godrick"
+    assert trace["grounding_method"] == "llm_canonical_role_unique_noisy_surface"
+    assert trace["llm_guard_decision"] == "apply"
+    assert trace["cleared_fields"] == ["previous_current_boss"]
 
 
 def test_semantic_shadow_events_endpoint_returns_final_events_without_secrets(monkeypatch):

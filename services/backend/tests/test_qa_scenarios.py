@@ -7,6 +7,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "retrieval_scenarios.json"
 VOICE_INPUT_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_scenarios.json"
 VOICE_INPUT_LOCAL_ASR_SCENARIOS_PATH = REPO_ROOT / "docs" / "qa" / "voice_input_local_asr_scenarios.json"
+VOICE_V2_2_RELEASE_MATRIX_PATH = REPO_ROOT / "docs" / "qa" / "voice_v2_2_release_matrix.json"
 LLM_PRIMARY_GUARDED_EXTRACTION_SCENARIOS_PATH = (
     REPO_ROOT / "docs" / "qa" / "llm_primary_guarded_extraction_scenarios.json"
 )
@@ -31,6 +32,11 @@ README_EN_PATH = REPO_ROOT / "README.en.md"
 PROJECT_STATUS_PATH = REPO_ROOT / "docs" / "PROJECT_STATUS.md"
 LOCAL_ASR_MANUAL_SETUP_PATH = REPO_ROOT / "docs" / "local-asr-manual-setup.md"
 VOICE_MVP_RELEASE_NOTES_PATH = REPO_ROOT / "docs" / "release-notes" / "reilink-voice-mvp.md"
+VOICE_V2_2_RELEASE_CHECKLIST_PATH = REPO_ROOT / "docs" / "release_voice_v2_2_hardening_checklist.md"
+VOICE_V2_2_RELEASE_NOTES_PATH = REPO_ROOT / "docs" / "releases" / "reilink-voice-v2.2.md"
+VOICE_INTERACTION_V2_SPEC_PATH = REPO_ROOT / "docs" / "voice_interaction_v2_spec.md"
+VOICE_PROFILE_V1_PATH = REPO_ROOT / "docs" / "voice_profile_v1.md"
+TTS_PROVIDER_REGISTRY_PATH = REPO_ROOT / "docs" / "tts_provider_registry.md"
 CONTEXT_MEMORY_RELEASE_CHECKLIST_PATH = (
     REPO_ROOT / "docs" / "release_context_memory_hardening_checklist.md"
 )
@@ -620,7 +626,7 @@ def test_persona_memory_regression_scenarios_file_is_valid_json():
 def test_extraction_eval_scenarios_file_is_valid_json():
     scenarios = _load_extraction_eval_scenarios()
 
-    assert 15 <= len(scenarios) <= 30
+    assert 15 <= len(scenarios) <= 40
 
 
 def test_memory_architecture_scenarios_file_is_valid_json():
@@ -814,6 +820,20 @@ def test_extraction_eval_scenarios_have_required_fields():
         "extraction-eval-clear-confirm-trace-only",
         "extraction-eval-correction-replaces-old-candidate",
         "extraction-eval-harmless-game-context-not-risky",
+        "extraction-eval-regression-margit-failure-text",
+        "extraction-eval-regression-margit-failure-voice-confirmed",
+        "extraction-eval-regression-margit-failure-voice-direct",
+        "extraction-eval-regression-margit-guide-discussion-target",
+        "extraction-eval-regression-switch-margit-to-godrick",
+        "extraction-eval-regression-historical-margit-no-progress",
+        "extraction-eval-regression-non-game-no-context-change",
+        "extraction-eval-noisy-godrick-switch-text",
+        "extraction-eval-noisy-godrick-switch-voice-confirmed",
+        "extraction-eval-noisy-godrick-switch-voice-direct",
+        "extraction-eval-noisy-switch-clears-old-candidate-only",
+        "extraction-eval-vague-godrick-candidate-only",
+        "extraction-eval-noisy-godrick-guide-discussion-target",
+        "extraction-eval-non-game-status-no-switch",
     } <= ids
     assert {"text", "voice_confirmed", "voice_direct"} <= {item.get("input_source") for item in scenarios}
     for item in scenarios:
@@ -1124,6 +1144,54 @@ def test_voice_input_local_asr_scenarios_have_required_fields():
         if item.get("manual_only") is True:
             assert item["should_auto_send"] is False
             assert item["should_upload_audio"] is False
+
+
+def test_voice_v2_2_release_matrix_resolves_complete_coverage():
+    matrix = json.loads(VOICE_V2_2_RELEASE_MATRIX_PATH.read_text(encoding="utf-8"))
+    assert matrix["suite"] == "reilink_voice_v2_2_release"
+    assert matrix["status"] == "current"
+
+    component_paths = {item["path"] for item in matrix["component_suites"]}
+    assert component_paths == {
+        "docs/qa/voice_interaction_v2_scenarios.json",
+        "docs/qa/voice_profile_scenarios.json",
+        "docs/qa/voice_input_scenarios.json",
+        "docs/qa/voice_input_local_asr_scenarios.json",
+    }
+    assert all((REPO_ROOT / path).is_file() for path in component_paths)
+
+    scenario_ids: set[str] = set()
+    for path in (REPO_ROOT / "docs" / "qa").glob("*.json"):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            continue
+        for item in data:
+            scenario_id = item.get("id")
+            if isinstance(scenario_id, str):
+                assert scenario_id not in scenario_ids
+                scenario_ids.add(scenario_id)
+
+    release_gates = matrix["release_gates"]
+    assert len(release_gates) == 8
+    requirement_numbers = [
+        int(requirement)
+        for gate in release_gates
+        for requirement in gate["requirements"]
+    ]
+    assert sorted(requirement_numbers) == list(range(1, 31))
+    assert len(requirement_numbers) == len(set(requirement_numbers))
+    assert all(set(gate["scenario_refs"]) <= scenario_ids for gate in release_gates)
+    assert all(gate.get("automated_test_refs") or gate.get("manual_required") for gate in release_gates)
+    assert {
+        "voice-v22-direct-conversation-empty-local-asr-guard",
+        "voice-v22-direct-conversation-short-transcript-guard",
+        "voice-v22-direct-conversation-short-recording-guard",
+        "voice-v22-direct-conversation-partial-transcript-guard",
+        "voice-v22-confirmed-transcript-event-privacy",
+        "tts-provider-registry-v0-system-only-selectable",
+        "tts-provider-registry-v0-placeholders-disabled",
+        "tts-provider-registry-v0-invalid-provider-fallback",
+    } <= scenario_ids
 
 
 def test_overlay_scenarios_have_required_fields():
@@ -1636,12 +1704,17 @@ def test_readme_qa_links_point_to_existing_files():
     project_status = PROJECT_STATUS_PATH.read_text(encoding="utf-8")
     local_asr_manual_setup = LOCAL_ASR_MANUAL_SETUP_PATH.read_text(encoding="utf-8")
     voice_mvp_release_notes = VOICE_MVP_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
+    voice_v2_2_release_checklist = VOICE_V2_2_RELEASE_CHECKLIST_PATH.read_text(encoding="utf-8")
+    voice_v2_2_release_notes = VOICE_V2_2_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
+    voice_v2_2_spec = VOICE_INTERACTION_V2_SPEC_PATH.read_text(encoding="utf-8")
+    voice_profile_v1 = VOICE_PROFILE_V1_PATH.read_text(encoding="utf-8")
+    tts_provider_registry = TTS_PROVIDER_REGISTRY_PATH.read_text(encoding="utf-8")
     context_memory_release_checklist = CONTEXT_MEMORY_RELEASE_CHECKLIST_PATH.read_text(
         encoding="utf-8"
     )
     context_memory_release_notes = CONTEXT_MEMORY_RELEASE_NOTES_PATH.read_text(encoding="utf-8")
     links = re.findall(
-        r"\((docs/(?:PROJECT_STATUS\.md|QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|release-notes/reilink-voice-mvp\.md|release_context_memory_hardening_checklist\.md|releases/reilink-v0\.2-pre\.4-context-memory\.md|memory_architecture_v0\.md|session_archive_v1_architecture\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios)\.json))\)",
+        r"\((docs/(?:PROJECT_STATUS\.md|QA\.md|voice-input-local-asr-spike\.md|local-asr-manual-setup\.md|release-notes/reilink-voice-mvp\.md|release_voice_v2_2_hardening_checklist\.md|release_context_memory_hardening_checklist\.md|releases/(?:reilink-voice-v2\.2|reilink-v0\.2-pre\.4-context-memory)\.md|voice_interaction_v2_spec\.md|voice_profile_v1\.md|tts_provider_registry\.md|memory_architecture_v0\.md|session_archive_v1_architecture\.md|qa/(?:retrieval_scenarios|voice_input_scenarios|voice_input_local_asr_scenarios|voice_v2_2_release_matrix)\.json))\)",
         f"{readme}\n{readme_en}",
     )
 
@@ -1653,6 +1726,11 @@ def test_readme_qa_links_point_to_existing_files():
         "docs/voice-input-local-asr-spike.md",
         "docs/local-asr-manual-setup.md",
         "docs/release-notes/reilink-voice-mvp.md",
+        "docs/release_voice_v2_2_hardening_checklist.md",
+        "docs/releases/reilink-voice-v2.2.md",
+        "docs/voice_interaction_v2_spec.md",
+        "docs/voice_profile_v1.md",
+        "docs/tts_provider_registry.md",
         "docs/release_context_memory_hardening_checklist.md",
         "docs/releases/reilink-v0.2-pre.4-context-memory.md",
         "docs/memory_architecture_v0.md",
@@ -1660,6 +1738,7 @@ def test_readme_qa_links_point_to_existing_files():
         "docs/qa/retrieval_scenarios.json",
         "docs/qa/voice_input_scenarios.json",
         "docs/qa/voice_input_local_asr_scenarios.json",
+        "docs/qa/voice_v2_2_release_matrix.json",
     } <= set(links)
     for link in links:
         assert (REPO_ROOT / link).is_file()
@@ -1679,7 +1758,9 @@ def test_readme_qa_links_point_to_existing_files():
     assert "docs/release_context_memory_hardening_checklist.md" in qa_doc
     assert "docs/releases/reilink-v0.2-pre.4-context-memory.md" in qa_doc
     assert "docs/release-notes/reilink-voice-mvp.md" in qa_doc
-    assert "Voice Interaction MVP" in project_status
+    assert "docs/release_voice_v2_2_hardening_checklist.md" in qa_doc
+    assert "docs/qa/voice_v2_2_release_matrix.json" in qa_doc
+    assert "Voice v2.2" in project_status
     assert "Persona-Memory Eval v0.1" in project_status
     assert "Session Archive v1 Runtime" in project_status
     assert "Archive-to-Memory Candidate Bridge v0" in project_status
@@ -1693,7 +1774,19 @@ def test_readme_qa_links_point_to_existing_files():
     assert "REILINK_LOCAL_ASR_MODEL" in local_asr_manual_setup
     assert "REILINK_AUDIO_CONVERTER_BINARY" in local_asr_manual_setup
     assert "Voice Interaction MVP" in voice_mvp_release_notes
+    assert "historical release-note snapshot" in voice_mvp_release_notes
     assert "No cloud ASR" in voice_mvp_release_notes
+    assert "ReiLink Voice v2.2 Release Hardening Checklist" in voice_v2_2_release_checklist
+    assert "make package-backend" in voice_v2_2_release_checklist
+    assert "Event Stream payload and rendered summaries pass privacy verification" in (
+        voice_v2_2_release_checklist
+    )
+    assert "ReiLink Voice v2.2 — Direct Conversation & TTS Foundation" in voice_v2_2_release_notes
+    assert "No new TTS provider" in voice_v2_2_release_notes
+    assert "Document status: current" in voice_v2_2_spec
+    assert "`auto_sending`" in voice_v2_2_spec
+    assert "Document status: current component specification for Voice v2.2" in voice_profile_v1
+    assert "Document status: current component specification for Voice v2.2" in tts_provider_registry
     assert "Context & Memory Release Hardening Checklist" in context_memory_release_checklist
     assert "make package-backend" in context_memory_release_checklist
     assert "Only accepted / active Long-term Memory can enter PromptMemoryBlock" in (
