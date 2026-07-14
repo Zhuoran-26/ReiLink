@@ -1,12 +1,12 @@
 {
   "suite": "reilink_voice_v2_2_release",
   "status": "current",
-  "updated": "2026-07-12",
-  "purpose": "Release-level index for Voice v2.2. Detailed setup and steps stay in the component suites referenced below; this matrix maps the release requirements without duplicating those scenarios.",
+  "updated": "2026-07-14",
+  "purpose": "Release-level index for Voice v2.2 at the reilink-v0.2-pre.5 candidate boundary. Detailed setup and steps stay in the component suites referenced below; this matrix maps the release requirements without duplicating those scenarios or relabeling simulated audio as real-microphone evidence.",
   "component_suites": [
     {
       "path": "docs/qa/voice_interaction_v2_scenarios.json",
-      "role": "cross-feature state, transcript policy, Direct Conversation, interruption, and event privacy",
+      "role": "cross-feature capture lifecycle, state, transcript policy, Direct Conversation, GameCatalog regression, interruption, exit, and event privacy",
       "status": "current"
     },
     {
@@ -52,43 +52,64 @@
       "requirements": {
         "5": "Local ASR unconfigured state fails safely.",
         "6": "Normal voice mode waits for confirmation.",
-        "7": "Direct Conversation auto-sends after an explicit recording round.",
-        "8": "Disabling Direct Conversation restores confirm-send."
+        "7": "Direct Conversation is explicit opt-in; Local ASR auto-sends only after a user-stopped, guard-passing round, while Web Speech final text still passes the remaining guards.",
+        "8": "Mode switches never send an existing draft; disabling Direct Conversation during capture or transcription restores confirm-send for that round."
       },
       "scenario_refs": [
         "voice-v2-error-local-asr-not-configured",
         "voice-v22-default-confirm-send",
+        "voice-v22-direct-conversation-opt-in",
         "voice-v22-direct-conversation-local-asr-auto-send",
-        "voice-v22-direct-conversation-disable-restores-confirm-send"
+        "voice-v22-direct-conversation-disable-restores-confirm-send",
+        "voice-v22-main-capture-immediate-stop-pending-permission",
+        "local-asr-main-capture-user-stop-final-chunk",
+        "local-asr-main-capture-natural-pause",
+        "local-asr-mode-switch-keeps-draft"
       ],
       "automated_test_refs": [
         "App > shows Local ASR not configured status in Voice Input settings",
         "App > fills final Voice Input transcript into the input without auto sending",
         "App > auto sends a Local ASR transcript in Direct Conversation Mode without leaking the transcript to Event Stream",
-        "App > defaults Direct Conversation Mode off and persists explicit opt-in"
+        "App > defaults Direct Conversation Mode off and persists explicit opt-in",
+        "App > queues an immediate Direct Conversation stop while microphone access is still pending",
+        "App > keeps an existing confirm-send draft unsent across interaction mode switches",
+        "App > falls back to confirm-send when Direct Conversation is disabled during Local ASR capture",
+        "audioCapture > keeps recording through a long sentence and natural pause"
       ]
     },
     {
       "id": "voice-v22-release-auto-send-guards",
       "requirements": {
-        "9": "Empty transcript is not sent.",
-        "10": "Short transcript is not auto-sent.",
-        "11": "Short recording is not auto-sent.",
-        "12": "Likely partial transcript is not auto-sent.",
-        "13": "Guarded input does not write memory.",
-        "14": "Guarded input does not trigger proactive behavior."
+        "9": "Empty transcript is not sent and leaves no draft content.",
+        "10": "Text below the four-character lexical threshold, including 嗯, is not auto-sent.",
+        "11": "Actual capture below 800 ms is not auto-sent even when ASR returns a longer hallucinated transcript.",
+        "12": "Caption / stage-direction-only output, bounded likely partials, and 30-second max-duration capture are not auto-sent; partial detection remains best-effort.",
+        "13": "Blocked non-empty input remains editable and does not write memory, enter prompt / extraction, or update Game Context / Boss.",
+        "14": "Blocked input starts no chat / Rei reply / proactive flow, and generic exploration does not bootstrap Hollow Knight after a submitted turn."
       },
       "scenario_refs": [
         "voice-v22-direct-conversation-empty-local-asr-guard",
         "voice-v22-direct-conversation-short-transcript-guard",
         "voice-v22-direct-conversation-short-recording-guard",
-        "voice-v22-direct-conversation-partial-transcript-guard"
+        "voice-v22-direct-conversation-partial-transcript-guard",
+        "voice-v22-direct-conversation-partial-best-effort-boundary",
+        "voice-v22-direct-conversation-non-speech-caption-guard",
+        "voice-v22-direct-conversation-max-duration-guard",
+        "local-asr-direct-partial-blocked",
+        "voice-v22-noisy-generic-exploration-no-game-bootstrap",
+        "voice-v22-exact-stormveil-location-still-applies",
+        "voice-v22-explicit-hollow-knight-switch-still-applies"
       ],
       "automated_test_refs": [
         "App > keeps empty Direct Conversation Local ASR transcripts out of chat and Event Stream text",
         "App > blocks short Web Speech transcripts from auto sending in Direct Conversation Mode",
         "App > blocks short Local ASR recordings from auto sending in Direct Conversation Mode",
-        "App > blocks likely partial transcripts from Direct Conversation auto-send"
+        "App > blocks likely partial transcripts from Direct Conversation auto-send",
+        "App > blocks caption-only Local ASR output without starting chat or extraction",
+        "App > marks max-duration Local ASR capture as partial and blocks Direct Conversation auto-send",
+        "voiceTranscriptQuality > blocks caption or speaker-label-only transcripts",
+        "dialogue_agent > noisy Stormveil exploration does not switch game for text / voice_confirmed / voice_direct",
+        "dialogue_agent > exact Stormveil and explicit voice-direct Hollow Knight switches remain supported"
       ]
     },
     {
@@ -175,11 +196,12 @@
     {
       "id": "voice-v22-release-packaged-runtime",
       "requirements": {
-        "29": "Exiting the packaged app leaves no bundled backend process.",
+        "29": "Exiting the packaged app releases microphone tracks, the app-owned bundled backend, and port 8000.",
         "30": "Voice workspace, Settings, Debug, and normal chat have no obvious UI regression."
       },
       "scenario_refs": [
         "local-asr-backend-no-residual-process",
+        "voice-v22-packaged-exit-releases-voice-runtime",
         "voice-local-asr-regression-freeze",
         "ia-voice-v2-2-current-boundary-clear"
       ],

@@ -134,7 +134,7 @@ flowchart LR
   UserData -. "本地保存" .-> Runtime
 ```
 
-Renderer 负责用户交互、语音录制、Voice 状态、系统 TTS 和安全事件展示。Backend 负责 Agent runtime、knowledge retrieval、memory、game context、model routing、Local ASR subprocess 边界和用户数据目录。Local ASR settings 保存在 Local User Data 中；Local ASR 使用短时 temporary audio files，默认处理后清理。默认模式下 transcript 只回填输入框；显式 Direct Conversation 仅在用户主动录音且 guard 通过后进入同一 chat flow。未确认或被 guard 阻断的 transcript 不进入 memory、prompt、knowledge retrieval、game context 或 proactive。Local-first 指本地用户数据、本地记忆、本地设置、本地知识包、音频处理和 Local ASR 优先保存在本机；LLM 推理目前仍可通过用户配置的 DeepSeek-compatible provider 完成。
+Renderer 负责用户交互、语音录制、Voice 状态、系统 TTS 和安全事件展示。Backend 负责 Agent runtime、knowledge retrieval、memory、game context、model routing、Local ASR subprocess 边界和用户数据目录。Local ASR settings 保存在 Local User Data 中；每轮录音只交给本机 backend，temporary audio 默认在处理后清理。默认模式下 transcript 只回填输入框；显式 Direct Conversation 仅在用户主动录音、主动停止且 guard 通过后进入同一 chat flow。未确认或被 guard 阻断的 transcript 不进入 memory、prompt、knowledge retrieval、game context、Semantic Extraction 或 proactive。Local-first 指本地用户数据、本地记忆、本地设置、本地知识包、音频处理和 Local ASR 优先保存在本机；LLM 推理目前仍可通过用户配置的 DeepSeek-compatible provider 完成。
 
 ## Agent 回答链路
 
@@ -175,10 +175,12 @@ Voice v2.2 是用户主动触发的语音对话基础层，不是完整实时语
 
 - Local ASR 是当前稳定主路径，Web Speech 只作环境允许时的 fallback。
 - 用户在 Settings 配置 ASR binary、model 和 converter；ReiLink 不内置这些第三方文件。
-- Renderer 把短音频交给本机 backend，backend 调用本地 ASR 并清理临时文件；没有 cloud ASR 路径。
-- `confirm_send`：transcript 进入可编辑输入框，用户确认后发送。
-- `direct_conversation`：用户主动录音结束后，空文本、短文本、短录音和疑似半句先被 guard；只有通过后才自动进入现有 chat flow。
+- 主聊天使用浏览器 `MediaRecorder`，没有 Web Audio VAD 或 silence detection，也不再在旧的 3 秒 / 5 秒边界自动结束。用户主动停止是主路径，30 秒只是安全上限；独立 Audio Capture Probe 仍保留 3 秒探测。
+- Stop 后先进入 capture `stopping`，等待最终 `dataavailable` / `onstop`，再构造完整 Blob、交给本机 backend 转写并清理临时文件；结束原因是 `user_stop`、`max_duration`、`cancelled` 或 `error`。
+- `confirm_send`：transcript 进入可编辑输入框，用户可以修改、清空或重新录音；发送前不代表 LLM 已理解，也不运行 Semantic Extraction 或更新 Game Context、Memory、Boss。
+- `direct_conversation`：每轮仍由用户主动录音。Local ASR 只有 `user_stop` 且 quality 为 `acceptable` 才可自动发送；Web Speech final transcript 没有 MediaRecorder stop reason，但仍通过其余文本 guard。空文本、少于 4 个 lexical 字符、短于 800 ms 的 Local ASR 录音、30 秒上限、纯 caption / speaker label / stage direction、常见疑似半句和明显可疑输出都会阻止自动发送。关闭 Direct Conversation 后，本轮完成时会退回 confirm-send。
 - 未确认或被 guard 阻断的 transcript 不写 memory、不触发 proactive，也不进入 prompt、retrieval、game context 或 Semantic Extraction。
+- 当前 Local ASR 不向 renderer 提供 no-speech probability、segment confidence 或 average log probability；ReiLink 不虚构这类 confidence。
 
 ### State / Direct Conversation
 
@@ -200,8 +202,10 @@ sequenceDiagram
   participant ASR as Local ASR
   participant Chat as 现有 Chat Flow
 
-  User->>UI: 主动开始并结束录音
-  UI->>Backend: 本机传递短音频
+  User->>UI: 主动开始录音
+  User->>UI: 主动停止，或达到 30 秒安全上限
+  UI->>UI: stopping，等待最终 dataavailable / onstop
+  UI->>Backend: 本机传递完整音频 Blob
   Backend->>ASR: 本地转写
   ASR-->>UI: transcript
   alt confirm_send
@@ -218,7 +222,7 @@ sequenceDiagram
   end
 ```
 
-Voice / TTS Event Stream 只保留类型、来源、provider / status / profile、guard 原因和长度等安全元数据，不保留完整 transcript、assistant reply 或 spoken text。详细规格见 [`docs/voice_interaction_v2_spec.md`](docs/voice_interaction_v2_spec.md)，发布门禁见 [`docs/release_voice_v2_2_hardening_checklist.md`](docs/release_voice_v2_2_hardening_checklist.md)。
+Voice / TTS Event Stream 只保留类型、来源 / mode、provider / status / profile、capture duration、音频格式安全摘要、stop reason、quality、send decision、guard reason 和长度等安全元数据，不保留完整 transcript、raw ASR output、raw audio、assistant reply、spoken text、raw prompt、provider raw config、凭据、完整本地路径或 raw stderr。详细规格见 [`docs/voice_interaction_v2_spec.md`](docs/voice_interaction_v2_spec.md)，发布门禁见 [`docs/release_voice_v2_2_hardening_checklist.md`](docs/release_voice_v2_2_hardening_checklist.md)。
 
 ## Knowledge Retrieval / 本地知识检索
 
@@ -228,6 +232,7 @@ Voice / TTS Event Stream 只保留类型、来源、provider / status / profile�
 - 状态包括 `used`、`not_found`、`below_threshold`、`no_pack`、`not_game_related`。
 - grounding / gating 会阻止低相关知识注入 prompt。
 - 闲聊不会强行注入 knowledge。
+- 无 Game Context 时，通用 `探索` 等 topic alias 不再独立启动 canonical game；只有更可靠的 Boss / location 实体 alias 可作为 bounded bootstrap 证据。噪声转写不会因此误切到空洞骑士，正确 `史东薇尔` 仍可识别艾尔登法环，明确的“我现在换去玩空洞骑士”仍可切换。
 - 用户显式游戏名优先于 current game context。
 
 知识包位于 [`data/knowledge/games`](data/knowledge/games)，新增知识包规范见 [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md)。
@@ -390,6 +395,8 @@ packaged resources 是只读资源。memory、session、settings、logs 和 Loca
 - 不内置 whisper binary、model、ffmpeg 或第三方可执行文件。
 - 系统 TTS 可能不够自然，也不是角色级配音。
 - Local ASR 准确率取决于模型大小、麦克风、环境噪音和硬件性能。
+- Local ASR 可能丢失标点、改变措辞或误识别游戏专有名词、中文长句、口音和噪声；当前也没有可供 renderer 使用的 no-speech probability、segment confidence 或 average log probability。
+- Direct Conversation 的半句判断是有限启发式、只能 best-effort；少量表面完整的未完成口语仍可能通过。纯括号包裹的真实自然语言也可能被 caption guard 保守阻止，但可以编辑后手动发送。需要严格控制时应使用默认 `confirm_send`。
 - Voice v2.2 不是 hands-free / always-listening Agent；不做 wake word、speaker diarization 或自动下一轮录音。
 - 尚未实现 local neural TTS、external / streaming TTS provider、custom character voice、voice cloning 或 cloud audio upload。
 - Overlay auto-show 仍处于 macOS fail-closed safe mode。

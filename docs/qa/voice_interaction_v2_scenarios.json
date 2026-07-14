@@ -54,10 +54,10 @@
   {
     "id": "voice-v22-direct-conversation-disable-restores-confirm-send",
     "category": "voice_interaction_v2_transcript_policy",
-    "precondition": "Direct Conversation Mode is enabled",
-    "action": "User switches the Conversation mode back to 确认后发送 and completes another recording",
+    "precondition": "Direct Conversation Mode is enabled and a recording or transcription is active, with or without an existing unsent draft",
+    "action": "User switches the Conversation mode back to 确认后发送 before the round completes",
     "expected_state": "ready_to_send",
-    "expected": "The setting persists as confirm_send, the next transcript stays editable in the chat input, and no automatic chat request starts.",
+    "expected": "The setting persists as confirm_send, the current transcript stays editable in the chat input, any existing draft remains unsent, and no automatic chat request starts.",
     "implemented_in_v22": true,
     "should_auto_send": false,
     "must_not_trigger": [
@@ -158,7 +158,7 @@
   {
     "id": "voice-v22-direct-conversation-short-transcript-guard",
     "category": "voice_interaction_v2_transcript_policy",
-    "precondition": "Direct Conversation Mode is enabled and ASR returns a non-empty transcript below the auto-send character threshold",
+    "precondition": "Direct Conversation Mode is enabled and ASR returns a non-empty transcript below the four-character lexical threshold, such as 嗯",
     "action": "Complete a user-triggered Web Speech or Local ASR recording",
     "expected_state": "ready_to_send",
     "expected": "The app does not auto-send, places the transcript in the input, asks the user to retry or confirm manually, and records transcript_too_short plus source, provider, duration, and character count only.",
@@ -218,12 +218,27 @@
     ]
   },
   {
+    "id": "voice-v22-direct-conversation-partial-best-effort-boundary",
+    "category": "voice_interaction_v2_transcript_policy",
+    "precondition": "Direct Conversation Mode is enabled and Local ASR turns an unfinished utterance into superficially complete text outside the bounded partial patterns",
+    "action": "Review the current deterministic guard boundary",
+    "expected": "QA records that the transcript may pass and auto-send because partial detection is best-effort rather than semantic endpointing. Strict review uses confirm_send; the guard is not expanded with open-ended regexes, unlimited keyword lists, or typo aliases.",
+    "implemented_in_v22": true,
+    "known_limitation": true,
+    "should_not_claim": [
+      "all partial utterances are detected",
+      "all noise hallucinations are detected",
+      "streaming endpointing is implemented",
+      "hands-free or full-duplex voice is implemented"
+    ]
+  },
+  {
     "id": "voice-v22-direct-conversation-non-speech-caption-guard",
     "category": "voice_interaction_v2_transcript_policy",
     "precondition": "Direct Conversation Mode is enabled and ASR returns caption, speaker-label, or stage-direction-only output such as (字幕:J Chong), (拍摄), or [Music]",
     "action": "Complete a user-triggered recording whose actual duration exceeds the short-recording threshold",
     "expected_state": "ready_to_send",
-    "expected": "The finite structural caption guard records non_speech_caption, keeps the original transcript as an editable draft, and does not start chat, extraction, memory, proactive, or game-context updates. Natural sentences with parenthetical detail outside the brackets still pass this guard.",
+    "expected": "The finite structural caption guard records non_speech_caption, keeps the original transcript as an editable draft, and does not start chat, extraction, memory, proactive, or game-context updates. Natural sentences with parenthetical detail outside the brackets still pass this guard; real natural language fully enclosed in brackets may be conservatively blocked and remains manually sendable.",
     "implemented_in_v22": true,
     "expected_guard_reason": "non_speech_caption",
     "should_auto_send": false,
@@ -608,6 +623,82 @@
     "action": "Inspect Voice Output copy",
     "expected": "Output tab explains that Direct Conversation replies are spoken only when Voice Output is enabled and remain text-only when disabled.",
     "implemented_in_v22": true
+  },
+  {
+    "id": "voice-v22-main-capture-immediate-stop-pending-permission",
+    "category": "voice_interaction_v2_input_mode",
+    "precondition": "Local ASR is ready, Direct Conversation is enabled, and getUserMedia permission remains pending after Start",
+    "action": "User immediately presses Stop before microphone access resolves, then permission resolves and ASR returns a longer transcript",
+    "expected_state": "ready_to_send",
+    "expected": "The queued user_stop is applied immediately after recorder start. Actual capture duration remains below 800 ms, the transcript is blocked with recording_too_short and kept editable, and recording does not continue to the 30-second limit.",
+    "implemented_in_v22": true,
+    "expected_guard_reason": "recording_too_short",
+    "should_auto_send": false,
+    "verification_methods": [
+      "automated_test",
+      "simulated_media_recorder",
+      "packaged_user_manual"
+    ]
+  },
+  {
+    "id": "voice-v22-noisy-generic-exploration-no-game-bootstrap",
+    "category": "voice_interaction_v2_regression",
+    "precondition": "Game Context is clean and the submitted text is 我今天准备现在石东威尔城附近探索一会",
+    "action": "Submit the same text through text, voice_confirmed, and voice_direct",
+    "expected": "The generic 探索 knowledge alias does not bootstrap Hollow Knight or another canonical game. Current game and Boss remain unset, no Hollow Knight snippet is injected, and the result is source-equivalent.",
+    "implemented_in_v22": true,
+    "must_not_trigger": [
+      "hollow_knight_game_switch",
+      "hollow_knight_knowledge_injection",
+      "boss_state_update"
+    ],
+    "verification_methods": [
+      "automated_test",
+      "controlled_transcript",
+      "packaged_user_manual"
+    ]
+  },
+  {
+    "id": "voice-v22-exact-stormveil-location-still-applies",
+    "category": "voice_interaction_v2_regression",
+    "precondition": "Game Context is clean",
+    "action": "Submit 我今天准备先在史东薇尔城附近探索一会儿",
+    "expected": "The entity-scoped location alias remains valid bounded bootstrap evidence and selects Elden Ring.",
+    "implemented_in_v22": true,
+    "expected_game": "艾尔登法环",
+    "verification_methods": [
+      "automated_test",
+      "controlled_transcript",
+      "packaged_user_manual"
+    ]
+  },
+  {
+    "id": "voice-v22-explicit-hollow-knight-switch-still-applies",
+    "category": "voice_interaction_v2_regression",
+    "precondition": "Game Context is clean or another supported game is active",
+    "action": "Submit 我现在换去玩空洞骑士 through voice_direct",
+    "expected": "The explicit canonical game switch still applies and selects Hollow Knight; the generic-alias bootstrap restriction does not block an explicit game name.",
+    "implemented_in_v22": true,
+    "expected_game": "空洞骑士",
+    "verification_methods": [
+      "automated_test",
+      "controlled_transcript",
+      "packaged_user_manual"
+    ]
+  },
+  {
+    "id": "voice-v22-packaged-exit-releases-voice-runtime",
+    "category": "voice_interaction_v2_regression",
+    "precondition": "The packaged app has used Local ASR and an app-owned bundled backend",
+    "action": "Quit ReiLink normally after capture and transcription",
+    "expected": "All microphone tracks are stopped, the app-owned backend exits, and port 8000 is released. No temporary audio, transcript, secret, or user data is written into the app bundle.",
+    "implemented_in_v22": true,
+    "manual_required": true,
+    "verification_methods": [
+      "automated_process_test",
+      "real_microphone",
+      "packaged_user_manual"
+    ]
   },
   {
     "id": "voice-v2-overlay-state-future-safe",

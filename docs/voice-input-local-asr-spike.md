@@ -11,7 +11,7 @@ Current release state:
 - Local ASR can be configured from Settings without relying on shell env.
 - Saved Local ASR settings live in the backend user data directory, not in the repo or `.app`.
 - The main chat voice button prefers Local ASR when ready and falls back safely otherwise.
-- `confirm_send` remains the default and fills the input for review. Explicit Voice v2.2 Direct Conversation can auto-send only after a user-triggered recording passes deterministic guards.
+- `confirm_send` remains the default and fills the input for review. Explicit Voice v2.2 Direct Conversation can auto-send only after a user-triggered, user-stopped recording passes deterministic guards; its partial-utterance detection is bounded and best-effort.
 - Unconfirmed transcript does not enter memory, prompt, knowledge retrieval, or game context.
 - Debug Panel, Event Stream, and Raw JSON show safe summaries instead of full paths, raw subprocess output, or full transcript.
 - Real manual validation has passed for packaged `.app` startup, backend auto-start, Settings persistence, restart persistence, Check Local ASR, main chat voice availability, and privacy surfaces.
@@ -289,8 +289,8 @@ Transcript 策略：
 
 安全边界：
 
-- transcript 只回填输入框，用户发送前可编辑或删除。
-- 不自动发送。
+- 默认 `confirm_send` 下 transcript 只回填输入框，用户发送前可编辑或删除。
+- 默认 `confirm_send` 不自动发送；当前 Direct Conversation 行为以 Voice v2.2 spec 为准。
 - 未确认 transcript 不进入 memory。
 - 未确认 transcript 不进入 prompt。
 - 未确认 transcript 不触发 knowledge retrieval。
@@ -355,7 +355,7 @@ export REILINK_AUDIO_CONVERTER_BINARY="/absolute/path/to/ffmpeg"
 2. 运行 CLI probe：点击 `检查本地 ASR / Check Local ASR` 或请求 `POST /api/voice-input/local-asr/probe`，确认 binary 可以启动；这一步不传模型、不传音频。
 3. 运行 Audio Capture Test：点击 `测试录音 / Test Recording`，确认 duration、size、MIME 和 cleanup status 正常。
 4. 如果录音格式是 WebM/Ogg，通过 Settings 或 `REILINK_AUDIO_CONVERTER_BINARY` fallback 配置 converter 后再运行 local transcription bridge；未设置时应显示 `尚未配置音频转换工具` 且不调用 ASR。
-5. 运行 local transcription bridge：点击 `录音并转写 / Record & Transcribe`，确认 transcript 已 trim、折叠空白、必要时轻量繁转简，只进入输入框，不自动发送。
+5. 运行 local transcription bridge：点击 `录音并转写 / Record & Transcribe`，确认 transcript 已 trim、折叠空白、必要时轻量繁转简；默认 `confirm_send` 下只进入输入框，不自动发送。显式 Direct Conversation 的当前行为以 Voice v2.2 spec 和 release checklist 为准。
 6. 展开 Event Stream / Debug Panel / Raw JSON，确认只出现字数、language、是否 `已规范为简体中文`、MIME、conversion status、target MIME、duration、size、cleanup、safe binary/model/converter name，不出现完整 transcript、raw stdout/stderr、完整路径或音频内容。
 
 当前可能失败的原因：
@@ -375,7 +375,7 @@ Audio Format Conversion v1 已实现为用户配置的本地 converter bridge：
 
 - 不上传音频到外部服务。
 - 临时音频在 backend 系统临时目录中创建并清理。
-- transcript 只填输入框，不自动发送。
+- 默认 `confirm_send` 下 transcript 只填输入框，不自动发送；Direct Conversation 是显式 opt-in，且只在当前 guard 通过后自动发送。
 - ASR transcript 会在填入输入框前做 trim、空白折叠、重复换行清理和轻量繁体到简体中文规范化；这不影响用户手打文本、assistant 回复、memory 或 knowledge pack。
 - 未确认 transcript 不进入 memory、prompt、knowledge retrieval 或 game context extraction。
 - Event Stream / Debug / Raw JSON 不显示完整 transcript、raw subprocess output、完整路径、base64 audio、API key、`.env` 或 Authorization。
@@ -402,7 +402,7 @@ Audio Format Conversion v1 已实现为用户配置的本地 converter bridge：
    - 风险：不同 whisper.cpp 版本 stdout 格式、模型兼容性、converter 兼容性。
 
 5. Renderer push-to-talk local ASR integration v1
-   - 当前已实现：把 transcript 填入输入框，不自动发送。
+   - 当前已实现：默认 `confirm_send` 下把 transcript 填入输入框，不自动发送；Direct Conversation 由当前 Voice v2.2 guard 协调。
    - 当前边界：未确认 transcript 不进入 memory / prompt / retrieval / game context。
    - 风险：真实麦克风权限、packaged app 权限提示、不同系统 MediaRecorder 格式。
 

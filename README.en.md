@@ -134,7 +134,7 @@ flowchart LR
   UserData -. "local persistence" .-> Runtime
 ```
 
-The renderer owns interaction, audio capture, Voice state, system TTS, and safe event display. The backend owns the Agent runtime, knowledge retrieval, memory, game context, model routing, Local ASR subprocess boundaries, and user data directories. Local ASR settings are stored in Local User Data, and temporary audio files are cleaned by default after processing. Confirm-send fills the input box; explicit Direct Conversation enters the same chat path only after a user-triggered recording passes guards. Unconfirmed or guarded transcripts do not enter memory, prompt, knowledge retrieval, game context, or proactive behavior.
+The renderer owns interaction, audio capture, Voice state, system TTS, and safe event display. The backend owns the Agent runtime, knowledge retrieval, memory, game context, model routing, Local ASR subprocess boundaries, and user data directories. Local ASR settings are stored in Local User Data, and temporary audio files are cleaned by default after processing. Confirm-send fills the input box; explicit Direct Conversation enters the same chat path only after a user-triggered recording is stopped and passes guards. Unconfirmed or guarded transcripts do not enter memory, prompt, knowledge retrieval, game context, Semantic Extraction, or proactive behavior.
 
 ## Agent Turn Flow
 
@@ -175,10 +175,12 @@ Voice v2.2 is a user-triggered voice conversation foundation, not a real-time vo
 
 - Local ASR is the stable path; Web Speech remains an environment-dependent fallback.
 - Users configure the ASR binary, model, and converter in Settings. ReiLink does not bundle those third-party assets.
-- The renderer transfers short recordings to the local backend, which runs local ASR and cleans temporary files. No cloud ASR path is integrated.
-- `confirm_send`: the transcript enters the editable composer and waits for user confirmation.
-- `direct_conversation`: after a user-triggered recording, empty text, short text, short recordings, and likely partial phrases are guarded; only passing text enters the existing chat flow automatically.
+- Main chat uses browser `MediaRecorder` without Web Audio VAD or silence detection. It does not stop at the old 3- or 5-second boundary. User Stop is primary and 30 seconds is only a safety limit; the separate Audio Capture Probe remains a 3-second test.
+- After Stop, capture enters `stopping`, waits for final `dataavailable` / `onstop`, then builds the complete Blob for local transcription. Stop reasons are `user_stop`, `max_duration`, `cancelled`, and `error`.
+- `confirm_send`: the transcript enters the editable composer and can be changed, cleared, or replaced by another recording. Before send, it is not LLM understanding and does not run Semantic Extraction or update Game Context, Memory, or Boss state.
+- `direct_conversation`: every round remains user-triggered. Local ASR auto-send requires `user_stop` and `acceptable` quality; a Web Speech final transcript has no MediaRecorder stop reason but still passes the remaining text guards. Empty or sub-four-character text, Local ASR recordings under 800 ms, the 30-second limit, caption / speaker-label / stage-direction-only output, common suspected partials, and mechanically suspicious output are blocked. Disabling Direct Conversation before completion falls back to confirm-send for that round.
 - Unconfirmed or guarded transcripts do not write memory, trigger proactive behavior, or enter prompt, retrieval, game context, or Semantic Extraction.
+- Local ASR exposes no renderer-usable no-speech probability, segment confidence, or average log probability; ReiLink does not invent those confidence signals.
 
 ### State / Direct Conversation
 
@@ -200,8 +202,10 @@ sequenceDiagram
   participant ASR as Local ASR
   participant Chat as Existing Chat Flow
 
-  User->>UI: Explicitly start and stop recording
-  UI->>Backend: Transfer short audio locally
+  User->>UI: Explicitly start recording
+  User->>UI: Stop, or reach the 30-second safety limit
+  UI->>UI: stopping; await final dataavailable / onstop
+  UI->>Backend: Transfer the complete audio Blob locally
   Backend->>ASR: Transcribe locally
   ASR-->>UI: transcript
   alt confirm_send
@@ -218,7 +222,7 @@ sequenceDiagram
   end
 ```
 
-Voice / TTS Event Stream payloads retain only safe metadata such as type, source, provider / status / profile, guard reason, and lengths. They do not retain full transcripts, assistant replies, or spoken text. See [`docs/voice_interaction_v2_spec.md`](docs/voice_interaction_v2_spec.md) for the current specification and [`docs/release_voice_v2_2_hardening_checklist.md`](docs/release_voice_v2_2_hardening_checklist.md) for release gates.
+Voice / TTS Event Stream payloads retain only safe metadata such as type, source / mode, provider / status / profile, capture duration, audio-format summary, stop reason, quality, send decision, guard reason, and lengths. They do not retain full transcripts, raw ASR output, raw audio, assistant replies, spoken text, raw prompts, provider raw config, credentials, full local paths, or raw stderr. See [`docs/voice_interaction_v2_spec.md`](docs/voice_interaction_v2_spec.md) for the current specification and [`docs/release_voice_v2_2_hardening_checklist.md`](docs/release_voice_v2_2_hardening_checklist.md) for release gates.
 
 ## Knowledge Retrieval
 
@@ -229,6 +233,7 @@ Current retrieval is local keyword retrieval, not embedding or vector search.
 - Grounding/gating keeps low-relevance snippets out of prompts.
 - Casual chat does not force knowledge injection.
 - Explicit game names from user messages take priority over current game context.
+- Without Game Context, generic topic aliases such as `探索` no longer bootstrap a canonical game. Only bounded Boss / location entity aliases can do so: noisy text no longer switches to Hollow Knight, exact `史东薇尔` still resolves Elden Ring, and an explicit Hollow Knight switch still works.
 
 Knowledge packs live under [`data/knowledge/games`](data/knowledge/games). Authoring guidance is in [`docs/KNOWLEDGE_PACK_AUTHORING.md`](docs/KNOWLEDGE_PACK_AUTHORING.md).
 
@@ -243,7 +248,7 @@ Local-first means local user data, memory, settings, knowledge packs, audio hand
 - Pending memory requires user confirmation.
 - Session Archive stores safe summaries only; Archive Search does not enter prompt, and Archive-to-Memory Bridge only creates pending candidates.
 - Local ASR audio is short-lived temporary data and is cleaned after processing.
-- Voice / TTS Event Stream does not retain full transcripts, assistant replies, or spoken text. Debug / Raw JSON also avoids raw prompts, raw subprocess output, API keys, Authorization data, full local paths, audio content, and base64 audio.
+- Voice / TTS Event Stream may retain safe source / mode, provider / status / profile, capture duration, audio-format summary, stop reason, quality, send decision, guard reason, and counts. It does not retain full transcripts, raw ASR output, raw audio, assistant replies, spoken text, raw prompts, raw provider config, credentials, full local paths, or raw stderr.
 
 ## Quick Start
 
@@ -390,7 +395,8 @@ The current development line has largely completed this MVP foundation.
 - No cloud account or sync.
 - No bundled whisper binary, model, ffmpeg, or third-party executable.
 - System TTS may sound unnatural and is not character-grade voice acting.
-- Local ASR accuracy depends on model size, microphone quality, noise, and hardware.
+- Local ASR accuracy depends on model size, microphone quality, noise, accent, and hardware; game terms and long Chinese sentences may be misrecognized, and no renderer-usable ASR confidence metadata is available.
+- Direct Conversation partial-utterance detection is bounded and best-effort. Some incomplete speech may look complete and pass, while natural language fully enclosed in brackets may be conservatively blocked as caption-like output. Use default `confirm_send` when strict review is required.
 - Voice v2.2 is not a hands-free or always-listening agent; there is no wake word, speaker diarization, or automatic next recording round.
 - No local neural TTS, external / streaming TTS provider, custom character voice, voice cloning, or cloud audio upload.
 - Overlay auto-show remains in macOS fail-closed safe mode.

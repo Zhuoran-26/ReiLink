@@ -10,8 +10,8 @@ This guide is for optional, manual verification of ReiLink Local ASR with a user
 - ReiLink does not commit, bundle, or automatically download a whisper binary.
 - ReiLink does not commit, bundle, or automatically download a model file.
 - ReiLink does not commit, bundle, or automatically download ffmpeg or any audio converter.
-- The transcript only fills the chat input. ReiLink does not auto-send it.
-- Before the user clicks send, the transcript does not enter memory, prompt preview, knowledge retrieval, or game context.
+- Under the default `confirm_send` mode, the transcript only fills the chat input and is not auto-sent. Direct Conversation is a separate explicit opt-in governed by the Voice v2.2 safety gate.
+- Before the transcript is manually confirmed or safely auto-sent, it does not enter memory, prompt preview, knowledge retrieval, Semantic Extraction, or game context.
 - Local ASR uses `zh` as the backend whisper language by default. UI language may show `zh-CN`; the backend normalizes that to `zh` before launching the local CLI.
 - ASR transcripts are trimmed, whitespace-collapsed, and lightly normalized from Traditional Chinese to Simplified Chinese before they fill the input. This only applies to ASR transcripts.
 - Local ASR paths can be typed or selected with native file picker buttons in Settings, then saved into the backend user data directory. They are not written into the repo, `.env`, or packaged `.app`.
@@ -118,10 +118,14 @@ Run these steps in order:
 8. Click `Record & Transcribe`.
    - Expected: the cleaned transcript fills the chat input.
    - Expected: Traditional Chinese output, if any, is lightly normalized to Simplified Chinese before it appears in the input.
-   - Expected: ReiLink does not auto-send the transcript.
+   - Expected under the default `confirm_send` mode: ReiLink does not auto-send the transcript.
 9. Review, edit, or delete the transcript manually.
 10. Click send only when you decide the transcript should enter chat.
-11. Expand Event Stream / Debug Panel and confirm:
+11. Optional Direct Conversation check:
+    - Enable Direct Conversation explicitly, start a new recording, then stop it yourself.
+    - A normal complete sentence may auto-send once; empty / short text, a recording under 800 ms, a 30-second capture, caption / stage-direction-only output, and common suspected partials must remain unsent.
+    - Disable Direct Conversation during a recording and confirm that round returns to an editable confirm-send draft.
+12. Expand Event Stream / Debug Panel and confirm:
     - no full transcript
     - no full binary / model / converter / audio path
     - no raw stdout / stderr
@@ -156,8 +160,10 @@ Use this checklist before freezing a release that touches voice input, Settings,
 5. Transcript checks:
    - Traditional Chinese ASR output is normalized to Simplified Chinese.
    - English and numbers are not damaged by normalization.
-   - Transcript only fills the input and is not sent automatically.
+   - Default `confirm_send` only fills the input and does not send automatically.
    - The user can edit or delete the transcript before manual send.
+   - Direct Conversation is explicit opt-in and auto-sends only a user-stopped, guard-passing round; blocked non-empty text remains editable.
+   - Main recording does not stop at 3 or 5 seconds or on a natural pause; 30 seconds is a safety limit and cannot auto-send. The separate Audio Capture Test remains a 3-second probe.
 6. Privacy checks:
    - Event Stream, Debug Panel, and Raw JSON do not show full binary/model/converter paths, full temp audio paths, raw stdout/stderr, raw exceptions, full transcript, audio content, base64, API keys, `.env`, Authorization, raw prompt, or long internal payloads.
    - Safe basename, configured booleans, source, character count, language, conversion status, cleanup status, duration, and MIME summary are allowed.
@@ -166,6 +172,8 @@ Use this checklist before freezing a release that touches voice input, Settings,
    - Confirm Local ASR returns to env fallback or unconfigured state.
    - Confirm the main chat voice button shows a safe fallback and the app does not crash.
    - Confirm cleared full paths are not shown in Event Stream, Debug Panel, or Raw JSON.
+
+The current Local ASR response does not expose no-speech probability, segment confidence, or average log probability to the renderer. Direct Conversation partial detection is therefore a bounded best-effort heuristic, not reliable endpointing; use `confirm_send` when every transcript must be reviewed.
 
 ## 7. Troubleshooting / 排查
 
@@ -201,12 +209,12 @@ Accuracy tips:
 - ReiLink does not use cloud ASR.
 - ReiLink does not save audio by default.
 - Temporary audio is cleaned after completion, failure, timeout, or error.
-- Transcript only fills the input.
+- Under default `confirm_send`, transcript only fills the input. Explicit Direct Conversation may auto-send a user-stopped, guard-passing round.
 - Transcript normalization is local and limited to ASR transcript cleanup. It does not modify typed user text, assistant replies, memory, or knowledge files.
-- Before the user clicks send, transcript does not enter memory, prompt preview, knowledge retrieval, or game context.
+- Before transcript is manually confirmed or safely auto-sent, it does not enter memory, prompt preview, knowledge retrieval, Semantic Extraction, or game context.
 - Full paths may appear in Settings editing inputs and `<settings.data_dir>/local_asr_settings.json`; they should not appear in Event Stream, Debug Panel, Raw JSON, chat, screenshots, or docs.
 - Event Stream does not show the full transcript.
-- Event Stream / Debug Panel may show safe character count, duration, MIME, conversion status, cleanup status, safe binary/model/converter basename, language, and whether the transcript was `已规范为简体中文`.
+- Event Stream / Debug Panel may show safe character count, capture duration, MIME, stop reason, quality, send decision, interaction mode, conversion status, cleanup status, safe binary/model/converter basename, language, and whether the transcript was `已规范为简体中文`.
 - Debug Panel does not show raw stdout / stderr, raw exception, full transcript, or full local paths.
 
 ## 9. Known Limitations / 已知限制
@@ -215,6 +223,7 @@ Accuracy tips:
 - ReiLink currently assumes a whisper.cpp-like command shape.
 - Audio conversion requires a user-configured local converter.
 - Saved Settings are preferred for packaged `.app`; environment variables may not match a dev shell environment.
+- The current response has no renderer-usable no-speech probability, segment confidence, or average log probability. Direct Conversation partial detection is bounded and best-effort.
 - Larger models can be slow.
 - Lower-performance machines can hit transcription or conversion timeouts.
 - Different microphones, permissions, and system privacy settings can affect recording.
