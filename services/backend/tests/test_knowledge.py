@@ -278,6 +278,33 @@ def test_generic_retriever_infers_game_from_content_alias_without_game_name():
     assert any("恶兆妖鬼 Margit" in snippet.title for snippet in result.snippets)
 
 
+def test_generic_topic_alias_does_not_bootstrap_game_without_context():
+    result = GameKnowledgeRetriever().retrieve(
+        current_game=None,
+        user_message="我今天准备现在石东威尔城附近探索一会",
+        current_boss=None,
+        game_session_state={},
+        intent="casual_chat",
+    )
+
+    assert result.matched is False
+    assert result.game_id is None
+    assert result.snippets == []
+    assert result.retrieval_status == "no_pack"
+
+
+def test_specific_location_alias_can_bootstrap_game_without_context():
+    result = GameCatalog().match_game(
+        current_game=None,
+        user_message="我今天准备先在史东薇尔城附近探索一会儿",
+        game_session_state={},
+    )
+
+    assert result.matched_game_id == "elden_ring"
+    assert result.match_source == "alias"
+    assert result.knowledge_available is True
+
+
 def test_detected_game_takes_priority_over_session_game():
     result = GameKnowledgeRetriever().retrieve(
         current_game="Stardew Valley",

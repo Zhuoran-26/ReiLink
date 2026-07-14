@@ -90,6 +90,62 @@ describe("AudioCaptureController", () => {
     expect(controller.getStatus()).toMatchObject({ phase: "idle", lastStopReason: "user_stop" });
   });
 
+  it("measures capture duration at the stop request instead of delayed recorder finalization", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-13T00:00:00.000Z"));
+    const controller = new AudioCaptureController();
+    const onRecorded = vi.fn<(recording: AudioCaptureRecording) => void>();
+
+    await controller.start({ onRecorded });
+    const recorder = DeferredMediaRecorder.instances[0];
+    vi.advanceTimersByTime(320);
+    controller.stop("user_stop");
+
+    vi.advanceTimersByTime(2000);
+    recorder.emitChunk("delayed-final-chunk");
+    recorder.finishStop();
+
+    expect(onRecorded).toHaveBeenCalledTimes(1);
+    expect(onRecorded.mock.calls[0][0].durationMs).toBe(320);
+    expect(eventBus.getRecentEvents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "audio_capture_stopped", duration_ms: 320 }),
+        expect.objectContaining({ type: "audio_capture_completed", duration_ms: 320 })
+      ])
+    );
+  });
+
+  it("honors an immediate stop requested while microphone permission is still resolving", async () => {
+    const stopTrack = vi.fn();
+    const stream = { getTracks: vi.fn(() => [{ stop: stopTrack }]) } as unknown as MediaStream;
+    const deferred = { resolve: null as ((stream: MediaStream) => void) | null };
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve) => {
+          deferred.resolve = resolve;
+        }))
+      }
+    });
+    const controller = new AudioCaptureController();
+    const onRecorded = vi.fn<(recording: AudioCaptureRecording) => void>();
+
+    const startPromise = controller.start({ onRecorded });
+    expect(controller.stop("user_stop")).toBe(true);
+    deferred.resolve?.(stream);
+    await startPromise;
+
+    const recorder = DeferredMediaRecorder.instances[0];
+    expect(recorder.stop).toHaveBeenCalledTimes(1);
+    expect(controller.getStatus()).toMatchObject({ phase: "stopping", lastStopReason: "user_stop" });
+    recorder.emitChunk("short-audio");
+    recorder.finishStop();
+
+    expect(onRecorded).toHaveBeenCalledTimes(1);
+    expect(onRecorded.mock.calls[0][0]).toMatchObject({ stopReason: "user_stop" });
+    expect(onRecorded.mock.calls[0][0].durationMs).toBeLessThan(800);
+  });
+
   it("keeps recording through a long sentence and natural pause", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-13T00:00:00.000Z"));

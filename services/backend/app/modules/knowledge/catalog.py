@@ -334,12 +334,12 @@ class GameCatalog:
         if not text.strip():
             return None
         for game in games:
-            for alias in self._snippet_aliases(game):
+            for alias in self._bootstrap_snippet_aliases(game):
                 if _is_strong_content_hint(alias) and _value_in_text(text, alias):
                     return game
         return None
 
-    def _snippet_aliases(self, game: GameCatalogEntry) -> list[str]:
+    def _bootstrap_snippet_aliases(self, game: GameCatalogEntry) -> list[str]:
         path = self.resolve_knowledge_path(game.knowledge_path)
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
@@ -350,6 +350,8 @@ class GameCatalog:
         aliases: list[str] = []
         for item in raw:
             if not isinstance(item, dict):
+                continue
+            if str(item.get("kind") or "").strip() not in _GAME_BOOTSTRAP_SNIPPET_KINDS:
                 continue
             aliases.extend(str(alias).strip() for alias in item.get("aliases") or [] if str(alias).strip())
         return _dedupe(aliases)
@@ -659,6 +661,7 @@ _GENERIC_CONTENT_HINTS = {
     "summon",
 }
 _GENERIC_CONTENT_HINTS = {_compact(_normalize(item)) for item in _GENERIC_CONTENT_HINTS}
+_GAME_BOOTSTRAP_SNIPPET_KINDS = frozenset({"boss_strategy", "location"})
 
 
 def _is_strong_content_hint(alias: str) -> bool:

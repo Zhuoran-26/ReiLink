@@ -12,14 +12,19 @@ export type VoiceTranscriptQuality =
   | "empty"
   | "too_short"
   | "short_recording"
+  | "non_speech_caption"
   | "suspected_partial"
   | "suspicious";
 export type VoiceSendDecision = "editable_draft" | "blocked" | "auto_send_allowed";
 export type VoiceInteractionModeEvent = "confirm_send" | "direct_conversation";
 export type VoiceAutoSendBlockReason =
-  | "short_recording"
-  | "short_transcript"
-  | "partial_transcript"
+  | "capture_stop_not_allowed"
+  | "recording_too_short"
+  | "empty_transcript"
+  | "transcript_too_short"
+  | "non_speech_caption"
+  | "suspected_partial"
+  | "max_duration"
   | "suspicious_transcript";
 
 export type ReiLinkEvent =

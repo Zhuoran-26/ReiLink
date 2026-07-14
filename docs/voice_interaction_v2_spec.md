@@ -127,6 +127,21 @@ Voice v2 has three independent mode choices. The UI should show these as explici
 - Does not bypass normal chat, retrieval, or game-state safety checks after the text is sent.
 - Does not leak the full transcript into Event Stream, Debug, Raw JSON, Prompt Preview, or Overlay.
 
+Direct Conversation applies the following deterministic auto-send gate in order:
+
+1. A Local ASR capture must end with `user_stop`; `max_duration`, cancellation, and error are not auto-sendable. Web Speech has no MediaRecorder stop reason and continues through the remaining transcript checks.
+2. Local ASR uses the actual MediaRecorder interval from `recorder.start()` to the user's stop request. The current minimum is 800 ms. A Stop pressed while `getUserMedia()` is still resolving is queued and applied immediately after the recorder starts. Delayed `onstop` / final `dataavailable` handling and the duration echoed by the backend do not extend this interval.
+3. The assessment copy is normalized with Unicode NFKC, trimmed, and whitespace-folded. The original transcript remains unchanged for an editable draft or the normal chat request.
+4. Empty text and text without lexical letters or numbers are blocked, followed by the four-character lexical minimum.
+5. A finite structural guard blocks output made only of parenthesized / bracketed groups, caption-marker payloads, or a bare speaker label. It therefore covers outputs such as `(字幕:J Chong)`, `(拍摄)`, and `[Music]` without matching those payload strings. A natural sentence with parenthetical detail and a lexical body outside the brackets is not blocked by this rule.
+6. The partial guard blocks bounded unfinished constructions, including sentence-final `准备去` / `打算去` and preparation-context `想去`, even when ASR removes an ellipsis. It does not rewrite or guess the intended destination.
+7. The interaction mode is resolved again at completion. A recording that started in Direct Conversation becomes a confirm-send draft if Direct Conversation was disabled before transcription completed.
+8. Only `acceptable` may produce `auto_send_allowed`; every other quality remains outside chat, Semantic Extraction, Memory, proactive behavior, and Game Context until the user explicitly sends the draft.
+
+Blocked events use finite reason codes: `capture_stop_not_allowed`, `recording_too_short`, `empty_transcript`, `transcript_too_short`, `non_speech_caption`, `suspected_partial`, `max_duration`, or `suspicious_transcript`. Event Stream stores the reason, mode, source, duration, stop reason, quality, decision, and character count, never the full transcript.
+
+The current whisper-like Local ASR bridge parses plain transcript output only. It does not expose no-speech probability, segment confidence, average log probability, or another reliable speech-quality score, so the renderer does not invent or infer confidence metadata.
+
 ### Output Policies
 
 `tts_off`

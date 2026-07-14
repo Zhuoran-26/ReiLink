@@ -106,7 +106,6 @@ import {
 import { resolveVoiceConversationState } from "./voiceState";
 import {
   assessVoiceTranscript,
-  autoSendBlockReasonForQuality,
   type VoiceTranscriptAssessment
 } from "./voiceTranscriptQuality";
 
@@ -1242,6 +1241,7 @@ const voiceTranscriptQualityText = (quality?: VoiceTranscriptQuality) => {
     empty: "没有有效内容",
     too_short: "文本过短",
     short_recording: "录音过短",
+    non_speech_caption: "仅有字幕或声音说明",
     suspected_partial: "疑似不完整",
     suspicious: "质量可疑"
   };
@@ -2225,9 +2225,13 @@ const appendTranscriptToInput = (current: string, transcript: string) => {
 
 const directVoiceAutoSendBlockReasonText = (reason: VoiceAutoSendBlockReason) => {
   const labels: Record<VoiceAutoSendBlockReason, string> = {
-    short_recording: "这段录音太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
-    short_transcript: "识别结果太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
-    partial_transcript: "这句像是还没说完，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    capture_stop_not_allowed: "这次录音没有正常结束，先没有自动发送。请重新录音。",
+    recording_too_short: "这段录音太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    empty_transcript: "没有识别到有效内容，请重新录音。",
+    transcript_too_short: "识别结果太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    non_speech_caption: "识别结果只有字幕或声音说明，先没有自动发送。请检查输入框内容或重新录音。",
+    suspected_partial: "这句像是还没说完，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。",
+    max_duration: "录音达到最长时间，可能没有说完，先没有自动发送。请检查输入框内容。",
     suspicious_transcript: "这次转写质量可疑，先没有自动发送。请检查输入框内容或重新录音。"
   };
   return labels[reason];
@@ -2235,9 +2239,13 @@ const directVoiceAutoSendBlockReasonText = (reason: VoiceAutoSendBlockReason) =>
 
 const directVoiceAutoSendBlockSummary = (reason: VoiceAutoSendBlockReason) => {
   const labels: Record<VoiceAutoSendBlockReason, string> = {
-    short_recording: "录音过短，未自动发送",
-    short_transcript: "识别文本过短，未自动发送",
-    partial_transcript: "疑似半句，未自动发送",
+    capture_stop_not_allowed: "录音未正常结束，未自动发送",
+    recording_too_short: "录音过短，未自动发送",
+    empty_transcript: "没有有效文本，未自动发送",
+    transcript_too_short: "识别文本过短，未自动发送",
+    non_speech_caption: "仅有字幕或声音说明，未自动发送",
+    suspected_partial: "疑似半句，未自动发送",
+    max_duration: "达到最长录音时间，未自动发送",
     suspicious_transcript: "转写质量可疑，未自动发送"
   };
   return labels[reason];
@@ -2246,6 +2254,7 @@ const directVoiceAutoSendBlockSummary = (reason: VoiceAutoSendBlockReason) => {
 const voiceTranscriptDraftHint = (quality: VoiceTranscriptQuality, characterCount: number) => {
   if (quality === "short_recording") return "录音时间太短，请检查现有草稿或重新录音。文本尚未发送。";
   if (quality === "too_short") return "转写内容较短，请检查、修改或重新录音。文本尚未发送。";
+  if (quality === "non_speech_caption") return "转写只有字幕或声音说明，请检查、修改或重新录音。文本尚未发送。";
   if (quality === "suspected_partial" || quality === "suspicious") {
     return "转写可能不完整，请检查、修改或重新录音。文本尚未发送。";
   }
@@ -3631,7 +3640,7 @@ export function App() {
           character_count: 0,
           provider: source === "unavailable" ? undefined : source,
           source: "direct_conversation",
-          reason: "short_transcript",
+          reason: assessment.autoSendBlockReason ?? "empty_transcript",
           duration_ms: options.durationMs,
           capture_stop_reason: options.captureStopReason,
           transcript_quality: assessment.quality,
@@ -3642,7 +3651,7 @@ export function App() {
       return { ...assessment, interactionMode };
     }
     if (interactionMode === "direct_conversation") {
-      const blockReason = autoSendBlockReasonForQuality(assessment.quality);
+      const blockReason = assessment.autoSendBlockReason;
       if (blockReason) {
         setInput((current) => appendTranscriptToInput(current, transcript));
         markVoiceTranscriptReady(source, assessment, options.inputBeforeTranscript ?? "", options.captureStopReason);
@@ -3729,7 +3738,7 @@ export function App() {
             setLocalAsrTranscriptionResult(result);
             if (result.status === "local_asr_transcription_succeeded") {
               const handling = handleRecognizedVoiceTranscript("local_asr", result.transcript, {
-                durationMs: result.duration_ms,
+                durationMs: recording.durationMs,
                 captureStopReason: recording.stopReason,
                 interactionModeAtStart,
                 inputBeforeTranscript
@@ -3831,6 +3840,7 @@ export function App() {
               characterCount: 0,
               quality: "empty",
               sendDecision: "blocked",
+              autoSendBlockReason: "empty_transcript",
               interactionMode: interactionModeAtStart
             });
             setVoiceError("本地语音识别暂不可用。请检查设置。");

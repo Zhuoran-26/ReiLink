@@ -135,8 +135,9 @@
     "precondition": "Direct Conversation Mode is enabled and Local ASR succeeds with an empty transcript",
     "action": "Complete a user-triggered Local ASR recording",
     "expected_state": "error",
-    "expected": "The app shows a short retry prompt such as 没听清，可以再说一次, does not auto-send, leaves the chat input unchanged, and records only source, provider, guard reason, duration, and 0 characters.",
+    "expected": "The app shows a short retry prompt such as 没听清，可以再说一次, does not auto-send, leaves the chat input unchanged, and records empty_transcript plus source, provider, duration, and 0 characters only.",
     "implemented_in_v22": true,
+    "expected_guard_reason": "empty_transcript",
     "should_auto_send": false,
     "must_not_trigger": [
       "chat_request",
@@ -160,9 +161,9 @@
     "precondition": "Direct Conversation Mode is enabled and ASR returns a non-empty transcript below the auto-send character threshold",
     "action": "Complete a user-triggered Web Speech or Local ASR recording",
     "expected_state": "ready_to_send",
-    "expected": "The app does not auto-send, places the transcript in the input, asks the user to retry or confirm manually, and records short_transcript plus source, provider, duration, and character count only.",
+    "expected": "The app does not auto-send, places the transcript in the input, asks the user to retry or confirm manually, and records transcript_too_short plus source, provider, duration, and character count only.",
     "implemented_in_v22": true,
-    "expected_guard_reason": "short_transcript",
+    "expected_guard_reason": "transcript_too_short",
     "should_auto_send": false,
     "must_not_trigger": [
       "chat_request",
@@ -183,12 +184,12 @@
   {
     "id": "voice-v22-direct-conversation-short-recording-guard",
     "category": "voice_interaction_v2_transcript_policy",
-    "precondition": "Direct Conversation Mode is enabled and a Local ASR recording is shorter than the auto-send duration threshold",
-    "action": "Complete the short recording with a non-empty transcript",
+    "precondition": "Direct Conversation Mode is enabled and the actual Local ASR capture is shorter than the auto-send duration threshold, even if ASR returns a longer transcript or echoed duration",
+    "action": "Stop the short recording and delay MediaRecorder finalization before returning a non-empty transcript",
     "expected_state": "ready_to_send",
-    "expected": "The app does not auto-send, keeps the transcript available for confirmation, and records short_recording plus duration, source, provider, and character count only.",
+    "expected": "The app measures duration at the user stop request, does not auto-send, keeps the transcript available for confirmation, and records recording_too_short plus duration, source, provider, and character count only.",
     "implemented_in_v22": true,
-    "expected_guard_reason": "short_recording",
+    "expected_guard_reason": "recording_too_short",
     "should_auto_send": false,
     "must_not_trigger": [
       "chat_request",
@@ -204,9 +205,52 @@
     "precondition": "Direct Conversation Mode is enabled and ASR returns a short phrase that matches the deterministic likely-partial guard",
     "action": "Complete a user-triggered recording",
     "expected_state": "ready_to_send",
-    "expected": "The app does not auto-send, keeps the transcript available for confirmation, shows a likely-incomplete hint, and records partial_transcript plus safe counts only.",
+    "expected": "The app does not auto-send, keeps the transcript available for confirmation, shows a likely-incomplete hint, and records suspected_partial plus safe counts only.",
     "implemented_in_v22": true,
-    "expected_guard_reason": "partial_transcript",
+    "expected_guard_reason": "suspected_partial",
+    "should_auto_send": false,
+    "must_not_trigger": [
+      "chat_request",
+      "memory_write",
+      "pending_memory",
+      "game_context_extraction",
+      "proactive"
+    ]
+  },
+  {
+    "id": "voice-v22-direct-conversation-non-speech-caption-guard",
+    "category": "voice_interaction_v2_transcript_policy",
+    "precondition": "Direct Conversation Mode is enabled and ASR returns caption, speaker-label, or stage-direction-only output such as (字幕:J Chong), (拍摄), or [Music]",
+    "action": "Complete a user-triggered recording whose actual duration exceeds the short-recording threshold",
+    "expected_state": "ready_to_send",
+    "expected": "The finite structural caption guard records non_speech_caption, keeps the original transcript as an editable draft, and does not start chat, extraction, memory, proactive, or game-context updates. Natural sentences with parenthetical detail outside the brackets still pass this guard.",
+    "implemented_in_v22": true,
+    "expected_guard_reason": "non_speech_caption",
+    "should_auto_send": false,
+    "must_not_trigger": [
+      "chat_request",
+      "memory_write",
+      "pending_memory",
+      "game_context_extraction",
+      "proactive"
+    ],
+    "forbidden_terms": [
+      "FULL_TRANSCRIPT_MARKER",
+      "RAW_PROMPT_MARKER",
+      "CREDENTIAL_MARKER",
+      "ENV_FILE_MARKER",
+      "LOCAL_PATH_MARKER"
+    ]
+  },
+  {
+    "id": "voice-v22-direct-conversation-max-duration-guard",
+    "category": "voice_interaction_v2_transcript_policy",
+    "precondition": "Direct Conversation Mode is enabled and capture reaches the 30 second safety limit",
+    "action": "Allow the capture timer to stop MediaRecorder with max_duration",
+    "expected_state": "ready_to_send",
+    "expected": "The app records max_duration, keeps a non-empty transcript as an editable draft, and does not auto-send or start downstream semantic work.",
+    "implemented_in_v22": true,
+    "expected_guard_reason": "max_duration",
     "should_auto_send": false,
     "must_not_trigger": [
       "chat_request",

@@ -716,6 +716,12 @@ Local ASR v1 已达到 packaged app 可配置 MVP：用户可在 Settings 中保
 - cleanup failed 时返回 `local_asr_transcription_cleanup_failed`，不显示 temp path、raw exception 或 transcript。
 - Event Stream 只显示 `本地语音识别开始`、`本地语音识别完成`、`本地语音识别失败`、stop reason、transcript quality、send decision、interaction mode、字数、language、是否 `已规范为简体中文`、duration、size、MIME、conversion status、target MIME、cleanup、安全 model / binary basename 和安全 status。
 - Event Stream、Debug Panel、Raw JSON 不显示完整 transcript、raw stdout、raw stderr、完整 binary/model/temp path、audio content、base64、API key、`.env`、Authorization 或 raw prompt。
+- Direct Conversation 安全验收必须覆盖：极短实际 capture + 较长幻觉 transcript -> `recording_too_short`；`(字幕:J Chong)` / `(拍摄)` / `[Music]` -> `non_speech_caption`；`我等您下准备去` -> `suspected_partial`；`嗯` -> `transcript_too_short`；30 秒上限 -> `max_duration`。这些场景必须保留非空文本为可编辑草稿，不调用 `/api/chat`，不产生 `user_message_sent`，不触发 Extraction / Memory / proactive / Game Context 更新。
+- 短录音时长以 `MediaRecorder.start()` 到用户请求 Stop 的实际间隔为准，不包含等待最终 `dataavailable` / `onstop` 的 teardown 时间，也不信任 backend echo 覆盖 renderer capture duration。当前 Direct Conversation 自动发送下限为 800 ms。
+- 如果用户在 `getUserMedia()` 尚未返回时立即 Stop，controller 必须排队该请求，并在 recorder start 后立刻停止；不得丢失 Stop 后继续录到 30 秒上限。deferred-permission 自动化与 packaged 极短点击都要覆盖这条竞态。
+- caption guard 使用有限结构：仅括号 / 方括号组、caption marker payload 或裸 speaker label；不得为真实 payload 增加专用字符串特判。带括号细节但括号外仍有自然语言主体的完整句应继续通过。
+- 干净 Game Context 下，`我今天准备现在石东威尔城附近探索一会` 必须对 `text` / `voice_confirmed` / `voice_direct` 都保持无游戏状态；知识包中的通用 exploration / build / general topic alias 不得独立启动 canonical game。实体型 Boss / 地点 alias 仍可作为 bounded bootstrap evidence，因此正确的 `史东薇尔` 仍识别为艾尔登法环，明确的 `我现在换去玩空洞骑士` 仍正常切换。
+- packaged `.app` 人工验收需明确区分真实麦克风、模拟 MediaRecorder、受控 transcript、系统语音回录和自动化测试。被拦截内容不得产生 Rei 回复或永久卡在 listening / stopping / transcribing，退出后应释放麦克风、backend 和 8000 端口。
 - packaged `.app` smoke 需要确认未配置时 Local Transcribe disabled；可选 fake binary / fake model smoke 确认 packaged app 仍不泄露 transcript 或路径。
 - Packaged `.app` 应包含麦克风用途说明：`ReiLink 需要麦克风权限用于用户主动触发的语音输入测试。`
 - Local ASR QA 后续重点是：主聊天按钮 provider selection、转写中状态、错误中文映射、临时音频清理、packaged `.app` fallback 和 Event Stream 隐私。

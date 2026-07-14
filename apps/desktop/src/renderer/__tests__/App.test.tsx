@@ -1101,6 +1101,8 @@ class MockSpeechRecognition {
 class MockMediaRecorder {
   static instances: MockMediaRecorder[] = [];
   static isTypeSupported = vi.fn(() => true);
+  static onStart = () => undefined;
+  static onStop = () => undefined;
 
   state: RecordingState = "inactive";
   mimeType: string;
@@ -1110,11 +1112,13 @@ class MockMediaRecorder {
   onerror: (() => void) | null = null;
   start = vi.fn(() => {
     this.state = "recording";
+    MockMediaRecorder.onStart();
   });
   stop = vi.fn(() => {
     this.state = "inactive";
     this.ondataavailable?.({ data: new Blob(["fake-webm-audio"], { type: this.mimeType }) } as BlobEvent);
     this.onstop?.();
+    MockMediaRecorder.onStop();
   });
 
   constructor(stream: MediaStream, options?: MediaRecorderOptions) {
@@ -1154,25 +1158,58 @@ const installMediaDevicesMock = (permission: "prompt" | "granted" | "denied" = "
   });
 };
 
-const installAudioCaptureMock = (options: { permissionDenied?: boolean } = {}) => {
+const installAudioCaptureMock = (options: { deferGetUserMedia?: boolean; permissionDenied?: boolean; recordingDurationMs?: number } = {}) => {
   MockMediaRecorder.instances = [];
   MockMediaRecorder.isTypeSupported = vi.fn(() => true);
+  const realDateNow = Date.now.bind(Date);
+  const recordingDurationMs = options.recordingDurationMs ?? 3000;
+  let captureActive = false;
+  let startedAtRead = false;
+  let captureStartedAt = realDateNow();
+  MockMediaRecorder.onStart = () => {
+    captureActive = true;
+    startedAtRead = false;
+    captureStartedAt = realDateNow();
+  };
+  MockMediaRecorder.onStop = () => {
+    captureActive = false;
+  };
+  vi.spyOn(Date, "now").mockImplementation(() => {
+    if (!captureActive) return realDateNow();
+    if (!startedAtRead) {
+      startedAtRead = true;
+      return captureStartedAt;
+    }
+    return captureStartedAt + recordingDurationMs;
+  });
   const stop = vi.fn();
   const stream = {
     getTracks: vi.fn(() => [{ stop }])
   } as unknown as MediaStream;
-  const getUserMedia = vi.fn(async () => {
+  let resolveGetUserMedia: ((stream: MediaStream) => void) | null = null;
+  const getUserMedia = vi.fn(() => {
     if (options.permissionDenied) {
-      throw new DOMException("Permission denied", "NotAllowedError");
+      return Promise.reject(new DOMException("Permission denied", "NotAllowedError"));
     }
-    return stream;
+    if (options.deferGetUserMedia) {
+      return new Promise<MediaStream>((resolve) => {
+        resolveGetUserMedia = resolve;
+      });
+    }
+    return Promise.resolve(stream);
   });
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
     value: { getUserMedia }
   });
   vi.stubGlobal("MediaRecorder", MockMediaRecorder);
-  return { getUserMedia, stopTrack: stop, stream, recorder: MockMediaRecorder };
+  return {
+    getUserMedia,
+    stopTrack: stop,
+    stream,
+    recorder: MockMediaRecorder,
+    resolveGetUserMedia: () => resolveGetUserMedia?.(stream)
+  };
 };
 
 const installRuntimeBridge = (initialStatus: BackendRuntimeStatus) => {
@@ -4292,7 +4329,7 @@ describe("App", () => {
     expect(chatCalls).toHaveLength(0);
     expect(eventBus.getRecentEvents(20)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: "voice_transcription_auto_send_blocked", provider: "web_speech", source: "direct_conversation", reason: "short_transcript" })
+        expect.objectContaining({ type: "voice_transcription_auto_send_blocked", provider: "web_speech", source: "direct_conversation", reason: "transcript_too_short" })
       ])
     );
     expect(eventBus.getRecentEvents(20)).not.toEqual(
@@ -4308,7 +4345,7 @@ describe("App", () => {
     appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
     installMediaDevicesMock("prompt");
     const recognition = installSpeechRecognitionMock();
-    const partialTranscript = "我现在不打玛尔";
+    const partialTranscript = "我等您下准备去";
     const chatCalls: RequestInit[] = [];
     vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -4336,7 +4373,7 @@ describe("App", () => {
           type: "voice_transcription_auto_send_blocked",
           provider: "web_speech",
           source: "direct_conversation",
-          reason: "partial_transcript",
+          reason: "suspected_partial",
           character_count: partialTranscript.length,
           transcript_quality: "suspected_partial",
           send_decision: "blocked",
@@ -4352,6 +4389,55 @@ describe("App", () => {
       ])
     );
   });
+
+  it.each(["(字幕:J Chong)", "(拍摄)", "[Music]"])(
+    "blocks caption-only Local ASR output %s without starting chat or extraction",
+    async (transcript) => {
+      appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+      setLocalAsrReady();
+      localAsrTranscriptionResponseStore = {
+        ...localAsrTranscriptionResponse,
+        transcript,
+        transcript_char_count: transcript.length,
+        duration_ms: 1800
+      };
+      const chatCalls: RequestInit[] = [];
+      vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.endsWith("/api/chat") && init?.method === "POST") {
+          chatCalls.push(init);
+          return Promise.resolve(Response.json(chatResponse));
+        }
+        return defaultFetchResponse(url, init);
+      });
+      installAudioCaptureMock({ recordingDurationMs: 1800 });
+
+      render(<App />);
+      await screen.findByText("已连接");
+      await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+      await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+
+      expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
+      expect(screen.getByLabelText("聊天输入")).toHaveValue(transcript);
+      expect(screen.getByText("识别结果只有字幕或声音说明，先没有自动发送。请检查输入框内容或重新录音。")).toBeInTheDocument();
+      expect(chatCalls).toHaveLength(0);
+      const recentEvents = eventBus.getRecentEvents(40);
+      expect(recentEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "voice_transcription_auto_send_blocked",
+            provider: "local_asr",
+            source: "direct_conversation",
+            reason: "non_speech_caption",
+            transcript_quality: "non_speech_caption",
+            send_decision: "blocked"
+          })
+        ])
+      );
+      expect(recentEvents.some((event) => event.type === "user_message_sent")).toBe(false);
+      expect(JSON.stringify(recentEvents)).not.toContain(transcript);
+    }
+  );
 
   it("keeps empty Direct Conversation Local ASR transcripts out of chat and Event Stream text", async () => {
     appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
@@ -4389,7 +4475,7 @@ describe("App", () => {
           type: "voice_transcription_auto_send_blocked",
           provider: "local_asr",
           source: "direct_conversation",
-          reason: "short_transcript",
+          reason: "empty_transcript",
           character_count: 0
         })
       ])
@@ -4406,7 +4492,7 @@ describe("App", () => {
   it("auto sends a Local ASR transcript in Direct Conversation Mode without leaking the transcript to Event Stream", async () => {
     appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
     setLocalAsrReady();
-    const privateTranscript = "直接对话的本地转写秘密";
+    const privateTranscript = "我今天准备先在史东薇尔城附近探索一会儿";
     localAsrTranscriptionResponseStore = {
       ...localAsrTranscriptionResponse,
       transcript: privateTranscript,
@@ -4452,6 +4538,7 @@ describe("App", () => {
         })
       ])
     );
+    expect(eventBus.getRecentEvents(30).filter((event) => event.type === "user_message_sent")).toHaveLength(1);
     expect(JSON.stringify(eventBus.getRecentEvents(30))).not.toContain(privateTranscript);
   });
 
@@ -4463,7 +4550,7 @@ describe("App", () => {
       ...localAsrTranscriptionResponse,
       transcript: privateTranscript,
       transcript_char_count: privateTranscript.length,
-      duration_ms: 42
+      duration_ms: 5000
     };
     const chatCalls: RequestInit[] = [];
     vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
@@ -4474,7 +4561,7 @@ describe("App", () => {
       }
       return defaultFetchResponse(url, init);
     });
-    installAudioCaptureMock();
+    installAudioCaptureMock({ recordingDurationMs: 42 });
 
     render(<App />);
     await screen.findByText("已连接");
@@ -4500,7 +4587,7 @@ describe("App", () => {
           type: "voice_transcription_auto_send_blocked",
           provider: "local_asr",
           source: "direct_conversation",
-          reason: "short_recording",
+          reason: "recording_too_short",
           capture_stop_reason: "user_stop",
           transcript_quality: "short_recording",
           send_decision: "blocked"
@@ -4514,6 +4601,52 @@ describe("App", () => {
         expect.objectContaining({ type: "proactive_message_shown" })
       ])
     );
+  });
+
+  it("queues an immediate Direct Conversation stop while microphone access is still pending", async () => {
+    appSettingsStore = { ...appSettingsStore, voice_interaction_mode: "direct_conversation" };
+    setLocalAsrReady();
+    const transcript = "权限返回前就停止但识别出了较长文本";
+    localAsrTranscriptionResponseStore = {
+      ...localAsrTranscriptionResponse,
+      transcript,
+      transcript_char_count: transcript.length,
+      duration_ms: 5000
+    };
+    const audioMock = installAudioCaptureMock({ deferGetUserMedia: true, recordingDurationMs: 0 });
+    const chatCalls: RequestInit[] = [];
+    vi.mocked(fetch).mockImplementation((input: URL | RequestInfo, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/chat") && init?.method === "POST") {
+        chatCalls.push(init);
+        return Promise.resolve(Response.json(chatResponse));
+      }
+      return defaultFetchResponse(url, init);
+    });
+
+    render(<App />);
+    await screen.findByText("已连接");
+    await userEvent.click(await screen.findByRole("button", { name: "开始本地语音 / Start Local ASR" }));
+    await userEvent.click(await screen.findByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+    expect(audioMock.recorder.instances).toHaveLength(0);
+
+    act(() => audioMock.resolveGetUserMedia());
+
+    expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue(transcript);
+    expect(screen.getByText("这段录音太短，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。")).toBeInTheDocument();
+    expect(chatCalls).toHaveLength(0);
+    expect(eventBus.getRecentEvents(30)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "voice_transcription_auto_send_blocked",
+          reason: "recording_too_short",
+          capture_stop_reason: "user_stop",
+          transcript_quality: "short_recording"
+        })
+      ])
+    );
+    expect(eventBus.getRecentEvents(30).some((event) => event.type === "user_message_sent")).toBe(false);
   });
 
   it("cancels Local ASR recording without transcription, input changes, or sending", async () => {
@@ -4588,7 +4721,7 @@ describe("App", () => {
     expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
     expect(screen.getByText("录音结束：达到最长录音时间")).toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toHaveValue(transcript);
-    expect(screen.getByText("这句像是还没说完，先没有自动发送。可以再说一次，或确认后发送输入框里的文本。")).toBeInTheDocument();
+    expect(screen.getByText("录音达到最长时间，可能没有说完，先没有自动发送。请检查输入框内容。")).toBeInTheDocument();
     expect(vi.mocked(fetch).mock.calls.some(([url, init]) => String(url).includes("/api/chat") && init?.method === "POST")).toBe(false);
     expect(eventBus.getRecentEvents(30)).toEqual(
       expect.arrayContaining([
@@ -4596,6 +4729,7 @@ describe("App", () => {
         expect.objectContaining({
           type: "voice_transcription_auto_send_blocked",
           capture_stop_reason: "max_duration",
+          reason: "max_duration",
           transcript_quality: "suspected_partial",
           send_decision: "blocked"
         })
