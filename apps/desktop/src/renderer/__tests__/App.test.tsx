@@ -2596,6 +2596,7 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.queryByText("Margit 怎么打？")).not.toBeInTheDocument());
     expect(screen.queryByText("我在。想问的时候就说。")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "空白对话" })).toHaveTextContent("Rei 在这里。想说的时候，就说。");
     expect(screen.getByText("已清空当前聊天记录")).toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/api/memory/reset"),
@@ -6464,6 +6465,7 @@ describe("App", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
     expect(screen.getByText("……")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Rei 正在思考" })).toBeInTheDocument();
     await act(async () => {
       resolveChat(
         Response.json({
@@ -6480,6 +6482,7 @@ describe("App", () => {
     });
     expect(screen.getByText("我在。")).toBeInTheDocument();
     expect(screen.queryByText("……")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Rei 正在思考" })).not.toBeInTheDocument();
   });
 
   it("uses only neutral low-semantic interim placeholders", () => {

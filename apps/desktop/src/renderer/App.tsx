@@ -13,7 +13,6 @@ import {
   Mic,
   RefreshCw,
   Search,
-  Send,
   Settings,
   Sparkles,
   Trash2,
@@ -82,8 +81,9 @@ import { AppNavigation } from "./app/AppNavigation";
 import { AppHeader, AppShell } from "./app/AppShell";
 import { WORKSPACE_LABELS, WORKSPACE_SUBTITLES, type WorkspaceId } from "./app/navigation";
 import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
-import { Button } from "./components/ui/Button";
-import { Input } from "./components/ui/Input";
+import { ChatComposer } from "./components/chat/ChatComposer";
+import { ChatMessage } from "./components/chat/ChatMessage";
+import { EmptyConversation } from "./components/chat/EmptyConversation";
 import { eventBus } from "./eventBus";
 import { useTheme } from "./hooks/useTheme";
 import {
@@ -4898,6 +4898,9 @@ export function App() {
         || voiceConversationState.state === "assistant_thinking"
         ? "thinking"
         : "idle";
+  const activeReiMessageId = messages.length > 0 && messages[messages.length - 1].role === "assistant"
+    ? messages[messages.length - 1].id
+    : null;
   const providerBackendStatusText = backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : (
     backendStatus === "connected" ? "后端已连接" : "后端未连接"
   );
@@ -5153,17 +5156,19 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   )}
                 </section>
               )}
+              {messages.length === 0 && !backendRuntimeNotice && !setupNeedsAttention && !onboardingVisible && (
+                <EmptyConversation />
+              )}
               {messages.map((message) => (
-                <article
-                  className={`messageBubble ${message.role}${message.pending ? " pending" : ""}${message.messageType === "proactive" ? " proactive" : ""}`}
+                <ChatMessage
                   key={message.id}
-                >
-                  <div className="messageHeader">
-                    <span className="messageSpeaker">{message.role === "user" ? "你" : "Rei"}</span>
-                    <small className="messageTime">{messageMetaText(message)}</small>
-                  </div>
-                  <p>{message.text}</p>
-                </article>
+                  meta={messageMetaText(message)}
+                  pending={message.pending}
+                  proactive={message.messageType === "proactive"}
+                  reiState={message.id === activeReiMessageId && voiceConversationState.state === "speaking" ? "speaking" : "idle"}
+                  role={message.role}
+                  text={message.text}
+                />
               ))}
             </div>
 
@@ -5190,94 +5195,86 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               </div>
             )}
 
-            <form className="composer" onSubmit={sendMessage}>
-              <button
-                className={`iconButton voiceInputButton ${mainVoiceInputActive ? "active" : ""}`}
-                type="button"
-                aria-label={mainVoiceInputLabel}
-                title={mainVoiceInputTitle}
-                disabled={mainVoiceInputDisabled}
-                onClick={() => {
-                  if (mainVoiceInputUsesLocalAsr) {
-                    void runLocalAsrTranscription();
-                    return;
-                  }
-                  if (mainVoiceInputUsesWebSpeech) {
-                    if (voiceInputStatus.phase === "idle") startVoiceInput();
-                    else stopVoiceInput();
-                  }
-                }}
-              >
-                <Mic size={18} />
-              </button>
-              <Input
-                aria-label="聊天输入"
-                value={input}
-                onChange={(event) => {
-                  const nextInput = event.target.value;
-                  setInput(nextInput);
-                  if (!nextInput.trim()) clearVoiceTranscriptReady();
-                }}
-                placeholder="说点什么……"
-              />
-              <Button className="sendButton" type="submit" variant="primary" disabled={sending || !input.trim()}>
-                <Send size={18} />
-                <span>{sending ? "发送中" : "发送"}</span>
-              </Button>
-              <div className={`voiceInputInlineStatus voiceState-${voiceConversationState.tone}`} role="status">
-                <span>
-                  Voice v2.2：{voiceConversationState.label}。{voiceConversationState.description}
-                </span>
-                <span>
-                  语音输入：{mainVoiceInputStatus}
-                  {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
-                </span>
-                <span>模式：{voiceInteractionModeLabel}</span>
-                {localAsrCaptureStopReason && localAsrTranscriptionPhase !== "recording" && (
-                  <span>录音结束：{audioCaptureReasonText(localAsrCaptureStopReason)}</span>
-                )}
-                {voiceDirectConversationEnabled && !voiceAutoSendBlockedHint && (
-                  <span className="voiceStateNotice">主动录音后自动发送，不会常驻监听</span>
-                )}
-                {voiceConversationState.state === "ready_to_send" && (
-                  <span className="voiceStateNotice">{voiceConfirmSendText}</span>
-                )}
-                {voiceConversationState.state === "speaking" && (
-                  <button
-                    className="smallButton quiet voiceInlineStop"
-                    type="button"
-                    aria-label="停止语音 / Stop Voice"
-                    onClick={() => stopVoiceOutput("user_stop")}
-                  >
-                    <VolumeX size={13} />
-                    停止播放
-                  </button>
-                )}
-                {mainVoiceInputUsesLocalAsr && localAsrTranscriptionPhase === "recording" && audioCaptureStatus.phase === "recording" && (
-                  <button
-                    className="smallButton quiet voiceInlineStop"
-                    type="button"
-                    aria-label="取消本次录音 / Cancel Recording"
-                    onClick={cancelLocalAsrRecording}
-                  >
-                    <X size={13} />
-                    取消录音
-                  </button>
-                )}
-                {voiceConversationState.state === "ready_to_send" && (
-                  <button
-                    className="smallButton quiet voiceInlineStop"
-                    type="button"
-                    aria-label="清空草稿并重新录音 / Re-record"
-                    disabled={mainVoiceInputDisabled}
-                    onClick={restartVoiceTranscription}
-                  >
-                    <RefreshCw size={13} />
-                    重新录音
-                  </button>
-                )}
-              </div>
-            </form>
+            <ChatComposer
+              input={input}
+              onInputChange={(event) => {
+                const nextInput = event.target.value;
+                setInput(nextInput);
+                if (!nextInput.trim()) clearVoiceTranscriptReady();
+              }}
+              onSubmit={sendMessage}
+              onVoiceClick={() => {
+                if (mainVoiceInputUsesLocalAsr) {
+                  void runLocalAsrTranscription();
+                  return;
+                }
+                if (mainVoiceInputUsesWebSpeech) {
+                  if (voiceInputStatus.phase === "idle") startVoiceInput();
+                  else stopVoiceInput();
+                }
+              }}
+              sending={sending}
+              statusTone={voiceConversationState.tone}
+              voiceActive={mainVoiceInputActive}
+              voiceDisabled={mainVoiceInputDisabled}
+              voiceLabel={mainVoiceInputLabel}
+              voiceTitle={mainVoiceInputTitle}
+              status={(
+                <>
+                  <span>
+                    Voice v2.2：{voiceConversationState.label}。{voiceConversationState.description}
+                  </span>
+                  <span>
+                    语音输入：{mainVoiceInputStatus}
+                    {voiceInputStatus.interimCharacterCount > 0 ? ` / 临时识别 ${voiceInputStatus.interimCharacterCount} 字` : ""}
+                  </span>
+                  <span>模式：{voiceInteractionModeLabel}</span>
+                  {localAsrCaptureStopReason && localAsrTranscriptionPhase !== "recording" && (
+                    <span>录音结束：{audioCaptureReasonText(localAsrCaptureStopReason)}</span>
+                  )}
+                  {voiceDirectConversationEnabled && !voiceAutoSendBlockedHint && (
+                    <span className="voiceStateNotice">主动录音后自动发送，不会常驻监听</span>
+                  )}
+                  {voiceConversationState.state === "ready_to_send" && (
+                    <span className="voiceStateNotice">{voiceConfirmSendText}</span>
+                  )}
+                  {voiceConversationState.state === "speaking" && (
+                    <button
+                      className="smallButton quiet voiceInlineStop"
+                      type="button"
+                      aria-label="停止语音 / Stop Voice"
+                      onClick={() => stopVoiceOutput("user_stop")}
+                    >
+                      <VolumeX size={13} />
+                      停止播放
+                    </button>
+                  )}
+                  {mainVoiceInputUsesLocalAsr && localAsrTranscriptionPhase === "recording" && audioCaptureStatus.phase === "recording" && (
+                    <button
+                      className="smallButton quiet voiceInlineStop"
+                      type="button"
+                      aria-label="取消本次录音 / Cancel Recording"
+                      onClick={cancelLocalAsrRecording}
+                    >
+                      <X size={13} />
+                      取消录音
+                    </button>
+                  )}
+                  {voiceConversationState.state === "ready_to_send" && (
+                    <button
+                      className="smallButton quiet voiceInlineStop"
+                      type="button"
+                      aria-label="清空草稿并重新录音 / Re-record"
+                      disabled={mainVoiceInputDisabled}
+                      onClick={restartVoiceTranscription}
+                    >
+                      <RefreshCw size={13} />
+                      重新录音
+                    </button>
+                  )}
+                </>
+              )}
+            />
           </section>
         </section>
 

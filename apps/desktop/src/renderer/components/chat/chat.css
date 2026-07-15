@@ -1,0 +1,360 @@
+.chatColumn {
+  position: relative;
+  background:
+    radial-gradient(circle at 88% 84%, var(--color-highlight-soft), transparent 24%),
+    var(--color-surface);
+}
+
+.timelineMarker {
+  position: relative;
+  z-index: 1;
+  padding: var(--space-5) var(--space-7) 0;
+  color: var(--color-text-subtle);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-body);
+}
+
+.timelineMarker::before,
+.timelineMarker::after {
+  opacity: 0.88;
+}
+
+.messages {
+  --chat-gutter: clamp(1.5rem, 4.5vw, 4rem);
+  position: relative;
+  gap: clamp(1.4rem, 3.4vh, 2.65rem);
+  padding: var(--space-7) var(--chat-gutter) var(--space-6);
+  scroll-padding-block: var(--space-7);
+}
+
+.messages::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--chat-gutter) + 21px);
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-highlight) 82%, transparent),
+    color-mix(in srgb, var(--color-highlight) 34%, transparent) 76%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.chatMessage.messageBubble {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 760px);
+  max-width: none;
+  display: grid;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  color: var(--color-text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.chatMessage.assistant {
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-self: flex-start;
+}
+
+.chatMessage.assistant .reiAvatar {
+  background-color: var(--color-surface);
+}
+
+.chatMessage.user {
+  width: fit-content;
+  max-width: min(64%, 520px);
+  align-self: flex-end;
+}
+
+.chatMessageBody {
+  min-width: 0;
+}
+
+.chatMessage .messageHeader {
+  gap: var(--space-2);
+  margin: 1px 0 5px;
+}
+
+.chatMessage .messageSpeaker {
+  color: var(--color-text-strong);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-body);
+  font-weight: 560;
+}
+
+.chatMessage .messageTime {
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-caption);
+  font-weight: 520;
+}
+
+.chatMessageText {
+  position: relative;
+  min-width: 0;
+}
+
+.chatMessage.assistant .chatMessageText {
+  padding: 1px var(--space-2) 1px 0;
+}
+
+.chatMessage.user .chatMessageBody {
+  display: grid;
+  justify-items: end;
+}
+
+.chatMessage.user .chatMessageText {
+  min-width: min(15rem, 100%);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, var(--color-border));
+  border-radius: var(--radius-sm) 2px var(--radius-sm) var(--radius-sm);
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--color-accent-soft) 78%, var(--color-surface-raised));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-accent-strong) 9%, transparent);
+}
+
+.chatMessage.user .chatMessageText::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 13px;
+  height: 13px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+  border-left: 1px solid color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+  background: var(--color-surface);
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+.chatMessage p {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-conversation);
+  line-height: var(--line-height-conversation);
+  letter-spacing: 0.005em;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.chatMessage.proactive .chatMessageText {
+  color: var(--color-accent-strong);
+}
+
+.chatMessage.pending {
+  opacity: 0.84;
+}
+
+.chatThinkingDots {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chatThinkingDots i {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-round);
+  background: var(--color-accent);
+  animation: chat-thinking-pulse 1.6s var(--ease-calm) infinite;
+}
+
+.chatThinkingDots i:nth-child(2) {
+  animation-delay: 140ms;
+}
+
+.chatThinkingDots i:nth-child(3) {
+  animation-delay: 280ms;
+}
+
+.chatVisuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.emptyConversation {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  padding: var(--space-8);
+  color: var(--color-text-muted);
+}
+
+.emptyConversation h2 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-section);
+  font-weight: 560;
+}
+
+.emptyConversation p {
+  margin: 4px 0 0;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-body);
+}
+
+.chatComposer.composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  margin: 0 var(--space-4) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  padding: 9px 10px 8px;
+  background: color-mix(in srgb, var(--color-surface-raised) 96%, transparent);
+  box-shadow: var(--shadow-raised);
+}
+
+.chatComposerMain {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chatComposer .chatComposerInput {
+  height: 46px;
+  border: 0;
+  padding-inline: var(--space-3);
+  color: var(--color-text);
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--font-size-conversation);
+}
+
+.chatComposer .chatComposerInput:focus {
+  box-shadow: none;
+}
+
+.chatVoiceButton.uiButton {
+  width: 44px;
+  min-height: 44px;
+  border-color: var(--color-border);
+  border-radius: var(--radius-round);
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.chatVoiceButton.uiButton:hover:not(:disabled),
+.chatVoiceButton.uiButton.active {
+  color: var(--color-accent-strong);
+  border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+  background: var(--color-accent-soft);
+}
+
+.chatSendButton.uiButton {
+  min-width: 96px;
+  min-height: 44px;
+  border-radius: var(--radius-md);
+  color: #fffaf6;
+}
+
+.chatComposerStatus.voiceInputInlineStatus {
+  min-width: 0;
+  display: flex;
+  grid-column: auto;
+  align-items: center;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding: 0 54px 0 54px;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-caption);
+  line-height: 1.45;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.chatComposerStatus::-webkit-scrollbar {
+  display: none;
+}
+
+.chatComposerStatus .voiceStateNotice {
+  color: var(--color-text-muted);
+}
+
+@keyframes chat-thinking-pulse {
+  0%,
+  65%,
+  100% {
+    opacity: 0.38;
+    transform: translateY(0);
+  }
+  32% {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+}
+
+@media (max-width: 960px) {
+  .messages {
+    --chat-gutter: var(--space-6);
+  }
+}
+
+@media (max-width: 640px) {
+  .messages {
+    --chat-gutter: var(--space-4);
+    gap: var(--space-6);
+    padding-block: var(--space-6);
+  }
+
+  .messages::before {
+    left: calc(var(--chat-gutter) + 17px);
+  }
+
+  .chatMessage.assistant {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .chatMessage.assistant .reiAvatar {
+    width: 34px;
+    height: 34px;
+    font-size: 0.95rem;
+  }
+
+  .chatMessage.user {
+    max-width: 82%;
+  }
+
+  .chatComposerMain {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+
+  .chatSendButton.uiButton {
+    min-width: 44px;
+    width: 44px;
+    padding: 0;
+  }
+
+  .chatSendButton span {
+    display: none;
+  }
+
+  .chatComposerStatus.voiceInputInlineStatus {
+    padding-inline: 50px 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chatThinkingDots i {
+    animation: none;
+    opacity: 0.62;
+  }
+}
