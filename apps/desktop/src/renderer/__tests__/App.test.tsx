@@ -1860,9 +1860,9 @@ describe("App", () => {
     if (tab !== "待确认") await openWorkspaceTab(tab);
   };
 
-  const openGameWorkspace = async (tab: string | RegExp = "当前上下文") => {
+  const openGameWorkspace = async (tab: string | RegExp = "当前旅程") => {
     await openWorkspace("游戏");
-    if (tab !== "当前上下文") await openWorkspaceTab(tab);
+    if (tab !== "当前旅程") await openWorkspaceTab(tab);
   };
 
   it("renders the app", async () => {
@@ -1959,7 +1959,7 @@ describe("App", () => {
 
     await openGameWorkspace();
     panel = await screen.findByRole("complementary", { name: "工作区面板" });
-    for (const tabName of ["当前上下文", "本局时间线", "知识", "手动控制"]) {
+    for (const tabName of ["当前旅程", "最近记录", "旅程参考", "选择游戏"]) {
       await clickPanelTab(tabName);
     }
 
@@ -2180,12 +2180,13 @@ describe("App", () => {
   it("shows running game status", async () => {
     render(<App />);
     await openGameWorkspace();
-    await waitFor(() => expect(screen.getAllByText("Elden Ring").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("艾尔登法环").length).toBeGreaterThan(0));
     expect(screen.getAllByText("恶兆妖鬼 Margit").length).toBeGreaterThan(0);
     expect(screen.getAllByText("挑战中").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("当前游戏").length).toBeGreaterThan(0);
-    expect(screen.getByText("当前 Boss")).toBeInTheDocument();
-    expect(screen.getByText("死亡次数")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "当前旅程" })).toBeInTheDocument();
+    expect(screen.getByText("正在面对")).toBeInTheDocument();
+    expect(screen.getByText("最近脚步")).toBeInTheDocument();
+    expect(screen.getByText("记录了 1 次重新尝试")).toBeInTheDocument();
   });
 
   it("renders settings panel values", async () => {
@@ -5996,15 +5997,11 @@ describe("App", () => {
   it("shows, updates, sanitizes, and clears the Session Timeline", async () => {
     render(<App />);
     await screen.findByText("已连接");
-    await openGameWorkspace("本局时间线");
+    await openGameWorkspace("最近记录");
 
-    const timeline = screen.getByText("Session Timeline / 本局时间线").closest("details");
-    expect(timeline).not.toBeNull();
-    expect(timeline).not.toHaveAttribute("open");
-
-    fireEvent.click(screen.getByText("Session Timeline / 本局时间线"));
-    expect(timeline).toHaveAttribute("open");
-    await waitFor(() => expect(screen.getByText("本局还没有记录到关键变化。")).toBeInTheDocument());
+    const timeline = screen.getByRole("region", { name: "最近记录" });
+    expect(timeline).toHaveTextContent("还没有新的记录。");
+    expect(screen.getByRole("button", { name: "清空本局记录" })).toBeDisabled();
 
     act(() => {
       eventBus.emit({
@@ -6052,15 +6049,17 @@ describe("App", () => {
       });
     });
 
-    await waitFor(() => expect(timeline).toHaveTextContent("切换游戏：Elden Ring"));
-    expect(timeline).toHaveTextContent("检测到 Boss：Margit");
-    expect(timeline).toHaveTextContent("死亡次数更新：2");
-    expect(timeline).toHaveTextContent("挫败状态升高：1");
-    expect(timeline).toHaveTextContent("击败 Boss：Margit");
-    expect(timeline).toHaveTextContent("使用知识：艾尔登法环 / Margit phase 2 tips");
-    expect(timeline).toHaveTextContent("主动陪伴已显示：反复死亡");
-    expect(timeline).toHaveTextContent("记忆已接受");
-    expect(timeline).toHaveTextContent("记忆已忽略");
+    await waitFor(() => expect(timeline).toHaveTextContent("开始记录"));
+    expect(timeline).toHaveTextContent("正在面对");
+    expect(timeline).toHaveTextContent("再次尝试");
+    expect(timeline).toHaveTextContent("本局第 2 次重新出发");
+    expect(timeline).toHaveTextContent("旅途起伏");
+    expect(timeline).toHaveTextContent("已经越过");
+    expect(timeline).toHaveTextContent("翻到一页参考");
+    expect(timeline).toHaveTextContent("艾尔登法环 / Margit phase 2 tips");
+    expect(timeline).toHaveTextContent("Rei 留下一句话");
+    expect(timeline).toHaveTextContent("收进回忆");
+    expect(timeline).toHaveTextContent("没有留下");
     expect(timeline).not.toHaveTextContent("/Users/aragoto");
     expect(timeline).not.toHaveTextContent(".env");
     expect(timeline).not.toHaveTextContent("raw prompt");
@@ -6073,14 +6072,10 @@ describe("App", () => {
     await waitFor(() => expect(eventStream).toHaveTextContent("游戏状态变化"));
     expect(eventStream).toHaveTextContent("使用游戏知识");
 
-    await openGameWorkspace("本局时间线");
-    const reopenedTimeline = screen.getByText("Session Timeline / 本局时间线").closest("details");
-    expect(reopenedTimeline).not.toBeNull();
-    if (!reopenedTimeline?.hasAttribute("open")) {
-      fireEvent.click(screen.getByText("Session Timeline / 本局时间线"));
-    }
-    fireEvent.click(screen.getByRole("button", { name: "清空时间线" }));
-    expect(reopenedTimeline).toHaveTextContent("本局还没有记录到关键变化。");
+    await openGameWorkspace("最近记录");
+    const reopenedTimeline = screen.getByRole("region", { name: "最近记录" });
+    fireEvent.click(screen.getByRole("button", { name: "清空本局记录" }));
+    expect(reopenedTimeline).toHaveTextContent("还没有新的记录。");
   });
 
   it("updates Event Stream when interaction events are emitted", async () => {
@@ -6573,10 +6568,10 @@ describe("App", () => {
     render(<App />);
 
     await openGameWorkspace();
-    expect(await screen.findByRole("heading", { name: "游戏状态" })).toBeInTheDocument();
-    expect(screen.getAllByText("当前游戏").length).toBeGreaterThan(0);
-    expect(screen.getByText("当前 Boss")).toBeInTheDocument();
-    expect(screen.getByText("讨论目标")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "艾尔登法环" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "当前旅程" })).toBeInTheDocument();
+    expect(screen.getByText("正在面对")).toBeInTheDocument();
+    expect(screen.getByText("最近脚步")).toBeInTheDocument();
     expect(screen.getByText("挑战中")).toBeInTheDocument();
 
     await openDebugWorkspace();
@@ -6624,7 +6619,7 @@ describe("App", () => {
     render(<App />);
     await openGameWorkspace();
 
-    const panel = await screen.findByRole("region", { name: "游戏状态" });
+    const panel = await screen.findByRole("region", { name: "当前旅程" });
     expect(panel).toHaveTextContent("恶兆妖鬼 Margit");
     expect(panel).toHaveTextContent("讨论游戏");
     expect(panel).not.toHaveTextContent("game_discussion");

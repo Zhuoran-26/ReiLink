@@ -84,6 +84,10 @@ import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from
 import { ChatComposer } from "./components/chat/ChatComposer";
 import { ChatMessage } from "./components/chat/ChatMessage";
 import { EmptyConversation } from "./components/chat/EmptyConversation";
+import { JourneyGameSelector } from "./components/journey/JourneyGameSelector";
+import { JourneyOverview } from "./components/journey/JourneyOverview";
+import { JourneyReference } from "./components/journey/JourneyReference";
+import { JourneyTimeline } from "./components/journey/JourneyTimeline";
 import { eventBus } from "./eventBus";
 import { useTheme } from "./hooks/useTheme";
 import {
@@ -195,10 +199,10 @@ const WORKSPACE_TABS: Record<WorkspaceId, WorkspaceTab[]> = {
     { id: "future", label: "候选记忆" }
   ],
   game: [
-    { id: "current", label: "当前上下文" },
-    { id: "timeline", label: "本局时间线" },
-    { id: "knowledge", label: "知识" },
-    { id: "manual", label: "手动控制" }
+    { id: "current", label: "当前旅程" },
+    { id: "timeline", label: "最近记录" },
+    { id: "knowledge", label: "旅程参考" },
+    { id: "manual", label: "选择游戏" }
   ],
   voice: [
     { id: "conversation", label: "对话" },
@@ -1399,17 +1403,6 @@ const gameActivityText = (activity?: unknown) => {
   };
   const value = String(activity ?? "");
   return labels[value] ?? debugText(activity);
-};
-
-const bossFreshnessText = (freshness?: unknown) => {
-  const labels: Record<string, string> = {
-    fresh: "新鲜",
-    weak: "待确认",
-    stale: "已过期",
-    none: "无"
-  };
-  const value = String(freshness ?? "");
-  return labels[value] ?? debugText(freshness);
 };
 
 const bossHistoryStatusText = (status?: unknown) => {
@@ -5279,7 +5272,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
         </section>
 
         {activeWorkspace !== "home" && (
-        <aside className="workspacePanel" aria-label="工作区面板">
+        <aside className={`workspacePanel workspacePanel-${activeWorkspace}`} aria-label="工作区面板">
           <div className="workspacePanelHeader">
             <div>
               <p className="eyebrow">Workspace</p>
@@ -5706,123 +5699,29 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
           )}
 
           {activeWorkspace === "game" && activeWorkspaceTab === "timeline" && (
-            <section className="infoCard" aria-label="本局时间线">
-              <div className="cardHeader">
-                <Gamepad2 size={17} />
-                <h2>本局时间线</h2>
-              </div>
-              <SessionTimelinePanel
-                items={sessionTimeline}
-                open={sessionTimelineOpen}
-                onOpenChange={setSessionTimelineOpen}
-                onClear={() => setSessionTimeline([])}
-              />
-            </section>
+            <JourneyTimeline items={sessionTimeline} onClear={() => setSessionTimeline([])} />
           )}
 
           {activeWorkspace === "game" && activeWorkspaceTab === "knowledge" && (
-            <section className="infoCard" aria-label="知识摘要">
-              <div className="cardHeader">
-                <FileText size={17} />
-                <h2>知识摘要</h2>
-              </div>
-              <p className="settingHint">这里显示当前知识可用性和命中摘要；详细 trace 保留在 Developer / Debug。</p>
-              <dl className="debugFacts">
-                <div>
-                  <dt>当前游戏</dt>
-                  <dd>{debugText(gameContext.active_game_display_name, "未选择")}</dd>
-                </div>
-                <div>
-                  <dt>知识库状态</dt>
-                  <dd>{gameContextKnowledgeStatus}</dd>
-                </div>
-                <div>
-                  <dt>兜底方式</dt>
-                  <dd>{gameContextFallbackMode}</dd>
-                </div>
-                <div>
-                  <dt>知识命中</dt>
-                  <dd>{chatDebug.knowledge_matched ? "是" : "否"}</dd>
-                </div>
-                <div>
-                  <dt>检索状态</dt>
-                  <dd>{knowledgeRetrievalStatusText(chatDebug.knowledge_retrieval_status)}</dd>
-                </div>
-              </dl>
-            </section>
+            <JourneyReference
+              available={gameContext.knowledge_available}
+              gameName={displayGame === "idle" ? null : displayGame}
+              usedRecently={chatDebug.knowledge_matched}
+            />
           )}
 
 	          {activeWorkspace === "game" && activeWorkspaceTab === "manual" && (
-	            <section className="infoCard" aria-label="当前游戏控制">
-              <div className="cardHeader">
-                <Gamepad2 size={17} />
-                <h2>手动游戏控制</h2>
-              </div>
-              <div className="gameContextControl" aria-label="当前游戏控制">
-                <dl className="debugFacts">
-                  <div>
-                    <dt>{formatDebugLabel("current_game")}</dt>
-                    <dd>{debugText(gameContext.active_game_display_name, "未选择")}</dd>
-                  </div>
-                  <div>
-                    <dt>{formatDebugLabel("active_source")}</dt>
-                    <dd>{debugText(gameContext.active_source)}</dd>
-                  </div>
-                  <div>
-                    <dt>{formatDebugLabel("automatic_detected_result")}</dt>
-                    <dd>{debugText(detectedGameDisplay, "未检测到游戏")}</dd>
-                  </div>
-                  <div>
-                    <dt>{formatDebugLabel("knowledge_available")}</dt>
-                    <dd>{gameContextKnowledgeStatus}</dd>
-                  </div>
-                </dl>
-                <label className="settingRow">
-                  <span>当前游戏</span>
-                  <select
-                    aria-label="当前游戏"
-                    disabled={gameContextBusy !== ""}
-                    value={manualGameId}
-                    onChange={(event) => void updateManualGameContext(event.target.value || null)}
-                  >
-                    <option value="">跟随自动/对话</option>
-                    {gameContext.available_games.map((game) => (
-                      <option key={game.game_id} value={game.game_id}>
-                        {game.display_name}（{knowledgeStatusText(game.support_status, game.knowledge_available)}）
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="debugActions">
-                  <button
-                    className="smallButton"
-                    type="button"
-                    disabled={gameContextBusy !== "" || !canUseDetectedGame}
-                    onClick={() => void updateManualGameContext(detectedKnowledgeGameId ?? null, "use-detected-game")}
-                  >
-                    使用检测结果
-                  </button>
-                  <button
-                    className="smallButton quiet"
-                    type="button"
-                    disabled={gameContextBusy !== "" || !gameContext.manual_override.enabled}
-                    onClick={() => void updateManualGameContext(null, "clear-manual-game")}
-                  >
-                    清除手动选择
-                  </button>
-                </div>
-                <div className="catalogSummary" aria-label="已支持游戏">
-                  <div>
-                    <strong>已支持</strong>
-                    <span>{supportedCatalogGames.map((game) => game.display_name).join(" / ") || "无"}</span>
-                  </div>
-                  <div>
-                    <strong>暂未接入知识库</strong>
-                    <span>{plannedCatalogGames.map((game) => game.display_name).join(" / ") || "无"}</span>
-                  </div>
-                </div>
-              </div>
-            </section>
+            <JourneyGameSelector
+              busy={gameContextBusy !== ""}
+              canUseDetectedGame={canUseDetectedGame}
+              detectedGameName={debugText(detectedGameDisplay, "未检测到游戏")}
+              manualEnabled={gameContext.manual_override.enabled}
+              onClearManual={() => void updateManualGameContext(null, "clear-manual-game")}
+              onSelect={(event) => void updateManualGameContext(event.target.value || null)}
+              onUseDetected={() => void updateManualGameContext(detectedKnowledgeGameId ?? null, "use-detected-game")}
+              options={gameContext.available_games}
+              selectedGameId={manualGameId}
+            />
           )}
 
           {activeWorkspace === "voice" && activeWorkspaceTab === "conversation" && (
@@ -7770,58 +7669,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
           )}
 
           {activeWorkspace === "game" && activeWorkspaceTab === "current" && (
-          <section className="infoCard gameSessionPanel" aria-label="游戏状态" id="game-session-panel" style={{ order: 3 }}>
-            <div className="cardHeader">
-              <Gamepad2 size={17} />
-              <h2>游戏状态</h2>
-            </div>
-            <dl className="debugFacts">
-              <div>
-                <dt>{formatDebugLabel("current_game")}</dt>
-                <dd>{debugText(gameSessionDebug.current_game)}</dd>
-              </div>
-              <div>
-                <dt>{formatDebugLabel("current_boss")}</dt>
-                <dd>{debugText(gameSessionDebug.current_boss?.name)}</dd>
-              </div>
-              <div>
-                <dt>{formatDebugLabel("discussion_target")}</dt>
-                <dd>{debugText(gameSessionDebug.discussion_target?.name)}</dd>
-              </div>
-              <div>
-                <dt>{formatDebugLabel("freshness")}</dt>
-                <dd>{bossFreshnessText(gameSessionDebug.current_boss?.freshness)}</dd>
-              </div>
-              <div>
-                <dt>{formatDebugLabel("activity")}</dt>
-                <dd>{gameActivityText(gameSessionDebug.current_activity)}</dd>
-              </div>
-              <div>
-                <dt>{formatDebugLabel("last_attempted")}</dt>
-                <dd>{debugText(gameSessionDebug.last_attempted_boss)}</dd>
-              </div>
-              <div>
-                <dt>{formatDebugLabel("last_cleared")}</dt>
-                <dd>{debugText(gameSessionDebug.last_cleared_boss)}</dd>
-              </div>
-              <div>
-                <dt>{formatDebugLabel("death_count")}</dt>
-                <dd>{gameSessionDebug.death_count}</dd>
-              </div>
-              <div>
-                <dt>{formatDebugLabel("frustration")}</dt>
-                <dd>{gameSessionDebug.frustration_count}</dd>
-              </div>
-            </dl>
-            <ul className="debugList compact" aria-label="Boss 记录">
-              {recentBossHistory.map((boss, index) => (
-                <li key={`${boss.name}-${boss.status}-${index}`}>
-                  {boss.name} / {bossHistoryStatusText(boss.status)} / {bossFreshnessText(boss.freshness)}
-                </li>
-              ))}
-              {recentBossHistory.length === 0 && <li>无</li>}
-            </ul>
-          </section>
+            <JourneyOverview
+              activity={gameActivityText(gameSessionDebug.current_activity)}
+              challengeName={gameSessionDebug.current_boss?.name ?? gameSessionDebug.discussion_target?.name ?? null}
+              gameName={displayGame === "idle" ? null : displayGame}
+              history={recentBossHistory.map((boss) => ({
+                name: boss.name,
+                status: bossHistoryStatusText(boss.status)
+              }))}
+              lastAttempted={gameSessionDebug.last_attempted_boss}
+              lastCleared={gameSessionDebug.last_cleared_boss}
+              retryCount={gameSessionDebug.death_count}
+            />
           )}
 
           {activeWorkspace === "debug" && activeWorkspaceTab === "runtime" && debugPanelVisible && (

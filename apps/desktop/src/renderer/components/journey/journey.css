@@ -1,0 +1,511 @@
+.journeyPage,
+.journeyReference,
+.journeyGameSelector {
+  position: relative;
+  min-width: 0;
+  min-height: 100%;
+  color: var(--color-text);
+}
+
+.workspacePanel-game .workspaceTabs {
+  justify-content: space-between;
+  gap: 0;
+  padding-bottom: 0;
+}
+
+.workspacePanel-game .workspaceTab {
+  min-height: 40px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding-inline: var(--space-2);
+  background: transparent;
+}
+
+.workspacePanel-game .workspaceTab:hover,
+.workspacePanel-game .workspaceTab[aria-selected="true"] {
+  border-color: var(--color-accent);
+  background: transparent;
+  box-shadow: none;
+}
+
+.journeyPage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-2) var(--space-6) 58px;
+}
+
+.journeyTrail {
+  position: absolute;
+  inset: 0 auto 0 4px;
+  width: 42px;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.journeyTrail path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-highlight) 88%, transparent);
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+.journeyTrail circle {
+  fill: var(--color-surface);
+  stroke: var(--color-highlight);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.journeyTrail-quiet {
+  opacity: 0.4;
+}
+
+.journeyHero {
+  display: grid;
+  gap: 4px;
+  padding: var(--space-2) var(--space-2) 0;
+}
+
+.journeyHero h2,
+.journeyTimelineHeader h2,
+.journeyReference > header h2,
+.journeyGameSelector > header h2,
+.emptyJourney h2 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-family: var(--font-family-display);
+  font-weight: 520;
+  letter-spacing: -0.025em;
+}
+
+.journeyHero h2 {
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  line-height: 1.14;
+}
+
+.journeyHero > p,
+.journeyTimelineHeader p,
+.journeyReference > header p,
+.journeyGameSelector > header p,
+.emptyJourney p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.journeyReiNote {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-label);
+}
+
+.journeyCard {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.journeySectionLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-label);
+  font-weight: 560;
+}
+
+.journeySectionLabel svg {
+  color: var(--color-highlight);
+}
+
+.currentChallenge h3,
+.journeyReference .journeyCard h3 {
+  margin: 9px 0 6px;
+  color: var(--color-text-strong);
+  font-family: var(--font-family-display);
+  font-size: 1.35rem;
+  font-weight: 520;
+  line-height: 1.28;
+}
+
+.journeyActivity {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-label);
+}
+
+.journeyActivity i {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-round);
+  background: var(--color-highlight);
+  box-shadow: 0 0 0 4px var(--color-highlight-soft);
+}
+
+.journeyFootsteps {
+  min-width: 0;
+}
+
+.journeyRuledHeading {
+  display: grid;
+  grid-template-columns: minmax(18px, 1fr) auto minmax(18px, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.journeyRuledHeading::before,
+.journeyRuledHeading::after {
+  content: "";
+  height: 1px;
+  background: var(--color-border);
+}
+
+.journeyRuledHeading::before {
+  background: linear-gradient(90deg, var(--color-highlight), var(--color-border));
+}
+
+.journeyRuledHeading h3 {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-section);
+  font-weight: 520;
+}
+
+.journeyFootsteps dl {
+  margin: 0;
+}
+
+.journeyFootsteps dl > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: 9px var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.journeyFootsteps dt,
+.journeyFootsteps dd {
+  margin: 0;
+  font-size: var(--font-size-label);
+  line-height: 1.45;
+}
+
+.journeyFootsteps dt {
+  color: var(--color-text-subtle);
+}
+
+.journeyFootsteps dd {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.journeyHistory {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journeyHistory li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 13px;
+  background: color-mix(in srgb, var(--color-surface-raised) 68%, transparent);
+}
+
+.journeyHistory strong {
+  min-width: 0;
+  color: var(--color-text-strong);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-body);
+  font-weight: 520;
+  overflow-wrap: anywhere;
+}
+
+.journeyHistory span {
+  flex: 0 0 auto;
+  color: var(--color-highlight);
+  font-size: var(--font-size-caption);
+}
+
+.emptyJourney {
+  min-height: 420px;
+  justify-content: center;
+}
+
+.emptyJourneyContent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding-bottom: var(--space-7);
+}
+
+.emptyJourney h2 {
+  font-size: 1.35rem;
+}
+
+.emptyJourney p {
+  margin-top: 5px;
+}
+
+.journeyTimeline {
+  padding-left: 36px;
+}
+
+.journeyTimelineHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.journeyTimelineHeader h2,
+.journeyReference > header h2,
+.journeyGameSelector > header h2 {
+  font-size: 1.35rem;
+}
+
+.journeyTimelineHeader .uiButton {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.journeyTimelineList {
+  position: relative;
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journeyTimelineList::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 8px;
+  width: 1px;
+  background: color-mix(in srgb, var(--color-highlight) 82%, transparent);
+}
+
+.journeyTimelineList li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: 0 0 var(--space-4) 28px;
+}
+
+.journeyTimelineList li::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 3px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--color-highlight);
+  border-radius: var(--radius-round);
+  background: var(--color-surface);
+}
+
+.journeyTimelineList time {
+  padding-top: 1px;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-caption);
+}
+
+.journeyTimelineList li > div {
+  display: grid;
+  gap: 5px;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.journeyTimelineList strong,
+.journeyTimelineEmpty strong {
+  color: var(--color-text-strong);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-body);
+  font-weight: 560;
+}
+
+.journeyTimelineList span,
+.journeyTimelineEmpty span,
+.journeyTimelineContinuation {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-label);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.journeyTimelineEmpty,
+.journeyTimelineContinuation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-3);
+}
+
+.journeyTimelineEmpty > div {
+  display: grid;
+  gap: 4px;
+}
+
+.journeyTimelineContinuation {
+  margin-left: 21px;
+  padding-block: var(--space-2);
+}
+
+.journeyReference,
+.journeyGameSelector {
+  display: grid;
+  align-content: start;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-3);
+}
+
+.journeyReference > header,
+.journeyGameSelector > header {
+  display: grid;
+  gap: 5px;
+}
+
+.journeyReference .journeyCard p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.journeyReferenceNote {
+  display: grid;
+  gap: 5px;
+  border-left: 1px solid var(--color-highlight);
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+}
+
+.journeyReferenceNote strong,
+.journeyCatalog strong,
+.journeySelectField > span {
+  color: var(--color-text-strong);
+  font-size: var(--font-size-label);
+  font-weight: 600;
+}
+
+.journeyReferenceNote span,
+.journeyCatalog span,
+.journeyDetectedGame {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-label);
+  line-height: 1.5;
+}
+
+.journeySelectField {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.journeySelectField select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  font: inherit;
+  font-size: var(--font-size-body);
+}
+
+.journeySelectField select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-focus);
+}
+
+.journeyDetectedGame {
+  margin: -8px 0 0;
+}
+
+.journeySelectorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.journeyCatalog {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.journeyCatalog > div {
+  display: grid;
+  gap: 4px;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+@media (max-width: 1080px) {
+  .journeyPage {
+    padding-left: 48px;
+  }
+
+  .journeyTrail {
+    left: -2px;
+  }
+}
+
+@media (max-width: 640px) {
+  .journeyPage {
+    padding: var(--space-4) 0 var(--space-6) 38px;
+  }
+
+  .journeyTrail {
+    left: -9px;
+  }
+
+  .journeyTimeline {
+    padding-left: var(--space-3);
+  }
+
+  .journeyTimelineHeader {
+    display: grid;
+  }
+
+  .journeyFootsteps dl > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .journeyTimelineList li {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .emptyJourneyContent {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
