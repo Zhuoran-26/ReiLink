@@ -118,6 +118,21 @@ Do not commit screenshots unless the task explicitly asks for them.
 - UI language should be Simplified Chinese and avoid engineering labels in user-facing surfaces.
 - Do not use Evangelion, Rei Ayanami, NERV, or any official IP elements.
 
+## UI Design Guidance
+
+For UI/UX related tasks, also read:
+
+docs/design/reilink_ui_guidelines.md
+
+UI implementation should preserve:
+
+- Rei's quiet companion identity
+- low-pressure interaction
+- consistent design tokens
+- user-friendly Chinese terminology
+
+Prefer reusable design system components over page-specific styling.
+
 ## Stable Boundaries
 
 Do not change persona prompts, memory write logic, game session core logic, knowledge core logic, proactive behavior, or model routing unless the task explicitly asks for it.
