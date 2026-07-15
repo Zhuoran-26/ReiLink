@@ -1,0 +1,2 @@
+# Preserve upstream Markdown formatting in the vendored React skill.
+react-best-practices/** -whitespace
