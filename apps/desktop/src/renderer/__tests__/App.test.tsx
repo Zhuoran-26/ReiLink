@@ -1763,6 +1763,8 @@ const defaultFetchResponse = async (url: string, init?: RequestInit) => {
 describe("App", () => {
   beforeEach(() => {
     let uuid = 0;
+    window.localStorage.clear();
+    delete document.documentElement.dataset.theme;
     resetSettingsResponse();
     chatResponseStore = { ...chatResponse };
     pendingMemoriesStore = [{ ...pendingMemoryFixture, evidence: { ...pendingMemoryFixture.evidence } }];
@@ -1797,12 +1799,27 @@ describe("App", () => {
     Reflect.deleteProperty(window, "MediaRecorder");
     Reflect.deleteProperty(navigator, "mediaDevices");
     Reflect.deleteProperty(navigator, "permissions");
+    window.localStorage.clear();
+    delete document.documentElement.dataset.theme;
     eventBus.clear();
   });
 
   const openWorkspace = async (name: string | RegExp) => {
     const navigation = await screen.findByRole("navigation", { name: "应用导航" });
-    await userEvent.click(within(navigation).getByRole("button", { name }));
+    const renamedNavigationItems: Record<string, string> = {
+      "Overlay": "悬浮层",
+      "游戏": "旅程",
+      "未来": "未来展示",
+      "记忆": "回忆",
+      "语音": "声音"
+    };
+    const visibleName = typeof name === "string" ? renamedNavigationItems[name] ?? name : name;
+    let workspaceButton = within(navigation).queryByRole("button", { name: visibleName });
+    if (!workspaceButton) {
+      await userEvent.click(within(navigation).getByRole("button", { name: "开发者工具" }));
+      workspaceButton = within(navigation).getByRole("button", { name: visibleName });
+    }
+    await userEvent.click(workspaceButton);
     return screen.findByRole("complementary", { name: "工作区面板" });
   };
 
@@ -1863,12 +1880,18 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "主聊天界面" })).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument();
     expect(within(navigation).getByText("聊天")).toBeInTheDocument();
-    expect(within(navigation).getByText("记忆")).toBeInTheDocument();
-    expect(within(navigation).getByText("游戏")).toBeInTheDocument();
-    expect(within(navigation).getByText("语音")).toBeInTheDocument();
-    expect(within(navigation).getByText("Overlay")).toBeInTheDocument();
+    expect(within(navigation).getByText("回忆")).toBeInTheDocument();
+    expect(within(navigation).getByText("旅程")).toBeInTheDocument();
+    expect(within(navigation).getByText("声音")).toBeInTheDocument();
+    expect(within(navigation).getByText("悬浮层")).toBeInTheDocument();
     expect(within(navigation).getByText("设置")).toBeInTheDocument();
-    expect(within(navigation).getByText("调试")).toBeInTheDocument();
+    expect(within(navigation).queryByText("调试")).not.toBeInTheDocument();
+    expect(within(navigation).getByRole("button", { name: "开发者工具" })).toHaveAttribute("aria-expanded", "false");
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+
+    await userEvent.click(screen.getByRole("button", { name: "切换到夜间" }));
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(screen.getByRole("button", { name: "切换到日间" })).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText("聊天输入"), "切换前的草稿");
     await openMemoryWorkspace();
@@ -1896,7 +1919,7 @@ describe("App", () => {
 
     const header = panel.querySelector(".workspacePanelHeader");
     const body = panel.querySelector(".workspacePanelBody");
-    const tabList = within(panel).getByRole("tablist", { name: "Developer / Debug tabs" });
+    const tabList = within(panel).getByRole("tablist", { name: "开发者工具 tabs" });
     const closeButton = within(panel).getByRole("button", { name: "关闭工作区" });
     expect(header).toBeInTheDocument();
     expect(body).toBeInTheDocument();
@@ -6948,7 +6971,7 @@ describe("App", () => {
 
     await openMemoryWorkspace();
     const panel = await screen.findByRole("complementary", { name: "工作区面板" });
-    const tabList = within(panel).getByRole("tablist", { name: "记忆 tabs" });
+    const tabList = within(panel).getByRole("tablist", { name: "回忆 tabs" });
     expect(within(tabList).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "待确认",
       "已保存",

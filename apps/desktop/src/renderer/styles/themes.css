@@ -1,0 +1,68 @@
+:root,
+:root[data-theme="light"],
+[data-theme="light"] {
+  color-scheme: light;
+  --color-canvas: #f5efe6;
+  --color-canvas-soft: #f1e8dc;
+  --color-sidebar: #eee2d3;
+  --color-surface: #faf5ed;
+  --color-surface-raised: #fffaf3;
+  --color-surface-soft: #eadfda;
+  --color-surface-muted: #e7d8c8;
+  --color-text: #4a3b32;
+  --color-text-strong: #342821;
+  --color-text-muted: #76675d;
+  --color-text-subtle: #97877b;
+  --color-border: rgba(92, 69, 51, 0.14);
+  --color-border-strong: rgba(92, 69, 51, 0.22);
+  --color-accent: #a98fb8;
+  --color-accent-strong: #765f8d;
+  --color-accent-soft: #e8deea;
+  --color-highlight: #c9a45c;
+  --color-highlight-soft: rgba(201, 164, 92, 0.16);
+  --color-success: #5d9b67;
+  --color-success-soft: rgba(93, 155, 103, 0.14);
+  --color-warning: #aa7a39;
+  --color-warning-soft: rgba(170, 122, 57, 0.14);
+  --color-danger: #b96565;
+  --color-danger-soft: rgba(185, 101, 101, 0.13);
+  --color-focus: rgba(118, 95, 141, 0.38);
+  --color-scrollbar: rgba(92, 69, 51, 0.2);
+  --shadow-surface: 0 18px 44px rgba(82, 61, 44, 0.08);
+  --shadow-raised: 0 22px 54px rgba(82, 61, 44, 0.12);
+  --shadow-overlay: 0 30px 80px rgba(82, 61, 44, 0.17);
+}
+
+:root[data-theme="dark"],
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: #211b18;
+  --color-canvas-soft: #251e21;
+  --color-sidebar: #241e22;
+  --color-surface: #28202f;
+  --color-surface-raised: #302739;
+  --color-surface-soft: #352b3d;
+  --color-surface-muted: #3a303e;
+  --color-text: #eee4d8;
+  --color-text-strong: #fff6ea;
+  --color-text-muted: #b9aa9e;
+  --color-text-subtle: #91837b;
+  --color-border: rgba(239, 225, 210, 0.12);
+  --color-border-strong: rgba(239, 225, 210, 0.2);
+  --color-accent: #b69bc7;
+  --color-accent-strong: #ccb1dc;
+  --color-accent-soft: rgba(182, 155, 199, 0.18);
+  --color-highlight: #d2aa5c;
+  --color-highlight-soft: rgba(210, 170, 92, 0.14);
+  --color-success: #75ba82;
+  --color-success-soft: rgba(117, 186, 130, 0.15);
+  --color-warning: #d0a460;
+  --color-warning-soft: rgba(208, 164, 96, 0.14);
+  --color-danger: #d48282;
+  --color-danger-soft: rgba(212, 130, 130, 0.14);
+  --color-focus: rgba(204, 177, 220, 0.4);
+  --color-scrollbar: rgba(239, 225, 210, 0.18);
+  --shadow-surface: 0 18px 48px rgba(9, 7, 8, 0.18);
+  --shadow-raised: 0 24px 62px rgba(9, 7, 8, 0.28);
+  --shadow-overlay: 0 34px 90px rgba(9, 7, 8, 0.4);
+}

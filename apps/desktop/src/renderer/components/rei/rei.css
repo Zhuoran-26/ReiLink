@@ -1,0 +1,89 @@
+.reiAvatar {
+  position: relative;
+  isolation: isolate;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 32%, var(--color-border));
+  border-radius: var(--radius-round);
+  color: var(--color-accent-strong);
+  background:
+    radial-gradient(circle at 36% 26%, color-mix(in srgb, #ffffff 54%, transparent), transparent 26%),
+    linear-gradient(145deg, var(--color-accent-soft), color-mix(in srgb, var(--color-accent) 28%, var(--color-surface)));
+  box-shadow:
+    0 12px 28px color-mix(in srgb, var(--color-accent-strong) 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 42%, transparent);
+  transition:
+    border-color var(--motion-base) var(--ease-calm),
+    color var(--motion-base) var(--ease-calm),
+    background var(--motion-slow) var(--ease-calm),
+    box-shadow var(--motion-base) var(--ease-calm),
+    transform var(--motion-base) var(--ease-calm);
+}
+
+.reiAvatar::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  z-index: -1;
+  border: 1px solid color-mix(in srgb, var(--color-highlight) 18%, transparent);
+  border-radius: inherit;
+}
+
+.reiAvatarMark {
+  font-family: var(--font-family-display);
+  font-weight: 520;
+  line-height: 1;
+}
+
+.reiAvatar-small {
+  width: 42px;
+  height: 42px;
+  font-size: 1.1rem;
+}
+
+.reiAvatar-medium {
+  width: 58px;
+  height: 58px;
+  font-size: 1.45rem;
+}
+
+.reiAvatar-large {
+  width: 68px;
+  height: 68px;
+  font-size: 1.8rem;
+}
+
+.reiAvatar-listening {
+  border-color: color-mix(in srgb, var(--color-success) 52%, var(--color-border));
+  box-shadow: 0 0 0 5px var(--color-success-soft), var(--shadow-surface);
+}
+
+.reiAvatar-thinking {
+  border-color: color-mix(in srgb, var(--color-highlight) 52%, var(--color-border));
+  transform: translateY(-1px);
+}
+
+.reiAvatar-speaking {
+  border-color: color-mix(in srgb, var(--color-accent-strong) 56%, var(--color-border));
+  box-shadow: 0 0 0 5px var(--color-accent-soft), var(--shadow-surface);
+}
+
+.reiAvatar-idle {
+  animation: rei-idle-presence 5.5s var(--ease-calm) infinite;
+}
+
+@keyframes rei-idle-presence {
+  0%,
+  100% {
+    box-shadow:
+      0 12px 28px color-mix(in srgb, var(--color-accent-strong) 10%, transparent),
+      inset 0 1px 0 color-mix(in srgb, #ffffff 42%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 14px 34px color-mix(in srgb, var(--color-accent-strong) 16%, transparent),
+      inset 0 1px 0 color-mix(in srgb, #ffffff 42%, transparent);
+  }
+}

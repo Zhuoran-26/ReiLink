@@ -1,6 +1,5 @@
 import {
   Archive,
-  Bot,
   Brain,
   Bug,
   ChevronDown,
@@ -79,8 +78,14 @@ import {
   type OverlayMessageSource
 } from "../shared/overlay";
 import type { BackendRuntimeStatus, LocalFilePickerKind } from "../shared/runtime";
+import { AppNavigation } from "./app/AppNavigation";
+import { AppHeader, AppShell } from "./app/AppShell";
+import { WORKSPACE_LABELS, WORKSPACE_SUBTITLES, type WorkspaceId } from "./app/navigation";
 import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from "./audioCapture";
+import { Button } from "./components/ui/Button";
+import { Input } from "./components/ui/Input";
 import { eventBus } from "./eventBus";
+import { useTheme } from "./hooks/useTheme";
 import {
   appendSessionTimelineItems,
   sanitizeSessionTimelineText,
@@ -108,6 +113,7 @@ import {
   assessVoiceTranscript,
   type VoiceTranscriptAssessment
 } from "./voiceTranscriptQuality";
+import type { ReiPresenceState } from "./components/rei/ReiAvatar";
 
 type Message = {
   id: string;
@@ -169,7 +175,6 @@ type LocalAsrSettingsDraft = {
   audio_converter_binary_path: string;
 };
 type LocalAsrSettingsDraftPathKey = keyof LocalAsrSettingsDraft;
-type WorkspaceId = "home" | "memory" | "game" | "voice" | "overlay" | "settings" | "debug" | "presentation";
 type WorkspaceTab = {
   id: string;
   label: string;
@@ -180,26 +185,6 @@ const AUDIO_CAPTURE_PROBE_DURATION_MS = 3000;
 const VOICE_AUTO_SENDING_VISIBLE_MS = 900;
 const VOICE_CAPTURE_LIMIT_WARNING_MS = 5000;
 const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
-const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
-  home: "Home / Chat",
-  memory: "记忆",
-  game: "游戏",
-  voice: "语音",
-  overlay: "Overlay",
-  settings: "设置",
-  debug: "Developer / Debug",
-  presentation: "Future / Avatar"
-};
-const WORKSPACE_SUBTITLES: Record<WorkspaceId, string> = {
-  home: "主聊天",
-  memory: "待确认记忆、长期记忆、最近会话归档和本地数据边界",
-  game: "当前游戏上下文、本局状态和知识摘要",
-  voice: "现有 Local ASR 与语音输出入口，保留未来直接语音对话位置",
-  overlay: "当前为 macOS Safe Mode，不恢复 auto-show",
-  settings: "应用级设置、模型偏好、人格和隐私控制",
-  debug: "开发诊断、Prompt Preview 安全摘要和 trace",
-  presentation: "未来 Presentation / Avatar 占位"
-};
 const WORKSPACE_TABS: Record<WorkspaceId, WorkspaceTab[]> = {
   home: [{ id: "chat", label: "聊天" }],
   memory: [
@@ -2503,6 +2488,7 @@ const productErrorText = (error: unknown, fallback: string): string => {
 };
 
 export function App() {
+  const { theme, toggleTheme } = useTheme();
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [gameStatus, setGameStatus] = useState<GameStatus>(idleStatus);
   const [gameDetection, setGameDetection] = useState<GameDetectionResponse>(emptyGameDetection);
@@ -4899,11 +4885,19 @@ export function App() {
   const supportedCatalogGames = gameContext.available_games.filter((game) => game.support_status === "supported" && game.knowledge_available);
   const plannedCatalogGames = gameContext.available_games.filter((game) => game.support_status !== "supported" || !game.knowledge_available);
   const companionName = "Rei";
-  const companionSubtitle = "安静、冷淡的游戏陪伴";
+  const companionSubtitle = "安静陪你走一会儿";
   const runtimeState = backendRuntimeStatus.backend_status;
-  const runtimeIsStarting = runtimeState === "checking" || runtimeState === "starting";
-  const companionStatus = backendStatus === "connected" ? "在线" : runtimeIsStarting ? "启动中" : backendStatus === "checking" ? "检查中" : "离线";
+  const companionStatus = backendStatus === "connected" ? "在线" : backendStatus === "checking" ? "检查中" : "离线";
   const runtimeStatusLabel = backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : statusLabel;
+  const reiPresenceState: ReiPresenceState = voiceConversationState.state === "listening"
+    ? "listening"
+    : voiceConversationState.state === "speaking"
+      ? "speaking"
+      : voiceConversationState.state === "transcribing"
+        || voiceConversationState.state === "auto_sending"
+        || voiceConversationState.state === "assistant_thinking"
+        ? "thinking"
+        : "idle";
   const providerBackendStatusText = backendRuntimeAvailable ? backendRuntimeStatusText(backendRuntimeStatus) : (
     backendStatus === "connected" ? "后端已连接" : "后端未连接"
   );
@@ -5029,152 +5023,33 @@ export function App() {
   };
 
   return (
-    <main className="shell">
-      <aside className="appSidebar" aria-label="应用导航">
-        <div className="sidebarBrand">
-          <Sparkles size={21} />
-          <span>ReiLink</span>
-        </div>
-
-        <nav className="navMenu" aria-label="应用导航">
-          <button
-            aria-current={activeWorkspace === "home" ? "page" : undefined}
-            className={`navItem ${activeWorkspace === "home" ? "active" : ""}`}
-            type="button"
-            onClick={() => openWorkspace("home")}
-          >
-            <MessageSquare size={18} />
-            <span>聊天</span>
-          </button>
-          <button
-            aria-current={activeWorkspace === "memory" ? "page" : undefined}
-            className={`navItem ${activeWorkspace === "memory" ? "active" : ""}`}
-            type="button"
-            onClick={() => openWorkspace("memory")}
-          >
-            <Database size={18} />
-            <span>记忆</span>
-          </button>
-          <button
-            aria-current={activeWorkspace === "game" ? "page" : undefined}
-            className={`navItem ${activeWorkspace === "game" ? "active" : ""}`}
-            type="button"
-            onClick={() => openWorkspace("game")}
-          >
-            <Gamepad2 size={18} />
-            <span>游戏</span>
-          </button>
-          <button
-            aria-current={activeWorkspace === "voice" ? "page" : undefined}
-            className={`navItem ${activeWorkspace === "voice" ? "active" : ""}`}
-            type="button"
-            onClick={() => openWorkspace("voice")}
-          >
-            <Mic size={18} />
-            <span>语音</span>
-          </button>
-          <button
-            aria-current={activeWorkspace === "overlay" ? "page" : undefined}
-            className={`navItem ${activeWorkspace === "overlay" ? "active" : ""}`}
-            type="button"
-            onClick={() => openWorkspace("overlay")}
-          >
-            <Volume2 size={18} />
-            <span>Overlay</span>
-          </button>
-          <button
-            aria-current={activeWorkspace === "settings" ? "page" : undefined}
-            className={`navItem ${activeWorkspace === "settings" ? "active" : ""}`}
-            type="button"
-            onClick={() => openWorkspace("settings")}
-          >
-            <Settings size={18} />
-            <span>设置</span>
-          </button>
-          <button
-            aria-current={activeWorkspace === "debug" ? "page" : undefined}
-            className={`navItem ${activeWorkspace === "debug" ? "active" : ""}`}
-            type="button"
-            onClick={() => openWorkspace("debug")}
-          >
-            <Bug size={18} />
-            <span>调试</span>
-          </button>
-          <button
-            aria-current={activeWorkspace === "presentation" ? "page" : undefined}
-            className={`navItem ${activeWorkspace === "presentation" ? "active" : ""}`}
-            type="button"
-            onClick={() => openWorkspace("presentation")}
-          >
-            <Sparkles size={18} />
-            <span>未来</span>
-          </button>
-        </nav>
-
-        <div className="companionStatusCard">
-          <div className="miniAvatar" aria-hidden="true">
-            {companionName.slice(0, 1)}
-          </div>
-          <div>
-            <span>当前角色</span>
-            <strong>{companionName}</strong>
-            <p>
-              <span className={`statusDot ${backendStatus}`} />
-              {companionStatus}
-            </p>
-          </div>
-        </div>
-      </aside>
-
-      <section className="appWorkspace">
-        <header className="workspaceHeader">
-          <div className="companionIntro">
-            <div className="companionAvatar" aria-hidden="true">
-              {companionName.slice(0, 1)}
-            </div>
-            <div>
-              <p className="eyebrow">陪伴角色</p>
-              <h1>
-                {companionName}
-                <span className={`statusDot ${backendStatus}`} />
-                <em>{companionStatus}</em>
-              </h1>
-              <p>{companionSubtitle}</p>
-            </div>
-          </div>
-          <div className="statusStrip" aria-label="当前状态">
-            <span className="topChip">
-              <Brain size={15} />
-              人格：{debugText(appSettings.persona_mode)}
-            </span>
-            <span className="topChip">
-              <Bot size={15} />
-              模型：{debugText(appSettings.model_preference)}
-            </span>
-            <span className="topChip">主动：{debugText(appSettings.proactive_companion)}</span>
-            <span className="topChip">
-              <Gamepad2 size={15} />
-              游戏：{debugText(displayGame)}
-            </span>
-            <span className="topChip">Boss：{displayBoss ?? "空闲"}</span>
-            {voiceStatus.active && (
-              <button
-                aria-label="停止语音 / Stop Voice"
-                className="topChip stopVoiceButton"
-                type="button"
-                onClick={() => stopVoiceOutput("user_stop")}
-              >
-                <VolumeX size={15} />
-                停止语音
-              </button>
-            )}
-            <span className={`connection ${backendStatus}`}>{runtimeStatusLabel}</span>
-            <button aria-label="刷新状态" className="iconButton soft" onClick={() => void refreshStatus()}>
-              <RefreshCw size={17} />
-            </button>
-          </div>
-        </header>
-
+    <AppShell
+      header={(
+        <AppHeader
+          backendStatus={backendStatus}
+          companionName={companionName}
+          companionStatus={runtimeStatusLabel}
+          companionSubtitle={companionSubtitle}
+          presenceState={reiPresenceState}
+          voiceActive={voiceStatus.active}
+          onRefresh={() => void refreshStatus()}
+          onStopVoice={() => stopVoiceOutput("user_stop")}
+        />
+      )}
+      sidebar={(
+        <AppNavigation
+          activeWorkspace={activeWorkspace}
+          backendStatus={backendStatus}
+          companionName={companionName}
+          companionStatus={companionStatus}
+          presenceState={reiPresenceState}
+          theme={theme}
+          onOpenWorkspace={openWorkspace}
+          onToggleTheme={toggleTheme}
+        />
+      )}
+      theme={theme}
+    >
         <section className={`workspaceGrid ${activeWorkspace === "home" ? "homeOnly" : ""}`}>
           <section className="chatColumn" aria-label="主聊天界面" id="chat-panel">
             <div className="timelineMarker">今天</div>
@@ -5335,7 +5210,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               >
                 <Mic size={18} />
               </button>
-              <input
+              <Input
                 aria-label="聊天输入"
                 value={input}
                 onChange={(event) => {
@@ -5343,12 +5218,12 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
                   setInput(nextInput);
                   if (!nextInput.trim()) clearVoiceTranscriptReady();
                 }}
-                placeholder="问 Margit、路线、装备，或者随便说点什么。"
+                placeholder="说点什么……"
               />
-              <button className="sendButton" type="submit" disabled={sending || !input.trim()}>
+              <Button className="sendButton" type="submit" variant="primary" disabled={sending || !input.trim()}>
                 <Send size={18} />
                 <span>{sending ? "发送中" : "发送"}</span>
-              </button>
+              </Button>
               <div className={`voiceInputInlineStatus voiceState-${voiceConversationState.tone}`} role="status">
                 <span>
                   Voice v2.2：{voiceConversationState.label}。{voiceConversationState.description}
@@ -9395,7 +9270,6 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
         </aside>
         )}
       </section>
-      </section>
-    </main>
+    </AppShell>
   );
 }

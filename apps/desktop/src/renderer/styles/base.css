@@ -1,0 +1,54 @@
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--color-canvas);
+}
+
+body {
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-canvas);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  transition:
+    color var(--motion-base) var(--ease-calm),
+    background-color var(--motion-slow) var(--ease-calm);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-family-ui);
+}
+
+::selection {
+  color: var(--color-text-strong);
+  background: var(--color-highlight-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+* {
+  scrollbar-color: var(--color-scrollbar) transparent;
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

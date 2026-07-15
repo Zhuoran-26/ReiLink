@@ -1,0 +1,176 @@
+.uiSurface {
+  min-width: 0;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.uiSurface-canvas {
+  background: var(--color-canvas);
+}
+
+.uiSurface-raised,
+.uiCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-surface);
+}
+
+.uiSurface-overlay {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-overlay);
+}
+
+.uiButton {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-4);
+  color: var(--color-text);
+  background: transparent;
+  font-size: var(--font-size-label);
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform var(--motion-fast) var(--ease-calm),
+    color var(--motion-base) var(--ease-calm),
+    border-color var(--motion-base) var(--ease-calm),
+    background-color var(--motion-base) var(--ease-calm),
+    box-shadow var(--motion-base) var(--ease-calm);
+}
+
+.uiButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.uiButton:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.uiButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.uiButton-primary {
+  color: #fffaf6;
+  border-color: transparent;
+  background: var(--color-accent-strong);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--color-accent-strong) 22%, transparent);
+}
+
+.uiButton-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent-strong) 90%, var(--color-text-strong));
+}
+
+.uiButton-secondary {
+  border-color: var(--color-border);
+  background: var(--color-surface-raised);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+.uiButton-secondary:hover:not(:disabled),
+.uiButton-quiet:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-accent-soft);
+}
+
+.uiButton-quiet {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.uiButton-ghost {
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.uiButton-danger {
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 32%, transparent);
+  background: var(--color-danger-soft);
+}
+
+.uiButton-small {
+  min-height: 34px;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+}
+
+.uiButton-iconOnly {
+  width: 42px;
+  padding: 0;
+}
+
+.uiInput {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: 0;
+  padding: 0 var(--space-4);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  font-size: var(--font-size-body);
+  transition:
+    border-color var(--motion-base) var(--ease-calm),
+    box-shadow var(--motion-base) var(--ease-calm),
+    background-color var(--motion-base) var(--ease-calm);
+}
+
+.uiInput::placeholder {
+  color: var(--color-text-subtle);
+}
+
+.uiInput:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-focus);
+}
+
+.uiStatus {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: 560;
+}
+
+.uiStatusDot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-round);
+  background: var(--color-text-subtle);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-text-subtle) 12%, transparent);
+}
+
+.uiStatus-success .uiStatusDot {
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px var(--color-success-soft);
+}
+
+.uiStatus-warning .uiStatusDot {
+  background: var(--color-warning);
+  box-shadow: 0 0 0 4px var(--color-warning-soft);
+}
+
+.uiStatus-danger .uiStatusDot {
+  background: var(--color-danger);
+  box-shadow: 0 0 0 4px var(--color-danger-soft);
+}
+
+.uiStatus-active .uiStatusDot {
+  background: var(--color-accent-strong);
+  box-shadow: 0 0 0 4px var(--color-accent-soft);
+}
