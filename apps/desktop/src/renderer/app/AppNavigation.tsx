@@ -21,29 +21,28 @@ import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Surface";
 import { StatusIndicator, type StatusTone } from "../components/ui/StatusIndicator";
 import type { ThemeMode } from "../hooks/useTheme";
-import type { WorkspaceId } from "./navigation";
+import { WORKSPACE_NAV_LABELS, type WorkspaceId } from "./navigation";
 
 type IconComponent = ComponentType<{ size?: number; strokeWidth?: number }>;
 
 type NavigationItem = {
   icon: IconComponent;
   id: WorkspaceId;
-  label: string;
 };
 
 const PLAYER_NAV_ITEMS: NavigationItem[] = [
-  { id: "home", label: "首页", icon: House },
-  { id: "chat", label: "聊天", icon: MessageSquare },
-  { id: "voice", label: "声音", icon: Mic },
-  { id: "game", label: "旅程", icon: BookOpenText },
-  { id: "memory", label: "回忆", icon: Database },
-  { id: "overlay", label: "悬浮层", icon: Layers3 },
-  { id: "settings", label: "设置", icon: Settings }
+  { id: "home", icon: House },
+  { id: "chat", icon: MessageSquare },
+  { id: "voice", icon: Mic },
+  { id: "game", icon: BookOpenText },
+  { id: "memory", icon: Database },
+  { id: "overlay", icon: Layers3 },
+  { id: "settings", icon: Settings }
 ];
 
 const DEVELOPER_NAV_ITEMS: NavigationItem[] = [
-  { id: "debug", label: "调试", icon: Bug },
-  { id: "presentation", label: "未来展示", icon: FlaskConical }
+  { id: "debug", icon: Bug },
+  { id: "presentation", icon: FlaskConical }
 ];
 
 function navigationStatusTone(status: "checking" | "connected" | "disconnected"): StatusTone {
@@ -60,6 +59,7 @@ type NavigationButtonProps = {
 
 function NavigationButton({ active, item, onOpenWorkspace }: NavigationButtonProps) {
   const Icon = item.icon;
+  const label = WORKSPACE_NAV_LABELS[item.id];
   return (
     <button
       aria-current={active ? "page" : undefined}
@@ -68,7 +68,7 @@ function NavigationButton({ active, item, onOpenWorkspace }: NavigationButtonPro
       onClick={() => onOpenWorkspace(item.id)}
     >
       <Icon size={18} strokeWidth={1.75} />
-      <span>{item.label}</span>
+      <span>{label}</span>
     </button>
   );
 }

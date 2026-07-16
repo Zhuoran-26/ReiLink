@@ -12,6 +12,11 @@ export const WORKSPACE_LABELS: Record<WorkspaceId, string> = {
   presentation: "未来展示"
 };
 
+export const WORKSPACE_NAV_LABELS: Record<WorkspaceId, string> = {
+  ...WORKSPACE_LABELS,
+  debug: "调试"
+};
+
 export const WORKSPACE_SUBTITLES: Record<WorkspaceId, string> = {
   home: "回到和 Rei 一起留下旅程痕迹的地方",
   chat: "和 Rei 安静地说说话",

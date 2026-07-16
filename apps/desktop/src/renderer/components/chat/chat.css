@@ -262,7 +262,7 @@
   min-width: 96px;
   min-height: 44px;
   border-radius: var(--radius-md);
-  color: #fffaf6;
+  color: var(--color-text-on-accent);
 }
 
 .chatComposerStatus.voiceInputInlineStatus {

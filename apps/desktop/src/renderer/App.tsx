@@ -193,8 +193,8 @@ const VOICE_AUTO_SENDING_VISIBLE_MS = 900;
 const VOICE_CAPTURE_LIMIT_WARNING_MS = 5000;
 const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
 const WORKSPACE_TABS: Record<WorkspaceId, WorkspaceTab[]> = {
-  home: [{ id: "overview", label: "首页" }],
-  chat: [{ id: "chat", label: "聊天" }],
+  home: [{ id: "overview", label: WORKSPACE_LABELS.home }],
+  chat: [{ id: "chat", label: WORKSPACE_LABELS.chat }],
   memory: [
     { id: "pending", label: "待确认" },
     { id: "confirmed", label: "已保存" },

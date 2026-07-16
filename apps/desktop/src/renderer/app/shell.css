@@ -21,7 +21,7 @@
   padding: 28px 18px 18px;
   border-right: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-sidebar) 94%, transparent);
-  box-shadow: inset -1px 0 0 color-mix(in srgb, #ffffff 14%, transparent);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--color-sheen) 14%, transparent);
   backdrop-filter: blur(18px);
   overflow: hidden;
 }
@@ -422,7 +422,7 @@
 
 .sendButton {
   min-width: 96px;
-  color: #fffaf6;
+  color: var(--color-text-on-accent);
   background: var(--color-accent-strong);
   box-shadow: 0 10px 24px color-mix(in srgb, var(--color-accent-strong) 20%, transparent);
 }

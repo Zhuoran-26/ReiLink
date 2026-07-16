@@ -1,5 +1,7 @@
 # ReiLink UI Design Guidelines v1
 
+> Current implementation contract: `docs/design/reilink_ui_redesign_phase_v0.md`.
+
 ## Overview
 
 ReiLink is not an AI dashboard.

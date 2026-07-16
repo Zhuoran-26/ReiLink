@@ -5,6 +5,8 @@
 - Scope: `apps/desktop/src/renderer`
 - Implementation changes: None
 
+> Historical snapshot: this audit describes the renderer before Redesign Phase 1. For the implemented and frozen UI foundation built from baseline `c7867b8`, see `docs/design/reilink_ui_redesign_phase_v0.md`.
+
 ## 0. Audit Scope And Conclusion
 
 This audit reviews the current Desktop Renderer structure before ReiLink UI Redesign v1. It does not propose changes to backend contracts, IPC behavior, Voice logic, memory logic, extraction, or runtime behavior.
