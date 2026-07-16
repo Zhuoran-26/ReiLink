@@ -1,0 +1,351 @@
+.settingsExperience {
+  width: min(100%, 760px);
+  display: grid;
+  align-content: start;
+  gap: var(--space-5);
+  margin: 0 auto;
+  padding: var(--space-2) var(--space-1) var(--space-5);
+  color: var(--color-text);
+}
+
+.settingsExperienceIntro {
+  position: relative;
+  padding: var(--space-3) var(--space-2) var(--space-5) 46px;
+}
+
+.settingsExperienceGlyph {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-2);
+  color: var(--color-highlight);
+  font-size: 1.1rem;
+}
+
+.settingsExperienceIntro .eyebrow {
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-caption);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.settingsExperienceIntro h2 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-family: var(--font-family-display);
+  font-size: clamp(1.45rem, 2.6vw, 2rem);
+  font-weight: 520;
+  line-height: var(--line-height-tight);
+}
+
+.settingsExperienceIntro > p:last-child {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-body);
+}
+
+.settingsExperienceSections {
+  position: relative;
+}
+
+.settingsExperienceSections::before {
+  content: "";
+  position: absolute;
+  top: 28px;
+  bottom: 28px;
+  left: 25px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-highlight) 58%, var(--color-border)),
+    var(--color-border) 28%,
+    color-mix(in srgb, var(--color-accent) 46%, var(--color-border))
+  );
+}
+
+.settingsExperienceSection {
+  position: relative;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.settingsExperienceSection:not(:last-child) .settingsExperienceSectionBody {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.settingsExperienceIcon {
+  position: relative;
+  z-index: 1;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+  border-radius: var(--radius-round);
+  color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent-soft) 72%, var(--color-surface-raised));
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+
+.settingsExperienceSectionBody {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-1) 0 var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.settingsExperienceSection:last-child .settingsExperienceSectionBody {
+  margin-bottom: 0;
+}
+
+.settingsExperienceSectionHeader {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.settingsExperienceSectionHeader h3 {
+  margin: 3px 0 0;
+  color: var(--color-text-strong);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-section);
+  font-weight: 560;
+}
+
+.settingsExperienceSectionHeader .uiButton {
+  flex: 0 0 auto;
+  min-height: 32px;
+}
+
+.reiSettingsSummary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.reiSettingsSummary > div,
+.settingsExperienceFacts,
+.settingsThemeRow > div:first-child {
+  min-width: 0;
+}
+
+.settingsExperienceLabel {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-caption);
+}
+
+.reiSettingsSummary strong {
+  color: var(--color-text);
+  font-size: var(--font-size-body);
+  font-weight: 620;
+}
+
+.reiSettingsSummary p,
+.settingsThemeRow p,
+.settingsExperienceDescription,
+.settingsExperienceNote {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-body);
+}
+
+.settingsExperienceNote {
+  margin-top: -8px;
+  color: var(--color-text-subtle);
+}
+
+.settingsExperienceFacts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.settingsExperienceFacts div {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.65fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.settingsExperienceFacts dt,
+.settingsExperienceFacts dd {
+  margin: 0;
+  font-size: var(--font-size-label);
+}
+
+.settingsExperienceFacts dt {
+  color: var(--color-text-subtle);
+}
+
+.settingsExperienceFacts dd {
+  color: var(--color-text);
+  font-weight: 620;
+}
+
+.settingsFutureBadge {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-round);
+  padding: 5px 9px;
+  color: var(--color-text-subtle);
+  background: var(--color-surface-soft);
+  font-size: var(--font-size-caption);
+}
+
+.settingsThemeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.7fr);
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.settingsThemeControl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-round);
+  padding: 3px;
+  background: color-mix(in srgb, var(--color-surface-soft) 74%, transparent);
+}
+
+.settingsThemeControl button {
+  min-width: 0;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-round);
+  color: var(--color-text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: var(--font-size-caption);
+  cursor: pointer;
+  transition:
+    color var(--motion-base) var(--ease-calm),
+    background-color var(--motion-base) var(--ease-calm),
+    box-shadow var(--motion-base) var(--ease-calm);
+}
+
+.settingsThemeControl button[aria-pressed="true"] {
+  color: var(--color-text-on-accent);
+  background: var(--color-accent-strong);
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
+}
+
+.settingsThemeControl button:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.settingsExperienceLinks {
+  display: grid;
+  gap: 2px;
+  margin-top: var(--space-1);
+}
+
+.settingsExperienceLinks .uiButton {
+  width: 100%;
+  min-height: 48px;
+  justify-content: flex-start;
+  border-radius: var(--radius-sm);
+  padding-inline: var(--space-2);
+  color: var(--color-text-muted);
+  text-align: left;
+}
+
+.settingsExperienceLinks .uiButton > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.settingsExperienceLinks strong,
+.settingsExperienceLinks small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settingsExperienceLinks strong {
+  color: var(--color-text);
+  font-size: var(--font-size-label);
+}
+
+.settingsExperienceLinks small {
+  color: var(--color-text-subtle);
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+}
+
+.settingsLinkArrow {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+@media (max-width: 1220px) {
+  .settingsExperienceSectionHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settingsExperienceSectionHeader .uiButton {
+    align-self: flex-start;
+  }
+
+  .settingsThemeRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .settingsExperience {
+    padding-inline: 0;
+  }
+
+  .settingsExperienceIntro {
+    padding-left: 34px;
+  }
+
+  .settingsExperienceSection {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .settingsExperienceSections::before {
+    left: 20px;
+  }
+
+  .settingsExperienceIcon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .settingsExperienceFacts div,
+  .reiSettingsSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .reiSettingsSummary .reiAvatar {
+    display: none;
+  }
+
+  .settingsExperienceLinks small {
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settingsThemeControl button {
+    transition: none;
+  }
+}

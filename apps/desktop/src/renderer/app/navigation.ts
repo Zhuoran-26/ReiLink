@@ -24,7 +24,7 @@ export const WORKSPACE_SUBTITLES: Record<WorkspaceId, string> = {
   game: "游戏里的脚步，会慢慢留在这里。",
   voice: "让声音慢下来，Rei 会在这里听。",
   overlay: "低打扰的游戏陪伴位置",
-  settings: "体验偏好、模型与本地数据",
+  settings: "调整 Rei 陪伴你的方式",
   debug: "安全的事件、运行状态与诊断信息",
   presentation: "未来的呈现方式与角色状态"
 };

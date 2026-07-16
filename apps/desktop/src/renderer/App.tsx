@@ -90,6 +90,7 @@ import { JourneyGameSelector } from "./components/journey/JourneyGameSelector";
 import { JourneyOverview } from "./components/journey/JourneyOverview";
 import { JourneyReference } from "./components/journey/JourneyReference";
 import { JourneyTimeline } from "./components/journey/JourneyTimeline";
+import { SettingsExperience } from "./components/settings/SettingsExperience";
 import { VoiceConversation } from "./components/voice/VoiceConversation";
 import { eventBus } from "./eventBus";
 import { useTheme } from "./hooks/useTheme";
@@ -221,6 +222,7 @@ const WORKSPACE_TABS: Record<WorkspaceId, WorkspaceTab[]> = {
     { id: "future", label: "Game Mode" }
   ],
   settings: [
+    { id: "overview", label: "陪伴" },
     { id: "app", label: "应用" },
     { id: "provider", label: "模型" },
     { id: "privacy", label: "隐私 / 数据" },
@@ -5311,20 +5313,22 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               <X size={16} />
             </button>
           </div>
-          <div className="workspaceTabs" role="tablist" aria-label={`${WORKSPACE_LABELS[activeWorkspace]} tabs`}>
-            {activeWorkspaceTabs.map((tab) => (
-              <button
-                aria-selected={activeWorkspaceTab === tab.id}
-                className="workspaceTab"
-                key={tab.id}
-                role="tab"
-                type="button"
-                onClick={() => switchWorkspaceTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          {!(activeWorkspace === "settings" && activeWorkspaceTab === "overview") && (
+            <div className="workspaceTabs" role="tablist" aria-label={`${WORKSPACE_LABELS[activeWorkspace]} tabs`}>
+              {activeWorkspaceTabs.map((tab) => (
+                <button
+                  aria-selected={activeWorkspaceTab === tab.id}
+                  className="workspaceTab"
+                  key={tab.id}
+                  role="tab"
+                  type="button"
+                  onClick={() => switchWorkspaceTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="workspacePanelBody">
           {activeWorkspace === "memory" && activeWorkspaceTab === "confirmed" && (
             <section className="infoCard" aria-label="已保存记忆">
@@ -6666,7 +6670,19 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
               </p>
             </section>
           )}
-          {activeWorkspace === "settings" && (
+          {activeWorkspace === "settings" && activeWorkspaceTab === "overview" && (
+            <SettingsExperience
+              onOpenDeveloper={() => openWorkspace("debug", "events")}
+              onOpenLocalData={() => openWorkspace("settings", "privacy")}
+              onOpenMoreSettings={() => openWorkspace("settings", "app")}
+              onOpenVoice={() => openWorkspace("voice", "conversation")}
+              onToggleTheme={toggleTheme}
+              theme={theme}
+              voiceInteractionMode={appSettings.voice_interaction_mode}
+              voiceOutputEnabled={appSettings.voice_output === "on"}
+            />
+          )}
+          {activeWorkspace === "settings" && activeWorkspaceTab !== "overview" && (
           <section className="infoCard settingsPanel" aria-label="设置" id="settings-panel" style={{ order: 1 }}>
             <div className="cardHeader">
               <Settings size={17} />

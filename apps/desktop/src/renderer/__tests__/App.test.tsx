@@ -1831,6 +1831,9 @@ describe("App", () => {
 
   const openSettingsWorkspace = async (tab: string | RegExp = "高级") => {
     const panel = await openWorkspace("设置");
+    if (!within(panel).queryByRole("tab", { name: tab })) {
+      await userEvent.click(within(panel).getByRole("button", { name: "更多设置" }));
+    }
     await openWorkspaceTab(tab);
     return panel;
   };
@@ -1926,6 +1929,37 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "首页" })).toBeInTheDocument();
     await userEvent.click(within(navigation).getByRole("button", { name: "聊天" }));
     expect(screen.getByLabelText("聊天输入")).toHaveValue("回到首页也要留下的草稿");
+  });
+
+  it("opens the calm Settings overview and keeps existing routes and the Chat draft intact", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "聊天" }));
+    await userEvent.type(screen.getByLabelText("聊天输入"), "设置切换后仍保留的草稿");
+    let panel = await openWorkspace("设置");
+
+    expect(within(panel).getByRole("region", { name: "陪伴设置" })).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "调整 Rei 陪伴你的方式。" })).toBeInTheDocument();
+    expect(within(panel).getByText("未来这里可以查看 Rei 记录下的旅程。")).toBeInTheDocument();
+    expect(within(panel).getByText("ReiLink 不会上传本地记录。")).toBeInTheDocument();
+    expect(within(panel).queryByRole("tablist", { name: "设置 tabs" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("设置切换后仍保留的草稿");
+
+    await userEvent.click(within(panel).getByRole("button", { name: "使用夜间主题" }));
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+
+    await userEvent.click(within(panel).getByRole("button", { name: "管理语音设置" }));
+    expect(await screen.findByRole("heading", { name: "声音" })).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("设置切换后仍保留的草稿");
+
+    panel = await openWorkspace("设置");
+    await userEvent.click(within(panel).getByRole("button", { name: "管理本地数据" }));
+    expect(await screen.findByRole("heading", { name: "隐私与本地数据" })).toBeInTheDocument();
+
+    await userEvent.click(within(panel).getByRole("tab", { name: "陪伴" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "打开开发者工具" }));
+    expect(await screen.findByRole("heading", { name: "开发者工具" })).toBeInTheDocument();
   });
 
   it("opens Chat, Voice, and Journey from Home without changing the player/developer boundary", async () => {
