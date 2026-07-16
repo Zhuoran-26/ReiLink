@@ -88,6 +88,7 @@ import { JourneyGameSelector } from "./components/journey/JourneyGameSelector";
 import { JourneyOverview } from "./components/journey/JourneyOverview";
 import { JourneyReference } from "./components/journey/JourneyReference";
 import { JourneyTimeline } from "./components/journey/JourneyTimeline";
+import { VoiceConversation } from "./components/voice/VoiceConversation";
 import { eventBus } from "./eventBus";
 import { useTheme } from "./hooks/useTheme";
 import {
@@ -205,10 +206,10 @@ const WORKSPACE_TABS: Record<WorkspaceId, WorkspaceTab[]> = {
     { id: "manual", label: "选择游戏" }
   ],
   voice: [
-    { id: "conversation", label: "对话" },
-    { id: "input", label: "输入 / ASR" },
-    { id: "output", label: "输出" },
-    { id: "profile", label: "Voice Profile" }
+    { id: "conversation", label: "交流" },
+    { id: "input", label: "输入设置" },
+    { id: "output", label: "回应声音" },
+    { id: "profile", label: "回应方式" }
   ],
   overlay: [
     { id: "safe", label: "Safe Mode" },
@@ -5725,112 +5726,39 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
           )}
 
           {activeWorkspace === "voice" && activeWorkspaceTab === "conversation" && (
-            <section className="infoCard" aria-label="语音对话">
-              <div className="cardHeader">
-                <Mic size={17} />
-                <h2>Voice v2.2 对话状态</h2>
-              </div>
-              <p className="settingHint">
-                Voice v2.2 已接入可选直接对话模式；默认仍是确认后发送。直接对话不是常驻监听，每轮仍需你主动点击录音。
-              </p>
-              <div className="voiceModeControl" role="group" aria-label="直接对话模式">
-                <span>当前模式</span>
-                <div className="voiceModeButtons">
-                  <button
-                    aria-pressed={appSettings.voice_interaction_mode === "confirm_send"}
-                    className="voiceModeButton"
-                    disabled={settingsBusy !== "" && settingsBusy !== "voice_interaction_mode"}
-                    type="button"
-                    onClick={() => void updateAppSettings({ voice_interaction_mode: "confirm_send" })}
-                  >
-                    确认后发送
-                  </button>
-                  <button
-                    aria-pressed={appSettings.voice_interaction_mode === "direct_conversation"}
-                    className="voiceModeButton"
-                    disabled={settingsBusy !== "" && settingsBusy !== "voice_interaction_mode"}
-                    type="button"
-                    onClick={() => void updateAppSettings({ voice_interaction_mode: "direct_conversation" })}
-                  >
-                    直接对话
-                  </button>
-                </div>
-              </div>
-              <p className="settingHint">
-                {voiceDirectConversationEnabled
-                  ? "开启时：用户主动录音后，转写结果会自动发送给 Rei，并进入正常聊天流程；自动发送也不能绕过记忆确认。"
-                  : "关闭时：转写后会先进入输入框，仍需你确认发送；未确认 transcript 不进入 memory、prompt、retrieval 或 game context。"}
-                音频仍只在本地处理。
-              </p>
-              <div className={`voiceStatePanel voiceState-${voiceConversationState.tone}`} role="status" aria-label="Voice v2.2 状态">
-                <div>
-                  <span>当前状态</span>
-                  <strong>{voiceConversationState.label}</strong>
-                </div>
-                <p>{voiceConversationState.description}</p>
-              </div>
-              <dl className="debugFacts">
-                <div>
-                  <dt>状态机</dt>
-                  <dd>{voiceConversationState.state}</dd>
-                </div>
-                <div>
-                  <dt>当前模式</dt>
-                  <dd>{voiceInteractionModeLabel}</dd>
-                </div>
-                <div>
-                  <dt>未确认 transcript</dt>
-                  <dd>{voiceTranscriptReady ? voiceConfirmSendText : "无"}</dd>
-                </div>
-                <div>
-                  <dt>主输入</dt>
-                  <dd>{mainVoiceInputProviderText(mainVoiceInputProvider)}</dd>
-                </div>
-                <div>
-                  <dt>输入状态</dt>
-                  <dd>{mainVoiceInputStatus}</dd>
-                </div>
-                <div>
-                  <dt>最近录音结束</dt>
-                  <dd>{localAsrCaptureStopReason ? audioCaptureReasonText(localAsrCaptureStopReason) : "无"}</dd>
-                </div>
-                <div>
-                  <dt>语音输出</dt>
-                  <dd>{appSettings.voice_output === "on" ? "开启" : "关闭"} / {voicePhaseText(voiceStatus)}</dd>
-                </div>
-                <div>
-                  <dt>Auto-send</dt>
-                  <dd>{voiceDirectConversationEnabled ? "开启，仅本轮主动录音后自动发送" : "关闭"}</dd>
-                </div>
-                <div>
-                  <dt>Hands-free</dt>
-                  <dd>关闭，后续能力</dd>
-                </div>
-              </dl>
-              <div className="voiceBoundaryList" aria-label="语音安全边界">
-                <span>音频不上传</span>
-                <span>ASR 本地运行</span>
-                <span>transcript 未确认不写 memory</span>
-                <span>不播报 Debug / Prompt Preview / Trace</span>
-                <span>TTS 可停止</span>
-              </div>
-              <div className="workspaceQuickActions">
-                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("input")}>
-                  <Mic size={14} />
-                  输入 / ASR
-                </button>
-                <button className="smallButton quiet" type="button" onClick={() => switchWorkspaceTab("output")}>
-                  <Volume2 size={14} />
-                  语音输出
-                </button>
-                {voiceStatus.active && (
-                  <button className="smallButton quiet" type="button" aria-label="停止语音 / Stop Voice" onClick={() => stopVoiceOutput("user_stop")}>
-                    <VolumeX size={14} />
-                    停止播放
-                  </button>
-                )}
-              </div>
-            </section>
+            <VoiceConversation
+              draftHint={voiceTranscriptReady ? voiceConfirmSendText : ""}
+              draftReady={Boolean(voiceTranscriptReady)}
+              draftValue={input}
+              mode={appSettings.voice_interaction_mode}
+              modeBusy={settingsBusy !== "" && settingsBusy !== "voice_interaction_mode"}
+              onDraftChange={(event) => {
+                const nextInput = event.target.value;
+                setInput(nextInput);
+                if (!nextInput.trim()) clearVoiceTranscriptReady();
+              }}
+              onModeChange={(mode) => void updateAppSettings({ voice_interaction_mode: mode })}
+              onRecord={() => {
+                if (mainVoiceInputUsesLocalAsr) {
+                  void runLocalAsrTranscription();
+                  return;
+                }
+                if (mainVoiceInputUsesWebSpeech) {
+                  if (voiceInputStatus.phase === "idle") startVoiceInput();
+                  else stopVoiceInput();
+                }
+              }}
+              onRestart={restartVoiceTranscription}
+              onStopSpeaking={() => stopVoiceOutput("user_stop")}
+              onSubmit={sendMessage}
+              recordActive={mainVoiceInputActive}
+              recordDisabled={mainVoiceInputDisabled}
+              recordLabel={mainVoiceInputLabel}
+              recordTitle={mainVoiceInputTitle}
+              sending={sending}
+              speaking={voiceStatus.active}
+              state={voiceConversationState}
+            />
           )}
 
 	          {activeWorkspace === "voice" && activeWorkspaceTab === "input" && (

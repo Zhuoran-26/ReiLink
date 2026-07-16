@@ -1837,12 +1837,12 @@ describe("App", () => {
 
   const openVoiceInputWorkspace = async () => {
     await openWorkspace("语音");
-    await openWorkspaceTab("输入 / ASR");
+    await openWorkspaceTab("输入设置");
   };
 
   const openVoiceOutputWorkspace = async () => {
     await openWorkspace("语音");
-    await openWorkspaceTab("输出");
+    await openWorkspaceTab("回应声音");
   };
 
   const openOverlayWorkspace = async (tab: string | RegExp = "Safe Mode") => {
@@ -1948,7 +1948,7 @@ describe("App", () => {
     }
 
     panel = await openWorkspace("语音");
-    for (const tabName of ["对话", "输入 / ASR", "输出", "Voice Profile"]) {
+    for (const tabName of ["交流", "输入设置", "回应声音", "回应方式"]) {
       await clickPanelTab(tabName);
     }
 
@@ -2021,20 +2021,19 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "LLM Primary Extraction" })).toBeInTheDocument();
 
     panel = await openWorkspace("语音");
-    expect(await screen.findByRole("heading", { name: "Voice v2.2 对话状态" })).toBeInTheDocument();
-    expect(panel).toHaveTextContent("语音待机");
+    expect(await screen.findByRole("heading", { name: "Rei 等待着" })).toBeInTheDocument();
+    expect(panel).toHaveTextContent("想说的时候，就从这里开始");
     expect(panel).toHaveTextContent("确认后发送");
-    expect(panel).toHaveTextContent("直接对话");
-    expect(panel).toHaveTextContent("不是常驻监听");
-    expect(panel).toHaveTextContent("Auto-send");
-    expect(panel).toHaveTextContent("关闭");
-    expect(panel).toHaveTextContent("音频不上传");
-    expect(panel).toHaveTextContent("ASR 本地运行");
-    expect(panel).toHaveTextContent("transcript 未确认不写 memory");
-    await openWorkspaceTab("输入 / ASR");
+    expect(panel).toHaveTextContent("自动发送（安全模式）");
+    expect(panel).toHaveTextContent("转写先留在草稿里，由你确认");
+    expect(panel).toHaveTextContent("声音只在本地处理");
+    expect(panel).not.toHaveTextContent("状态机");
+    expect(panel).not.toHaveTextContent("Auto-send");
+    expect(panel).not.toHaveTextContent("Hands-free");
+    await openWorkspaceTab("输入设置");
     expect(await screen.findByRole("heading", { name: "输入 / Local ASR" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "本地 ASR 配置 / Local ASR Setup" })).toBeInTheDocument();
-    await openWorkspaceTab("输出");
+    await openWorkspaceTab("回应声音");
     expect(await screen.findByRole("heading", { name: "语音输出" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
     expect(panel).toHaveTextContent("默认短版播报");
@@ -2047,7 +2046,7 @@ describe("App", () => {
     expect(panel).toHaveTextContent("Local TTS");
     expect(panel).toHaveTextContent("External TTS");
     expect(panel).toHaveTextContent("不可选择");
-    await openWorkspaceTab("Voice Profile");
+    await openWorkspaceTab("回应方式");
     expect(await screen.findByRole("heading", { name: "Voice Profile" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("Rei Calm / Rei 冷静陪伴");
     expect(screen.getByRole("group", { name: "Voice Profile 策略" })).toHaveTextContent("不是角色音色");
@@ -2087,11 +2086,10 @@ describe("App", () => {
     const panel = await openWorkspace("语音");
 
     const confirmButton = within(panel).getByRole("button", { name: "确认后发送" });
-    const directButton = within(panel).getByRole("button", { name: "直接对话" });
+    const directButton = within(panel).getByRole("button", { name: "自动发送（安全模式）" });
     expect(confirmButton).toHaveAttribute("aria-pressed", "true");
     expect(directButton).toHaveAttribute("aria-pressed", "false");
-    expect(panel).toHaveTextContent("默认仍是确认后发送");
-    expect(panel).toHaveTextContent("不是常驻监听");
+    expect(panel).toHaveTextContent("转写先留在草稿里，由你确认");
 
     await userEvent.click(directButton);
 
@@ -2123,7 +2121,7 @@ describe("App", () => {
   it("shows and persists Voice Profile policy controls", async () => {
     render(<App />);
     let panel = await openWorkspace("语音");
-    await openWorkspaceTab("Voice Profile");
+    await openWorkspaceTab("回应方式");
     panel = await screen.findByRole("complementary", { name: "工作区面板" });
     const profilePanel = within(panel).getByRole("group", { name: "Voice Profile 策略" });
 
@@ -4775,7 +4773,7 @@ describe("App", () => {
     expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
 
     const panel = await openWorkspace("语音");
-    await userEvent.click(within(panel).getByRole("button", { name: "直接对话" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "自动发送（安全模式）" }));
     await waitFor(() => expect(appSettingsStore.voice_interaction_mode).toBe("direct_conversation"));
     await userEvent.click(within(panel).getByRole("button", { name: "确认后发送" }));
     await waitFor(() => expect(appSettingsStore.voice_interaction_mode).toBe("confirm_send"));
@@ -4803,7 +4801,7 @@ describe("App", () => {
     const panel = await openWorkspace("语音");
     await userEvent.click(within(panel).getByRole("button", { name: "确认后发送" }));
     await waitFor(() => expect(appSettingsStore.voice_interaction_mode).toBe("confirm_send"));
-    await userEvent.click(screen.getByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "停止本地转写录音 / Stop Local ASR Recording" }));
 
     expect(await screen.findByText(/Voice v2.2：转写草稿，尚未发送/)).toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toHaveValue(transcript);

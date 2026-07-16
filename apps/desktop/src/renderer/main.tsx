@@ -13,6 +13,7 @@ import "./components/rei/rei.css";
 import "./app/shell.css";
 import "./components/chat/chat.css";
 import "./components/journey/journey.css";
+import "./components/voice/voice.css";
 
 const isOverlayRenderer = isOverlayRendererLocation(window.location);
 
