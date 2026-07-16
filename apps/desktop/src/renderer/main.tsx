@@ -14,6 +14,7 @@ import "./app/shell.css";
 import "./components/chat/chat.css";
 import "./components/journey/journey.css";
 import "./components/voice/voice.css";
+import "./components/home/home.css";
 
 const isOverlayRenderer = isOverlayRendererLocation(window.location);
 

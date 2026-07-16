@@ -47,7 +47,8 @@ describe("UI visual foundation", () => {
     );
 
     const navigation = screen.getByRole("navigation", { name: "应用导航" });
-    expect(within(navigation).getByRole("button", { name: "聊天" })).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getByRole("button", { name: "首页" })).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getByRole("button", { name: "聊天" })).not.toHaveAttribute("aria-current");
     expect(within(navigation).queryByRole("button", { name: "调试" })).not.toBeInTheDocument();
 
     await userEvent.click(within(navigation).getByRole("button", { name: "开发者工具" }));

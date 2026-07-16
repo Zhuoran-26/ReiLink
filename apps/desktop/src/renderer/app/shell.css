@@ -259,8 +259,22 @@
   overflow: hidden;
 }
 
-.workspaceGrid.homeOnly {
+.workspaceGrid.homeOnly,
+.workspaceGrid.chatOnly {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.workspaceGrid.homeOnly {
+  padding-top: 0;
+}
+
+.chatColumn.isDormant {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
 }
 
 .chatColumn {
@@ -606,12 +620,13 @@
   }
 
   .navMenu {
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto;
     margin-top: 0;
   }
 
   .playerNavigation {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 
   .navItem {

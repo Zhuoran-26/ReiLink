@@ -1877,8 +1877,10 @@ describe("App", () => {
     await screen.findByText("已连接");
     const navigation = screen.getByRole("navigation", { name: "应用导航" });
     expect(navigation).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "首页" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主聊天界面" })).toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "工作区面板" })).not.toBeInTheDocument();
+    expect(within(navigation).getByText("首页")).toBeInTheDocument();
     expect(within(navigation).getByText("聊天")).toBeInTheDocument();
     expect(within(navigation).getByText("回忆")).toBeInTheDocument();
     expect(within(navigation).getByText("旅程")).toBeInTheDocument();
@@ -1887,6 +1889,7 @@ describe("App", () => {
     expect(within(navigation).getByText("设置")).toBeInTheDocument();
     expect(within(navigation).queryByText("调试")).not.toBeInTheDocument();
     expect(within(navigation).getByRole("button", { name: "开发者工具" })).toHaveAttribute("aria-expanded", "false");
+    expect(within(navigation).getByRole("button", { name: "首页" })).toHaveAttribute("aria-current", "page");
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
 
     await userEvent.click(screen.getByRole("button", { name: "切换到夜间" }));
@@ -1905,6 +1908,42 @@ describe("App", () => {
     expect(screen.getByRole("group", { name: "语音输入设置" })).toBeInTheDocument();
     await openVoiceOutputWorkspace();
     expect(screen.getByRole("button", { name: "测试语音 / Test Voice" })).toBeInTheDocument();
+  });
+
+  it("uses Home as the default returning space and preserves the Chat draft across navigation", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+
+    const navigation = screen.getByRole("navigation", { name: "应用导航" });
+    expect(within(navigation).getByRole("button", { name: "首页" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("region", { name: "首页" })).toBeInTheDocument();
+    expect(within(navigation).queryByRole("button", { name: "调试" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(navigation).getByRole("button", { name: "聊天" }));
+    expect(within(navigation).getByRole("button", { name: "聊天" })).toHaveAttribute("aria-current", "page");
+    await userEvent.type(screen.getByLabelText("聊天输入"), "回到首页也要留下的草稿");
+    await userEvent.click(within(navigation).getByRole("button", { name: "首页" }));
+    expect(screen.getByRole("region", { name: "首页" })).toBeInTheDocument();
+    await userEvent.click(within(navigation).getByRole("button", { name: "聊天" }));
+    expect(screen.getByLabelText("聊天输入")).toHaveValue("回到首页也要留下的草稿");
+  });
+
+  it("opens Chat, Voice, and Journey from Home without changing the player/developer boundary", async () => {
+    render(<App />);
+    await screen.findByText("已连接");
+
+    await userEvent.click(screen.getByRole("button", { name: "与 Rei 说话" }));
+    expect(screen.getByRole("button", { name: "聊天" })).toHaveAttribute("aria-current", "page");
+
+    await userEvent.click(screen.getByRole("button", { name: "首页" }));
+    await userEvent.click(screen.getByRole("button", { name: "语音陪伴" }));
+    expect(await screen.findByRole("heading", { name: "声音" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "首页" }));
+    const quickActions = screen.getByRole("navigation", { name: "首页快捷入口" });
+    await userEvent.click(within(quickActions).getByRole("button", { name: "查看旅程" }));
+    expect(await screen.findByRole("heading", { name: "旅程" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开发者工具" })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("keeps workspace shell controls outside the scroll body and clickable", async () => {

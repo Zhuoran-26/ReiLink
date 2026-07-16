@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Database,
   FlaskConical,
+  House,
   Layers3,
   MessageSquare,
   Mic,
@@ -31,10 +32,11 @@ type NavigationItem = {
 };
 
 const PLAYER_NAV_ITEMS: NavigationItem[] = [
-  { id: "home", label: "聊天", icon: MessageSquare },
+  { id: "home", label: "首页", icon: House },
+  { id: "chat", label: "聊天", icon: MessageSquare },
+  { id: "voice", label: "声音", icon: Mic },
   { id: "game", label: "旅程", icon: BookOpenText },
   { id: "memory", label: "回忆", icon: Database },
-  { id: "voice", label: "声音", icon: Mic },
   { id: "overlay", label: "悬浮层", icon: Layers3 },
   { id: "settings", label: "设置", icon: Settings }
 ];

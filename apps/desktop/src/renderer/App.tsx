@@ -84,6 +84,8 @@ import { audioCapture, MAX_RECORDING_DURATION_MS, type AudioCaptureStatus } from
 import { ChatComposer } from "./components/chat/ChatComposer";
 import { ChatMessage } from "./components/chat/ChatMessage";
 import { EmptyConversation } from "./components/chat/EmptyConversation";
+import { HomeExperience } from "./components/home/HomeExperience";
+import { buildHomeJourneyViewModel } from "./components/home/homeViewModel";
 import { JourneyGameSelector } from "./components/journey/JourneyGameSelector";
 import { JourneyOverview } from "./components/journey/JourneyOverview";
 import { JourneyReference } from "./components/journey/JourneyReference";
@@ -191,7 +193,8 @@ const VOICE_AUTO_SENDING_VISIBLE_MS = 900;
 const VOICE_CAPTURE_LIMIT_WARNING_MS = 5000;
 const SEMANTIC_SHADOW_EVENT_POLL_INTERVAL_MS = 3000;
 const WORKSPACE_TABS: Record<WorkspaceId, WorkspaceTab[]> = {
-  home: [{ id: "chat", label: "聊天" }],
+  home: [{ id: "overview", label: "首页" }],
+  chat: [{ id: "chat", label: "聊天" }],
   memory: [
     { id: "pending", label: "待确认" },
     { id: "confirmed", label: "已保存" },
@@ -3358,6 +3361,11 @@ export function App() {
       setGameContext(currentGameContext);
       setGameDetection(currentGameContext.detected_game);
       setMemoryProfile(await api.memoryProfile());
+      try {
+        setSessionArchives(await api.sessionArchives());
+      } catch {
+        setSessionArchives([]);
+      }
       setMemoryDebug(await api.memoryDebug());
       const currentChatDebug = await api.chatDebug();
       setChatDebug(currentChatDebug);
@@ -4935,6 +4943,13 @@ export function App() {
         ? `${memoryNotice.pendingCount && memoryNotice.pendingCount > 1 ? `${memoryNotice.pendingCount} 条` : "有新的"}记忆待确认`
         : "已撤销这条记忆"
     : "";
+  const homeJourneyModel = buildHomeJourneyViewModel({
+    archives: sessionArchives,
+    gameContext,
+    gameSession: gameSessionDebug,
+    gameStatus,
+    timeline: sessionTimeline
+  });
   const activeWorkspaceTabs = WORKSPACE_TABS[activeWorkspace];
   const activeWorkspaceTab = workspaceTabs[activeWorkspace] || DEFAULT_WORKSPACE_TABS[activeWorkspace];
   const settingsWorkspaceTitle = ({
@@ -4989,7 +5004,7 @@ export function App() {
   }, [refreshStatus]);
 
   const closeWorkspace = useCallback(() => {
-    setActiveWorkspace("home");
+    setActiveWorkspace("chat");
   }, []);
 
   const switchWorkspaceTab = useCallback((tabId: string) => {
@@ -5000,7 +5015,7 @@ export function App() {
   }, [activeWorkspace, refreshSessionArchives]);
 
   useEffect(() => {
-    if (activeWorkspace === "home") return undefined;
+    if (activeWorkspace === "home" || activeWorkspace === "chat") return undefined;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeWorkspace();
     };
@@ -5047,8 +5062,20 @@ export function App() {
       )}
       theme={theme}
     >
-        <section className={`workspaceGrid ${activeWorkspace === "home" ? "homeOnly" : ""}`}>
-          <section className="chatColumn" aria-label="主聊天界面" id="chat-panel">
+        <section className={`workspaceGrid ${activeWorkspace === "home" ? "homeOnly" : activeWorkspace === "chat" ? "chatOnly" : ""}`}>
+          <div
+            aria-hidden={activeWorkspace !== "home"}
+            className={`homeExperienceFrame${activeWorkspace === "home" ? " isActive" : ""}`}
+          >
+            <HomeExperience
+              model={homeJourneyModel}
+              onOpenChat={() => openWorkspace("chat")}
+              onOpenJourney={() => openWorkspace("game")}
+              onOpenVoice={() => openWorkspace("voice")}
+            />
+          </div>
+
+          <section className={`chatColumn${activeWorkspace === "home" ? " isDormant" : ""}`} aria-label="主聊天界面" id="chat-panel">
             <div className="timelineMarker">今天</div>
 
           <section className="chatPanel" aria-label="聊天面板">
@@ -5272,7 +5299,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com`}</pre>
           </section>
         </section>
 
-        {activeWorkspace !== "home" && (
+        {activeWorkspace !== "home" && activeWorkspace !== "chat" && (
         <aside className={`workspacePanel workspacePanel-${activeWorkspace}`} aria-label="工作区面板">
           <div className="workspacePanelHeader">
             <div>
